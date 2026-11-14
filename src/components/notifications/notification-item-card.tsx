@@ -638,10 +638,10 @@ export function NotificationItemCard({
 
       return (
         <div className="space-y-0.5">
-          <p className="font-bold text-white text-xs sm:text-[13px] tracking-tight">
+          <p className={cn("font-bold text-white tracking-tight leading-snug", compact ? "text-[11.5px]" : "text-xs sm:text-[13px]")}>
             Você tem {total} novos seguidores
           </p>
-          <p className="text-[11px] text-zinc-300 leading-snug">
+          <p className={cn("text-zinc-300 leading-snug", compact ? "text-[10.5px]" : "text-[11px]")}>
             {firstNames ? (
               <>
                 <span className="font-semibold text-purple-200">{firstNames}</span>
@@ -660,16 +660,16 @@ export function NotificationItemCard({
       return (
         <div className="flex flex-col gap-0.5">
           <div className="flex flex-wrap items-baseline gap-1.5 min-w-0">
-            <span className="font-bold text-white text-xs sm:text-[13px] truncate max-w-[140px] sm:max-w-[200px]">
+            <span className={cn("font-bold text-white truncate", compact ? "text-[11.5px] max-w-[130px] sm:max-w-[190px]" : "text-xs sm:text-[13px] max-w-[140px] sm:max-w-[200px]")}>
               {actorName}
             </span>
             {notification.actorNick && (
-              <span className="text-[11px] font-medium text-purple-300/80 truncate max-w-[120px]">
+              <span className={cn("font-medium text-purple-300/80 truncate max-w-[110px]", compact ? "text-[10px]" : "text-[11px]")}>
                 @{notification.actorNick}
               </span>
             )}
           </div>
-          <p className="text-[11.5px] text-zinc-300 leading-tight">
+          <p className={cn("text-zinc-300 leading-tight", compact ? "text-[11px]" : "text-[11.5px]")}>
             {notification.type === "follow_request"
               ? "solicitou para seguir você"
               : notification.type === "follow_accept"
@@ -689,7 +689,7 @@ export function NotificationItemCard({
 
         if (others > 0) {
           return (
-            <span className="text-zinc-200 text-xs sm:text-[12.5px] leading-snug">
+            <span className={cn("text-zinc-200 leading-snug", compact ? "text-[11px] sm:text-[11.5px]" : "text-xs sm:text-[12.5px]")}>
               <span className="font-bold text-white">{name1}</span>,{" "}
               <span className="font-bold text-white">{name2}</span> e mais{" "}
               <span className="font-semibold text-purple-300">{others} {others === 1 ? "pessoa" : "pessoas"}</span>{" "}
@@ -699,7 +699,7 @@ export function NotificationItemCard({
         }
 
         return (
-          <span className="text-zinc-200 text-xs sm:text-[12.5px] leading-snug">
+          <span className={cn("text-zinc-200 leading-snug", compact ? "text-[11px] sm:text-[11.5px]" : "text-xs sm:text-[12.5px]")}>
             <span className="font-bold text-white">{name1}</span> e{" "}
             <span className="font-bold text-white">{name2}</span> curtiram seu comentário.
           </span>
@@ -710,7 +710,7 @@ export function NotificationItemCard({
         if (likeCount > 1) {
           const others = likeCount - 1;
           return (
-            <span className="text-zinc-200 text-xs sm:text-[12.5px] leading-snug">
+            <span className={cn("text-zinc-200 leading-snug", compact ? "text-[11px] sm:text-[11.5px]" : "text-xs sm:text-[12.5px]")}>
               <span className="font-bold text-white">{actorName}</span> e mais{" "}
               <span className="font-semibold text-purple-300">{others} {others === 1 ? "pessoa" : "pessoas"}</span>{" "}
               curtiram seu comentário.
@@ -718,7 +718,7 @@ export function NotificationItemCard({
           );
         }
         return (
-          <span className="text-zinc-200 text-xs sm:text-[12.5px] leading-snug">
+          <span className={cn("text-zinc-200 leading-snug", compact ? "text-[11px] sm:text-[11.5px]" : "text-xs sm:text-[12.5px]")}>
             <span className="font-bold text-white">{actorName}</span> curtiu seu comentário.
           </span>
         );
@@ -728,7 +728,7 @@ export function NotificationItemCard({
     // 4. Respostas (Replies)
     if (isReplyNotification && actorName) {
       return (
-        <span className="text-zinc-200 text-xs sm:text-[12.5px] leading-snug">
+        <span className={cn("text-zinc-200 leading-snug", compact ? "text-[11.5px]" : "text-xs sm:text-[12.5px]")}>
           <span className="font-bold text-white">{actorName}</span>{" "}
           <span className="text-purple-300/90 font-medium">respondeu</span> ao seu comentário.
         </span>
@@ -738,7 +738,7 @@ export function NotificationItemCard({
     // 5. Comentários diretos / Menções
     if (isCommentNotification && actorName) {
       return (
-        <span className="text-zinc-200 text-xs sm:text-[12.5px] leading-snug">
+        <span className={cn("text-zinc-200 leading-snug", compact ? "text-[11.5px]" : "text-xs sm:text-[12.5px]")}>
           <span className="font-bold text-white">{actorName}</span> comentou em uma publicação.
         </span>
       );
@@ -747,14 +747,18 @@ export function NotificationItemCard({
     if (actorName && notification.message.startsWith(`${actorName} `)) {
       const rest = notification.message.slice(actorName.length);
       return (
-        <span className="text-zinc-200 text-xs sm:text-[12.5px] leading-snug">
+        <span className={cn("text-zinc-200 leading-snug", compact ? "text-[11.5px]" : "text-xs sm:text-[12.5px]")}>
           <span className="font-bold text-white">{actorName}</span>
           <span className="text-zinc-300">{rest}</span>
         </span>
       );
     }
 
-    return <span className="text-zinc-200 text-xs sm:text-[12.5px] leading-snug">{notification.message}</span>;
+    return (
+      <span className={cn("text-zinc-200 leading-snug", compact ? "text-[11.5px]" : "text-xs sm:text-[12.5px]")}>
+        {notification.message}
+      </span>
+    );
   };
 
   const showMediaMetaRow = Boolean(
@@ -765,13 +769,13 @@ export function NotificationItemCard({
     <div
       className={cn(
         "relative transition-all duration-200 border-b border-white/[0.06] last:border-b-0",
-        compact ? "px-3.5 py-3" : "px-4 py-3.5 sm:px-5 sm:py-4",
+        compact ? "px-3 py-2 sm:px-3.5 sm:py-2.5" : "px-4 py-3.5 sm:px-5 sm:py-4",
         !notification.read
           ? "bg-gradient-to-r from-purple-950/30 via-purple-900/10 to-transparent border-l-[3px] border-l-[#c084fc]"
           : "bg-transparent border-l-[3px] border-l-transparent hover:bg-white/[0.025]",
       )}
     >
-      <div className="flex items-start gap-3 min-w-0">
+      <div className={cn("flex items-start min-w-0", compact ? "gap-2.5" : "gap-3")}>
         {/* AVATAR DO AUTOR OU PILHA DE AVATARES DE SEGUIDORES COM BADGE ELEGANTE */}
         {isGroupedFollowers ? (
           <div className="relative shrink-0 pt-0.5">
@@ -781,8 +785,8 @@ export function NotificationItemCard({
                   key={f.id}
                   className={cn(
                     "relative overflow-hidden rounded-full bg-[#171326] ring-2 ring-[#0b0914] border border-white/10 shadow-sm",
-                    compact ? "size-7" : "size-8",
-                    i > 0 && "-ml-2.5",
+                    compact ? "size-6.5" : "size-8",
+                    i > 0 && (compact ? "-ml-2" : "-ml-2.5"),
                   )}
                   style={{ zIndex: 10 - i }}
                 >
@@ -794,7 +798,7 @@ export function NotificationItemCard({
                       className="size-full object-cover"
                     />
                   ) : (
-                    <div className="flex size-full items-center justify-center text-[10px] font-bold text-purple-200">
+                    <div className={cn("flex size-full items-center justify-center font-bold text-purple-200", compact ? "text-[8.5px]" : "text-[10px]")}>
                       {(f.name || f.nick || "U").charAt(0).toUpperCase()}
                     </div>
                   )}
@@ -803,8 +807,8 @@ export function NotificationItemCard({
               {(notification.totalFollowersCount ?? (notification.groupedFollowers?.length ?? 0)) > 3 && (
                 <div
                   className={cn(
-                    "relative -ml-2.5 flex items-center justify-center rounded-full bg-[#201838] font-bold text-purple-200 ring-2 ring-[#0b0914] border border-purple-400/30 tabular-nums shadow-sm",
-                    compact ? "size-7 text-[9px]" : "size-8 text-[10px]",
+                    "relative flex items-center justify-center rounded-full bg-[#201838] font-bold text-purple-200 ring-2 ring-[#0b0914] border border-purple-400/30 tabular-nums shadow-sm",
+                    compact ? "-ml-2 size-6.5 text-[8.5px]" : "-ml-2.5 size-8 text-[10px]",
                   )}
                   style={{ zIndex: 6 }}
                 >
@@ -812,8 +816,11 @@ export function NotificationItemCard({
                 </div>
               )}
             </div>
-            <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-blue-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(14,165,233,0.5)]">
-              <Users className="size-2.5" />
+            <span className={cn(
+              "absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-blue-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(14,165,233,0.5)]",
+              compact ? "size-4" : "size-5"
+            )}>
+              <Users className={compact ? "size-2" : "size-2.5"} />
             </span>
           </div>
         ) : (
@@ -826,60 +833,78 @@ export function NotificationItemCard({
                 onError={() => setActorImgFailed(true)}
                 className={cn(
                   "rounded-full object-cover bg-[#171326] ring-2 ring-purple-500/25 shadow-md",
-                  compact ? "size-9" : "size-10",
+                  compact ? "size-7.5" : "size-10",
                 )}
               />
             ) : (
               <div
                 className={cn(
                   "flex items-center justify-center rounded-full bg-gradient-to-br from-[#241940] to-[#130f24] text-[#c084fc] font-bold ring-2 ring-purple-500/25 shadow-md",
-                  compact ? "size-9 text-xs" : "size-10 text-sm",
+                  compact ? "size-7.5 text-xs" : "size-10 text-sm",
                 )}
               >
                 {actorName ? (
                   <span>{actorName.charAt(0).toUpperCase()}</span>
                 ) : (
-                  <UserCircle className="size-5 text-zinc-400" />
+                  <UserCircle className={compact ? "size-4 text-zinc-400" : "size-5 text-zinc-400"} />
                 )}
               </div>
             )}
 
             {/* BADGES REFORMULADAS DO TIPO DE NOTIFICAÇÃO COM HALO DE COR */}
             {isLikeNotification && (
-              <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-gradient-to-br from-rose-500 to-pink-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(244,63,94,0.6)]">
-                <Heart className="size-2.5 fill-current" />
+              <span className={cn(
+                "absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full bg-gradient-to-br from-rose-500 to-pink-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(244,63,94,0.6)]",
+                compact ? "size-4" : "size-5"
+              )}>
+                <Heart className={compact ? "size-2 fill-current" : "size-2.5 fill-current"} />
               </span>
             )}
             {isReplyNotification && (
-              <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(147,51,234,0.6)]">
-                <MessageCircle className="size-2.5" />
+              <span className={cn(
+                "absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(147,51,234,0.6)]",
+                compact ? "size-4" : "size-5"
+              )}>
+                <MessageCircle className={compact ? "size-2" : "size-2.5"} />
               </span>
             )}
             {isCommentNotification && (
-              <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-purple-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(139,92,246,0.6)]">
-                <MessageCircle className="size-2.5" />
+              <span className={cn(
+                "absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-purple-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(139,92,246,0.6)]",
+                compact ? "size-4" : "size-5"
+              )}>
+                <MessageCircle className={compact ? "size-2" : "size-2.5"} />
               </span>
             )}
             {notification.type === "new_follower" && (
-              <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-blue-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(14,165,233,0.6)]">
-                <UserPlus className="size-2.5" />
+              <span className={cn(
+                "absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-blue-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(14,165,233,0.6)]",
+                compact ? "size-4" : "size-5"
+              )}>
+                <UserPlus className={compact ? "size-2" : "size-2.5"} />
               </span>
             )}
             {notification.type === "follow_request" && (
-              <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(245,158,11,0.6)]">
-                <UserPlus className="size-2.5" />
+              <span className={cn(
+                "absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(245,158,11,0.6)]",
+                compact ? "size-4" : "size-5"
+              )}>
+                <UserPlus className={compact ? "size-2" : "size-2.5"} />
               </span>
             )}
             {notification.type === "follow_accept" && (
-              <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(16,185,129,0.6)]">
-                <UserCheck className="size-2.5" />
+              <span className={cn(
+                "absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-2 border-[#0b0914] shadow-[0_0_8px_rgba(16,185,129,0.6)]",
+                compact ? "size-4" : "size-5"
+              )}>
+                <UserCheck className={compact ? "size-2" : "size-2.5"} />
               </span>
             )}
           </div>
         )}
 
         {/* CONTEÚDO PRINCIPAL COM HIERARQUIA VISUAL APRIMORADA */}
-        <div className="min-w-0 flex-1 space-y-2">
+        <div className={cn("min-w-0 flex-1", compact ? "space-y-1.5" : "space-y-2")}>
           {/* CABEÇALHO DO ITEM: RESUMO + INDICADOR NÃO LIDA / EXCLUIR */}
           <div className="flex items-start justify-between gap-2 min-w-0">
             <div className="min-w-0 flex-1 leading-snug">
@@ -891,7 +916,10 @@ export function NotificationItemCard({
                 <span
                   title="Não lida"
                   aria-label="Notificação não lida"
-                  className="size-2 rounded-full bg-[#c084fc] shadow-[0_0_8px_rgba(192,132,252,0.9)] animate-pulse"
+                  className={cn(
+                    "rounded-full bg-[#c084fc] shadow-[0_0_8px_rgba(192,132,252,0.9)] animate-pulse",
+                    compact ? "size-1.5" : "size-2"
+                  )}
                 />
               )}
 
@@ -903,11 +931,14 @@ export function NotificationItemCard({
                     e.stopPropagation();
                     onDelete(notification.id);
                   }}
-                  className="flex size-6.5 items-center justify-center rounded-lg text-zinc-400 hover:bg-rose-500/15 hover:text-rose-300 border border-transparent hover:border-rose-500/25 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400/50 cursor-pointer"
+                  className={cn(
+                    "flex items-center justify-center rounded-lg text-zinc-400 hover:bg-rose-500/15 hover:text-rose-300 border border-transparent hover:border-rose-500/25 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400/50 cursor-pointer",
+                    compact ? "size-6" : "size-6.5"
+                  )}
                   title="Excluir notificação"
                   aria-label="Excluir notificação"
                 >
-                  <Trash2 className="size-3.5" />
+                  <Trash2 className={compact ? "size-3" : "size-3.5"} />
                 </button>
               )}
             </div>
@@ -915,15 +946,21 @@ export function NotificationItemCard({
 
           {/* NOVO SEGUIDOR: BOTÃO SEGUIR DE VOLTA REFORMULADO */}
           {isIndividualFollower && notification.type === "new_follower" && (
-            <div className="pt-0.5">
+            <div className={compact ? "pt-0" : "pt-0.5"}>
               {isFollowing ? (
-                <span className="inline-flex items-center gap-1.5 h-7.5 px-3 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-semibold shadow-sm select-none">
-                  <Check className="size-3.5" />
+                <span className={cn(
+                  "inline-flex items-center rounded-md bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 font-semibold shadow-sm select-none",
+                  compact ? "h-6 px-2 text-[10.5px] gap-1" : "h-7.5 px-3 rounded-lg text-xs gap-1.5"
+                )}>
+                  <Check className={compact ? "size-3" : "size-3.5"} />
                   <span>Seguindo</span>
                 </span>
               ) : isRequested ? (
-                <span className="inline-flex items-center gap-1.5 h-7.5 px-3 rounded-lg bg-amber-500/15 border border-amber-400/30 text-amber-200 text-xs font-semibold shadow-sm select-none">
-                  <Clock className="size-3.5" />
+                <span className={cn(
+                  "inline-flex items-center rounded-md bg-amber-500/15 border border-amber-400/30 text-amber-200 font-semibold shadow-sm select-none",
+                  compact ? "h-6 px-2 text-[10.5px] gap-1" : "h-7.5 px-3 rounded-lg text-xs gap-1.5"
+                )}>
+                  <Clock className={compact ? "size-3" : "size-3.5"} />
                   <span>Solicitado</span>
                 </span>
               ) : (
@@ -931,12 +968,15 @@ export function NotificationItemCard({
                   type="button"
                   disabled={followLoading}
                   onClick={handleFollowBack}
-                  className="inline-flex items-center gap-1.5 h-7.5 px-3.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-[0_0_14px_rgba(147,51,234,0.35)] transition-all active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                  className={cn(
+                    "inline-flex items-center rounded-md bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold shadow-[0_0_12px_rgba(147,51,234,0.3)] transition-all active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap",
+                    compact ? "h-6 px-2.5 text-[10.5px] gap-1" : "h-7.5 px-3.5 rounded-lg text-xs gap-1.5"
+                  )}
                 >
                   {followLoading ? (
-                    <Loader2 className="size-3.5 animate-spin" />
+                    <Loader2 className={compact ? "size-3 animate-spin" : "size-3.5 animate-spin"} />
                   ) : (
-                    <UserPlus className="size-3.5" />
+                    <UserPlus className={compact ? "size-3" : "size-3.5"} />
                   )}
                   <span>Seguir de volta</span>
                 </button>
@@ -948,15 +988,21 @@ export function NotificationItemCard({
           {isIndividualFollower &&
             notification.type === "follow_request" &&
             notification.actorId && (
-              <div className="pt-0.5 flex flex-wrap items-center gap-2">
+              <div className={cn("flex flex-wrap items-center gap-1.5", compact ? "pt-0" : "pt-0.5")}>
                 {requestDecision === "accepted" ? (
-                  <span className="inline-flex items-center gap-1.5 h-7.5 px-3 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-semibold shadow-sm select-none">
-                    <Check className="size-3.5" />
+                  <span className={cn(
+                    "inline-flex items-center rounded-md bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 font-semibold shadow-sm select-none",
+                    compact ? "h-6 px-2 text-[10.5px] gap-1" : "h-7.5 px-3 rounded-lg text-xs gap-1.5"
+                  )}>
+                    <Check className={compact ? "size-3" : "size-3.5"} />
                     <span>Solicitação aceita</span>
                   </span>
                 ) : requestDecision === "rejected" ? (
-                  <span className="inline-flex items-center gap-1.5 h-7.5 px-3 rounded-lg bg-white/[0.06] border border-white/10 text-zinc-400 text-xs font-semibold shadow-sm select-none">
-                    <X className="size-3.5" />
+                  <span className={cn(
+                    "inline-flex items-center rounded-md bg-white/[0.06] border border-white/10 text-zinc-400 font-semibold shadow-sm select-none",
+                    compact ? "h-6 px-2 text-[10.5px] gap-1" : "h-7.5 px-3 rounded-lg text-xs gap-1.5"
+                  )}>
+                    <X className={compact ? "size-3" : "size-3.5"} />
                     <span>Solicitação recusada</span>
                   </span>
                 ) : (
@@ -965,12 +1011,15 @@ export function NotificationItemCard({
                       type="button"
                       disabled={requestLoading !== null}
                       onClick={handleAcceptFollowRequest}
-                      className="inline-flex items-center gap-1.5 h-7.5 px-3 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-[0_0_12px_rgba(147,51,234,0.35)] transition-all active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                      className={cn(
+                        "inline-flex items-center rounded-md bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold shadow-[0_0_12px_rgba(147,51,234,0.3)] transition-all active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap",
+                        compact ? "h-6 px-2 text-[10.5px] gap-1" : "h-7.5 px-3 rounded-lg text-xs gap-1.5"
+                      )}
                     >
                       {requestLoading === "accept" ? (
-                        <Loader2 className="size-3.5 animate-spin" />
+                        <Loader2 className={compact ? "size-3 animate-spin" : "size-3.5 animate-spin"} />
                       ) : (
-                        <Check className="size-3.5" />
+                        <Check className={compact ? "size-3" : "size-3.5"} />
                       )}
                       <span>Aceitar</span>
                     </button>
@@ -978,12 +1027,15 @@ export function NotificationItemCard({
                       type="button"
                       disabled={requestLoading !== null}
                       onClick={handleRejectFollowRequest}
-                      className="inline-flex items-center gap-1.5 h-7.5 px-3 rounded-lg border border-white/10 bg-white/[0.05] hover:bg-rose-500/15 hover:border-rose-400/30 text-zinc-300 hover:text-rose-200 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                      className={cn(
+                        "inline-flex items-center rounded-md border border-white/10 bg-white/[0.05] hover:bg-rose-500/15 hover:border-rose-400/30 text-zinc-300 hover:text-rose-200 font-semibold transition-all active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap",
+                        compact ? "h-6 px-2 text-[10.5px] gap-1" : "h-7.5 px-3 rounded-lg text-xs gap-1.5"
+                      )}
                     >
                       {requestLoading === "reject" ? (
-                        <Loader2 className="size-3.5 animate-spin" />
+                        <Loader2 className={compact ? "size-3 animate-spin" : "size-3.5 animate-spin"} />
                       ) : (
-                        <X className="size-3.5" />
+                        <X className={compact ? "size-3" : "size-3.5"} />
                       )}
                       <span>Recusar</span>
                     </button>
@@ -994,14 +1046,15 @@ export function NotificationItemCard({
 
           {/* AVATARES DE QUEM CURTIU O COMENTÁRIO */}
           {isLikeNotification && likeCount > 0 && likeAvatars.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 pt-0.5 min-w-0">
+            <div className={cn("flex flex-wrap items-center gap-1.5 min-w-0", compact ? "pt-0" : "pt-0.5")}>
               <div className="flex items-center shrink-0">
                 {likeAvatars.slice(0, 3).map((avatar, index) => (
                   <div
                     key={avatar.id}
                     className={cn(
-                      "relative size-5.5 sm:size-6 overflow-hidden rounded-full bg-[#171326] ring-2 ring-[#0b0914] border border-white/10 shadow-sm",
-                      index > 0 && "-ml-2",
+                      "relative overflow-hidden rounded-full bg-[#171326] ring-2 ring-[#0b0914] border border-white/10 shadow-sm",
+                      compact ? "size-5" : "size-5.5 sm:size-6",
+                      index > 0 && (compact ? "-ml-1.5" : "-ml-2"),
                     )}
                     style={{ zIndex: 10 - index }}
                     title={avatar.name || "Usuário"}
@@ -1014,7 +1067,7 @@ export function NotificationItemCard({
                         className="size-full object-cover"
                       />
                     ) : (
-                      <div className="flex size-full items-center justify-center text-[8px] font-bold text-zinc-300">
+                      <div className={cn("flex size-full items-center justify-center font-bold text-zinc-300", compact ? "text-[7.5px]" : "text-[8px]")}>
                         {(avatar.name ?? "U").charAt(0).toUpperCase()}
                       </div>
                     )}
@@ -1022,7 +1075,10 @@ export function NotificationItemCard({
                 ))}
                 {likeCount > 3 && (
                   <div
-                    className="relative -ml-2 flex size-5.5 sm:size-6 items-center justify-center rounded-full bg-[#201838] text-[8px] font-bold text-purple-200 ring-2 ring-[#0b0914] border border-purple-500/25 tabular-nums shadow-sm"
+                    className={cn(
+                      "relative flex items-center justify-center rounded-full bg-[#201838] font-bold text-purple-200 ring-2 ring-[#0b0914] border border-purple-500/25 tabular-nums shadow-sm",
+                      compact ? "-ml-1.5 size-5 text-[7.5px]" : "-ml-2 size-5.5 sm:size-6 text-[8px]",
+                    )}
                     style={{ zIndex: 5 }}
                   >
                     +{likeCount - 3}
@@ -1030,8 +1086,11 @@ export function NotificationItemCard({
                 )}
               </div>
 
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-[11px] font-semibold text-rose-300 tabular-nums">
-                <Heart className="size-3 text-rose-400 fill-rose-400" />
+              <span className={cn(
+                "inline-flex items-center gap-1 rounded-full bg-rose-500/10 border border-rose-500/20 font-semibold text-rose-300 tabular-nums",
+                compact ? "px-1.5 py-0.2 text-[10px]" : "px-2 py-0.5 text-[11px]"
+              )}>
+                <Heart className={compact ? "size-2.5 text-rose-400 fill-rose-400" : "size-3 text-rose-400 fill-rose-400"} />
                 <span>{likeCount} {likeCount === 1 ? "curtida" : "curtidas"}</span>
               </span>
             </div>
@@ -1039,21 +1098,24 @@ export function NotificationItemCard({
 
           {/* TRECHO DO COMENTÁRIO CURTIDO */}
           {isLikeNotification && commentSnippet.text && (
-            <div className="rounded-xl border border-rose-500/20 bg-[#160d1b]/70 p-2.5 min-w-0 shadow-sm">
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-rose-300/80 mb-1">
+            <div className={cn(
+              "border border-rose-500/20 bg-[#160d1b]/70 min-w-0 shadow-sm",
+              compact ? "p-1.5 rounded-lg" : "p-2.5 rounded-xl"
+            )}>
+              <span className={cn("block font-bold uppercase tracking-wider text-rose-300/80 mb-0.5", compact ? "text-[9px]" : "text-[10px] mb-1")}>
                 Comentário curtido
               </span>
               <p
                 className={cn(
-                  "text-xs leading-relaxed break-words [overflow-wrap:anywhere]",
-                  compact ? "line-clamp-2" : "line-clamp-3",
+                  "leading-relaxed break-words [overflow-wrap:anywhere]",
+                  compact ? "text-[11px] line-clamp-1" : "text-xs line-clamp-3",
                   commentSnippet.isSpoilerMasked
-                    ? "inline-flex items-center gap-1.5 italic text-zinc-400"
+                    ? "inline-flex items-center gap-1 italic text-zinc-400"
                     : "text-zinc-200",
                 )}
               >
                 {commentSnippet.isSpoilerMasked && (
-                  <EyeOff className="size-3.5 shrink-0 text-purple-300" />
+                  <EyeOff className={compact ? "size-3 shrink-0 text-purple-300" : "size-3.5 shrink-0 text-purple-300"} />
                 )}
                 <span>
                   {commentSnippet.isSpoilerMasked
@@ -1066,24 +1128,30 @@ export function NotificationItemCard({
 
           {/* CONTEXTO DE RESPOSTA REFORMULADO (DESTAQUE DA RESPOSTA E COMENTÁRIO ORIGINAL) */}
           {isReplyNotification && (commentSnippet.text || parentSnippet.text) && (
-            <div className="rounded-xl border border-purple-500/25 bg-[#130f24]/85 p-3 min-w-0 shadow-md space-y-2.5">
+            <div className={cn(
+              "border border-purple-500/25 bg-[#130f24]/85 min-w-0 shadow-md",
+              compact ? "p-2 rounded-lg space-y-1.5" : "p-3 rounded-xl space-y-2.5"
+            )}>
               {commentSnippet.text && (
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-200 border border-purple-500/30">
-                      <MessageCircle className="size-3" />
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <span className={cn(
+                      "inline-flex items-center gap-1 font-bold bg-purple-500/20 text-purple-200 border border-purple-500/30",
+                      compact ? "px-1.5 py-0.2 rounded text-[9px]" : "px-1.5 py-0.5 rounded text-[10px]"
+                    )}>
+                      <MessageCircle className={compact ? "size-2.5" : "size-3"} />
                       Resposta recebida
                     </span>
                   </div>
                   <p
                     className={cn(
-                      "text-xs leading-relaxed break-words [overflow-wrap:anywhere] text-zinc-100 font-medium pl-0.5",
-                      compact ? "line-clamp-2" : "line-clamp-3",
+                      "leading-relaxed break-words [overflow-wrap:anywhere] text-zinc-100 font-medium pl-0.5",
+                      compact ? "text-[11px] line-clamp-2" : "text-xs line-clamp-3",
                       commentSnippet.isSpoilerMasked && "italic text-zinc-400",
                     )}
                   >
                     {commentSnippet.isSpoilerMasked && (
-                      <EyeOff className="size-3.5 inline mr-1 text-purple-300" />
+                      <EyeOff className={compact ? "size-3 inline mr-1 text-purple-300" : "size-3.5 inline mr-1 text-purple-300"} />
                     )}
                     <span>
                       {commentSnippet.isSpoilerMasked
@@ -1095,9 +1163,12 @@ export function NotificationItemCard({
               )}
 
               {parentSnippet.text && (
-                <div className="rounded-lg bg-black/40 border-l-2 border-purple-400/50 px-2.5 py-1.5 text-[11px] text-zinc-400">
-                  <div className="flex items-center gap-1 text-[10px] font-semibold text-purple-300/80 mb-0.5">
-                    <CornerDownRight className="size-2.5 text-purple-400" />
+                <div className={cn(
+                  "bg-black/40 border-l-2 border-purple-400/50",
+                  compact ? "px-2 py-1 rounded text-[10px]" : "px-2.5 py-1.5 rounded-lg text-[11px]"
+                )}>
+                  <div className="flex items-center gap-1 text-[9.5px] font-semibold text-purple-300/80 mb-0.5">
+                    <CornerDownRight className={compact ? "size-2 text-purple-400" : "size-2.5 text-purple-400"} />
                     <span>Seu comentário original</span>
                   </div>
                   <p
@@ -1118,21 +1189,24 @@ export function NotificationItemCard({
 
           {/* CONTEXTO DE COMENTÁRIO DIRETO */}
           {isCommentNotification && commentSnippet.text && (
-            <div className="rounded-xl border border-white/[0.08] bg-[#120f22]/70 p-2.5 min-w-0 shadow-sm">
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-purple-300/80 mb-1">
+            <div className={cn(
+              "border border-white/[0.08] bg-[#120f22]/70 min-w-0 shadow-sm",
+              compact ? "p-1.5 rounded-lg" : "p-2.5 rounded-xl"
+            )}>
+              <span className={cn("block font-bold uppercase tracking-wider text-purple-300/80 mb-0.5", compact ? "text-[9px]" : "text-[10px] mb-1")}>
                 Trecho do comentário
               </span>
               <p
                 className={cn(
-                  "text-xs leading-relaxed break-words [overflow-wrap:anywhere]",
-                  compact ? "line-clamp-2" : "line-clamp-3",
+                  "leading-relaxed break-words [overflow-wrap:anywhere]",
+                  compact ? "text-[11px] line-clamp-1" : "text-xs line-clamp-3",
                   commentSnippet.isSpoilerMasked
-                    ? "inline-flex items-center gap-1.5 italic text-zinc-400"
+                    ? "inline-flex items-center gap-1 italic text-zinc-400"
                     : "text-zinc-200",
                 )}
               >
                 {commentSnippet.isSpoilerMasked && (
-                  <EyeOff className="size-3.5 shrink-0 text-purple-300" />
+                  <EyeOff className={compact ? "size-3 shrink-0 text-purple-300" : "size-3.5 shrink-0 text-purple-300"} />
                 )}
                 <span>
                   {commentSnippet.isSpoilerMasked
@@ -1145,9 +1219,15 @@ export function NotificationItemCard({
 
           {/* CARD DE ANIME RELACIONADO REFORMULADO (POSTER + TÍTULO + BADGES) */}
           {showMediaMetaRow && (
-            <div className="flex items-center gap-3 p-2 rounded-xl bg-gradient-to-r from-[#141026]/90 to-[#0d0b1a]/90 border border-purple-500/20 hover:border-purple-400/45 shadow-sm transition-all group/anime min-w-0">
+            <div className={cn(
+              "flex items-center bg-gradient-to-r from-[#141026]/90 to-[#0d0b1a]/90 border border-purple-500/20 hover:border-purple-400/45 shadow-sm transition-all group/anime min-w-0",
+              compact ? "p-1.5 gap-2 rounded-lg" : "p-2 gap-3 rounded-xl"
+            )}>
               {animeCover ? (
-                <div className="relative h-13 w-9.5 shrink-0 overflow-hidden rounded-lg bg-[#161226] ring-1 ring-white/10 shadow-md group-hover/anime:ring-purple-400/50 transition-all">
+                <div className={cn(
+                  "relative shrink-0 overflow-hidden bg-[#161226] ring-1 ring-white/10 shadow-md group-hover/anime:ring-purple-400/50 transition-all",
+                  compact ? "h-9 w-6.5 rounded-md" : "h-13 w-9.5 rounded-lg"
+                )}>
                   <img
                     src={animeCover}
                     alt={animeTitle || "Capa do anime"}
@@ -1157,8 +1237,11 @@ export function NotificationItemCard({
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
                 </div>
               ) : (
-                <div className="flex h-13 w-9.5 shrink-0 items-center justify-center rounded-lg bg-[#161226] text-purple-300 ring-1 ring-white/10">
-                  <Play className="size-4 fill-current" />
+                <div className={cn(
+                  "flex shrink-0 items-center justify-center bg-[#161226] text-purple-300 ring-1 ring-white/10",
+                  compact ? "h-9 w-6.5 rounded-md" : "h-13 w-9.5 rounded-lg"
+                )}>
+                  <Play className={compact ? "size-3 fill-current" : "size-4 fill-current"} />
                 </div>
               )}
 
@@ -1166,26 +1249,38 @@ export function NotificationItemCard({
                 {animeTitle && (
                   <p
                     title={animeTitle}
-                    className="font-bold text-xs sm:text-[13px] leading-snug text-white group-hover/anime:text-purple-200 transition-colors truncate"
+                    className={cn(
+                      "font-bold text-white group-hover/anime:text-purple-200 transition-colors truncate",
+                      compact ? "text-[11.5px] leading-tight" : "text-xs sm:text-[13px] leading-snug"
+                    )}
                   >
                     {animeTitle}
                   </p>
                 )}
 
                 {(seasonLabel || episodeLabel || hasAnimeTarget) && (
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] min-w-0">
+                  <div className={cn("flex flex-wrap items-center min-w-0", compact ? "mt-0.5 gap-1 text-[9px]" : "mt-1 gap-1.5 text-[10px]")}>
                     {seasonLabel && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md font-semibold bg-purple-500/20 text-purple-200 border border-purple-500/30 truncate max-w-full">
+                      <span className={cn(
+                        "inline-flex items-center font-semibold bg-purple-500/20 text-purple-200 border border-purple-500/30 truncate max-w-full",
+                        compact ? "px-1.5 py-0.2 rounded" : "px-1.5 py-0.5 rounded-md"
+                      )}>
                         {seasonLabel}
                       </span>
                     )}
                     {episodeLabel && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md font-semibold bg-white/[0.08] text-zinc-200 border border-white/10 truncate max-w-full tabular-nums">
+                      <span className={cn(
+                        "inline-flex items-center font-semibold bg-white/[0.08] text-zinc-200 border border-white/10 truncate max-w-full tabular-nums",
+                        compact ? "px-1.5 py-0.2 rounded" : "px-1.5 py-0.5 rounded-md"
+                      )}>
                         {episodeLabel}
                       </span>
                     )}
                     {!seasonLabel && !episodeLabel && hasAnimeTarget && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md font-semibold bg-white/[0.05] text-zinc-400 border border-white/5">
+                      <span className={cn(
+                        "inline-flex items-center font-semibold bg-white/[0.05] text-zinc-400 border border-white/5",
+                        compact ? "px-1.5 py-0.2 rounded" : "px-1.5 py-0.5 rounded-md"
+                      )}>
                         Página do anime
                       </span>
                     )}
@@ -1193,18 +1288,24 @@ export function NotificationItemCard({
                 )}
               </div>
 
-              <ChevronRight className="size-4 text-purple-400/60 group-hover/anime:text-purple-300 group-hover/anime:translate-x-0.5 transition-all shrink-0 ml-auto" />
+              <ChevronRight className={cn(
+                "text-purple-400/60 group-hover/anime:text-purple-300 group-hover/anime:translate-x-0.5 transition-all shrink-0 ml-auto",
+                compact ? "size-3.5" : "size-4"
+              )} />
             </div>
           )}
 
           {/* RODAPÉ DO ITEM: DATA RELATIVA COM ÍCONE + AÇÃO CONTEXTUAL */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 min-w-0">
+          <div className={cn("flex flex-wrap items-center justify-between gap-1.5 min-w-0", compact ? "pt-0" : "pt-0.5")}>
             <time
               dateTime={notification.createdAt}
               title={fullDateTitle}
-              className="inline-flex items-center gap-1 text-[11px] text-zinc-400 tabular-nums hover:text-zinc-200 transition-colors"
+              className={cn(
+                "inline-flex items-center gap-1 text-zinc-400 tabular-nums hover:text-zinc-200 transition-colors",
+                compact ? "text-[10px]" : "text-[11px]"
+              )}
             >
-              <Clock className="size-3 text-zinc-400" />
+              <Clock className={compact ? "size-2.5 text-zinc-400" : "size-3 text-zinc-400"} />
               <span>{relativeDate}</span>
             </time>
 
@@ -1212,19 +1313,20 @@ export function NotificationItemCard({
               <span
                 onPointerDown={triggerPressFeedback}
                 className={cn(
-                  "inline-flex items-center gap-1 text-[11px] font-semibold text-purple-300 select-none",
+                  "inline-flex items-center gap-1 font-semibold text-purple-300 select-none",
                   "[@media(hover:hover)]:group-hover/notif:text-purple-200 group-hover/notif:underline decoration-purple-400/50 underline-offset-2",
                   "transition-colors duration-150 ease-out",
+                  compact ? "text-[10px]" : "text-[11px]",
                   isPressingAction && "opacity-75",
                 )}
               >
                 {isGroupedFollowers ? (
-                  <Users className="size-3 shrink-0" />
+                  <Users className={compact ? "size-2.5 shrink-0" : "size-3 shrink-0"} />
                 ) : (
-                  <MessageCircle className="size-3 shrink-0" />
+                  <MessageCircle className={compact ? "size-2.5 shrink-0" : "size-3 shrink-0"} />
                 )}
                 <span>{actionLabel}</span>
-                <ChevronRight className="size-3 shrink-0 opacity-70 group-hover/notif:translate-x-0.5 transition-transform" />
+                <ChevronRight className={compact ? "size-2.5 shrink-0 opacity-70 group-hover/notif:translate-x-0.5 transition-transform" : "size-3 shrink-0 opacity-70 group-hover/notif:translate-x-0.5 transition-transform"} />
               </span>
             )}
           </div>

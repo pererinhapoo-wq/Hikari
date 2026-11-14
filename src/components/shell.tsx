@@ -9,7 +9,6 @@ import {
   Calendar,
   CalendarDays,
   CheckCheck,
-  ChevronRight,
   CircleUserRound,
   House,
   Loader2,
@@ -1504,23 +1503,23 @@ export function Shell() {
             />
 
             {/* CABEÇALHO REFINADO COM ÍCONE GLOW */}
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.08] bg-white/[0.02] px-4 py-3.5">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.08] bg-white/[0.02] px-3.5 py-2.5">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-900/15 border border-purple-500/30 text-purple-300 shadow-[0_0_12px_rgba(168,85,247,0.2)]">
-                  <Bell className="size-4.5" />
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500/20 to-purple-900/15 border border-purple-500/30 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.2)]">
+                  <Bell className="size-4" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-bold tracking-tight text-white">
+                    <h2 className="text-[13px] font-bold tracking-tight text-white">
                       Notificações
                     </h2>
                     {unreadCount > 0 && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/25 border border-purple-400/40 text-purple-200 shadow-sm tabular-nums">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9.5px] font-bold bg-purple-500/25 border border-purple-400/40 text-purple-200 shadow-sm tabular-nums">
                         {unreadCount} {unreadCount === 1 ? "nova" : "novas"}
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-zinc-400 truncate">
+                  <p className="text-[10.5px] text-zinc-400 truncate">
                     Atividades e interações da sua conta
                   </p>
                 </div>
@@ -1531,10 +1530,10 @@ export function Shell() {
                   <button
                     type="button"
                     onClick={markAllNotificationsAsReadAction}
-                    className="inline-flex h-7.5 items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/15 px-2.5 text-xs font-semibold text-purple-200 hover:bg-purple-500/25 hover:text-white transition-all active:scale-95 cursor-pointer shadow-sm whitespace-nowrap"
+                    className="inline-flex h-7 items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/15 px-2 text-[11px] font-semibold text-purple-200 hover:bg-purple-500/25 hover:text-white transition-all active:scale-95 cursor-pointer shadow-sm whitespace-nowrap"
                     title="Marcar todas como lidas"
                   >
-                    <CheckCheck className="size-3.5" />
+                    <CheckCheck className="size-3" />
                     <span>Marcar lidas</span>
                   </button>
                 )}
@@ -1542,27 +1541,27 @@ export function Shell() {
                 <button
                   type="button"
                   onClick={() => setNotificationsOpen(false)}
-                  className="flex size-7.5 items-center justify-center rounded-lg border border-white/5 bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white transition-colors cursor-pointer"
+                  className="flex size-7 items-center justify-center rounded-md border border-white/5 bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white transition-colors cursor-pointer"
                   aria-label="Fechar notificações"
                 >
-                  <X className="size-4" />
+                  <X className="size-3.5" />
                 </button>
               </div>
             </div>
 
             {/* CORPO DO PAINEL COM ROLAGEM VERTICAL E CARREGAMENTO AUTOMÁTICO */}
             {notificationsLoading || !notificationsPresentationReady ? (
-              <div className="flex min-h-48 flex-1 items-center justify-center px-4 py-10 text-center">
-                <div className="flex flex-col items-center gap-2.5">
-                  <Loader2 className="size-6 animate-spin text-purple-400" />
+              <div className="flex min-h-40 flex-1 items-center justify-center px-4 py-8 text-center">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="size-5 animate-spin text-purple-400" />
                   <p className="text-xs font-medium text-zinc-400">Carregando notificações...</p>
                 </div>
               </div>
             ) : notifications.length === 0 ? (
-              <div className="flex min-h-48 flex-1 items-center justify-center px-4 py-10 text-center">
+              <div className="flex min-h-40 flex-1 items-center justify-center px-4 py-8 text-center">
                 <div className="max-w-[240px]">
-                  <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl border border-purple-500/25 bg-gradient-to-br from-purple-500/15 to-purple-900/10 text-purple-300 shadow-[0_0_20px_rgba(168,85,247,0.15)]">
-                    <Bell className="size-5.5" />
+                  <div className="mx-auto mb-2.5 flex size-11 items-center justify-center rounded-2xl border border-purple-500/25 bg-gradient-to-br from-purple-500/15 to-purple-900/10 text-purple-300 shadow-[0_0_16px_rgba(168,85,247,0.15)]">
+                    <Bell className="size-5" />
                   </div>
                   <p className="text-xs font-bold text-white">Nenhuma notificação</p>
                   <p className="mt-1 text-[11px] text-zinc-400 leading-relaxed">
@@ -1574,7 +1573,7 @@ export function Shell() {
               <div
                 ref={notificationsScrollRef}
                 onScroll={handleNotificationsScroll}
-                className="max-h-[min(450px,calc(100dvh-13rem))] min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar"
+                className="max-h-[min(500px,calc(100dvh-8rem))] min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar"
               >
                 <Suspense fallback={null}>
                   {notifications.map((notification) => (
@@ -1600,26 +1599,13 @@ export function Shell() {
                 )}
 
                 {notificationsLoadingMore && (
-                  <div className="flex items-center justify-center gap-2 border-t border-white/[0.05] py-3 text-[11px] text-zinc-400">
+                  <div className="flex items-center justify-center gap-2 border-t border-white/[0.05] py-2.5 text-[11px] text-zinc-400">
                     <Loader2 className="size-3.5 animate-spin text-purple-300" />
                     <span>Carregando notificações antigas...</span>
                   </div>
                 )}
               </div>
             )}
-
-            {/* RODAPÉ DO PAINEL COM ACESSO AO HISTÓRICO COMPLETO */}
-            <div className="flex shrink-0 items-center justify-between border-t border-white/[0.08] bg-white/[0.02] px-4 py-2.5 text-xs">
-              <Link
-                to="/notifications"
-                onClick={() => setNotificationsOpen(false)}
-                className="group/all flex items-center gap-1 font-semibold text-purple-300 hover:text-white transition-colors"
-              >
-                <span>Ver histórico completo</span>
-                <ChevronRight className="size-3.5 transition-transform group-hover/all:translate-x-0.5" />
-              </Link>
-              <span className="text-[11px] text-zinc-500 font-medium">Hikari</span>
-            </div>
           </div>
         </>
       )}
