@@ -1103,16 +1103,16 @@ function AdminEditor() {
       >
         <a
           href="#metadata"
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-[var(--studio-panel)] px-3.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:border-purple-500/35 hover:text-[var(--color-fg)]"
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--studio-line)] bg-[var(--studio-panel)] px-3.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:border-violet-500/40 hover:text-[var(--color-fg)]"
         >
-          <Info className="size-3.5 text-purple-400" />
+          <Info className="size-3.5 text-violet-400" />
           <span>Metadados &amp; Mídia</span>
         </a>
         <a
           href="#seasons"
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-[var(--studio-panel)] px-3.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:border-purple-500/35 hover:text-[var(--color-fg)]"
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--studio-line)] bg-[var(--studio-panel)] px-3.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:border-violet-500/40 hover:text-[var(--color-fg)]"
         >
-          <Layers className="size-3.5 text-purple-400" />
+          <Layers className="size-3.5 text-violet-400" />
           <span>Temporadas &amp; Episódios</span>
           <span className="studio-mono rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-[var(--color-fg)]">
             {current.seasons.length}T · {totalEpisodesInEditor}E
@@ -1129,7 +1129,7 @@ function AdminEditor() {
         if (animeOutboxOps.length === 0) return null;
 
         return (
-          <div className="studio-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-100 sm:text-sm">
+          <div className="studio-panel flex flex-wrap items-center justify-between gap-3 rounded-xl border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-100 sm:text-sm">
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
               <div className="space-y-0.5">
@@ -1171,13 +1171,13 @@ function AdminEditor() {
       {/* Banner de Feedback da Recuperação de Episódios do Servidor PostgreSQL */}
       {id !== "new" && recoveryState.status !== "idle" && (
         <div
-          className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 text-xs transition-colors sm:text-sm ${
+          className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-xs transition-colors sm:text-sm ${
             recoveryState.status === "loading"
               ? "border-sky-500/30 bg-sky-500/10 text-sky-100"
               : recoveryState.status === "success"
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
               : recoveryState.status === "empty"
-              ? "border-white/10 bg-[var(--studio-panel)] text-[var(--color-muted)]"
+              ? "border-[var(--studio-line)] bg-[var(--studio-panel)] text-[var(--color-muted)]"
               : "border-amber-500/30 bg-amber-500/10 text-amber-100"
           }`}
         >

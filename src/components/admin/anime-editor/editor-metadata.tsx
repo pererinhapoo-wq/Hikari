@@ -102,9 +102,9 @@ export function EditorMetadata({
       {/* Coluna Principal: Títulos, Sinopse e Classificação */}
       <div className="space-y-6 xl:col-span-7">
         {/* Informações Principais */}
-        <section className="studio-panel rounded-2xl p-5 sm:p-6">
-          <div className="mb-5 flex items-center gap-2.5 border-b border-white/[0.07] pb-3.5">
-            <Info className="size-4 text-purple-400" />
+        <section className="studio-panel rounded-xl p-5 sm:p-6">
+          <div className="mb-5 flex items-center gap-2.5 border-b border-[var(--studio-line)] pb-3.5">
+            <Info className="size-4 text-violet-400" />
             <h2 className="font-display text-base font-semibold text-[var(--color-fg)]">
               Informações Principais
             </h2>
@@ -151,9 +151,9 @@ export function EditorMetadata({
         </section>
 
         {/* Classificação & Propriedades */}
-        <section className="studio-panel rounded-2xl p-5 sm:p-6">
-          <div className="mb-5 flex items-center gap-2.5 border-b border-white/[0.07] pb-3.5">
-            <SlidersHorizontal className="size-4 text-purple-400" />
+        <section className="studio-panel rounded-xl p-5 sm:p-6">
+          <div className="mb-5 flex items-center gap-2.5 border-b border-[var(--studio-line)] pb-3.5">
+            <SlidersHorizontal className="size-4 text-violet-400" />
             <h2 className="font-display text-base font-semibold text-[var(--color-fg)]">
               Classificação &amp; Propriedades
             </h2>
@@ -268,7 +268,7 @@ export function EditorMetadata({
                     }
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[var(--studio-panel-alt)] text-[var(--color-muted)] transition-colors hover:border-purple-500/40 hover:text-[var(--color-fg)]"
+                    className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[var(--studio-panel-alt)] text-[var(--color-muted)] transition-colors hover:border-violet-500/40 hover:text-[var(--color-fg)]"
                     title="Testar trailer no YouTube"
                   >
                     <ExternalLink className="size-4" />
@@ -296,13 +296,13 @@ export function EditorMetadata({
                     {currentGenres.map((g) => (
                       <span
                         key={g}
-                        className="inline-flex items-center gap-1 rounded-md border border-purple-500/35 bg-purple-500/12 px-2 py-0.5 text-xs text-purple-200"
+                        className="inline-flex items-center gap-1 rounded-md border border-violet-500/35 bg-violet-500/12 px-2 py-0.5 text-xs text-violet-200"
                       >
                         <span>{g}</span>
                         <button
                           type="button"
                           onClick={() => handleRemoveGenreTag(g)}
-                          className="text-purple-300 hover:text-white"
+                          className="text-violet-300 hover:text-white"
                           title="Remover gênero"
                           aria-label={`Remover ${g}`}
                         >
@@ -322,7 +322,7 @@ export function EditorMetadata({
                         key={g}
                         type="button"
                         onClick={() => handleAddGenreTag(g)}
-                        className="rounded border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 text-[11px] text-[var(--color-muted)] transition-colors hover:border-purple-500/35 hover:bg-purple-500/15 hover:text-purple-200"
+                        className="rounded border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 text-[11px] text-[var(--color-muted)] transition-colors hover:border-violet-500/35 hover:bg-violet-500/15 hover:text-violet-200"
                       >
                         + {g}
                       </button>
@@ -338,7 +338,7 @@ export function EditorMetadata({
                   type="checkbox"
                   checked={form.hidden}
                   onChange={(e) => onChange("hidden", e.target.checked)}
-                  className="size-4.5 rounded border-white/20 bg-black accent-purple-600"
+                  className="size-4.5 rounded border-white/20 bg-black accent-violet-600"
                 />
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <div className="flex flex-wrap items-center gap-2">
@@ -367,9 +367,9 @@ export function EditorMetadata({
 
       {/* Coluna Secundária: Imagens e Identificadores Externos */}
       <div className="space-y-6 xl:col-span-5">
-        <section className="studio-panel rounded-2xl p-5 sm:p-6">
-          <div className="mb-5 flex items-center gap-2.5 border-b border-white/[0.07] pb-3.5">
-            <ImageIcon className="size-4 text-purple-400" />
+        <section className="studio-panel rounded-xl p-5 sm:p-6">
+          <div className="mb-5 flex items-center gap-2.5 border-b border-[var(--studio-line)] pb-3.5">
+            <ImageIcon className="size-4 text-violet-400" />
             <h2 className="font-display text-base font-semibold text-[var(--color-fg)]">
               Imagens Oficiais (Capa &amp; Banner)
             </h2>
@@ -454,16 +454,16 @@ export function EditorMetadata({
                     size="sm"
                     disabled={uploadingCover}
                     onClick={() => coverInputRef.current?.click()}
-                    className="h-9 w-full border-white/10 bg-[var(--studio-panel-alt)] text-xs text-[var(--color-fg)] hover:border-purple-500/40"
+                    className="h-9 w-full border-white/10 bg-[var(--studio-panel-alt)] text-xs text-[var(--color-fg)] hover:border-violet-500/40"
                   >
                     {uploadingCover ? (
                       <>
-                        <Loader2 className="mr-1.5 size-3.5 animate-spin text-purple-400" />
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin text-violet-400" />
                         <span>Enviando capa…</span>
                       </>
                     ) : (
                       <>
-                        <Upload className="mr-1.5 size-3.5 text-purple-400" />
+                        <Upload className="mr-1.5 size-3.5 text-violet-400" />
                         <span>Upload de Capa</span>
                       </>
                     )}
@@ -548,16 +548,16 @@ export function EditorMetadata({
                   size="sm"
                   disabled={uploadingBanner}
                   onClick={() => bannerInputRef.current?.click()}
-                  className="h-9 w-full border-white/10 bg-[var(--studio-panel-alt)] text-xs text-[var(--color-fg)] hover:border-purple-500/40"
+                  className="h-9 w-full border-white/10 bg-[var(--studio-panel-alt)] text-xs text-[var(--color-fg)] hover:border-violet-500/40"
                 >
                   {uploadingBanner ? (
                     <>
-                      <Loader2 className="mr-1.5 size-3.5 animate-spin text-purple-400" />
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin text-violet-400" />
                       <span>Enviando banner…</span>
                     </>
                   ) : (
                     <>
-                      <Upload className="mr-1.5 size-3.5 text-purple-400" />
+                      <Upload className="mr-1.5 size-3.5 text-violet-400" />
                       <span>Upload de Banner</span>
                     </>
                   )}
@@ -568,9 +568,9 @@ export function EditorMetadata({
         </section>
 
         {/* Identificadores Externos */}
-        <section className="studio-panel rounded-2xl p-5 sm:p-6">
-          <div className="mb-4 flex items-center gap-2.5 border-b border-white/[0.07] pb-3.5">
-            <Globe className="size-4 text-purple-400" />
+        <section className="studio-panel rounded-xl p-5 sm:p-6">
+          <div className="mb-4 flex items-center gap-2.5 border-b border-[var(--studio-line)] pb-3.5">
+            <Globe className="size-4 text-violet-400" />
             <h2 className="font-display text-base font-semibold text-[var(--color-fg)]">
               Identificadores &amp; Relação Externa
             </h2>
@@ -587,7 +587,7 @@ export function EditorMetadata({
                     href={`https://anilist.co/anime/${form.anilistId}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[11px] text-purple-300 hover:underline"
+                    className="inline-flex items-center gap-1 text-[11px] text-violet-300 hover:underline"
                   >
                     <ExternalLink className="size-3" />
                   </a>
@@ -608,7 +608,7 @@ export function EditorMetadata({
                     href={`https://myanimelist.net/anime/${form.malId}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[11px] text-purple-300 hover:underline"
+                    className="inline-flex items-center gap-1 text-[11px] text-violet-300 hover:underline"
                   >
                     <ExternalLink className="size-3" />
                   </a>
@@ -629,7 +629,7 @@ export function EditorMetadata({
                     href={`https://kitsu.io/anime/${form.kitsuId}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[11px] text-purple-300 hover:underline"
+                    className="inline-flex items-center gap-1 text-[11px] text-violet-300 hover:underline"
                   >
                     <ExternalLink className="size-3" />
                   </a>

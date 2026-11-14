@@ -19,6 +19,11 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { getBearerToken } from "@/lib/auth/client";
+import {
+  StudioPageHeader,
+  StudioPanel,
+  StudioStatStrip,
+} from "@/components/admin/studio-ui";
 
 export const Route = createFileRoute("/admin/backup")({
   component: AdminBackupPage,
@@ -39,7 +44,6 @@ interface PreviewResult {
 function AdminBackupPage() {
   const [isExporting, setIsExporting] = useState<string | null>(null);
 
-  // Estados de Importação
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [fileContent, setFileContent] = useState<unknown | null>(null);
   const [isValidating, setIsValidating] = useState(false);
@@ -47,7 +51,6 @@ function AdminBackupPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
 
-  // Executa download direto de um tipo de exportação
   const handleExport = async (type: "catalog" | "settings" | "full") => {
     if (isExporting) return;
     setIsExporting(type);
@@ -63,7 +66,6 @@ function AdminBackupPage() {
         throw new Error(errJson?.error || "Falha ao gerar exportação.");
       }
 
-      // Converte para blob e aciona o download
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") || "";
       let filename = `hikari-${type}-backup.json`;
@@ -92,7 +94,6 @@ function AdminBackupPage() {
     }
   };
 
-  // Leitura e validação prévia (Dry-Run) do arquivo JSON selecionado
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -112,7 +113,6 @@ function AdminBackupPage() {
 
       setFileContent(json);
 
-      // Envia ao servidor para validação de schema e contagem prévia
       const token = getBearerToken();
       const res = await fetch("/api/admin/backup", {
         method: "POST",
@@ -141,12 +141,10 @@ function AdminBackupPage() {
       );
     } finally {
       setIsValidating(false);
-      // Limpa input para permitir reseleção do mesmo arquivo se necessário
       e.target.value = "";
     }
   };
 
-  // Execução final da importação com confirmação
   const handleExecuteImport = async () => {
     if (!fileContent || isImporting) return;
     setIsImporting(true);
@@ -190,88 +188,59 @@ function AdminBackupPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Cabeçalho */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--color-fg)]">
-              Backup e Dados
-            </h1>
-            <span className="studio-mono rounded-md border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-xs font-semibold text-purple-300">
-              PostgreSQL
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-[var(--color-muted)]">
-            Exporte o catálogo editorial e as preferências do sistema em JSON, ou restaure dados com validação prévia (dry-run) e confirmação obrigatória.
-          </p>
-        </div>
-      </div>
+    <div className="studio-enter space-y-6">
+      <StudioPageHeader
+        kicker="Sistema & Infra"
+        title="Backup e Dados"
+        description="Exporte o catálogo editorial e as preferências do sistema em JSON, ou restaure dados com validação prévia (dry-run) e confirmação obrigatória."
+        backTo="/admin"
+        backLabel="Voltar à Central"
+        status={<span className="studio-mono font-semibold text-violet-300">PostgreSQL</span>}
+      />
 
-      {/* Banner Explicativo do Escopo & Segurança */}
-      <div className="rounded-xl border border-white/[0.08] bg-[var(--studio-panel)] p-4 space-y-3">
-        <div className="flex items-start gap-3">
-          <div className="grid size-8 shrink-0 place-items-center rounded-lg border border-purple-500/35 bg-purple-500/15 text-purple-300">
-            <Shield className="size-4" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="font-semibold text-sm text-white">
-              Escopo e Garantias de Isolamento dos Backups
-            </h3>
-            <p className="text-xs text-[var(--color-muted)] leading-relaxed">
-              O módulo de backup do Hikari Studio opera estritamente sobre o catálogo editorial e as preferências globais do sistema.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 pt-1 border-t border-white/[0.06] text-xs">
-          <div className="flex items-start gap-2 rounded-lg bg-emerald-950/20 border border-emerald-500/25 p-2.5 text-emerald-200">
-            <CheckCircle2 className="size-4 text-emerald-400 shrink-0 mt-0.5" />
+      {/* Escopo & Segurança */}
+      <StudioPanel
+        title="Escopo e Garantias de Isolamento dos Backups"
+        description="O módulo de backup opera estritamente sobre o catálogo editorial e as preferências globais."
+        icon={<Shield className="size-4" />}
+      >
+        <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
+          <div className="flex items-start gap-2.5 rounded-xl border border-emerald-500/25 bg-emerald-950/20 p-3.5 text-emerald-200">
+            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-400" />
             <div>
               <strong className="text-white">Incluído no Backup:</strong>
-              <p className="text-[11px] text-emerald-200/80 mt-0.5">
+              <p className="mt-0.5 text-[11px] leading-relaxed text-emerald-200/80">
                 Catálogo de Animes, Temporadas, Episódios, Players de Vídeo e Configurações Globais (admin_settings).
               </p>
             </div>
           </div>
 
-          <div className="flex items-start gap-2 rounded-lg bg-purple-950/20 border border-purple-500/25 p-2.5 text-purple-200">
-            <Lock className="size-4 text-purple-400 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-2.5 rounded-xl border border-[var(--studio-accent-border)] bg-[var(--studio-accent-soft)] p-3.5 text-violet-200">
+            <Lock className="mt-0.5 size-4 shrink-0 text-violet-300" />
             <div>
-              <strong className="text-white">Preservado & Seguro:</strong>
-              <p className="text-[11px] text-purple-200/80 mt-0.5">
+              <strong className="text-white">Preservado &amp; Seguro:</strong>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-violet-200/80">
                 Contas de usuários, credenciais, sessões, favoritos, histórico e comentários permanecem 100% intocados.
               </p>
             </div>
           </div>
         </div>
-      </div>
+      </StudioPanel>
 
       {/* Seção 1: Exportação de Dados */}
-      <div className="rounded-xl border border-white/[0.08] bg-[var(--studio-panel)] p-5 space-y-4">
-        <div className="flex items-center gap-2.5 border-b border-white/[0.08] pb-3">
-          <div className="grid size-8 place-items-center rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-400">
-            <ArrowDownToLine className="size-4" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-sm text-[var(--color-fg)]">
-              Exportação de Dados (Download JSON)
-            </h2>
-            <p className="text-xs text-[var(--color-subtle)]">
-              Gere arquivos JSON estruturados para salvaguarda externa ou replicação
-            </p>
-          </div>
-        </div>
-
+      <StudioPanel
+        title="Exportação de Dados (Download JSON)"
+        description="Gere arquivos JSON estruturados para salvaguarda externa ou replicação."
+        icon={<ArrowDownToLine className="size-4" />}
+      >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {/* Card 1: Catálogo */}
-          <div className="flex flex-col justify-between rounded-xl border border-white/[0.06] bg-black/20 p-4 space-y-4">
+          <div className="flex flex-col justify-between space-y-4 rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-4">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2 text-xs font-semibold text-white">
-                <Layers className="size-4 text-purple-400" />
+                <Layers className="size-4 text-violet-300" />
                 <span>Catálogo Completo</span>
               </div>
-              <p className="text-[11px] text-[var(--color-muted)] leading-relaxed">
+              <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">
                 Todos os animes, temporadas cadastradas e episódios com players configurados em formato hierárquico.
               </p>
             </div>
@@ -280,25 +249,24 @@ function AdminBackupPage() {
               size="sm"
               onClick={() => void handleExport("catalog")}
               disabled={isExporting !== null}
-              className="w-full bg-white/[0.06] hover:bg-white/10 text-white text-xs border border-white/10 font-semibold"
+              className="h-9 w-full border border-[var(--studio-line)] bg-[var(--studio-panel)] text-xs font-semibold text-white hover:bg-white/10"
             >
               {isExporting === "catalog" ? (
-                <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
               ) : (
-                <FileJson className="size-3.5 mr-1.5 text-purple-400" />
+                <FileJson className="mr-1.5 size-3.5 text-violet-300" />
               )}
               Exportar Catálogo
             </Button>
           </div>
 
-          {/* Card 2: Configurações */}
-          <div className="flex flex-col justify-between rounded-xl border border-white/[0.06] bg-black/20 p-4 space-y-4">
+          <div className="flex flex-col justify-between space-y-4 rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-4">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2 text-xs font-semibold text-white">
-                <SlidersHorizontal className="size-4 text-blue-400" />
+                <SlidersHorizontal className="size-4 text-sky-300" />
                 <span>Configurações Globais</span>
               </div>
-              <p className="text-[11px] text-[var(--color-muted)] leading-relaxed">
+              <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">
                 Todas as chaves da tabela admin_settings (nome, slogan, avisos, preferências de reprodução e módulos).
               </p>
             </div>
@@ -307,25 +275,24 @@ function AdminBackupPage() {
               size="sm"
               onClick={() => void handleExport("settings")}
               disabled={isExporting !== null}
-              className="w-full bg-white/[0.06] hover:bg-white/10 text-white text-xs border border-white/10 font-semibold"
+              className="h-9 w-full border border-[var(--studio-line)] bg-[var(--studio-panel)] text-xs font-semibold text-white hover:bg-white/10"
             >
               {isExporting === "settings" ? (
-                <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
               ) : (
-                <FileJson className="size-3.5 mr-1.5 text-blue-400" />
+                <FileJson className="mr-1.5 size-3.5 text-sky-300" />
               )}
               Exportar Configurações
             </Button>
           </div>
 
-          {/* Card 3: Backup Unificado */}
-          <div className="flex flex-col justify-between rounded-xl border border-purple-500/30 bg-purple-950/15 p-4 space-y-4">
+          <div className="flex flex-col justify-between space-y-4 rounded-xl border border-[var(--studio-accent-border)] bg-[var(--studio-accent-soft)] p-4">
             <div className="space-y-1.5">
-              <div className="flex items-center gap-2 text-xs font-semibold text-purple-200">
-                <HardDriveDownload className="size-4 text-purple-400" />
+              <div className="flex items-center gap-2 text-xs font-semibold text-violet-200">
+                <HardDriveDownload className="size-4 text-violet-300" />
                 <span>Backup Unificado (Full)</span>
               </div>
-              <p className="text-[11px] text-purple-200/80 leading-relaxed">
+              <p className="text-[11px] leading-relaxed text-violet-200/80">
                 Pacote unificado contendo todo o catálogo e as configurações gerais em um único arquivo de restauração.
               </p>
             </div>
@@ -334,37 +301,27 @@ function AdminBackupPage() {
               size="sm"
               onClick={() => void handleExport("full")}
               disabled={isExporting !== null}
-              className="w-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-md"
+              className="h-9 w-full bg-violet-600 text-xs font-semibold text-white hover:bg-violet-500"
             >
               {isExporting === "full" ? (
-                <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
               ) : (
-                <ArrowDownToLine className="size-3.5 mr-1.5" />
+                <ArrowDownToLine className="mr-1.5 size-3.5" />
               )}
               Baixar Backup Completo
             </Button>
           </div>
         </div>
-      </div>
+      </StudioPanel>
 
       {/* Seção 2: Importação de Dados */}
-      <div className="rounded-xl border border-white/[0.08] bg-[var(--studio-panel)] p-5 space-y-5">
-        <div className="flex items-center gap-2.5 border-b border-white/[0.08] pb-3">
-          <div className="grid size-8 place-items-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
-            <ArrowUpFromLine className="size-4" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-sm text-[var(--color-fg)]">
-              Importação & Restauração de Dados
-            </h2>
-            <p className="text-xs text-[var(--color-subtle)]">
-              Restaure backups com validação de esquema em tempo real antes de qualquer gravação
-            </p>
-          </div>
-        </div>
-
-        {/* Zona de Drop/Seleção de Arquivo */}
-        <div className="rounded-xl border-2 border-dashed border-white/15 bg-black/20 p-6 text-center hover:border-purple-500/40 transition-colors">
+      <StudioPanel
+        title="Importação & Restauração de Dados"
+        description="Restaure backups com validação de esquema em tempo real antes de qualquer gravação."
+        icon={<ArrowUpFromLine className="size-4" />}
+        bodyClassName="space-y-5"
+      >
+        <div className="rounded-xl border-2 border-dashed border-[var(--studio-line-strong)] bg-[var(--studio-panel-alt)] p-6 text-center transition-colors hover:border-[var(--studio-accent-border)]">
           <input
             type="file"
             id="backup-upload-input"
@@ -375,9 +332,9 @@ function AdminBackupPage() {
 
           <label
             htmlFor="backup-upload-input"
-            className="flex flex-col items-center justify-center cursor-pointer space-y-2"
+            className="flex cursor-pointer flex-col items-center justify-center space-y-2.5"
           >
-            <div className="grid size-12 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-purple-400">
+            <div className="grid size-12 place-items-center rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel)] text-violet-300">
               <Upload className="size-6" />
             </div>
 
@@ -385,7 +342,7 @@ function AdminBackupPage() {
               <p className="text-xs font-semibold text-white">
                 Clique aqui para selecionar o arquivo de backup (.json)
               </p>
-              <p className="text-[11px] text-[var(--color-subtle)] mt-0.5">
+              <p className="mt-0.5 text-[11px] text-[var(--color-subtle)]">
                 Suporta exportações de catálogo, configurações ou backup unificado do Hikari
               </p>
             </div>
@@ -393,22 +350,21 @@ function AdminBackupPage() {
         </div>
 
         {isValidating && (
-          <div className="flex items-center justify-center gap-2 p-4 text-xs text-purple-300">
+          <div className="flex items-center justify-center gap-2 p-4 text-xs text-violet-300">
             <Loader2 className="size-4 animate-spin" />
             <span>Validando estrutura do arquivo de backup (dry-run)...</span>
           </div>
         )}
 
-        {/* Card de Diagnóstico do Arquivo / Preview */}
         {previewResult && uploadedFile && (
-          <div className="rounded-xl border border-emerald-500/35 bg-emerald-950/20 p-4 space-y-4">
+          <div className="space-y-4 rounded-xl border border-emerald-500/35 bg-emerald-950/15 p-4">
             <div className="flex items-center justify-between border-b border-emerald-500/20 pb-3">
-              <div className="flex items-center gap-2 text-emerald-300">
-                <FileCheck2 className="size-4" />
-                <span className="font-semibold text-xs">
+              <div className="flex min-w-0 items-center gap-2 text-emerald-300">
+                <FileCheck2 className="size-4 shrink-0" />
+                <span className="truncate text-xs font-semibold">
                   Arquivo Válido: {uploadedFile.name}
                 </span>
-                <span className="studio-mono text-[10px] text-emerald-400/80">
+                <span className="studio-mono shrink-0 text-[10px] text-emerald-400/80">
                   ({(uploadedFile.size / 1024).toFixed(1)} KB)
                 </span>
               </div>
@@ -421,51 +377,35 @@ function AdminBackupPage() {
                   setPreviewResult(null);
                 }}
                 className="text-emerald-400/80 hover:text-white"
+                aria-label="Descartar arquivo selecionado"
               >
                 <X className="size-4" />
               </button>
             </div>
 
-            {/* Contadores Detectados */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-xs">
-              <div className="rounded-lg border border-white/10 bg-black/30 p-2.5">
-                <span className="text-[10px] text-[var(--color-subtle)] uppercase tracking-wider font-semibold">
-                  Animes Detectados
-                </span>
-                <div className="mt-1 studio-tabular text-lg font-bold text-white">
-                  {previewResult.counts.animes}
-                </div>
-              </div>
+            <StudioStatStrip
+              columns={4}
+              items={[
+                {
+                  label: "Animes Detectados",
+                  value: previewResult.counts.animes.toLocaleString("pt-BR"),
+                },
+                {
+                  label: "Temporadas",
+                  value: previewResult.counts.seasons.toLocaleString("pt-BR"),
+                },
+                {
+                  label: "Episódios & Players",
+                  value: previewResult.counts.episodes.toLocaleString("pt-BR"),
+                },
+                {
+                  label: "Configurações",
+                  value: previewResult.counts.settings.toLocaleString("pt-BR"),
+                },
+              ]}
+            />
 
-              <div className="rounded-lg border border-white/10 bg-black/30 p-2.5">
-                <span className="text-[10px] text-[var(--color-subtle)] uppercase tracking-wider font-semibold">
-                  Temporadas
-                </span>
-                <div className="mt-1 studio-tabular text-lg font-bold text-white">
-                  {previewResult.counts.seasons}
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-white/10 bg-black/30 p-2.5">
-                <span className="text-[10px] text-[var(--color-subtle)] uppercase tracking-wider font-semibold">
-                  Episódios & Players
-                </span>
-                <div className="mt-1 studio-tabular text-lg font-bold text-white">
-                  {previewResult.counts.episodes}
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-white/10 bg-black/30 p-2.5">
-                <span className="text-[10px] text-[var(--color-subtle)] uppercase tracking-wider font-semibold">
-                  Configurações
-                </span>
-                <div className="mt-1 studio-tabular text-lg font-bold text-white">
-                  {previewResult.counts.settings}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-2">
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
               <p className="text-[11px] text-emerald-200/80">
                 A validação prévia foi concluída sem conflitos estruturais.
               </p>
@@ -473,52 +413,52 @@ function AdminBackupPage() {
               <Button
                 size="sm"
                 onClick={() => setConfirmModalOpen(true)}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
+                className="h-9 bg-emerald-600 px-4 text-xs font-semibold text-white hover:bg-emerald-500"
               >
                 Prosseguir para Restauração
               </Button>
             </div>
           </div>
         )}
-      </div>
+      </StudioPanel>
 
       {/* Modal de Confirmação Obrigatória de Restauração */}
       {confirmModalOpen && previewResult && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          className="hikari-studio-dialog fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[var(--studio-panel)] p-6 shadow-2xl space-y-4">
+          <div className="studio-scroll max-h-[88dvh] w-full max-w-md space-y-4 overflow-y-auto rounded-2xl border border-[var(--studio-line-strong)] bg-[var(--studio-panel)] p-6 shadow-2xl">
             <div className="flex items-center gap-3 text-amber-300">
               <div className="grid size-9 place-items-center rounded-lg border border-amber-500/35 bg-amber-500/15">
                 <AlertTriangle className="size-5" />
               </div>
-              <h3 className="font-semibold text-base text-white">
+              <h3 className="text-base font-semibold text-white">
                 Confirmar Importação no PostgreSQL
               </h3>
             </div>
 
-            <p className="text-xs text-[var(--color-muted)] leading-relaxed">
+            <p className="text-xs leading-relaxed text-[var(--color-muted)]">
               Você está prestes a aplicar os dados do arquivo de backup no banco de dados. Os títulos existentes correspondentes aos IDs do arquivo serão atualizados via upsert transacional.
             </p>
 
-            <div className="rounded-xl border border-white/[0.08] bg-black/30 p-3 space-y-1.5 text-xs">
+            <div className="space-y-1.5 rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-3.5 text-xs">
               <div className="flex justify-between">
                 <span className="text-[var(--color-subtle)]">Animes a gravar:</span>
-                <span className="font-bold text-white studio-tabular">{previewResult.counts.animes}</span>
+                <span className="studio-tabular font-bold text-white">{previewResult.counts.animes}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[var(--color-subtle)]">Temporadas:</span>
-                <span className="font-bold text-white studio-tabular">{previewResult.counts.seasons}</span>
+                <span className="studio-tabular font-bold text-white">{previewResult.counts.seasons}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[var(--color-subtle)]">Episódios:</span>
-                <span className="font-bold text-white studio-tabular">{previewResult.counts.episodes}</span>
+                <span className="studio-tabular font-bold text-white">{previewResult.counts.episodes}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[var(--color-subtle)]">Configurações globais:</span>
-                <span className="font-bold text-white studio-tabular">{previewResult.counts.settings}</span>
+                <span className="studio-tabular font-bold text-white">{previewResult.counts.settings}</span>
               </div>
             </div>
 
@@ -528,7 +468,7 @@ function AdminBackupPage() {
                 size="sm"
                 disabled={isImporting}
                 onClick={() => setConfirmModalOpen(false)}
-                className="border-white/10 text-xs"
+                className="border-[var(--studio-line)] text-xs"
               >
                 Cancelar
               </Button>
@@ -536,9 +476,9 @@ function AdminBackupPage() {
                 size="sm"
                 disabled={isImporting}
                 onClick={() => void handleExecuteImport()}
-                className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold"
+                className="bg-violet-600 text-xs font-semibold text-white hover:bg-violet-500"
               >
-                {isImporting && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
+                {isImporting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
                 Confirmar e Gravar no Banco
               </Button>
             </div>

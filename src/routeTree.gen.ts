@@ -36,9 +36,15 @@ import { Route as SobreRouteImport } from './routes/sobre'
 import { Route as TermosRouteImport } from './routes/termos'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminIdRouteImport } from './routes/admin.$id'
+import { Route as AdminBackupRouteImport } from './routes/admin.backup'
+import { Route as AdminHealthRouteImport } from './routes/admin.health'
 import { Route as AdminHikariAiRouteImport } from './routes/admin.hikari-ai'
+import { Route as AdminImagesRouteImport } from './routes/admin.images'
+import { Route as AdminMaintenanceRouteImport } from './routes/admin.maintenance'
 import { Route as AdminModerationRouteImport } from './routes/admin.moderation'
 import { Route as AdminQuickUpdateRouteImport } from './routes/admin.quick-update'
+import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
+import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as AdultIndexRouteImport } from './routes/adult.index'
 import { Route as AdultHentaiRouteImport } from './routes/adult.hentai'
 import { Route as AdultRecentRouteImport } from './routes/adult.recent'
@@ -54,12 +60,18 @@ import { Route as NewsIdRouteImport } from './routes/news_.$id'
 import { Route as NewsSearchRouteImport } from './routes/news_.search'
 import { Route as ProfileNickRouteImport } from './routes/profile.$nick'
 import { Route as WatchIdRouteImport } from './routes/watch.$id'
+import { Route as ApiAdminBackupRouteImport } from './routes/api/admin/backup'
 import { Route as ApiAdminCatalogAnimeRouteImport } from './routes/api/admin/catalog-anime'
 import { Route as ApiAdminCatalogEpisodeRouteImport } from './routes/api/admin/catalog-episode'
 import { Route as ApiAdminCatalogImportRouteImport } from './routes/api/admin/catalog-import'
 import { Route as ApiAdminCatalogSeasonRouteImport } from './routes/api/admin/catalog-season'
 import { Route as ApiAdminCommentReportsRouteImport } from './routes/api/admin/comment-reports'
+import { Route as ApiAdminHealthRouteImport } from './routes/api/admin/health'
+import { Route as ApiAdminImagesRouteImport } from './routes/api/admin/images'
+import { Route as ApiAdminMaintenanceRouteImport } from './routes/api/admin/maintenance'
+import { Route as ApiAdminSettingsRouteImport } from './routes/api/admin/settings'
 import { Route as ApiAdminUploadThumbnailRouteImport } from './routes/api/admin/upload-thumbnail'
+import { Route as ApiAdminUsersRouteImport } from './routes/api/admin/users'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCommentsEditRouteImport } from './routes/api/comments.edit'
 import { Route as ApiCommentsLikeRouteImport } from './routes/api/comments.like'
@@ -202,9 +214,29 @@ const AdminIdRoute = AdminIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminBackupRoute = AdminBackupRouteImport.update({
+  id: '/backup',
+  path: '/backup',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminHealthRoute = AdminHealthRouteImport.update({
+  id: '/health',
+  path: '/health',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminHikariAiRoute = AdminHikariAiRouteImport.update({
   id: '/hikari-ai',
   path: '/hikari-ai',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminImagesRoute = AdminImagesRouteImport.update({
+  id: '/images',
+  path: '/images',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminMaintenanceRoute = AdminMaintenanceRouteImport.update({
+  id: '/maintenance',
+  path: '/maintenance',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminModerationRoute = AdminModerationRouteImport.update({
@@ -215,6 +247,16 @@ const AdminModerationRoute = AdminModerationRouteImport.update({
 const AdminQuickUpdateRoute = AdminQuickUpdateRouteImport.update({
   id: '/quick-update',
   path: '/quick-update',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSettingsRoute = AdminSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdultIndexRoute = AdultIndexRouteImport.update({
@@ -292,6 +334,11 @@ const WatchIdRoute = WatchIdRouteImport.update({
   path: '/watch/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminBackupRoute = ApiAdminBackupRouteImport.update({
+  id: '/api/admin/backup',
+  path: '/api/admin/backup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminCatalogAnimeRoute = ApiAdminCatalogAnimeRouteImport.update({
   id: '/api/admin/catalog-anime',
   path: '/api/admin/catalog-anime',
@@ -317,9 +364,34 @@ const ApiAdminCommentReportsRoute = ApiAdminCommentReportsRouteImport.update({
   path: '/api/admin/comment-reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminHealthRoute = ApiAdminHealthRouteImport.update({
+  id: '/api/admin/health',
+  path: '/api/admin/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminImagesRoute = ApiAdminImagesRouteImport.update({
+  id: '/api/admin/images',
+  path: '/api/admin/images',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminMaintenanceRoute = ApiAdminMaintenanceRouteImport.update({
+  id: '/api/admin/maintenance',
+  path: '/api/admin/maintenance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminSettingsRoute = ApiAdminSettingsRouteImport.update({
+  id: '/api/admin/settings',
+  path: '/api/admin/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminUploadThumbnailRoute = ApiAdminUploadThumbnailRouteImport.update({
   id: '/api/admin/upload-thumbnail',
   path: '/api/admin/upload-thumbnail',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminUsersRoute = ApiAdminUsersRouteImport.update({
+  id: '/api/admin/users',
+  path: '/api/admin/users',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -380,9 +452,15 @@ export interface FileRoutesByFullPath {
   '/sobre': typeof SobreRoute
   '/termos': typeof TermosRoute
   '/admin/$id': typeof AdminIdRoute
+  '/admin/backup': typeof AdminBackupRoute
+  '/admin/health': typeof AdminHealthRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
+  '/admin/images': typeof AdminImagesRoute
+  '/admin/maintenance': typeof AdminMaintenanceRoute
   '/admin/moderation': typeof AdminModerationRoute
   '/admin/quick-update': typeof AdminQuickUpdateRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/adult/hentai': typeof AdultHentaiRoute
   '/adult/recent': typeof AdultRecentRoute
   '/adult/tags': typeof AdultTagsRoute
@@ -399,12 +477,18 @@ export interface FileRoutesByFullPath {
   '/watch/$id': typeof WatchIdRoute
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
+  '/api/admin/backup': typeof ApiAdminBackupRoute
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
   '/api/admin/catalog-season': typeof ApiAdminCatalogSeasonRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/admin/health': typeof ApiAdminHealthRoute
+  '/api/admin/images': typeof ApiAdminImagesRoute
+  '/api/admin/maintenance': typeof ApiAdminMaintenanceRoute
+  '/api/admin/settings': typeof ApiAdminSettingsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
+  '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
@@ -437,9 +521,15 @@ export interface FileRoutesByTo {
   '/sobre': typeof SobreRoute
   '/termos': typeof TermosRoute
   '/admin/$id': typeof AdminIdRoute
+  '/admin/backup': typeof AdminBackupRoute
+  '/admin/health': typeof AdminHealthRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
+  '/admin/images': typeof AdminImagesRoute
+  '/admin/maintenance': typeof AdminMaintenanceRoute
   '/admin/moderation': typeof AdminModerationRoute
   '/admin/quick-update': typeof AdminQuickUpdateRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/adult/hentai': typeof AdultHentaiRoute
   '/adult/recent': typeof AdultRecentRoute
   '/adult/tags': typeof AdultTagsRoute
@@ -456,12 +546,18 @@ export interface FileRoutesByTo {
   '/watch/$id': typeof WatchIdRoute
   '/admin': typeof AdminIndexRoute
   '/adult': typeof AdultIndexRoute
+  '/api/admin/backup': typeof ApiAdminBackupRoute
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
   '/api/admin/catalog-season': typeof ApiAdminCatalogSeasonRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/admin/health': typeof ApiAdminHealthRoute
+  '/api/admin/images': typeof ApiAdminImagesRoute
+  '/api/admin/maintenance': typeof ApiAdminMaintenanceRoute
+  '/api/admin/settings': typeof ApiAdminSettingsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
+  '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
@@ -497,9 +593,15 @@ export interface FileRoutesById {
   '/sobre': typeof SobreRoute
   '/termos': typeof TermosRoute
   '/admin/$id': typeof AdminIdRoute
+  '/admin/backup': typeof AdminBackupRoute
+  '/admin/health': typeof AdminHealthRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
+  '/admin/images': typeof AdminImagesRoute
+  '/admin/maintenance': typeof AdminMaintenanceRoute
   '/admin/moderation': typeof AdminModerationRoute
   '/admin/quick-update': typeof AdminQuickUpdateRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/adult/hentai': typeof AdultHentaiRoute
   '/adult/recent': typeof AdultRecentRoute
   '/adult/tags': typeof AdultTagsRoute
@@ -516,12 +618,18 @@ export interface FileRoutesById {
   '/watch/$id': typeof WatchIdRoute
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
+  '/api/admin/backup': typeof ApiAdminBackupRoute
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
   '/api/admin/catalog-season': typeof ApiAdminCatalogSeasonRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/admin/health': typeof ApiAdminHealthRoute
+  '/api/admin/images': typeof ApiAdminImagesRoute
+  '/api/admin/maintenance': typeof ApiAdminMaintenanceRoute
+  '/api/admin/settings': typeof ApiAdminSettingsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
+  '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
@@ -558,9 +666,15 @@ export interface FileRouteTypes {
     | '/sobre'
     | '/termos'
     | '/admin/$id'
+    | '/admin/backup'
+    | '/admin/health'
     | '/admin/hikari-ai'
+    | '/admin/images'
+    | '/admin/maintenance'
     | '/admin/moderation'
     | '/admin/quick-update'
+    | '/admin/settings'
+    | '/admin/users'
     | '/adult/hentai'
     | '/adult/recent'
     | '/adult/tags'
@@ -577,12 +691,18 @@ export interface FileRouteTypes {
     | '/watch/$id'
     | '/admin/'
     | '/adult/'
+    | '/api/admin/backup'
     | '/api/admin/catalog-anime'
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
     | '/api/admin/catalog-season'
     | '/api/admin/comment-reports'
+    | '/api/admin/health'
+    | '/api/admin/images'
+    | '/api/admin/maintenance'
+    | '/api/admin/settings'
     | '/api/admin/upload-thumbnail'
+    | '/api/admin/users'
     | '/api/auth/$'
     | '/api/comments/edit'
     | '/api/comments/like'
@@ -615,9 +735,15 @@ export interface FileRouteTypes {
     | '/sobre'
     | '/termos'
     | '/admin/$id'
+    | '/admin/backup'
+    | '/admin/health'
     | '/admin/hikari-ai'
+    | '/admin/images'
+    | '/admin/maintenance'
     | '/admin/moderation'
     | '/admin/quick-update'
+    | '/admin/settings'
+    | '/admin/users'
     | '/adult/hentai'
     | '/adult/recent'
     | '/adult/tags'
@@ -634,12 +760,18 @@ export interface FileRouteTypes {
     | '/watch/$id'
     | '/admin'
     | '/adult'
+    | '/api/admin/backup'
     | '/api/admin/catalog-anime'
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
     | '/api/admin/catalog-season'
     | '/api/admin/comment-reports'
+    | '/api/admin/health'
+    | '/api/admin/images'
+    | '/api/admin/maintenance'
+    | '/api/admin/settings'
     | '/api/admin/upload-thumbnail'
+    | '/api/admin/users'
     | '/api/auth/$'
     | '/api/comments/edit'
     | '/api/comments/like'
@@ -674,9 +806,15 @@ export interface FileRouteTypes {
     | '/sobre'
     | '/termos'
     | '/admin/$id'
+    | '/admin/backup'
+    | '/admin/health'
     | '/admin/hikari-ai'
+    | '/admin/images'
+    | '/admin/maintenance'
     | '/admin/moderation'
     | '/admin/quick-update'
+    | '/admin/settings'
+    | '/admin/users'
     | '/adult/hentai'
     | '/adult/recent'
     | '/adult/tags'
@@ -693,12 +831,18 @@ export interface FileRouteTypes {
     | '/watch/$id'
     | '/admin/'
     | '/adult/'
+    | '/api/admin/backup'
     | '/api/admin/catalog-anime'
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
     | '/api/admin/catalog-season'
     | '/api/admin/comment-reports'
+    | '/api/admin/health'
+    | '/api/admin/images'
+    | '/api/admin/maintenance'
+    | '/api/admin/settings'
     | '/api/admin/upload-thumbnail'
+    | '/api/admin/users'
     | '/api/auth/$'
     | '/api/comments/edit'
     | '/api/comments/like'
@@ -744,12 +888,18 @@ export interface RootRouteChildren {
   NewsSearchRoute: typeof NewsSearchRoute
   ProfileNickRoute: typeof ProfileNickRoute
   WatchIdRoute: typeof WatchIdRoute
+  ApiAdminBackupRoute: typeof ApiAdminBackupRoute
   ApiAdminCatalogAnimeRoute: typeof ApiAdminCatalogAnimeRoute
   ApiAdminCatalogEpisodeRoute: typeof ApiAdminCatalogEpisodeRoute
   ApiAdminCatalogImportRoute: typeof ApiAdminCatalogImportRoute
   ApiAdminCatalogSeasonRoute: typeof ApiAdminCatalogSeasonRoute
   ApiAdminCommentReportsRoute: typeof ApiAdminCommentReportsRoute
+  ApiAdminHealthRoute: typeof ApiAdminHealthRoute
+  ApiAdminImagesRoute: typeof ApiAdminImagesRoute
+  ApiAdminMaintenanceRoute: typeof ApiAdminMaintenanceRoute
+  ApiAdminSettingsRoute: typeof ApiAdminSettingsRoute
   ApiAdminUploadThumbnailRoute: typeof ApiAdminUploadThumbnailRoute
+  ApiAdminUsersRoute: typeof ApiAdminUsersRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiProfileFollowRoute: typeof ApiProfileFollowRoute
   WatchIdEpRoute: typeof WatchIdEpRoute
@@ -946,11 +1096,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIdRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/backup': {
+      id: '/admin/backup'
+      path: '/backup'
+      fullPath: '/admin/backup'
+      preLoaderRoute: typeof AdminBackupRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/health': {
+      id: '/admin/health'
+      path: '/health'
+      fullPath: '/admin/health'
+      preLoaderRoute: typeof AdminHealthRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/hikari-ai': {
       id: '/admin/hikari-ai'
       path: '/hikari-ai'
       fullPath: '/admin/hikari-ai'
       preLoaderRoute: typeof AdminHikariAiRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/images': {
+      id: '/admin/images'
+      path: '/images'
+      fullPath: '/admin/images'
+      preLoaderRoute: typeof AdminImagesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/maintenance': {
+      id: '/admin/maintenance'
+      path: '/maintenance'
+      fullPath: '/admin/maintenance'
+      preLoaderRoute: typeof AdminMaintenanceRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/moderation': {
@@ -965,6 +1143,20 @@ declare module '@tanstack/react-router' {
       path: '/quick-update'
       fullPath: '/admin/quick-update'
       preLoaderRoute: typeof AdminQuickUpdateRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/settings': {
+      id: '/admin/settings'
+      path: '/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AdminSettingsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof AdminRoute
     }
     '/adult/': {
@@ -1072,6 +1264,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WatchIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/backup': {
+      id: '/api/admin/backup'
+      path: '/api/admin/backup'
+      fullPath: '/api/admin/backup'
+      preLoaderRoute: typeof ApiAdminBackupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/catalog-anime': {
       id: '/api/admin/catalog-anime'
       path: '/api/admin/catalog-anime'
@@ -1107,11 +1306,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminCommentReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/health': {
+      id: '/api/admin/health'
+      path: '/api/admin/health'
+      fullPath: '/api/admin/health'
+      preLoaderRoute: typeof ApiAdminHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/images': {
+      id: '/api/admin/images'
+      path: '/api/admin/images'
+      fullPath: '/api/admin/images'
+      preLoaderRoute: typeof ApiAdminImagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/maintenance': {
+      id: '/api/admin/maintenance'
+      path: '/api/admin/maintenance'
+      fullPath: '/api/admin/maintenance'
+      preLoaderRoute: typeof ApiAdminMaintenanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/settings': {
+      id: '/api/admin/settings'
+      path: '/api/admin/settings'
+      fullPath: '/api/admin/settings'
+      preLoaderRoute: typeof ApiAdminSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/upload-thumbnail': {
       id: '/api/admin/upload-thumbnail'
       path: '/api/admin/upload-thumbnail'
       fullPath: '/api/admin/upload-thumbnail'
       preLoaderRoute: typeof ApiAdminUploadThumbnailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/users': {
+      id: '/api/admin/users'
+      path: '/api/admin/users'
+      fullPath: '/api/admin/users'
+      preLoaderRoute: typeof ApiAdminUsersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -1161,17 +1395,29 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminIdRoute: typeof AdminIdRoute
+  AdminBackupRoute: typeof AdminBackupRoute
+  AdminHealthRoute: typeof AdminHealthRoute
   AdminHikariAiRoute: typeof AdminHikariAiRoute
+  AdminImagesRoute: typeof AdminImagesRoute
+  AdminMaintenanceRoute: typeof AdminMaintenanceRoute
   AdminModerationRoute: typeof AdminModerationRoute
   AdminQuickUpdateRoute: typeof AdminQuickUpdateRoute
+  AdminSettingsRoute: typeof AdminSettingsRoute
+  AdminUsersRoute: typeof AdminUsersRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminIdRoute: AdminIdRoute,
+  AdminBackupRoute: AdminBackupRoute,
+  AdminHealthRoute: AdminHealthRoute,
   AdminHikariAiRoute: AdminHikariAiRoute,
+  AdminImagesRoute: AdminImagesRoute,
+  AdminMaintenanceRoute: AdminMaintenanceRoute,
   AdminModerationRoute: AdminModerationRoute,
   AdminQuickUpdateRoute: AdminQuickUpdateRoute,
+  AdminSettingsRoute: AdminSettingsRoute,
+  AdminUsersRoute: AdminUsersRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
@@ -1246,12 +1492,18 @@ const rootRouteChildren: RootRouteChildren = {
   NewsSearchRoute: NewsSearchRoute,
   ProfileNickRoute: ProfileNickRoute,
   WatchIdRoute: WatchIdRoute,
+  ApiAdminBackupRoute: ApiAdminBackupRoute,
   ApiAdminCatalogAnimeRoute: ApiAdminCatalogAnimeRoute,
   ApiAdminCatalogEpisodeRoute: ApiAdminCatalogEpisodeRoute,
   ApiAdminCatalogImportRoute: ApiAdminCatalogImportRoute,
   ApiAdminCatalogSeasonRoute: ApiAdminCatalogSeasonRoute,
   ApiAdminCommentReportsRoute: ApiAdminCommentReportsRoute,
+  ApiAdminHealthRoute: ApiAdminHealthRoute,
+  ApiAdminImagesRoute: ApiAdminImagesRoute,
+  ApiAdminMaintenanceRoute: ApiAdminMaintenanceRoute,
+  ApiAdminSettingsRoute: ApiAdminSettingsRoute,
   ApiAdminUploadThumbnailRoute: ApiAdminUploadThumbnailRoute,
+  ApiAdminUsersRoute: ApiAdminUsersRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiProfileFollowRoute: ApiProfileFollowRoute,
   WatchIdEpRoute: WatchIdEpRoute,

@@ -116,6 +116,7 @@ export function useCurrentUserState(): CurrentUserState {
           user.image ||
           null,
         profileNick: matchesInitial ? (initialSessionUser.profileNick ?? null) : null,
+        isAdmin: matchesInitial ? initialSessionUser.isAdmin : undefined,
         isDevFallback: false,
       },
       isPending: false,

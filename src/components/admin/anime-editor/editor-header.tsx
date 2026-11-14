@@ -113,9 +113,9 @@ export function EditorHeader({
   const totalEpisodes = anime.seasons.reduce((acc, s) => acc + s.episodes.length, 0);
 
   return (
-    <header className="studio-panel rounded-2xl p-4 sm:p-6">
+    <header className="studio-panel rounded-xl p-4 sm:p-6">
       {/* Barra Superior: Retorno e Persistência */}
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] pb-4">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--studio-line)] pb-4">
         <Link
           to="/admin"
           className="group inline-flex items-center gap-2 text-xs font-medium text-[var(--color-muted)] transition-colors hover:text-[var(--color-fg)]"
@@ -126,28 +126,28 @@ export function EditorHeader({
 
         <div className="flex flex-wrap items-center gap-2.5">
           {effectiveSyncState === "conflict" ? (
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/35 bg-rose-500/12 px-2.5 py-1 text-[11px] font-semibold text-rose-300">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/35 bg-rose-500/10 px-2.5 py-1 text-[11px] font-semibold text-rose-300">
               <AlertTriangle className="size-3.5 text-rose-400" />
               {conflictCount > 0 ? `${conflictCount} conflito(s) no Outbox` : "Conflito / Validação"}
             </span>
           ) : effectiveSyncState === "pending" ? (
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/35 bg-amber-500/12 px-2.5 py-1 text-[11px] font-semibold text-amber-200">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-200">
               <Clock className="size-3.5 text-amber-300" />
               {pendingCount > 0 ? `${pendingCount} pendência(s) de envio` : "Sincronização Pendente"}
             </span>
           ) : effectiveSyncState === "error" ? (
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-orange-500/35 bg-orange-500/12 px-2.5 py-1 text-[11px] font-semibold text-orange-300">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-orange-500/35 bg-orange-500/10 px-2.5 py-1 text-[11px] font-semibold text-orange-300">
               <AlertTriangle className="size-3.5 text-orange-400" />
               Erro de comunicação
             </span>
           ) : effectiveSyncState === "synced" ? (
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
               <CheckCircle2 className="size-3.5 text-emerald-400" />
               Sincronizado no Servidor
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-[11px] font-semibold text-purple-300">
-              <HardDrive className="size-3.5 text-purple-400" />
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[11px] font-semibold text-violet-300">
+              <HardDrive className="size-3.5 text-violet-400" />
               Salvo Localmente (Dispositivo)
             </span>
           )}
@@ -156,7 +156,7 @@ export function EditorHeader({
             type="button"
             onClick={handleCopyId}
             title="Clique para copiar o ID"
-            className="studio-mono group inline-flex h-7 items-center gap-1.5 rounded-lg border border-white/10 bg-[var(--studio-panel-alt)] px-2.5 text-[11px] text-[var(--color-muted)] transition-colors hover:border-purple-500/40 hover:text-[var(--color-fg)]"
+            className="studio-mono group inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] px-2.5 text-[11px] text-[var(--color-muted)] transition-colors hover:border-violet-500/40 hover:text-[var(--color-fg)]"
           >
             <span>#{anime.id.length > 20 ? `${anime.id.slice(0, 8)}…` : anime.id}</span>
             {copiedId ? (
@@ -215,7 +215,7 @@ export function EditorHeader({
               {anime.status && (
                 <>
                   <span className="text-white/20">·</span>
-                  <span className="text-purple-300">
+                  <span className="text-violet-300">
                     {STATUS_PT[anime.status] || anime.status}
                   </span>
                 </>
@@ -254,9 +254,9 @@ export function EditorHeader({
               size="sm"
               onClick={onDuplicateAsDubbed}
               title="Cria um cadastro independente clonando metadados e episódios para versão dublada"
-              className="h-10 border-white/10 bg-[var(--studio-panel-alt)] px-3 text-xs text-[var(--color-fg)] hover:border-purple-500/40"
+              className="h-9 border-[var(--studio-line-strong)] bg-[var(--studio-panel-alt)] px-3 text-xs text-[var(--color-fg)] hover:border-violet-500/40"
             >
-              <Copy className="mr-1.5 size-3.5 text-purple-400" />
+              <Copy className="mr-1.5 size-3.5 text-violet-400" />
               <span>Duplicar como Dublado</span>
             </Button>
           )}
@@ -269,12 +269,12 @@ export function EditorHeader({
               disabled={isReloading}
               onClick={onReloadFromServer}
               title="Recarrega dados e episódios persistidos no PostgreSQL"
-              className="h-10 px-3 text-xs text-[var(--color-muted)] hover:bg-white/[0.06] hover:text-[var(--color-fg)]"
+              className="h-9 px-3 text-xs text-[var(--color-muted)] hover:bg-white/[0.06] hover:text-[var(--color-fg)]"
             >
               <RefreshCw
                 className={cn(
                   "mr-1.5 size-3.5",
-                  isReloading && "animate-spin text-purple-400",
+                  isReloading && "animate-spin text-violet-400",
                 )}
               />
               <span className="hidden sm:inline">Recarregar do Servidor</span>
@@ -288,7 +288,7 @@ export function EditorHeader({
               variant="ghost"
               size="sm"
               onClick={() => setDeleteDialogOpen(true)}
-              className="h-10 px-3 text-xs text-rose-400 hover:bg-rose-500/12 hover:text-rose-300"
+              className="h-9 px-3 text-xs text-rose-400 hover:bg-rose-500/12 hover:text-rose-300"
             >
               <Trash2 className="mr-1.5 size-3.5" />
               <span>Excluir</span>
@@ -299,7 +299,7 @@ export function EditorHeader({
             type="button"
             disabled={isSaving}
             onClick={onSave}
-            className="h-10 bg-purple-600 px-4 text-xs font-semibold text-white hover:bg-purple-500"
+            className="h-9 bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-500"
           >
             {isSaving ? (
               <>
@@ -318,7 +318,7 @@ export function EditorHeader({
 
       {/* Modal de Confirmação de Exclusão */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-rose-500/25 bg-[#0e0c17] text-[var(--color-fg)] sm:max-w-md">
+        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-rose-500/25 bg-[var(--studio-panel)] text-[var(--color-fg)] sm:max-w-md">
           <DialogTitle className="flex items-center gap-2 font-display text-lg font-semibold text-rose-400">
             <AlertTriangle className="size-5 shrink-0" />
             <span>Excluir anime do catálogo?</span>
@@ -329,14 +329,14 @@ export function EditorHeader({
             correspondente no banco PostgreSQL.
           </DialogDescription>
 
-          <div className="mt-6 flex justify-end gap-2.5 border-t border-white/[0.07] pt-3">
+          <div className="mt-6 flex justify-end gap-2.5 border-t border-[var(--studio-line)] pt-3">
             <Button
               type="button"
               variant="outline"
               size="sm"
               disabled={isDeleting}
               onClick={() => setDeleteDialogOpen(false)}
-              className="h-9 border-white/10 text-xs text-[var(--color-muted)] hover:bg-white/[0.06]"
+              className="h-9 border-[var(--studio-line)] text-xs text-[var(--color-muted)] hover:bg-white/[0.06]"
             >
               Cancelar
             </Button>

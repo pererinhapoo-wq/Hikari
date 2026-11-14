@@ -23,11 +23,14 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { GlobalNoticeBanner } from "@/components/GlobalNoticeBanner";
+import { resolveMaintenanceViewMode } from "@/lib/settings/maintenance-guard";
 import { usePublicSettings } from "@/lib/settings/use-public-settings";
 import { ProfileSaveNotification } from "@/components/profile/ProfileSaveNotification";
 import { ProfileDropdownMenu } from "@/components/profile/ProfileDropdownMenu";
 import type { NotificationItem } from "@/components/notifications/notification-item-card";
 import { isHikariAdmin } from "@/lib/auth/admin";
+import { getBearerToken } from "@/lib/auth/client";
+import { useAdminAccess } from "@/lib/auth/use-admin-access";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useHikariStore } from "@/lib/store";
 import {
@@ -558,6 +561,12 @@ export function Shell() {
 
   const { user, isPending: authPending } =
     useCurrentUserState();
+  const adminAccess = useAdminAccess();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     useHikariStore.getState().setCurrentUserId(user?.id ?? null);
@@ -702,7 +711,6 @@ export function Shell() {
   const { settings } = usePublicSettings();
 
   const cinema = pathname.startsWith("/watch");
-  const isAdmin = pathname.startsWith("/admin");
 
   const isBannerPage =
     pathname === "/" || pathname.startsWith("/anime/");
@@ -1318,12 +1326,57 @@ export function Shell() {
   };
 
 
-  const isUserAdmin = Boolean(user?.isAdmin);
+  const hasRealUser = Boolean(
+    user && !user.isDevFallback && user.id && user.id !== "dev-user",
+  );
+  const hasServerResolvedAdminFlag =
+    hasRealUser && typeof user?.isAdmin === "boolean";
+  const hasClientBearerPending =
+    mounted && !user && authPending && Boolean(getBearerToken());
 
-  const maintenanceActive = settings.maintenance.active;
-  const allowBypass = settings.maintenance.allow_admin_bypass;
+  const isCheckingAdmin =
+    hasClientBearerPending ||
+    Boolean(
+      mounted &&
+        hasRealUser &&
+        !hasServerResolvedAdminFlag &&
+        adminAccess.isPending,
+    );
 
-  if (maintenanceActive && (!isUserAdmin || !allowBypass)) {
+  const isServerVerifiedAdmin = hasServerResolvedAdminFlag
+    ? Boolean(user?.isAdmin)
+    : Boolean(adminAccess.isAuthenticated && adminAccess.isAdmin);
+
+  const maintenanceViewMode = resolveMaintenanceViewMode({
+    pathname,
+    maintenanceActive: settings.maintenance.active,
+    allowAdminBypass: settings.maintenance.allow_admin_bypass,
+    isServerVerifiedAdmin,
+    isCheckingAdmin,
+  });
+
+  if (maintenanceViewMode === "admin_route") {
+    return <Outlet />;
+  }
+
+  if (maintenanceViewMode === "login_isolated") {
+    return (
+      <div className="min-h-dvh bg-bg text-fg">
+        <Outlet />
+      </div>
+    );
+  }
+
+  if (maintenanceViewMode === "checking_admin") {
+    return (
+      <div
+        className="flex min-h-dvh items-center justify-center bg-[#08070d] text-fg"
+        aria-busy="true"
+      />
+    );
+  }
+
+  if (maintenanceViewMode === "blocked") {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center bg-[#08070d] px-4 py-12 text-center text-fg selection:bg-purple-600/30 selection:text-white">
         <div className="mx-auto max-w-lg space-y-6 rounded-3xl border border-rose-500/35 bg-gradient-to-b from-rose-950/30 to-[#0e0c17] p-8 shadow-2xl backdrop-blur-xl">
@@ -1343,21 +1396,12 @@ export function Shell() {
                 "O Hikari está passando por manutenções preventivas e atualizações no momento. Retornaremos em breve!"}
             </p>
           </div>
-
-          <div className="pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <a
-              href="/login"
-              className="inline-flex h-10 w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-purple-500/35 bg-purple-600/20 px-5 text-xs font-semibold text-purple-200 transition-colors hover:bg-purple-600/30"
-            >
-              <span>Acessar com Conta Administrativa</span>
-            </a>
-          </div>
         </div>
       </div>
     );
   }
 
-  if (cinema || isAdmin) {
+  if (cinema) {
     return <Outlet />;
   }
 
@@ -1751,7 +1795,7 @@ export function Shell() {
                     </button>
                   )}
 
-                  {user && (user.isAdmin || isHikariAdmin(user.primaryEmail)) && (
+                  {user && (isServerVerifiedAdmin || user.isAdmin || isHikariAdmin(user.primaryEmail)) && (
                     <Link
                       to="/admin"
                       onClick={() => setMenuOpen(false)}

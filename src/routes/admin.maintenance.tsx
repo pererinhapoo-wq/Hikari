@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Database,
-  HardDrive,
   Layers,
   Loader2,
   RefreshCw,
@@ -22,6 +21,13 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getBearerToken } from "@/lib/auth/client";
+import { usePublicSettings } from "@/lib/settings/use-public-settings";
+import {
+  StudioLoadingState,
+  StudioPageHeader,
+  StudioPanel,
+  StudioStatStrip,
+} from "@/components/admin/studio-ui";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin/maintenance")({
@@ -54,16 +60,15 @@ interface MaintenanceData {
 }
 
 function AdminMaintenancePage() {
+  const { refreshSettings } = usePublicSettings();
   const [data, setData] = useState<MaintenanceData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Estado dos formulários de manutenção
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState("");
   const [allowAdminBypass, setAllowAdminBypass] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Estados de ações de cache e ping
   const [isClearingCache, setIsClearingCache] = useState<string | null>(null);
   const [isPinging, setIsPinging] = useState(false);
   const [currentPing, setCurrentPing] = useState<number | null>(null);
@@ -133,6 +138,7 @@ function AdminMaintenancePage() {
         setMaintenanceMessage(resJson.maintenance.message);
         setAllowAdminBypass(resJson.maintenance.allowAdminBypass);
       }
+      await refreshSettings();
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Erro ao salvar manutenção.",
@@ -167,6 +173,9 @@ function AdminMaintenancePage() {
       }
 
       toast.success(resJson.message || "Cache limpo com sucesso!");
+      if (target === "settings" || target === "all") {
+        await refreshSettings();
+      }
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Erro ao limpar cache.",
@@ -209,65 +218,55 @@ function AdminMaintenancePage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[400px] flex-col items-center justify-center gap-3">
-        <Loader2 className="size-8 animate-spin text-purple-400" />
-        <p className="studio-mono text-xs text-[var(--color-muted)]">
-          Carregando diagnóstico de manutenção do PostgreSQL...
-        </p>
-      </div>
+      <StudioLoadingState message="Carregando diagnóstico de manutenção do PostgreSQL..." />
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Cabeçalho */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--color-fg)]">
-              Central de Manutenção
-            </h1>
-            <span
-              className={cn(
-                "studio-mono rounded-md border px-2 py-0.5 text-xs font-semibold uppercase",
-                maintenanceMode
-                  ? "border-rose-500/35 bg-rose-500/15 text-rose-300"
-                  : "border-emerald-500/35 bg-emerald-500/15 text-emerald-300",
-              )}
-            >
-              {maintenanceMode ? "Manutenção Ativa" : "Operação Normal"}
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-[var(--color-muted)]">
-            Gerencie o modo de manutenção global, libere caches em memória e inspecione o estado das tabelas no Neon PostgreSQL.
-          </p>
-        </div>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void fetchData()}
-          disabled={loading}
-          className="border-white/10 bg-white/[0.03] text-xs hover:bg-white/[0.08]"
-        >
-          <RefreshCw className={cn("size-3.5 mr-1.5", loading && "animate-spin")} />
-          Atualizar Diagnóstico
-        </Button>
-      </div>
+    <div className="studio-enter space-y-6">
+      <StudioPageHeader
+        kicker="Sistema & Infra"
+        title="Central de Manutenção"
+        description="Gerencie o modo de manutenção global, libere caches em memória e inspecione o estado das tabelas no Neon PostgreSQL."
+        backTo="/admin"
+        backLabel="Voltar à Central"
+        status={
+          <span
+            className={cn(
+              "studio-mono font-semibold uppercase",
+              maintenanceMode ? "text-rose-400" : "text-emerald-400",
+            )}
+          >
+            {maintenanceMode ? "Manutenção Ativa" : "Operação Normal"}
+          </span>
+        }
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchData()}
+            disabled={loading}
+            className="h-9 border-[var(--studio-line)] bg-[var(--studio-panel)] text-xs hover:bg-white/[0.06]"
+          >
+            <RefreshCw className={cn("mr-1.5 size-3.5", loading && "animate-spin")} />
+            Atualizar Diagnóstico
+          </Button>
+        }
+      />
 
       {/* Banner de Status do Modo de Manutenção */}
       {maintenanceMode ? (
-        <div className="rounded-xl border border-rose-500/35 bg-rose-950/30 p-4 text-rose-200">
+        <div className="rounded-xl border border-rose-500/35 bg-rose-950/25 p-4 text-rose-200">
           <div className="flex items-start gap-3">
             <div className="grid size-8 shrink-0 place-items-center rounded-lg border border-rose-500/35 bg-rose-500/20 text-rose-300">
               <AlertTriangle className="size-4" />
             </div>
             <div className="space-y-1">
-              <h3 className="font-semibold text-sm text-white">
+              <h3 className="text-sm font-semibold text-white">
                 O Modo de Manutenção está ATIVADO no momento
               </h3>
-              <p className="text-xs text-rose-200/90 leading-relaxed">
-                Visitantes e usuários comuns verão o aviso de manutenção.
+              <p className="text-xs leading-relaxed text-rose-200/90">
+                Visitantes e usuários comuns verão a tela de manutenção.
                 {allowAdminBypass
                   ? " Administradores continuam com bypass autorizado para navegar e testar a plataforma."
                   : " O bypass de administrador está desativado."}
@@ -282,7 +281,7 @@ function AdminMaintenancePage() {
               <CheckCircle2 className="size-4" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm text-white">
+              <h3 className="text-sm font-semibold text-white">
                 Acesso Público Liberado
               </h3>
               <p className="text-xs text-emerald-200/80">
@@ -294,162 +293,138 @@ function AdminMaintenancePage() {
       )}
 
       {/* Bloco 1: Controle do Modo de Manutenção */}
-      <div className="rounded-xl border border-white/[0.08] bg-[var(--studio-panel)] p-5 space-y-5">
-        <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="grid size-8 place-items-center rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-400">
-              <Wrench className="size-4" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-sm text-[var(--color-fg)]">
-                Configurações de Manutenção
-              </h2>
-              <p className="text-xs text-[var(--color-subtle)]">
-                Persistidas diretamente na tabela admin_settings do PostgreSQL
-              </p>
-            </div>
-          </div>
-
+      <StudioPanel
+        title="Configurações de Manutenção"
+        description="Persistidas diretamente na tabela admin_settings do PostgreSQL."
+        icon={<Wrench className="size-4" />}
+        right={
           <Button
             size="sm"
             onClick={() => void handleSaveMaintenance()}
             disabled={isSaving}
-            className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold"
+            className="h-9 bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-500"
           >
             {isSaving ? (
-              <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+              <Loader2 className="mr-1.5 size-3.5 animate-spin" />
             ) : (
-              <Save className="size-3.5 mr-1.5" />
+              <Save className="mr-1.5 size-3.5" />
             )}
             Salvar Configurações
           </Button>
-        </div>
-
-        <div className="space-y-4">
-          {/* Interruptor Modo de Manutenção */}
-          <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-black/20 p-4">
-            <div className="space-y-0.5">
-              <Label className="text-xs font-semibold text-white">
-                Ativar Modo de Manutenção
-              </Label>
-              <p className="text-[11px] text-[var(--color-muted)]">
-                Bloqueia o acesso público temporariamente exibindo a mensagem abaixo.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              role="switch"
-              aria-checked={maintenanceMode}
-              onClick={() => setMaintenanceMode((prev) => !prev)}
-              className={cn(
-                "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
-                maintenanceMode ? "bg-rose-600" : "bg-white/20",
-              )}
-            >
-              <span
-                className={cn(
-                  "pointer-events-none inline-block size-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
-                  maintenanceMode ? "translate-x-5" : "translate-x-0",
-                )}
-              />
-            </button>
-          </div>
-
-          {/* Interruptor Permissão de Bypass */}
-          <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-black/20 p-4">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-1.5">
-                <Label className="text-xs font-semibold text-white">
-                  Permitir Bypass de Administradores
-                </Label>
-                <ShieldCheck className="size-3.5 text-purple-400" />
-              </div>
-              <p className="text-[11px] text-[var(--color-muted)]">
-                Garante que administradores autenticados possam navegar no site público mesmo durante manutenção.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              role="switch"
-              aria-checked={allowAdminBypass}
-              onClick={() => setAllowAdminBypass((prev) => !prev)}
-              className={cn(
-                "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
-                allowAdminBypass ? "bg-purple-600" : "bg-white/20",
-              )}
-            >
-              <span
-                className={cn(
-                  "pointer-events-none inline-block size-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
-                  allowAdminBypass ? "translate-x-5" : "translate-x-0",
-                )}
-              />
-            </button>
-          </div>
-
-          {/* Mensagem Personalizada */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-[var(--color-fg)]">
-              Mensagem de Manutenção para os Visitantes
+        }
+        bodyClassName="space-y-4"
+      >
+        {/* Interruptor Modo de Manutenção */}
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-4">
+          <div className="space-y-0.5">
+            <Label className="text-xs font-semibold text-white">
+              Ativar Modo de Manutenção
             </Label>
-            <Textarea
-              value={maintenanceMessage}
-              onChange={(e) => setMaintenanceMessage(e.target.value)}
-              placeholder="Digite o comunicado que será exibido aos visitantes..."
-              rows={3}
-              className="border-white/10 bg-black/30 text-xs text-white focus-visible:ring-purple-500"
-            />
-            <p className="text-[11px] text-[var(--color-subtle)]">
-              Esta mensagem aparecerá com destaque na interface quando o modo de manutenção estiver ativo.
+            <p className="text-[11px] text-[var(--color-muted)]">
+              Bloqueia o acesso público temporariamente exibindo a mensagem abaixo.
             </p>
           </div>
-        </div>
-      </div>
 
-      {/* Bloco 2: Limpeza e Gerenciamento de Caches */}
-      <div className="rounded-xl border border-white/[0.08] bg-[var(--studio-panel)] p-5 space-y-4">
-        <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="grid size-8 place-items-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400">
-              <Zap className="size-4" />
+          <button
+            type="button"
+            role="switch"
+            aria-checked={maintenanceMode}
+            onClick={() => setMaintenanceMode((prev) => !prev)}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+              maintenanceMode ? "bg-rose-600" : "bg-white/20",
+            )}
+          >
+            <span
+              className={cn(
+                "pointer-events-none inline-block size-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
+                maintenanceMode ? "translate-x-5" : "translate-x-0",
+              )}
+            />
+          </button>
+        </div>
+
+        {/* Interruptor Permissão de Bypass */}
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-4">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs font-semibold text-white">
+                Permitir Bypass de Administradores
+              </Label>
+              <ShieldCheck className="size-3.5 text-violet-300" />
             </div>
-            <div>
-              <h2 className="font-semibold text-sm text-[var(--color-fg)]">
-                Gerenciamento de Caches em Memória
-              </h2>
-              <p className="text-xs text-[var(--color-subtle)]">
-                Invalide caches de servidor para forçar releitura imediata do banco de dados
-              </p>
-            </div>
+            <p className="text-[11px] text-[var(--color-muted)]">
+              Garante que administradores autenticados possam navegar no site público mesmo durante manutenção.
+            </p>
           </div>
 
+          <button
+            type="button"
+            role="switch"
+            aria-checked={allowAdminBypass}
+            onClick={() => setAllowAdminBypass((prev) => !prev)}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+              allowAdminBypass ? "bg-violet-600" : "bg-white/20",
+            )}
+          >
+            <span
+              className={cn(
+                "pointer-events-none inline-block size-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
+                allowAdminBypass ? "translate-x-5" : "translate-x-0",
+              )}
+            />
+          </button>
+        </div>
+
+        {/* Mensagem Personalizada */}
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-[var(--color-fg)]">
+            Mensagem de Manutenção para os Visitantes
+          </Label>
+          <Textarea
+            value={maintenanceMessage}
+            onChange={(e) => setMaintenanceMessage(e.target.value)}
+            placeholder="Digite o comunicado que será exibido aos visitantes..."
+            rows={3}
+            className="studio-input text-xs"
+          />
+          <p className="text-[11px] text-[var(--color-subtle)]">
+            Esta mensagem aparecerá com destaque na tela de manutenção quando o modo estiver ativo.
+          </p>
+        </div>
+      </StudioPanel>
+
+      {/* Bloco 2: Limpeza e Gerenciamento de Caches */}
+      <StudioPanel
+        title="Gerenciamento de Caches em Memória"
+        description="Invalide caches de servidor para forçar releitura imediata do banco de dados."
+        icon={<Zap className="size-4" />}
+        right={
           <Button
             variant="outline"
             size="sm"
             onClick={() => void handleClearCache("all")}
             disabled={isClearingCache !== null}
-            className="border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 text-xs font-semibold"
+            className="h-9 border-amber-500/30 bg-amber-500/10 text-xs font-semibold text-amber-200 hover:bg-amber-500/20"
           >
             {isClearingCache === "all" ? (
-              <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+              <Loader2 className="mr-1.5 size-3.5 animate-spin" />
             ) : (
-              <Trash2 className="size-3.5 mr-1.5" />
+              <Trash2 className="mr-1.5 size-3.5" />
             )}
             Limpar Todos os Caches
           </Button>
-        </div>
-
+        }
+      >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {/* Cache 1: Episódios */}
-          <div className="flex flex-col justify-between rounded-xl border border-white/[0.06] bg-black/20 p-3.5 space-y-3">
+          <div className="flex flex-col justify-between space-y-3 rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-4">
             <div>
               <div className="flex items-center gap-2 text-xs font-semibold text-white">
-                <Layers className="size-3.5 text-purple-400" />
-                <span>Episódios & Players</span>
+                <Layers className="size-3.5 text-violet-300" />
+                <span>Episódios &amp; Players</span>
               </div>
-              <p className="mt-1 text-[11px] text-[var(--color-muted)] leading-relaxed">
+              <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-muted)]">
                 Cache de episódios e players de vídeo publicado por anime.
               </p>
             </div>
@@ -458,23 +433,22 @@ function AdminMaintenancePage() {
               size="sm"
               onClick={() => void handleClearCache("episodes")}
               disabled={isClearingCache !== null}
-              className="w-full border-white/10 text-xs hover:bg-white/[0.06]"
+              className="h-9 w-full border-[var(--studio-line)] text-xs hover:bg-white/[0.06]"
             >
               {isClearingCache === "episodes" && (
-                <Loader2 className="size-3 mr-1.5 animate-spin" />
+                <Loader2 className="mr-1.5 size-3 animate-spin" />
               )}
               Limpar Cache
             </Button>
           </div>
 
-          {/* Cache 2: Catálogo */}
-          <div className="flex flex-col justify-between rounded-xl border border-white/[0.06] bg-black/20 p-3.5 space-y-3">
+          <div className="flex flex-col justify-between space-y-3 rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-4">
             <div>
               <div className="flex items-center gap-2 text-xs font-semibold text-white">
-                <Server className="size-3.5 text-blue-400" />
+                <Server className="size-3.5 text-sky-300" />
                 <span>Catálogo Geral</span>
               </div>
-              <p className="mt-1 text-[11px] text-[var(--color-muted)] leading-relaxed">
+              <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-muted)]">
                 Listas de animes em alta, lançamentos e metadados de catálogo.
               </p>
             </div>
@@ -483,23 +457,22 @@ function AdminMaintenancePage() {
               size="sm"
               onClick={() => void handleClearCache("catalog")}
               disabled={isClearingCache !== null}
-              className="w-full border-white/10 text-xs hover:bg-white/[0.06]"
+              className="h-9 w-full border-[var(--studio-line)] text-xs hover:bg-white/[0.06]"
             >
               {isClearingCache === "catalog" && (
-                <Loader2 className="size-3 mr-1.5 animate-spin" />
+                <Loader2 className="mr-1.5 size-3 animate-spin" />
               )}
               Limpar Cache
             </Button>
           </div>
 
-          {/* Cache 3: Configurações */}
-          <div className="flex flex-col justify-between rounded-xl border border-white/[0.06] bg-black/20 p-3.5 space-y-3">
+          <div className="flex flex-col justify-between space-y-3 rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-4">
             <div>
               <div className="flex items-center gap-2 text-xs font-semibold text-white">
                 <Sparkles className="size-3.5 text-emerald-400" />
                 <span>Configurações Públicas</span>
               </div>
-              <p className="mt-1 text-[11px] text-[var(--color-muted)] leading-relaxed">
+              <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-muted)]">
                 Cache TTL de 60 segundos com nome, slogan e avisos públicos.
               </p>
             </div>
@@ -508,129 +481,97 @@ function AdminMaintenancePage() {
               size="sm"
               onClick={() => void handleClearCache("settings")}
               disabled={isClearingCache !== null}
-              className="w-full border-white/10 text-xs hover:bg-white/[0.06]"
+              className="h-9 w-full border-[var(--studio-line)] text-xs hover:bg-white/[0.06]"
             >
               {isClearingCache === "settings" && (
-                <Loader2 className="size-3 mr-1.5 animate-spin" />
+                <Loader2 className="mr-1.5 size-3 animate-spin" />
               )}
               Limpar Cache
             </Button>
           </div>
         </div>
-      </div>
+      </StudioPanel>
 
       {/* Bloco 3: Diagnóstico do Neon PostgreSQL */}
-      <div className="rounded-xl border border-white/[0.08] bg-[var(--studio-panel)] p-5 space-y-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-white/[0.08] pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="grid size-8 place-items-center rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-400">
-              <Database className="size-4" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-sm text-[var(--color-fg)]">
-                Diagnóstico do Neon PostgreSQL
-              </h2>
-              <p className="text-xs text-[var(--color-subtle)]">
-                Métricas em tempo real de latência, tamanho e tabelas do banco
-              </p>
-            </div>
-          </div>
+      <StudioPanel
+        title="Diagnóstico do Neon PostgreSQL"
+        description="Métricas em tempo real de latência, tamanho e tabelas do banco."
+        icon={<Database className="size-4" />}
+        right={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void handlePingDb()}
+            disabled={isPinging}
+            className="h-9 border-[var(--studio-line)] bg-[var(--studio-panel-alt)] text-xs hover:bg-white/[0.08]"
+          >
+            <Activity className={cn("mr-1.5 size-3.5", isPinging && "animate-spin")} />
+            {isPinging ? "Testando..." : "Testar Conexão (Ping)"}
+          </Button>
+        }
+        bodyClassName="space-y-4"
+      >
+        <StudioStatStrip
+          columns={3}
+          items={[
+            {
+              label: "Status da Conexão",
+              value: "Online",
+              detail: "Conexão Neon PostgreSQL ativa",
+              accent: "emerald",
+            },
+            {
+              label: "Latência de Resposta",
+              value: `${currentPing ?? "--"} ms`,
+              detail: "Round-trip transacional (SELECT 1)",
+              accent:
+                (currentPing ?? 0) < 120
+                  ? "emerald"
+                  : (currentPing ?? 0) < 300
+                    ? "amber"
+                    : "rose",
+            },
+            {
+              label: "Tamanho do Banco",
+              value: data?.database?.sizePretty || "--",
+              detail: "Armazenamento total alocado",
+              accent: "violet",
+            },
+          ]}
+        />
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void handlePingDb()}
-              disabled={isPinging}
-              className="border-white/10 bg-white/[0.03] text-xs hover:bg-white/[0.08]"
-            >
-              <Activity className={cn("size-3.5 mr-1.5", isPinging && "animate-spin")} />
-              {isPinging ? "Testando..." : "Testar Conexão (Ping)"}
-            </Button>
-          </div>
-        </div>
-
-        {/* Métricas do Banco */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3.5">
-            <span className="text-[10px] text-[var(--color-subtle)] uppercase tracking-wider font-semibold">
-              Status da Conexão
-            </span>
-            <div className="mt-1.5 flex items-center gap-2">
-              <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="font-semibold text-sm text-emerald-400">
-                Online & Conectado
-              </span>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3.5">
-            <span className="text-[10px] text-[var(--color-subtle)] uppercase tracking-wider font-semibold">
-              Latência de Resposta (Ping)
-            </span>
-            <div className="mt-1.5 flex items-baseline gap-1.5">
-              <span
-                className={cn(
-                  "studio-tabular text-xl font-bold",
-                  (currentPing ?? 0) < 120
-                    ? "text-emerald-400"
-                    : (currentPing ?? 0) < 300
-                      ? "text-amber-300"
-                      : "text-rose-400",
-                )}
-              >
-                {currentPing ?? "--"}
-              </span>
-              <span className="text-xs text-[var(--color-subtle)]">ms</span>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3.5">
-            <span className="text-[10px] text-[var(--color-subtle)] uppercase tracking-wider font-semibold">
-              Tamanho do Banco
-            </span>
-            <div className="mt-1.5 flex items-center gap-1.5">
-              <HardDrive className="size-4 text-purple-400" />
-              <span className="studio-tabular text-xl font-bold text-white">
-                {data?.database?.sizePretty || "--"}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabela de Estatísticas das Tabelas */}
         {data?.database?.tables && data.database.tables.length > 0 && (
-          <div className="overflow-hidden rounded-xl border border-white/[0.06]">
+          <div className="overflow-x-auto rounded-xl border border-[var(--studio-line)]">
             <table className="w-full text-left text-xs">
-              <thead className="border-b border-white/[0.08] bg-white/[0.02] text-[10px] font-semibold tracking-wider text-[var(--color-subtle)] uppercase">
+              <thead className="border-b border-[var(--studio-line)] bg-white/[0.02] text-[10px] font-semibold tracking-wider text-[var(--color-subtle)] uppercase">
                 <tr>
                   <th className="px-4 py-2.5">Tabela</th>
                   <th className="px-4 py-2.5 text-right">Total Linhas</th>
-                  <th className="px-4 py-2.5 text-right">Tuplas Ativas</th>
-                  <th className="px-4 py-2.5 text-right">Tuplas Mortas</th>
+                  <th className="hidden px-4 py-2.5 text-right sm:table-cell">Tuplas Ativas</th>
+                  <th className="hidden px-4 py-2.5 text-right md:table-cell">Tuplas Mortas</th>
                   <th className="px-4 py-2.5 text-right">Último Analyze/Vacuum</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.04]">
+              <tbody className="divide-y divide-[var(--studio-line-soft)]">
                 {data.database.tables.map((t) => (
                   <tr key={t.tableName} className="hover:bg-white/[0.02]">
-                    <td className="px-4 py-2.5 studio-mono font-medium text-[var(--color-fg)]">
+                    <td className="studio-mono px-4 py-2.5 font-medium text-[var(--color-fg)]">
                       {t.tableName}
                     </td>
-                    <td className="px-4 py-2.5 text-right studio-tabular text-white font-semibold">
+                    <td className="studio-tabular px-4 py-2.5 text-right font-semibold text-white">
                       {t.rowCount.toLocaleString("pt-BR")}
                     </td>
-                    <td className="px-4 py-2.5 text-right studio-tabular text-[var(--color-muted)]">
+                    <td className="studio-tabular hidden px-4 py-2.5 text-right text-[var(--color-muted)] sm:table-cell">
                       {t.liveTuples !== undefined
                         ? t.liveTuples.toLocaleString("pt-BR")
                         : "--"}
                     </td>
-                    <td className="px-4 py-2.5 text-right studio-tabular text-[var(--color-subtle)]">
+                    <td className="studio-tabular hidden px-4 py-2.5 text-right text-[var(--color-subtle)] md:table-cell">
                       {t.deadTuples !== undefined
                         ? t.deadTuples.toLocaleString("pt-BR")
                         : "--"}
                     </td>
-                    <td className="px-4 py-2.5 text-right studio-tabular text-[var(--color-subtle)]">
+                    <td className="studio-tabular px-4 py-2.5 text-right text-[var(--color-subtle)]">
                       {t.lastAnalyze || t.lastVacuum
                         ? new Date(t.lastAnalyze || t.lastVacuum!).toLocaleDateString("pt-BR")
                         : "Automático (Neon)"}
@@ -641,7 +582,7 @@ function AdminMaintenancePage() {
             </table>
           </div>
         )}
-      </div>
+      </StudioPanel>
     </div>
   );
 }

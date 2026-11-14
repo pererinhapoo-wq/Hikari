@@ -1,48 +1,54 @@
 /* =========================================================
-   HIKARI STUDIO — SCOPED ADMIN DESIGN SYSTEM
-   Strict isolation: only applies under .hikari-studio-root
-   and .hikari-studio-dialog (Radix portals).
+   HIKARI STUDIO — IDENTIDADE VISUAL EXCLUSIVA (ISOLAMENTO ESTRITO)
+   Escopo fechado em .hikari-studio-root e .hikari-studio-dialog.
+   Estética: Obsidian Editorial Studio — superfícies neutras em
+   ardósia profunda, divisórias hairline de 1px e acento violeta preciso.
    ========================================================= */
 
 .hikari-studio-root,
 .hikari-studio-dialog {
-  --color-bg: #07060b;
-  --color-surface: #0e0c17;
-  --color-elevated: #151223;
-  --color-fg: #f3f2ee;
-  --color-muted: #9e9aa9;
-  --color-subtle: #6e6a7a;
+  --color-bg: #08090d;
+  --color-surface: #10121a;
+  --color-elevated: #171a26;
+  --color-fg: #f3f4f6;
+  --color-muted: #9ca3af;
+  --color-subtle: #6b7280;
   --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-strong: rgba(168, 85, 247, 0.36);
-  --color-primary: #a855f7;
+  --color-border-strong: rgba(139, 92, 246, 0.38);
+  --color-primary: #8b5cf6;
   --color-primary-fg: #ffffff;
   --color-danger: #e11d48;
   --color-danger-fg: #ffffff;
-  --color-score: #c084fc;
+  --color-score: #c4b5fd;
   --shadow-border: 0 0 0 1px rgba(255, 255, 255, 0.08);
-  --shadow-border-hover: 0 0 0 1px rgba(168, 85, 247, 0.42);
+  --shadow-border-hover: 0 0 0 1px rgba(139, 92, 246, 0.42);
 
-  --studio-canvas: #07060b;
-  --studio-rail: #0a0811;
-  --studio-panel: #0e0c17;
-  --studio-panel-alt: #141121;
-  --studio-line: rgba(255, 255, 255, 0.075);
+  --studio-canvas: #08090d;
+  --studio-rail: #0b0d13;
+  --studio-panel: #10121a;
+  --studio-panel-alt: #161924;
+  --studio-panel-hover: #1b1f2d;
+  --studio-line: rgba(255, 255, 255, 0.08);
+  --studio-line-soft: rgba(255, 255, 255, 0.05);
   --studio-line-strong: rgba(255, 255, 255, 0.14);
-  --studio-accent: #a855f7;
-  --studio-accent-soft: rgba(168, 85, 247, 0.12);
-  --studio-accent-border: rgba(168, 85, 247, 0.32);
+  --studio-accent: #8b5cf6;
+  --studio-accent-text: #c4b5fd;
+  --studio-accent-soft: rgba(139, 92, 246, 0.12);
+  --studio-accent-border: rgba(139, 92, 246, 0.34);
 
   color: var(--color-fg);
   color-scheme: dark;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
 .hikari-studio-root {
   background-color: var(--studio-canvas);
-  background-image: radial-gradient(
-    ellipse 80% 40% at 50% -10%,
-    rgba(168, 85, 247, 0.07),
-    transparent 70%
-  );
+  background-image:
+    radial-gradient(
+      ellipse 70% 35% at 50% -8%,
+      rgba(139, 92, 246, 0.06),
+      transparent 70%
+    );
   min-height: 100dvh;
 }
 
@@ -56,6 +62,15 @@
   border: 1px solid var(--studio-line);
 }
 
+.studio-surface-inset {
+  background-color: rgba(8, 9, 13, 0.55);
+  border: 1px solid var(--studio-line-soft);
+}
+
+.studio-divider {
+  border-color: var(--studio-line);
+}
+
 .studio-tabular {
   font-variant-numeric: tabular-nums;
 }
@@ -63,6 +78,36 @@
 .studio-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-variant-numeric: tabular-nums;
+}
+
+.studio-kicker {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--studio-accent-text);
+}
+
+.studio-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+}
+
+.studio-input {
+  background-color: var(--studio-panel-alt);
+  border: 1px solid var(--studio-line);
+  color: var(--color-fg);
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.studio-input:focus,
+.studio-input:focus-visible {
+  border-color: var(--studio-accent-border);
+  outline: none;
 }
 
 .studio-scroll::-webkit-scrollbar {
@@ -80,7 +125,7 @@
 }
 
 .studio-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(168, 85, 247, 0.45);
+  background: rgba(139, 92, 246, 0.45);
 }
 
 .studio-scroll {
@@ -91,7 +136,7 @@
 @keyframes studioFadeUp {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(5px);
   }
   to {
     opacity: 1;
@@ -100,7 +145,7 @@
 }
 
 .studio-enter {
-  animation: studioFadeUp 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: studioFadeUp 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -164,7 +164,7 @@ export function EditorSeasons({
       <div className="studio-panel flex flex-col gap-4 rounded-2xl p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2.5">
-            <Layers className="size-5 text-purple-400" />
+            <Layers className="size-5 text-violet-400" />
             <h2 className="font-display text-lg font-bold tracking-tight text-[var(--color-fg)]">
               Gerenciamento de Temporadas &amp; Episódios
             </h2>
@@ -180,7 +180,7 @@ export function EditorSeasons({
           variant="outline"
           size="sm"
           onClick={onAddSeason}
-          className="h-10 border-purple-500/35 bg-purple-500/12 px-4 text-xs font-semibold text-purple-200 hover:bg-purple-500/22 hover:text-white"
+          className="h-10 border-violet-500/35 bg-violet-500/12 px-4 text-xs font-semibold text-violet-200 hover:bg-violet-500/22 hover:text-white"
         >
           <Plus className="mr-1.5 size-4" />
           <span>Nova Temporada</span>
@@ -196,7 +196,7 @@ export function EditorSeasons({
             className={cn(
               "h-9 shrink-0 rounded-lg px-3.5 text-xs font-medium transition-colors",
               activeSeasonTab === "all"
-                ? "bg-purple-600 text-white"
+                ? "bg-violet-600 text-white"
                 : "border border-white/10 bg-[var(--studio-panel)] text-[var(--color-muted)] hover:bg-white/[0.05] hover:text-[var(--color-fg)]",
             )}
           >
@@ -218,7 +218,7 @@ export function EditorSeasons({
                 className={cn(
                   "flex h-9 shrink-0 items-center gap-2 rounded-lg px-3.5 text-xs font-medium transition-colors",
                   isSelected
-                    ? "bg-purple-600 text-white"
+                    ? "bg-violet-600 text-white"
                     : "border border-white/10 bg-[var(--studio-panel)] text-[var(--color-muted)] hover:bg-white/[0.05] hover:text-[var(--color-fg)]",
                 )}
               >
@@ -226,7 +226,7 @@ export function EditorSeasons({
                 <span
                   className={cn(
                     "studio-mono text-[11px]",
-                    isSelected ? "text-purple-100" : "text-[var(--color-subtle)]",
+                    isSelected ? "text-violet-100" : "text-[var(--color-subtle)]",
                   )}
                 >
                   {publishedCount}/{epCount}
@@ -246,11 +246,11 @@ export function EditorSeasons({
           ).length;
 
           return (
-            <div key={season.id} className="studio-panel rounded-2xl p-4 sm:p-6">
+            <div key={season.id} className="studio-panel rounded-xl p-4 sm:p-6">
               {/* Cabeçalho da Temporada */}
-              <div className="flex flex-col gap-4 border-b border-white/[0.07] pb-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-4 border-b border-[var(--studio-line)] pb-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-1 flex-wrap items-center gap-3">
-                  <div className="studio-mono flex size-10 shrink-0 items-center justify-center rounded-xl border border-purple-500/35 bg-purple-500/12 text-xs font-bold text-purple-200">
+                  <div className="studio-mono flex size-10 shrink-0 items-center justify-center rounded-xl border border-violet-500/35 bg-violet-500/12 text-xs font-bold text-violet-200">
                     T{season.number}
                   </div>
 
@@ -347,7 +347,7 @@ export function EditorSeasons({
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="mt-3 h-9 border-purple-500/35 text-xs text-purple-300 hover:bg-purple-500/15"
+                        className="mt-3 h-9 border-violet-500/35 text-xs text-violet-300 hover:bg-violet-500/15"
                         onClick={() => onAddEpisode(season.id)}
                       >
                         <Plus className="mr-1.5 size-3.5" />
@@ -721,7 +721,7 @@ export function EditorSeasons({
                                 <div className="space-y-2">
                                   <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                                     {ep.thumbnail ? (
-                                      <div className="relative h-10 w-16 shrink-0 overflow-hidden rounded-md border border-purple-500/35 bg-black">
+                                      <div className="relative h-10 w-16 shrink-0 overflow-hidden rounded-md border border-violet-500/35 bg-black">
                                         <img
                                           src={ep.thumbnail}
                                           alt=""
@@ -750,7 +750,7 @@ export function EditorSeasons({
                                       variant="outline"
                                       disabled={captureStatus[ep.id]?.status === "loading"}
                                       onClick={() => onCaptureFrame(season.id, ep)}
-                                      className="h-10 shrink-0 gap-1.5 border-white/10 bg-[var(--studio-panel)] text-xs text-purple-300 hover:text-white"
+                                      className="h-10 shrink-0 gap-1.5 border-white/10 bg-[var(--studio-panel)] text-xs text-violet-300 hover:text-white"
                                       title="Capturar quadro do vídeo agora"
                                     >
                                       {captureStatus[ep.id]?.status === "loading" ? (
@@ -768,8 +768,8 @@ export function EditorSeasons({
                                   </div>
 
                                   {captureStatus[ep.id]?.status === "loading" && (
-                                    <div className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs text-purple-200">
-                                      <Loader2 className="size-3.5 shrink-0 animate-spin text-purple-300" />
+                                    <div className="flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-200">
+                                      <Loader2 className="size-3.5 shrink-0 animate-spin text-violet-300" />
                                       <span>
                                         Capturando quadro real e salvando miniatura persistente…
                                       </span>
@@ -811,9 +811,9 @@ export function EditorSeasons({
                       variant="outline"
                       size="sm"
                       onClick={() => onAddEpisode(season.id)}
-                      className="h-10 border-white/10 bg-[var(--studio-panel-alt)] px-4 text-xs text-[var(--color-fg)] hover:border-purple-500/40"
+                      className="h-10 border-white/10 bg-[var(--studio-panel-alt)] px-4 text-xs text-[var(--color-fg)] hover:border-violet-500/40"
                     >
-                      <Plus className="mr-1.5 size-3.5 text-purple-400" />
+                      <Plus className="mr-1.5 size-3.5 text-violet-400" />
                       Adicionar Episódio
                     </Button>
                   </div>
@@ -831,7 +831,7 @@ export function EditorSeasons({
           if (!open) setSeasonToDelete(null);
         }}
       >
-        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-rose-500/25 bg-[#0e0c17] text-[var(--color-fg)] sm:max-w-md">
+        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-rose-500/25 bg-[var(--studio-panel)] text-[var(--color-fg)] sm:max-w-md">
           <DialogTitle className="flex items-center gap-2 font-display text-lg font-semibold text-rose-400">
             <AlertTriangle className="size-5 shrink-0" />
             <span>Excluir temporada e seus episódios?</span>
@@ -849,7 +849,7 @@ export function EditorSeasons({
             banco e outbox.
           </DialogDescription>
 
-          <div className="mt-6 flex justify-end gap-2.5 border-t border-white/[0.07] pt-3">
+          <div className="mt-6 flex justify-end gap-2.5 border-t border-[var(--studio-line)] pt-3">
             <Button
               type="button"
               variant="outline"
