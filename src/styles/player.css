@@ -11,6 +11,15 @@
   background:#000;
   isolation:isolate;
 }
+.hikari-video-player:fullscreen,
+.hikari-video-player:-webkit-full-screen{
+  width:100vw !important;
+  height:100vh !important;
+  max-width:none !important;
+  max-height:none !important;
+  border-radius:0 !important;
+  border:none !important;
+}
 /* nenhum elemento do player altera cor, brilho, opacidade ou blend do vídeo */
 .hikari-video-player video,
 .hikari-video-player video *,
