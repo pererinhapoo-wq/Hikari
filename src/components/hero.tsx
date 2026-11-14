@@ -561,7 +561,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
             height={hasDistinctSources ? 690 : 900}
             loading={priority ? "eager" : "lazy"}
             decoding={priority ? "sync" : "async"}
-            fetchPriority="low"
+            fetchPriority={priority ? "high" : "low"}
             className="size-full object-cover object-top md:object-center"
           />
         </picture>

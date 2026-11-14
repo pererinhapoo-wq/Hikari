@@ -6,7 +6,7 @@ export function SectionReveal({
   delayMs = 0,
   minHeight = "260px",
   rootMargin = "300px 0px",
-  lazy = true,
+  lazy = false,
 }: {
   children: ReactNode;
   className?: string;
@@ -23,7 +23,6 @@ export function SectionReveal({
       setRevealed(true);
       return;
     }
-    // Se o ambiente não tiver IntersectionObserver (SSR/testes sem DOM), exibe imediatamente
     if (typeof window === "undefined" || !("IntersectionObserver" in window)) {
       setRevealed(true);
       return;
@@ -35,7 +34,6 @@ export function SectionReveal({
     let unmounted = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
-    // Dispara a montagem assim que a seção se aproximar do viewport
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting && !unmounted) {
@@ -48,7 +46,6 @@ export function SectionReveal({
             observer.disconnect();
           } else {
             setRevealed(true);
-            // Executa apenas uma vez e desconecta o observer (nunca desmonta ao retornar ao topo)
             observer.disconnect();
           }
         }
@@ -59,8 +56,6 @@ export function SectionReveal({
       },
     );
 
-    // Observa o elemento imediatamente para que conteúdos na viewport inicial apareçam sem atraso,
-    // enquanto seções abaixo da dobra permanecem com lazy loading progressivo via rootMargin.
     observer.observe(node);
 
     return () => {
@@ -70,13 +65,17 @@ export function SectionReveal({
     };
   }, [lazy, delayMs, rootMargin]);
 
+  if (!lazy) {
+    return <div className={className}>{children}</div>;
+  }
+
   return (
     <div
       ref={ref}
       style={revealed ? undefined : { minHeight }}
       className={`transition-opacity duration-300 motion-reduce:transition-none ${revealed ? "opacity-100" : "opacity-0"} ${className}`.replace(/\s+/g, " ").trim()}
     >
-      {lazy ? (revealed ? children : null) : children}
+      {revealed ? children : null}
     </div>
   );
 }

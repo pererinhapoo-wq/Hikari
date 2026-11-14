@@ -322,8 +322,8 @@ function Home() {
   }, [locals]);
 
   const featuredItems = useMemo(
-    () => pickHeroItems(trending, popular),
-    [trending, popular],
+    () => pickHeroItems(data.trending, data.popular),
+    [data.trending, data.popular],
   );
   const featured = featuredItems[0];
 
