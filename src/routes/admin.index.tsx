@@ -32,6 +32,7 @@ import {
   type FormEvent,
 } from "react";
 import { toast } from "sonner";
+import { getBearerToken } from "@/lib/auth/client";
 
 import { searchCatalog } from "@/lib/api";
 import {
@@ -453,7 +454,7 @@ function AdminIndex() {
     );
   }
 
-  function duplicateAsDubbed(target: LocalAnime) {
+  async function duplicateAsDubbed(target: LocalAnime) {
     const newId = `local-${crypto.randomUUID()}`;
     const baseTitleRomaji = target.titleRomaji ? `${target.titleRomaji} Dublado` : "";
     const baseTitleEnglish = target.titleEnglish ? `${target.titleEnglish} Dublado` : "";
@@ -497,8 +498,58 @@ function AdminIndex() {
       updatedAt: Date.now(),
     };
 
-    upsertAnime(duplicated);
-    toast.success("Versão dublada criada como cadastro independente!");
+    try {
+      const token = getBearerToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const res = await fetch("/api/admin/catalog-anime", {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({
+          id: duplicated.id,
+          titleRomaji: duplicated.titleRomaji,
+          titleEnglish: duplicated.titleEnglish,
+          titleNative: duplicated.titleNative,
+          cover: duplicated.cover,
+          banner: duplicated.banner,
+          synopsis: duplicated.synopsis,
+          score: duplicated.score,
+          genres: duplicated.genres,
+          format: duplicated.format,
+          status: duplicated.status,
+          episodesCount: duplicated.episodesCount,
+          season: duplicated.season,
+          year: duplicated.year,
+          trailerId: duplicated.trailerId,
+          hidden: duplicated.hidden,
+          seasons: duplicated.seasons.map((s) => ({
+            number: s.number,
+            title: s.title,
+          })),
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || "Falha ao persistir duplicação no servidor.");
+      }
+
+      const json = await res.json().catch(() => null);
+      if (json?.animeId) {
+        duplicated.id = json.animeId;
+      }
+
+      upsertAnime(duplicated);
+      toast.success("Versão dublada criada e persistida com sucesso no servidor!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao duplicar anime.");
+    }
   }
 
   async function exportJson() {
@@ -1963,10 +2014,29 @@ function AdminIndex() {
             <Button
               type="button"
               variant="danger"
-              onClick={() => {
+              onClick={async () => {
                 if (pendingDelete) {
-                  removeAnime(pendingDelete);
-                  toast.success("Anime removido com sucesso.");
+                  try {
+                    const token = getBearerToken();
+                    const res = await fetch(
+                      `/api/admin/catalog-anime?id=${encodeURIComponent(pendingDelete)}`,
+                      {
+                        method: "DELETE",
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                        credentials: "include",
+                      },
+                    );
+
+                    if (!res.ok) {
+                      const errJson = await res.json().catch(() => null);
+                      throw new Error(errJson?.error || "Falha ao excluir anime no servidor.");
+                    }
+
+                    removeAnime(pendingDelete);
+                    toast.success("Anime excluído com sucesso do servidor e do dispositivo.");
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Erro ao excluir anime.");
+                  }
                 }
                 setPendingDelete(null);
               }}

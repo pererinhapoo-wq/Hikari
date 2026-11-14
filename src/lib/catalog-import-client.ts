@@ -1,4 +1,5 @@
 import type { LocalAnime } from "@/lib/types";
+import { getBearerToken } from "@/lib/auth/client";
 
 export const BATCH_SIZE = 100;
 
@@ -96,11 +97,17 @@ export async function importCatalogInBatches(
     let netError: string | null = null;
 
     try {
+      const token = getBearerToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
       res = await fetch("/api/admin/catalog-import", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         credentials: "include",
         body: JSON.stringify({
           animes: currentChunk,
@@ -114,9 +121,7 @@ export async function importCatalogInBatches(
         // Retenta uma vez após o backoff
         res = await fetch("/api/admin/catalog-import", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers,
           credentials: "include",
           body: JSON.stringify({
             animes: currentChunk,

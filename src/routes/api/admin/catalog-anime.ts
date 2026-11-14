@@ -163,6 +163,8 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
 
           const coverProvided = data.cover !== undefined;
           const bannerProvided = data.banner !== undefined;
+          const hiddenProvided = data.hidden !== undefined && data.hidden !== null;
+          const scoreProvided = data.score !== undefined && data.score !== null;
 
           // 4. Execução para garantir consistência entre anime e temporadas
           const result = await sql.query<{
@@ -223,8 +225,14 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
                  WHEN $18::text IS NOT NULL THEN EXCLUDED."trailerId"
                  ELSE "catalog_anime"."trailerId"
                END,
-               "hidden" = EXCLUDED."hidden",
-               "score" = EXCLUDED."score",
+               "hidden" = CASE
+                 WHEN $23::boolean THEN EXCLUDED."hidden"
+                 ELSE "catalog_anime"."hidden"
+               END,
+               "score" = CASE
+                 WHEN $24::boolean THEN EXCLUDED."score"
+                 ELSE "catalog_anime"."score"
+               END,
                "updatedAt" = CURRENT_TIMESTAMP
              RETURNING "id", "cover", "banner", "anilistId", "malId", "kitsuId", "updatedAt";`,
             [
@@ -250,6 +258,8 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
               bannerProvided,
               data.hidden ?? false,
               data.score ?? null,
+              hiddenProvided,
+              scoreProvided,
             ],
           );
 

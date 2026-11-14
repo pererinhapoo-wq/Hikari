@@ -18,6 +18,7 @@ import {
   Settings2,
   Tags,
   UserPlus,
+  Wrench,
   X,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -1315,6 +1316,46 @@ export function Shell() {
       }
     }
   };
+
+
+  const isUserAdmin = Boolean(user?.isAdmin);
+
+  const maintenanceActive = settings.maintenance.active;
+  const allowBypass = settings.maintenance.allow_admin_bypass;
+
+  if (maintenanceActive && (!isUserAdmin || !allowBypass)) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center bg-[#08070d] px-4 py-12 text-center text-fg selection:bg-purple-600/30 selection:text-white">
+        <div className="mx-auto max-w-lg space-y-6 rounded-3xl border border-rose-500/35 bg-gradient-to-b from-rose-950/30 to-[#0e0c17] p-8 shadow-2xl backdrop-blur-xl">
+          <div className="mx-auto grid size-16 place-items-center rounded-2xl border border-rose-500/40 bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10">
+            <Wrench className="size-8 animate-pulse" />
+          </div>
+
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-300 uppercase tracking-widest">
+              <span>Manutenção Programada</span>
+            </div>
+            <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              {settings.site_name || "Hikari"} em Manutenção
+            </h1>
+            <p className="text-sm text-[var(--color-muted)] leading-relaxed">
+              {settings.maintenance.message ||
+                "O Hikari está passando por manutenções preventivas e atualizações no momento. Retornaremos em breve!"}
+            </p>
+          </div>
+
+          <div className="pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <a
+              href="/login"
+              className="inline-flex h-10 w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-purple-500/35 bg-purple-600/20 px-5 text-xs font-semibold text-purple-200 transition-colors hover:bg-purple-600/30"
+            >
+              <span>Acessar com Conta Administrativa</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (cinema || isAdmin) {
     return <Outlet />;
