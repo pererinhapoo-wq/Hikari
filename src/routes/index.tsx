@@ -6,7 +6,8 @@ import {
 
 import { fetchHomeCatalog, fetchSeasonSection } from "@/lib/api";
 import { useHikariStore } from "@/lib/store";
-import { overlayList } from "@/lib/overlay";
+import { overlayList, overlaySeasonList } from "@/lib/overlay";
+import { currentAnimeSeason, type OfficialAnimeSeason } from "@/lib/utils";
 import { localToAnime, type SlimAnime } from "@/lib/types";
 
 import { getAnimeLogo } from "@/lib/anime-logos";
@@ -291,11 +292,11 @@ function Home() {
   const hydrated = useHikariStore((s) => s.hydrated);
 
   const trending = useMemo(
-    () => overlayList(data.trending, locals),
+    () => overlayList(data.trending, locals, { includeExtras: false }),
     [data.trending, locals],
   );
   const popular = useMemo(
-    () => overlayList(data.popular, locals),
+    () => overlayList(data.popular, locals, { includeExtras: false }),
     [data.popular, locals],
   );
   const emAltaItems = trending.length > 0 ? trending : popular;
@@ -384,6 +385,7 @@ function Home() {
         <SeasonAnimeRow
           seasonName={data.seasonName}
           seasonYear={data.seasonYear}
+          seasonCode={data.seasonCode}
           initialItems={data.season && data.season.length > 0 ? data.season : []}
         />
       </SectionReveal>
@@ -394,10 +396,12 @@ function Home() {
 function SeasonAnimeRow({
   seasonName,
   seasonYear,
+  seasonCode,
   initialItems = [],
 }: {
   seasonName: string;
   seasonYear: number;
+  seasonCode?: OfficialAnimeSeason;
   initialItems?: SlimAnime[];
 }) {
   const locals = useHikariStore((s) => s.animes);
@@ -424,9 +428,11 @@ function SeasonAnimeRow({
     };
   }, [seasonItems.length]);
 
+  const resolvedSeasonCode = seasonCode || currentAnimeSeason().season;
+
   const season = useMemo(
-    () => overlayList(seasonItems, locals),
-    [seasonItems, locals],
+    () => overlaySeasonList(seasonItems, locals, resolvedSeasonCode, seasonYear),
+    [seasonItems, locals, resolvedSeasonCode, seasonYear],
   );
 
   return (

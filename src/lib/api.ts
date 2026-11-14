@@ -4248,6 +4248,8 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
 
     seasonYear: year,
 
+    seasonCode: season,
+
     source: "anilist",
 
     genres: [],
@@ -4296,6 +4298,8 @@ async function fetchHomeFromJikan(): Promise<HomeCatalog> {
     seasonName: seasonLabel(season),
 
     seasonYear: year,
+
+    seasonCode: season,
 
     source: "jikan",
 
@@ -4454,6 +4458,7 @@ async function fetchHomeFromKitsu(): Promise<HomeCatalog> {
     releases: [],
     seasonName: seasonLabel(season),
     seasonYear: year,
+    seasonCode: season,
     source: "kitsu",
     genres: [],
   };

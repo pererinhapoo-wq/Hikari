@@ -1,3 +1,5 @@
+import type { OfficialAnimeSeason } from "@/lib/utils";
+
 export type Episode = {
   id: string;
   number: number;
@@ -168,6 +170,7 @@ export type HomeCatalog = {
   releases: SlimAnime[];
   seasonName: string;
   seasonYear: number;
+  seasonCode?: OfficialAnimeSeason;
   source: "anilist" | "jikan" | "kitsu" | "cache";
   genres: string[];
 };

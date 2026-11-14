@@ -773,10 +773,16 @@ function BrowsePage() {
         activeSeason,
         activeYear,
       )
-    : overlayList(
-        accumulatedItems,
-        locals,
-      );
+    : section === "trending" || section === "popular" || section === "top"
+      ? overlayList(
+          accumulatedItems,
+          locals,
+          { includeExtras: false },
+        )
+      : overlayList(
+          accumulatedItems,
+          locals,
+        );
 
   const sectionMeta = {
     popular: {

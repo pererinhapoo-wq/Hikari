@@ -953,3 +953,18 @@ textarea:focus {
   100% { transform: scale(1); }
 }
 
+/* Previne zoom e saltos de escala involuntários em dispositivos de toque (mobile) */
+@media (hover: none) {
+  button:active,
+  a:active,
+  [role="button"]:active {
+    transform: none !important;
+  }
+}
+
+button, a, [role="button"] {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+
+

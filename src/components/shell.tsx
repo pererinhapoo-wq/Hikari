@@ -1403,17 +1403,20 @@ export function Shell() {
                   }
                 }}
                 className={cn(
-                  "relative flex size-8 min-[380px]:size-10 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
-                  "motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
-                  notificationsOpen && "bg-elevated text-fg",
+                  "relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full text-zinc-300 hover:text-white transition-all cursor-pointer select-none",
+                  "motion-safe:transition-[transform,box-shadow,ring-color,background-color] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
+                  notificationsOpen
+                    ? "bg-purple-500/20 text-white ring-2 ring-[#c084fc] shadow-[0_0_20px_rgba(192,132,252,0.4)]"
+                    : "bg-white/[0.04] ring-1 ring-purple-500/30 hover:bg-white/[0.08] hover:ring-purple-400/60 hover:shadow-[0_0_16px_rgba(168,85,247,0.25)]",
                 )}
                 aria-label="Notificações"
                 aria-expanded={notificationsOpen}
               >
-                <Bell className="size-4 sm:size-5" />
+                <Bell className="size-4 sm:size-4.5 text-purple-300 group-hover:text-white transition-colors" />
 
                 {notificationsPresentationReady && unreadCount > 0 && (
-                  <span className="absolute right-0.5 top-0.5 flex min-w-4 h-4 sm:min-w-5 sm:h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] sm:text-[10px] font-bold leading-none text-white ring-2 ring-bg tabular-nums">
+                  <span className="absolute -right-0.5 -top-0.5 flex min-w-4 h-4 sm:min-w-5 sm:h-5 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-rose-600 px-1 text-[9px] sm:text-[10px] font-bold leading-none text-white ring-2 ring-[#08070d] shadow-md tabular-nums animate-pulse">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
@@ -1461,29 +1464,29 @@ export function Shell() {
             role="dialog"
             aria-label="Painel de notificações"
             className={cn(
-              "fixed right-3 sm:right-6 top-14 sm:top-16 z-50 flex w-[calc(100vw-1.5rem)] max-w-[360px] sm:max-w-[380px] origin-top-right flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0b0913]/98 md:bg-[#0b0913]/92 shadow-[0_20px_52px_rgba(0,0,0,0.78)] md:backdrop-blur-md",
-              "motion-safe:transition-[opacity,transform] motion-safe:duration-[170ms] motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+              "fixed right-3 sm:right-6 top-14 sm:top-16 z-50 flex w-[calc(100vw-1.5rem)] max-w-[360px] sm:max-w-[390px] origin-top-right flex-col overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0b0914]/98 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-2xl",
+              "motion-safe:transition-[opacity,transform] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
               notificationsPanel.visible
                 ? "opacity-100 translate-y-0 scale-100"
-                : "opacity-0 -translate-y-1.5 scale-[0.98]",
+                : "opacity-0 -translate-y-2 scale-[0.95]",
               notificationsPanel.closing && "pointer-events-none",
             )}
           >
-            {/* LINHA DE ACENTO SUTIL NO TOPO */}
+            {/* LINHA DE ACENTO VIOLETA ELEGANTE NO TOPO */}
             <div
               aria-hidden="true"
-              className="pointer-events-none h-px w-full bg-gradient-to-r from-transparent via-purple-400/35 to-transparent"
+              className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-400/60 to-transparent"
             />
 
-            {/* CABEÇALHO COMPACTO */}
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.07] bg-white/[0.02] px-4 py-3">
+            {/* CABEÇALHO REFINADO */}
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.08] bg-white/[0.02] px-4 py-3.5">
               <div className="min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <h2 className="text-[13px] font-semibold tracking-tight text-zinc-100">
+                  <h2 className="text-xs sm:text-[13px] font-bold tracking-tight text-white">
                     Notificações
                   </h2>
                   {unreadCount > 0 && (
-                    <span className="text-[11px] font-medium text-purple-300/85 tabular-nums">
+                    <span className="text-[11px] font-semibold text-purple-300 tabular-nums">
                       · {unreadCount} {unreadCount === 1 ? "nova" : "novas"}
                     </span>
                   )}
@@ -1493,15 +1496,15 @@ export function Shell() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0">
                 {unreadCount > 0 && (
                   <button
                     type="button"
                     onClick={markAllNotificationsAsReadAction}
-                    className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-purple-300/90 hover:bg-purple-500/12 hover:text-purple-100 transition-colors active:scale-[0.98] cursor-pointer whitespace-nowrap"
+                    className="inline-flex h-7 items-center gap-1 rounded-lg border border-purple-500/30 bg-purple-500/12 px-2.5 text-[11px] font-medium text-purple-200 hover:bg-purple-500/22 hover:text-white transition-all active:scale-[0.98] cursor-pointer whitespace-nowrap shadow-sm"
                     title="Marcar todas como lidas"
                   >
-                    <CheckCheck className="size-3.5" />
+                    <CheckCheck className="size-3.5 text-purple-300" />
                     <span>Marcar lidas</span>
                   </button>
                 )}
@@ -1509,7 +1512,7 @@ export function Shell() {
                 <button
                   type="button"
                   onClick={() => setNotificationsOpen(false)}
-                  className="flex size-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors cursor-pointer"
+                  className="flex size-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/[0.08] hover:text-white transition-colors cursor-pointer"
                   aria-label="Fechar notificações"
                 >
                   <X className="size-3.5" />

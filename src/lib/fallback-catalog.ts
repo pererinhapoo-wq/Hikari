@@ -301,6 +301,7 @@ export function getEmergencyFallbackCatalog(): HomeCatalog {
     releases: FALLBACK_ANIMES.slice(0, 6),
     seasonName: "Outono",
     seasonYear: 2026,
+    seasonCode: "FALL",
     source: "cache",
     genres: [
       "Ação",
