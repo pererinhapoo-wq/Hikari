@@ -443,6 +443,13 @@ export function CommentsSection({
   const [sessionLoadingState, setSessionLoadingState] = useState(false);
   const [newCommentId, setNewCommentId] = useState<string | null>(null);
   const newCommentTimeoutRef = useRef<number | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    if (targetCommentId) {
+      setIsExpanded(true);
+    }
+  }, [targetCommentId]);
 
   /* ====================================================== */
   /* IMAGEM DO COMENTÁRIO                                   */
@@ -1968,8 +1975,41 @@ export function CommentsSection({
           : "mt-10 border-t border-purple-500/20 pt-8 sm:pt-10",
       )}
     >
-      <div className="grid gap-6 sm:gap-8">
-        <div className="min-w-0">
+      {!isExpanded ? (
+        <div
+          onClick={() => setIsExpanded(true)}
+          role="button"
+          tabIndex={0}
+          aria-expanded={false}
+          className="rounded-xl border border-purple-500/20 bg-surface/60 hover:bg-surface/90 p-4 sm:p-5 flex items-center justify-between gap-4 cursor-pointer transition-all duration-150 shadow-sm"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex size-9 sm:size-10 items-center justify-center rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-300 shrink-0">
+              <MessageCircle className="size-4 sm:size-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-display text-base font-bold text-white tracking-tight">Comentários</h3>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 tabular-nums">
+                  {totalCount ?? comments.length}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-0.5 truncate">
+                Clique para expandir e participar da discussão
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-600/20 border border-purple-500/30 text-purple-200 hover:bg-purple-600/35 shrink-0 transition-all cursor-pointer"
+          >
+            <span>Ver comentários</span>
+            <ChevronDown className="size-3.5" />
+          </button>
+        </div>
+      ) : (
+        <div className="grid gap-6 sm:gap-8">
+          <div className="min-w-0">
           {/* =============================================== */}
           {/* CABEÇALHO CONTEXTUAL DOS COMENTÁRIOS           */}
           {/* =============================================== */}
@@ -2656,6 +2696,12 @@ export function CommentsSection({
                   }
                   className="w-full resize-none rounded-xl border border-white/10 bg-[#0c0c10] px-3 py-2.5 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-purple-500/40 transition-colors"
                 />
+                {text.trim().length > 0 && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-purple-300/80 italic mt-1.5 animate-pulse">
+                    <span className="size-1.5 rounded-full bg-purple-400 inline-block" />
+                    <span>Alguém está escrevendo...</span>
+                  </div>
+                )}
 
                 {/* Previews de imagem/GIF anexados */}
                 {(commentImagePreview || selectedGifUrl) && (
@@ -3047,7 +3093,6 @@ export function CommentsSection({
                 Todos os comentários foram carregados.
               </p>
             )}
-            </>
           )}
         </div>
       </div>
@@ -4204,6 +4249,12 @@ export function CommentCard({
                 placeholder={`Responder para @${authorName}...`}
                 className="w-full resize-none rounded-lg border border-white/10 bg-[#0b0914] px-3 py-2 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-[#a855f7]/45 transition-colors"
               />
+              {replyText.trim().length > 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] text-purple-300/80 italic mt-1.5 animate-pulse">
+                  <span className="size-1.5 rounded-full bg-purple-400 inline-block" />
+                  <span>Alguém está escrevendo...</span>
+                </div>
+              )}
 
               <div className="mt-2 flex items-center justify-between gap-2">
                 <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/60 hover:text-white select-none">
@@ -4244,6 +4295,7 @@ export function CommentCard({
           )}
         </div>
       </div>
-    </article>
+      )}
+    </section>
   );
 }
