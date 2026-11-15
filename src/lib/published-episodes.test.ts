@@ -7,6 +7,9 @@ import {
   sanitizePlayableVideoUrl,
   isEpisodePublished,
   resolvePublicEpisodes,
+  resolvePublicRecentEpisodes,
+  resolvePrimaryBadgeFromRecentBadges,
+  isPublishedEpisodeDubbed,
   hasEpisodePlayableSource,
   sanitizeEpisodeThumbnailUrl,
   resolveEpisodeThumbnailUrl,
@@ -24,6 +27,7 @@ import {
   mergeAdminEpisodesWithServer,
   invalidateCatalogEpisodesCache,
   primeCatalogEpisodesCache,
+  type PublicEpisodesResult,
 } from "./catalog-episodes";
 import {
   buildAdminCatalogAnimeSavePayload,
@@ -32,12 +36,18 @@ import {
   resolveAdminAnimeWithRemote,
   resolveAdminDisplayMedia,
   resolveSavedMediaFromServer,
+  resolveSavedRecentBadgesFromServer,
   shouldPreferRemoteMedia,
 } from "./overlay";
 import {
+  DEFAULT_ANIME_RECENT_BADGES,
+  areAnimeRecentBadgesEqual,
   isKitsuImageUrl,
+  normalizeAnimeRecentBadges,
+  resolveCatalogAnimeBadgesWrite,
   resolveCatalogAnimeMediaWrite,
   type Anime,
+  type AnimeRecentBadges,
   type Episode,
   type LocalAnime,
 } from "./types";
@@ -97,9 +107,9 @@ function createMockAnime(overrides: Partial<LocalAnime> = {}): LocalAnime {
   };
 }
 
-describe("Lógica de exibição da seção 'Novos Episódios'", () => {
-  it("Regra 1: LANÇAMENTO deve ser associado unicamente ao Episódio 1 e nunca aos episódios seguintes", () => {
-    const anime = createMockAnime({
+describe("Lógica de exibição da seção 'Episódios Recentes'", () => {
+  it("Regra 1: Selos manuais (LANÇAMENTO, NOVO, FINAL) não são ativados automaticamente e seguem ativação manual", () => {
+    const animeSemSelo = createMockAnime({
       status: "RELEASING",
       episodesCount: 12,
       seasons: [
@@ -115,24 +125,22 @@ describe("Lógica de exibição da seção 'Novos Episódios'", () => {
       ],
     });
 
-    const recent = getRecentEpisodesSection([anime]);
+    const recentSemSelo = getRecentEpisodesSection([animeSemSelo]);
+    assert.equal(recentSemSelo.length, 2);
+    assert.equal(recentSemSelo[0]?.badge, null);
+    assert.equal(recentSemSelo[1]?.badge, null);
+    assert.deepEqual(recentSemSelo[0]?.recentBadges, DEFAULT_ANIME_RECENT_BADGES);
 
-    // O episódio 1 deve ter o selo LANÇAMENTO
-    const ep1 = recent.find((e) => e.episodeNumber === 1);
-    assert.ok(ep1, "Episódio 1 deve estar presente");
-    assert.equal(ep1.badge, "LANÇAMENTO");
-
-    // O episódio 2 NUNCA deve ter o selo LANÇAMENTO
-    const ep2 = recent.find((e) => e.episodeNumber === 2);
-    assert.ok(ep2, "Episódio 2 deve estar presente como o mais recente");
-    assert.notEqual(ep2.badge, "LANÇAMENTO");
-
-    // O anime deve aparecer em LANÇAMENTO apenas uma vez
-    const lancamentos = recent.filter((e) => e.badge === "LANÇAMENTO");
-    assert.equal(lancamentos.length, 1);
+    const animeComLancamento = createMockAnime({
+      ...animeSemSelo,
+      recentBadges: { lancamento: true, novo: false, final: false },
+    });
+    const recentComLancamento = getRecentEpisodesSection([animeComLancamento]);
+    assert.equal(recentComLancamento[0]?.badge, "LANÇAMENTO");
+    assert.equal(recentComLancamento[0]?.recentBadges?.lancamento, true);
   });
 
-  it("Regra 2 e 4: Em cadastro em massa de 300 episódios, não exibe os 300 intermediários", () => {
+  it("Regra 2 e 4: Em cadastro em massa de 300 episódios, exibe apenas Ep 1 e Ep 300 sem inferir selos automaticamente", () => {
     const episodes = Array.from({ length: 300 }, (_, i) => ({
       id: `ep-${i + 1}`,
       number: i + 1,
@@ -157,28 +165,23 @@ describe("Lógica de exibição da seção 'Novos Episódios'", () => {
 
     const recent = getRecentEpisodesSection([anime]);
 
-    // Não deve conter 300 episódios na seção Novos Episódios!
+    // Não deve conter 300 episódios na seção Episódios Recentes
     assert.equal(recent.length, 2, "Deve exibir apenas o episódio 1 e o episódio 300");
 
-    // Episódio 1 como LANÇAMENTO
     const ep1 = recent.find((e) => e.episodeNumber === 1);
     assert.ok(ep1);
-    assert.equal(ep1.badge, "LANÇAMENTO");
+    assert.equal(ep1.badge, null, "Sem ativação manual, Ep 1 não deve receber selo automático");
 
-    // Episódio 300 como FINAL (já que o anime foi concluído com 300 episódios)
     const ep300 = recent.find((e) => e.episodeNumber === 300);
     assert.ok(ep300);
-    assert.equal(ep300.badge, "FINAL");
+    assert.equal(ep300.badge, null, "Sem ativação manual, Ep 300 não deve receber FINAL automático");
 
     // Episódios intermediários (ex: 2 a 299) não devem constar na seção
-    const ep2 = recent.find((e) => e.episodeNumber === 2);
-    assert.equal(ep2, undefined, "Episódio 2 intermediário não deve poluir a seção");
-    const ep150 = recent.find((e) => e.episodeNumber === 150);
-    assert.equal(ep150, undefined, "Episódio 150 intermediário não deve poluir a seção");
+    assert.equal(recent.find((e) => e.episodeNumber === 2), undefined);
+    assert.equal(recent.find((e) => e.episodeNumber === 150), undefined);
   });
 
-  it("Regra 3: FINAL só deve ser destacado quando houver confirmação de que o anime terminou", () => {
-    // Caso A: Anime em exibição semanal (RELEASING) — o último episódio cadastrado NÃO é FINAL
+  it("Regra 3: FINAL nunca é inferido automaticamente por status FINISHED ou contagem de episódios", () => {
     const ongoingAnime = createMockAnime({
       id: "anime-ongoing",
       status: "RELEASING",
@@ -200,10 +203,9 @@ describe("Lógica de exibição da seção 'Novos Episódios'", () => {
     const ongoingRecent = getRecentEpisodesSection([ongoingAnime]);
     const latestOngoing = ongoingRecent.find((e) => e.episodeNumber === 10);
     assert.ok(latestOngoing);
-    assert.equal(latestOngoing.badge, null, "Anime em lançamento não deve receber selo FINAL");
+    assert.equal(latestOngoing.badge, null);
 
-    // Caso B: Anime com status FINISHED e número do episódio bate com a contagem total
-    const finishedAnime = createMockAnime({
+    const finishedAnimeWithoutManualFinal = createMockAnime({
       id: "anime-finished",
       status: "FINISHED",
       episodesCount: 12,
@@ -220,10 +222,15 @@ describe("Lógica de exibição da seção 'Novos Episódios'", () => {
       ],
     });
 
-    const finishedRecent = getRecentEpisodesSection([finishedAnime]);
-    const latestFinished = finishedRecent.find((e) => e.episodeNumber === 12);
-    assert.ok(latestFinished);
-    assert.equal(latestFinished.badge, "FINAL", "Último episódio de anime concluído deve receber FINAL");
+    const finishedWithoutManual = getRecentEpisodesSection([finishedAnimeWithoutManualFinal]);
+    assert.equal(finishedWithoutManual.find((e) => e.episodeNumber === 12)?.badge, null);
+
+    const finishedWithManualFinal = createMockAnime({
+      ...finishedAnimeWithoutManualFinal,
+      recentBadges: { lancamento: false, novo: false, final: true },
+    });
+    const finishedRecent = getRecentEpisodesSection([finishedWithManualFinal]);
+    assert.equal(finishedRecent.find((e) => e.episodeNumber === 12)?.badge, "FINAL");
   });
 
   it("Regra 5: Todos os episódios continuam acessíveis no catálogo completo e na página do anime", () => {
@@ -1814,6 +1821,430 @@ describe("Preservação de imagens Kitsu/AniList e salvamento explícito no Admi
     assert.equal(newAnimeDb.insertBanner, "https://cdn.hikari.app/brand-new-banner.jpg");
   });
 });
+
+describe("Selos em Episódios Recentes, controles do Admin e regra de 50+ episódios", () => {
+  function makeServerEpisodeRow(
+    animeId: string,
+    epNum: number,
+    overrides: Partial<PublicEpisodesResult["episodes"][number]> = {},
+  ): PublicEpisodesResult["episodes"][number] {
+    return {
+      id: `${animeId}-ep-${epNum}`,
+      animeId,
+      seasonNumber: 1,
+      number: epNum,
+      title: `Episódio ${epNum}`,
+      thumbnail: `https://cdn.example.com/${animeId}-${epNum}.jpg`,
+      duration: "24:00",
+      synopsis: null,
+      videoUrl: `https://cdn.example.com/${animeId}-${epNum}.mp4`,
+      videoUrl2: null,
+      videoUrl3: null,
+      videoUrl4: null,
+      videoUrl5: null,
+      published: true,
+      publishedAt: new Date(1700000000000 + epNum * 60_000).toISOString(),
+      createdAt: new Date(1700000000000 + epNum * 60_000).toISOString(),
+      updatedAt: new Date(1700000000000 + epNum * 60_000).toISOString(),
+      animeTitle: "Anime Teste",
+      animeTitleRomaji: "Anime Teste",
+      animeTitleEnglish: "Anime Test",
+      animeTitleNative: null,
+      animeCover: "https://cdn.example.com/cover.jpg",
+      animeBanner: "https://cdn.example.com/banner.jpg",
+      animeStatus: "FINISHED",
+      animeEpisodesCount: null,
+      animeCreatedAt: null,
+      animeUpdatedAt: null,
+      seasonTitle: "Temporada 1",
+      ...overrides,
+    };
+  }
+
+  it("1 & 2. DUB reflete apenas o episódio exibido (sem confundir anime dublado com episódio legendado ou vice-versa)", () => {
+    // Anime marcado como Dublado no título, mas episódio exibido explicitamente é legendado
+    assert.equal(
+      isPublishedEpisodeDubbed({
+        animeTitle: "Naruto Shippuden Dublado",
+        animeAltTitles: ["Naruto Shippuden (Dublado)"],
+        seasonTitle: "Temporada 1",
+        episodeTitle: "Episódio 10 — Legendado",
+        audio: "sub",
+      }),
+      false,
+    );
+
+    // Anime marcado como Dublado no título, mas título do episódio indica Legendado (sem campo audio)
+    assert.equal(
+      isPublishedEpisodeDubbed({
+        animeTitle: "Solo Leveling Dublado",
+        animeAltTitles: [],
+        seasonTitle: "Temporada 1",
+        episodeTitle: "Episódio 5 (Legendado)",
+      }),
+      false,
+    );
+
+    // Anime padrão (legendado no título), porém o episódio exibido tem áudio dublado explícito
+    assert.equal(
+      isPublishedEpisodeDubbed({
+        animeTitle: "Frieren",
+        animeAltTitles: [],
+        seasonTitle: "Temporada 1",
+        episodeTitle: "Episódio 3",
+        audio: "dub",
+      }),
+      true,
+    );
+
+    // Episódio de anime dublado sem override de legendado continua recebendo DUB
+    assert.equal(
+      isPublishedEpisodeDubbed({
+        animeTitle: "Black Clover Dublado",
+        animeAltTitles: ["Black Clover (PT-BR)"],
+        seasonTitle: "Temporada 1",
+        episodeTitle: "Episódio 1",
+      }),
+      true,
+    );
+  });
+
+  it("3, 4, 5 & 6. Selos manuais LANÇAMENTO, NOVO e FINAL funcionam independentemente e não são auto-inferidos", () => {
+    const baseAnime = createMockAnime({
+      id: "manual-badges-1",
+      status: "FINISHED",
+      episodesCount: 3,
+    });
+
+    // Padrão sem ação do admin: todos desativados
+    const noneActive = resolvePublicRecentEpisodes(null, [baseAnime]);
+    assert.equal(noneActive.length, 3);
+    assert.deepEqual(noneActive[0]?.recentBadges, DEFAULT_ANIME_RECENT_BADGES);
+    assert.equal(resolvePrimaryBadgeFromRecentBadges(noneActive[0]?.recentBadges), null);
+
+    // Apenas LANÇAMENTO ativo
+    const onlyLancamento = resolvePublicRecentEpisodes(null, [
+      { ...baseAnime, recentBadges: { lancamento: true, novo: false, final: false } },
+    ]);
+    assert.deepEqual(onlyLancamento[0]?.recentBadges, {
+      lancamento: true,
+      novo: false,
+      final: false,
+    });
+
+    // Apenas NOVO ativo
+    const onlyNovo = resolvePublicRecentEpisodes(null, [
+      { ...baseAnime, recentBadges: { lancamento: false, novo: true, final: false } },
+    ]);
+    assert.deepEqual(onlyNovo[0]?.recentBadges, {
+      lancamento: false,
+      novo: true,
+      final: false,
+    });
+
+    // Apenas FINAL ativo e múltiplos ativos simultaneamente
+    const multipleActive = resolvePublicRecentEpisodes(null, [
+      { ...baseAnime, recentBadges: { lancamento: true, novo: true, final: true } },
+    ]);
+    assert.deepEqual(multipleActive[0]?.recentBadges, {
+      lancamento: true,
+      novo: true,
+      final: true,
+    });
+
+    // Desativar FINAL remove completamente o flag que alimenta imagem e título
+    const finalTurnedOff = resolvePublicRecentEpisodes(null, [
+      { ...baseAnime, recentBadges: { lancamento: true, novo: false, final: false } },
+    ]);
+    assert.equal(finalTurnedOff[0]?.recentBadges?.final, false);
+    assert.equal(finalTurnedOff[0]?.recentBadges?.lancamento, true);
+  });
+
+  it("7. Persistência após recarregamento preserva os selos gravados no servidor", () => {
+    const persisted: AnimeRecentBadges = {
+      lancamento: false,
+      novo: true,
+      final: true,
+    };
+
+    const serverResult: PublicEpisodesResult = {
+      status: "success",
+      episodes: [
+        makeServerEpisodeRow("anime-db-1", 1, {
+          animeRecentBadges: persisted,
+        }),
+      ],
+      total: 1,
+    };
+
+    // Simula recarregamento com loja local vazia
+    const publicRecent = resolvePublicRecentEpisodes(serverResult, []);
+    assert.equal(publicRecent.length, 1);
+    assert.deepEqual(publicRecent[0]?.recentBadges, persisted);
+
+    // Reabertura no editor do Admin preserva o estado persistido no catálogo
+    const remoteAnime: Anime = {
+      id: "anime-db-1",
+      titles: { romaji: "Anime Teste", english: "Anime Test", native: "" },
+      cover: "https://cdn.example.com/cover.jpg",
+      banner: "https://cdn.example.com/banner.jpg",
+      synopsis: "",
+      score: 80,
+      genres: [],
+      format: "TV",
+      status: "FINISHED",
+      episodesCount: 12,
+      season: "FALL",
+      year: 2025,
+      trailerId: null,
+      source: "anilist",
+      studios: [],
+      streamingEpisodes: [],
+      seasons: [],
+      recommendations: [],
+      characters: [],
+      staff: [],
+      recentBadges: persisted,
+      serverCatalogId: "anime-db-1",
+      catalogUpdatedAt: 1700000500000,
+    };
+
+    const loadedInAdmin = resolveAdminAnimeWithRemote(undefined, remoteAnime);
+    assert.deepEqual(loadedInAdmin?.recentBadges, persisted);
+  });
+
+  it("8. Salvar ou publicar episódios sem mexer nos selos preserva integralmente os selos no servidor", () => {
+    const currentBadges: AnimeRecentBadges = {
+      lancamento: true,
+      novo: false,
+      final: true,
+    };
+
+    const anime = createMockAnime({
+      id: "anime-preserve-badges",
+      recentBadges: currentBadges,
+    });
+
+    //dirtyBadges = false ao adicionar/salvar episódio
+    const episodeOnlyPayload = buildAdminCatalogAnimeSavePayload(
+      anime,
+      { cover: false, banner: false },
+      false,
+    );
+    assert.equal(episodeOnlyPayload.badgesExplicitlyEdited, false);
+    assert.equal("recentBadges" in episodeOnlyPayload, false);
+
+    // Backend NÃO sobrescreve quando badgesExplicitlyEdited === false
+    const dbDecisionWithoutEdit = resolveCatalogAnimeBadgesWrite({
+      recentBadges: episodeOnlyPayload.recentBadges,
+      badgesExplicitlyEdited: episodeOnlyPayload.badgesExplicitlyEdited,
+    });
+    assert.equal(dbDecisionWithoutEdit.shouldWriteBadges, false);
+
+    // Reconciliação no cliente preserva estado retornado pelo servidor (ou local se omitido)
+    assert.deepEqual(
+      resolveSavedRecentBadgesFromServer(
+        DEFAULT_ANIME_RECENT_BADGES,
+        currentBadges,
+        false,
+      ),
+      currentBadges,
+    );
+
+    // Quando o administrador altera explicitamente um selo, o envio e a gravação são autorizados
+    const updatedBadges: AnimeRecentBadges = {
+      lancamento: false,
+      novo: true,
+      final: true,
+    };
+    const explicitBadgePayload = buildAdminCatalogAnimeSavePayload(
+      { ...anime, recentBadges: updatedBadges },
+      { cover: false, banner: false },
+      true,
+    );
+    assert.equal(explicitBadgePayload.badgesExplicitlyEdited, true);
+    assert.deepEqual(explicitBadgePayload.recentBadges, updatedBadges);
+
+    const dbDecisionWithEdit = resolveCatalogAnimeBadgesWrite({
+      recentBadges: explicitBadgePayload.recentBadges,
+      badgesExplicitlyEdited: explicitBadgePayload.badgesExplicitlyEdited,
+    });
+    assert.equal(dbDecisionWithEdit.shouldWriteBadges, true);
+    assert.deepEqual(dbDecisionWithEdit.normalizedBadges, updatedBadges);
+    assert.equal(areAnimeRecentBadgesEqual(updatedBadges, normalizeAnimeRecentBadges(updatedBadges)), true);
+  });
+
+  it("9. Animes com menos de 50 episódios publicados (ex: 49) mantêm o comportamento atual", () => {
+    const rows49 = Array.from({ length: 49 }, (_, i) =>
+      makeServerEpisodeRow("anime-49", i + 1),
+    );
+    const recent = resolvePublicRecentEpisodes({ status: "success", episodes: rows49, total: rows49.length }, []);
+    // Comportamento atual de resolvePublicRecentEpisodes: mantém até 18 episódios recentes
+    assert.equal(recent.length, 18);
+    assert.equal(recent[0]?.episodeNumber, 49);
+    assert.equal(recent[17]?.episodeNumber, 32);
+  });
+
+  it("10, 11 & 12. Animes com 50+ episódios (50 e One Piece com 1000) exibem apenas Ep 1 e Final real mesmo fora de ordem, deduplicado e ignorando rascunhos", () => {
+    // Exatamente 50 episódios publicados
+    const rows50 = Array.from({ length: 50 }, (_, i) =>
+      makeServerEpisodeRow("anime-50-exact", i + 1),
+    );
+    const recent50 = resolvePublicRecentEpisodes({ status: "success", episodes: rows50, total: rows50.length }, []);
+    assert.equal(recent50.length, 2);
+    assert.deepEqual(
+      recent50.map((e) => e.episodeNumber).sort((a, b) => a - b),
+      [1, 50],
+    );
+
+    // One Piece com 1000 episódios publicados + 1001..1005 como rascunho/sem URL válida + ordem embaralhada no banco
+    const onePiecePublished = Array.from({ length: 1000 }, (_, i) => {
+      const epNum = 1000 - i; // inseridos em ordem inversa
+      return makeServerEpisodeRow("one-piece", epNum, {
+        animeTitle: "One Piece",
+        // Datas fora de ordem propositalmente para garantir que a seleção usa numeração real
+        publishedAt: new Date(1700000000000 + (epNum === 500 ? 9_999_999 : epNum * 1000)).toISOString(),
+      });
+    });
+    const onePieceDrafts = [
+      makeServerEpisodeRow("one-piece", 1001, { animeTitle: "One Piece", published: false }),
+      makeServerEpisodeRow("one-piece", 1002, { animeTitle: "One Piece", videoUrl: "" }),
+    ];
+    // Duplicata do slot 1 e slot 1000
+    const duplicates = [
+      makeServerEpisodeRow("one-piece", 1, { id: "one-piece-ep-1-dup", animeTitle: "One Piece" }),
+      makeServerEpisodeRow("one-piece", 1000, { id: "one-piece-ep-1000-dup", animeTitle: "One Piece" }),
+    ];
+
+    const allOnePieceRows = [...onePiecePublished, ...onePieceDrafts, ...duplicates];
+    const onePieceRecent = resolvePublicRecentEpisodes(
+      {
+        status: "success",
+        episodes: allOnePieceRows,
+        total: allOnePieceRows.length,
+      },
+      [],
+    );
+
+    assert.equal(onePieceRecent.length, 2, "One Piece com 1000 eps deve ocupar somente 2 cards");
+    assert.deepEqual(
+      onePieceRecent.map((e) => e.episodeNumber).sort((a, b) => a - b),
+      [1, 1000],
+      "Deve mostrar exatamente Episódio 1 e Episódio 1000 (ignorando rascunho 1001/1002 e intermediário 500)",
+    );
+
+    // Caso de anime com >= 50 entradas duplicadas no mesmo slot que resulta em < 50 únicos, ou 1 único episódio
+    const singleUniqueFromLocal = resolvePublicRecentEpisodes(null, [
+      createMockAnime({
+        id: "dup-single",
+        seasons: [
+          {
+            id: "s-1",
+            number: 1,
+            title: "Temporada 1",
+            episodes: Array.from({ length: 55 }, (_, i) => ({
+              id: `ep-dup-${i}`,
+              number: 1,
+              title: "Episódio 1",
+              videoUrl: "https://cdn.example.com/ep1.mp4",
+              published: true,
+            })),
+          },
+        ],
+      }),
+    ]);
+    assert.equal(singleUniqueFromLocal.length, 1);
+    assert.equal(singleUniqueFromLocal[0]?.episodeNumber, 1);
+  });
+
+  it("13. Suporta múltiplas temporadas (50+ somadas) e agrupa corretamente IDs distintos do mesmo anime", () => {
+    const t1Rows = Array.from({ length: 25 }, (_, i) =>
+      makeServerEpisodeRow("multi-season-anime", i + 1, {
+        id: `ms-s1-${i + 1}`,
+        seasonNumber: 1,
+        animeAnilistId: 77777,
+      }),
+    );
+    const t2Rows = Array.from({ length: 25 }, (_, i) =>
+      makeServerEpisodeRow("77777", i + 1, {
+        id: `ms-s2-${i + 1}`,
+        seasonNumber: 2,
+        animeAnilistId: 77777,
+      }),
+    );
+
+    const localMeta = createMockAnime({
+      id: "multi-season-anime",
+      serverCatalogId: "multi-season-anime",
+      anilistId: 77777,
+      recentBadges: { lancamento: false, novo: false, final: true },
+      seasons: [],
+    });
+
+    const combinedMulti = [...t1Rows, ...t2Rows];
+    const recentMulti = resolvePublicRecentEpisodes(
+      { status: "success", episodes: combinedMulti, total: combinedMulti.length },
+      [localMeta],
+    );
+
+    assert.equal(recentMulti.length, 2);
+    const sorted = [...recentMulti].sort(
+      (a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber,
+    );
+    assert.equal(sorted[0]?.seasonNumber, 1);
+    assert.equal(sorted[0]?.episodeNumber, 1);
+    assert.equal(sorted[1]?.seasonNumber, 2);
+    assert.equal(sorted[1]?.episodeNumber, 25);
+  });
+
+  it("14. /episodes, página de detalhes do anime e player continuam recebendo todos os 1000 episódios", () => {
+    const onePieceRows = Array.from({ length: 1000 }, (_, i) =>
+      makeServerEpisodeRow("one-piece-full", i + 1, { animeTitle: "One Piece" }),
+    );
+    const serverPayload: PublicEpisodesResult = {
+      status: "success",
+      episodes: onePieceRows,
+      total: onePieceRows.length,
+    };
+
+    // Catálogo completo (/episodes)
+    const allEpisodesCatalog = resolvePublicEpisodes(serverPayload, []);
+    assert.equal(allEpisodesCatalog.length, 1000);
+
+    // Página de detalhes (/anime/$id) e player (/watch/$id/$ep)
+    const resolvedSeasons = buildResolvedSeasons(
+      "one-piece-full",
+      {
+        animeId: "one-piece-full",
+        seasons: [{ animeId: "one-piece-full", number: 1, title: "Temporada 1", position: 1 }],
+        episodes: onePieceRows.map((r) => ({
+          id: r.id,
+          animeId: r.animeId,
+          seasonNumber: r.seasonNumber,
+          number: r.number,
+          title: r.title,
+          thumbnail: r.thumbnail,
+          duration: r.duration,
+          synopsis: r.synopsis,
+          videoUrl: r.videoUrl,
+          videoUrl2: null,
+          videoUrl3: null,
+          videoUrl4: null,
+          videoUrl5: null,
+          published: true,
+          publishedAt: r.publishedAt,
+        })),
+      },
+      [],
+    );
+    assert.equal(resolvedSeasons[0]?.episodes.length, 1000);
+
+    const ep542 = selectEpisodeForWatch(resolvedSeasons[0]!.episodes, "one-piece-full-ep-542", 542);
+    assert.equal(ep542?.number, 542);
+    assert.equal(ep542?.videoUrl, "https://cdn.example.com/one-piece-full-542.mp4");
+  });
+});
+
 
 
 

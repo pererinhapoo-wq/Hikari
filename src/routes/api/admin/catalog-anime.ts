@@ -6,7 +6,16 @@ import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 import { invalidateServerCatalogCaches } from "@/lib/api";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
-import { resolveCatalogAnimeMediaWrite } from "@/lib/types";
+import {
+  resolveCatalogAnimeBadgesWrite,
+  resolveCatalogAnimeMediaWrite,
+  type AnimeRecentBadges,
+} from "@/lib/types";
+import {
+  deleteAnimeRecentBadgesFromDb,
+  loadAnimeRecentBadgesFromDb,
+  saveAnimeRecentBadgesToDb,
+} from "@/lib/catalog-badges";
 
 const seasonItemSchema = z.object({
   number: z.number().int().min(1, "number da temporada deve ser >= 1"),
@@ -37,6 +46,15 @@ const animeAdminPostSchema = z.object({
   kitsuId: z.number().int().optional().nullable(),
   hidden: z.boolean().default(false).optional(),
   score: z.number().int().min(0).max(100).optional().nullable(),
+  recentBadges: z
+    .object({
+      lancamento: z.boolean(),
+      novo: z.boolean(),
+      final: z.boolean(),
+    })
+    .optional()
+    .nullable(),
+  badgesExplicitlyEdited: z.boolean().optional(),
   seasons: z.array(seasonItemSchema).optional().nullable(),
 });
 
@@ -297,6 +315,31 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             }
           }
 
+          const badgesWrite = resolveCatalogAnimeBadgesWrite({
+            recentBadges: data.recentBadges,
+            badgesExplicitlyEdited: data.badgesExplicitlyEdited,
+          });
+
+          let persistedBadges: AnimeRecentBadges | null = null;
+          if (badgesWrite.shouldWriteBadges) {
+            persistedBadges = await saveAnimeRecentBadgesToDb({
+              animeId: canonicalSavedId,
+              anilistId: savedRow?.anilistId ?? resolvedAnilistId,
+              malId: savedRow?.malId ?? resolvedMalId,
+              kitsuId: savedRow?.kitsuId ?? resolvedKitsuId,
+              badges: badgesWrite.normalizedBadges,
+              previousAliasId: data.id !== canonicalSavedId ? data.id : null,
+            });
+          } else {
+            persistedBadges = await loadAnimeRecentBadgesFromDb({
+              id: canonicalSavedId,
+              serverCatalogId: data.id,
+              anilistId: savedRow?.anilistId ?? resolvedAnilistId,
+              malId: savedRow?.malId ?? resolvedMalId,
+              kitsuId: savedRow?.kitsuId ?? resolvedKitsuId,
+            });
+          }
+
           invalidateCatalogEpisodesCache(canonicalSavedId);
           if (data.id !== canonicalSavedId) {
             invalidateCatalogEpisodesCache(data.id);
@@ -324,6 +367,7 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             animeId: canonicalSavedId,
             cover: savedRow?.cover ?? cleanCover,
             banner: savedRow?.banner ?? cleanBanner,
+            recentBadges: persistedBadges,
             updatedAt: updatedAtMs,
             adminId,
           });
@@ -423,6 +467,7 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             [animeId],
           );
 
+          await deleteAnimeRecentBadgesFromDb(animeId);
           invalidateCatalogEpisodesCache(animeId);
           invalidateServerCatalogCaches(animeId, result[0]);
 

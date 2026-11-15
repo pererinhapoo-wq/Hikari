@@ -1,5 +1,11 @@
 import type { OfficialAnimeSeason } from "@/lib/utils";
 
+export type AnimeRecentBadges = {
+  lancamento: boolean;
+  novo: boolean;
+  final: boolean;
+};
+
 export type Episode = {
   id: string;
   number: number;
@@ -14,6 +20,8 @@ export type Episode = {
   synopsis?: string;
   aired?: string;
   published?: boolean;
+  audio?: string;
+  audioVersion?: string;
 };
 
 export type Season = {
@@ -62,6 +70,7 @@ export type SlimAnime = {
   staff?: AnimeStaff[];
   catalogUpdatedAt?: number;
   serverCatalogId?: string;
+  recentBadges?: AnimeRecentBadges;
 };
 
 export type AnimeVoiceActor = {
@@ -163,6 +172,7 @@ export type LocalAnime = {
   characters?: AnimeCharacter[];
   staff?: AnimeStaff[];
   serverCatalogId?: string;
+  recentBadges?: AnimeRecentBadges;
 };
 
 export type HomeCatalog = {
@@ -262,6 +272,7 @@ export function localToAnime(local: LocalAnime): Anime {
     staff: local.staff ?? [],
     catalogUpdatedAt: local.updatedAt || undefined,
     serverCatalogId: local.serverCatalogId,
+    ...(local.recentBadges ? { recentBadges: normalizeAnimeRecentBadges(local.recentBadges) } : {}),
   };
 }
 
@@ -381,6 +392,50 @@ export function resolveCatalogAnimeMediaWrite(
     shouldWriteBanner,
     insertCover: shouldWriteCover ? input.cleanCover : null,
     insertBanner: shouldWriteBanner ? input.cleanBanner : null,
+  };
+}
+
+export const DEFAULT_ANIME_RECENT_BADGES: AnimeRecentBadges = {
+  lancamento: false,
+  novo: false,
+  final: false,
+};
+
+export function normalizeAnimeRecentBadges(
+  raw?: Partial<AnimeRecentBadges> | null,
+): AnimeRecentBadges {
+  return {
+    lancamento: Boolean(raw?.lancamento),
+    novo: Boolean(raw?.novo),
+    final: Boolean(raw?.final),
+  };
+}
+
+export function areAnimeRecentBadgesEqual(
+  a?: Partial<AnimeRecentBadges> | null,
+  b?: Partial<AnimeRecentBadges> | null,
+): boolean {
+  const na = normalizeAnimeRecentBadges(a);
+  const nb = normalizeAnimeRecentBadges(b);
+  return (
+    na.lancamento === nb.lancamento &&
+    na.novo === nb.novo &&
+    na.final === nb.final
+  );
+}
+
+export function resolveCatalogAnimeBadgesWrite(input: {
+  recentBadges?: Partial<AnimeRecentBadges> | null;
+  badgesExplicitlyEdited?: boolean;
+}): {
+  shouldWriteBadges: boolean;
+  normalizedBadges: AnimeRecentBadges;
+} {
+  const shouldWriteBadges =
+    input.badgesExplicitlyEdited === true && input.recentBadges != null;
+  return {
+    shouldWriteBadges,
+    normalizedBadges: normalizeAnimeRecentBadges(input.recentBadges),
   };
 }
 
@@ -518,5 +573,11 @@ export function animeToLocal(
       (Array.isArray(fullAnime.staff) && fullAnime.staff.length > 0
         ? fullAnime.staff
         : undefined),
+    recentBadges:
+      fullAnime.recentBadges !== undefined
+        ? normalizeAnimeRecentBadges(fullAnime.recentBadges)
+        : existing?.recentBadges
+          ? normalizeAnimeRecentBadges(existing.recentBadges)
+          : undefined,
   };
 }

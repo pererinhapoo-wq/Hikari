@@ -177,6 +177,7 @@ export function RecentEpisodesSection({
               priority={false}
               defer={idx !== 0}
               first={idx === 0}
+              showRecentBadges={true}
             />
           ))}
         </div>

@@ -3,8 +3,10 @@ import {
   isKitsuImageUrl,
   isRemoteDefaultCdn,
   localToAnime,
+  normalizeAnimeRecentBadges,
   normalizeImageUrl,
   type Anime,
+  type AnimeRecentBadges,
   type Episode,
   type LocalAnime,
   type ResolvedMobileBannerInfo,
@@ -467,19 +469,23 @@ export interface CatalogAnimeSavePayload {
   anilistId?: number;
   malId?: number;
   kitsuId?: number;
+  recentBadges?: AnimeRecentBadges;
+  badgesExplicitlyEdited: boolean;
   seasons: Array<{ id: string; number: number; title: string }>;
 }
 
 /**
  * Monta o payload de metadados enviado a `/api/admin/catalog-anime`, omitindo
- * estritamente `cover` e `banner` quando não houve alteração manual explícita pelo admin.
+ * estritamente `cover`, `banner` e `recentBadges` quando não houve alteração manual explícita pelo admin.
  */
 export function buildAdminCatalogAnimeSavePayload(
   effectiveAnime: LocalAnime,
   dirtyMedia: { cover: boolean; banner: boolean },
+  dirtyBadges = false,
 ): CatalogAnimeSavePayload {
   const shouldSendCover = Boolean(dirtyMedia.cover);
   const shouldSendBanner = Boolean(dirtyMedia.banner);
+  const shouldSendBadges = Boolean(dirtyBadges);
 
   return {
     id: effectiveAnime.id,
@@ -503,12 +509,34 @@ export function buildAdminCatalogAnimeSavePayload(
     anilistId: effectiveAnime.anilistId,
     malId: effectiveAnime.malId,
     kitsuId: effectiveAnime.kitsuId,
+    ...(shouldSendBadges
+      ? { recentBadges: normalizeAnimeRecentBadges(effectiveAnime.recentBadges) }
+      : {}),
+    badgesExplicitlyEdited: shouldSendBadges,
     seasons: effectiveAnime.seasons.map((s) => ({
       id: s.id,
       number: s.number,
       title: s.title,
     })),
   };
+}
+
+export function resolveSavedRecentBadgesFromServer(
+  localBadges: AnimeRecentBadges | undefined,
+  serverBadges: Partial<AnimeRecentBadges> | null | undefined,
+  wasExplicitlySent: boolean,
+): AnimeRecentBadges | undefined {
+  if (wasExplicitlySent) {
+    return serverBadges
+      ? normalizeAnimeRecentBadges(serverBadges)
+      : localBadges
+        ? normalizeAnimeRecentBadges(localBadges)
+        : undefined;
+  }
+  if (serverBadges) {
+    return normalizeAnimeRecentBadges(serverBadges);
+  }
+  return localBadges ? normalizeAnimeRecentBadges(localBadges) : undefined;
 }
 
 export function resolveSavedMediaFromServer(
@@ -612,6 +640,21 @@ export function resolveAdminAnimeWithRemote(
     year: storedMatch.year ?? remote.year,
     trailerId: storedMatch.trailerId ?? remote.trailerId,
     seasons: mergedSeasons.length > 0 ? mergedSeasons : storedMatch.seasons,
+    recentBadges: (() => {
+      const hasUnsyncedLocal =
+        (storedMatch.syncedAt ?? 0) > 0 &&
+        (storedMatch.updatedAt ?? 0) > (storedMatch.syncedAt ?? 0);
+      if (hasUnsyncedLocal && storedMatch.recentBadges) {
+        return normalizeAnimeRecentBadges(storedMatch.recentBadges);
+      }
+      if (remote.recentBadges) {
+        return normalizeAnimeRecentBadges(remote.recentBadges);
+      }
+      if (storedMatch.recentBadges) {
+        return normalizeAnimeRecentBadges(storedMatch.recentBadges);
+      }
+      return undefined;
+    })(),
     updatedAt:
       remoteIsNewer && remote.catalogUpdatedAt
         ? remote.catalogUpdatedAt

@@ -211,6 +211,7 @@ function AllEpisodesPage() {
               <EpisodeCard
                 key={`${episode.animeId}-${episode.episodeId}`}
                 episode={episode}
+                showRecentBadges={false}
               />
             ))}
           </div>

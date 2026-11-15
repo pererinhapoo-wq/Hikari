@@ -1,4 +1,9 @@
-import type { Episode, LocalAnime } from "@/lib/types";
+import {
+  normalizeAnimeRecentBadges,
+  type AnimeRecentBadges,
+  type Episode,
+  type LocalAnime,
+} from "@/lib/types";
 import { getBearerToken } from "@/lib/auth/client";
 import { readOutbox, type OutboxOperation } from "@/lib/episode-writer";
 import {
@@ -6,9 +11,9 @@ import {
   isEpisodeTombstoned,
   type TombstoneRecord,
 } from "@/lib/catalog-storage";
-import type { PublicEpisodesResult } from "@/lib/catalog-episodes";
+import type { PublicEpisodeRow, PublicEpisodesResult } from "@/lib/catalog-episodes";
 
-export type PublishedEpisodeBadge = "LANÇAMENTO" | "FINAL" | null;
+export type PublishedEpisodeBadge = "LANÇAMENTO" | "NOVO" | "FINAL" | null;
 
 export type PublishedEpisode = {
   animeId: string;
@@ -27,7 +32,76 @@ export type PublishedEpisode = {
   videoUrl?: string;
   publishedAt: number;
   badge?: PublishedEpisodeBadge;
+  recentBadges?: AnimeRecentBadges;
+  audio?: string;
+  audioVersion?: string;
 };
+
+export function resolvePrimaryBadgeFromRecentBadges(
+  badges?: Partial<AnimeRecentBadges> | null,
+): PublishedEpisodeBadge {
+  if (!badges) return null;
+  if (badges.final) return "FINAL";
+  if (badges.lancamento) return "LANÇAMENTO";
+  if (badges.novo) return "NOVO";
+  return null;
+}
+
+const EXPLICIT_SUB_AUDIO_REGEX =
+  /(?:^|[^a-z0-9])(sub|subbed|legendado|legendada|leg|original|jp|jpn|japanese|japon[eê]s|audio\s*original|áudio\s*original)(?:$|[^a-z0-9])/i;
+const EXPLICIT_DUB_AUDIO_REGEX =
+  /(?:^|[^a-z0-9])(dub|dubbed|dublado|dublada|dublagem|pt-br\s*dub|dub\s*pt-br|pt-br|portugu[eê]s)(?:$|[^a-z0-9])/i;
+const EPISODE_SUB_TEXT_REGEX =
+  /(?:^|[^a-z0-9])(leg|legendado|legendada|sub|subbed|english\s*sub|pt-br\s*leg|áudio\s*original|audio\s*original|japon[eê]s)(?:$|[^a-z0-9])/i;
+const EPISODE_DUB_TEXT_REGEX =
+  /(?:^|[^a-z0-9])(dub|dubbed|dublado|dublada|dublagem|pt-br\s*dub|dub\s*pt-br|áudio\s*pt-br|audio\s*pt-br)(?:$|[^a-z0-9])/i;
+
+/**
+ * Classifica se o episódio efetivamente exibido é dublado sem confundir
+ * animes dublados com episódios legendados (ou vice-versa).
+ * Prioridade: campos explícitos de áudio -> título do episódio -> título da temporada -> títulos do anime.
+ */
+export function isPublishedEpisodeDubbed(
+  episode: Pick<
+    PublishedEpisode,
+    "episodeTitle" | "seasonTitle" | "animeTitle" | "animeAltTitles" | "audio" | "audioVersion"
+  >,
+): boolean {
+  const audioText = [episode.audio, episode.audioVersion]
+    .filter((v): v is string => typeof v === "string" && Boolean(v.trim()))
+    .join(" ");
+
+  if (audioText) {
+    if (EXPLICIT_SUB_AUDIO_REGEX.test(audioText)) return false;
+    if (EXPLICIT_DUB_AUDIO_REGEX.test(audioText)) return true;
+  }
+
+  const epTitle = episode.episodeTitle?.trim() || "";
+  if (epTitle) {
+    if (EPISODE_SUB_TEXT_REGEX.test(epTitle)) return false;
+    if (EPISODE_DUB_TEXT_REGEX.test(epTitle)) return true;
+  }
+
+  const seasonTitle = episode.seasonTitle?.trim() || "";
+  if (seasonTitle) {
+    if (EPISODE_SUB_TEXT_REGEX.test(seasonTitle)) return false;
+    if (EPISODE_DUB_TEXT_REGEX.test(seasonTitle)) return true;
+  }
+
+  const animeTitlesText = [
+    episode.animeTitle,
+    ...(episode.animeAltTitles || []),
+  ]
+    .filter((v): v is string => typeof v === "string" && Boolean(v.trim()))
+    .join(" ");
+
+  if (animeTitlesText) {
+    if (EPISODE_SUB_TEXT_REGEX.test(animeTitlesText)) return false;
+    if (EPISODE_DUB_TEXT_REGEX.test(animeTitlesText)) return true;
+  }
+
+  return false;
+}
 
 /**
  * Resolve o melhor nome legível para um anime, evitando "Sem título" ou valores vazios.
@@ -689,8 +763,10 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
     const altTitles = resolveAnimeAltTitles(anime, animeTitle);
     const baseTime = anime.updatedAt || anime.createdAt || 0;
     const createTime = anime.createdAt || baseTime;
+    const recentBadges = normalizeAnimeRecentBadges(anime.recentBadges);
+    const primaryBadge = resolvePrimaryBadgeFromRecentBadges(recentBadges);
 
-    // Coleta todos os episódios publicados deste anime
+    // Coleta todos os episódios publicados e válidos deste anime (deduplicados por slot)
     const publishedList: {
       season: LocalAnime["seasons"][number];
       ep: LocalAnime["seasons"][number]["episodes"][number];
@@ -699,6 +775,7 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
       validVideo: string;
       resolvedThumb?: string;
     }[] = [];
+    const seenSlots = new Set<string>();
 
     for (const season of anime.seasons || []) {
       for (const ep of season.episodes || []) {
@@ -714,12 +791,17 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
 
         if (!validVideo) continue;
 
+        const sNum = season.number || 1;
+        const slotKey = `${sNum}:${ep.number}`;
+        if (seenSlots.has(slotKey)) continue;
+        seenSlots.add(slotKey);
+
         const resolvedThumb = resolveEpisodeThumbnailUrl(ep);
 
         publishedList.push({
           season,
           ep,
-          seasonNumber: season.number,
+          seasonNumber: sNum,
           episodeNumber: ep.number,
           validVideo,
           resolvedThumb,
@@ -729,99 +811,95 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
 
     if (publishedList.length === 0) continue;
 
-    // Ordena do primeiro ao último cronológico
+    // Ordena pela numeração real (seasonNumber, episodeNumber), nunca pela ordem de inserção
     publishedList.sort(
       (a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber,
     );
 
-    // 1. Identifica o Episódio 1 do anime (Temporada 1, Episódio 1)
-    const firstEpItem = publishedList.find(
-      (item) => item.seasonNumber === 1 && item.episodeNumber === 1,
-    );
+    const buildItem = (
+      item: (typeof publishedList)[number],
+      publishedAt: number,
+    ): PublishedEpisode => ({
+      animeId: anime.id,
+      animeTitle,
+      animeAltTitles: altTitles,
+      animeCover: anime.cover,
+      animeBanner: anime.banner || anime.cover,
+      seasonId: item.season.id,
+      seasonNumber: item.seasonNumber,
+      seasonTitle: item.season.title || `Temporada ${item.seasonNumber}`,
+      episodeId: item.ep.id,
+      episodeNumber: item.episodeNumber,
+      episodeTitle: item.ep.title || `Episódio ${item.episodeNumber}`,
+      thumbnail: item.resolvedThumb,
+      duration: item.ep.duration?.trim() || undefined,
+      videoUrl: item.validVideo,
+      publishedAt,
+      badge: primaryBadge,
+      recentBadges,
+      ...(item.ep.audio ? { audio: item.ep.audio } : {}),
+      ...(item.ep.audioVersion ? { audioVersion: item.ep.audioVersion } : {}),
+    });
 
-    // 2. Identifica o último episódio publicado deste anime
-    const latestEpItem = publishedList[publishedList.length - 1];
+    if (publishedList.length >= 50) {
+      // Regra obrigatória (>= 50 episódios publicados): apenas Episódio 1 e Episódio final publicado
+      const firstEpItem =
+        publishedList.find((item) => item.seasonNumber === 1 && item.episodeNumber === 1) ??
+        publishedList.find((item) => item.episodeNumber === 1) ??
+        publishedList[0];
+      const latestEpItem = publishedList[publishedList.length - 1];
 
-    // Se só tem 1 episódio publicado no total e for o Episódio 1:
-    if (publishedList.length === 1 && firstEpItem) {
-      result.push({
-        animeId: anime.id,
-        animeTitle,
-        animeAltTitles: altTitles,
-        animeCover: anime.cover,
-        animeBanner: anime.banner || anime.cover,
-        seasonId: firstEpItem.season.id,
-        seasonNumber: firstEpItem.seasonNumber,
-        seasonTitle: firstEpItem.season.title || `Temporada ${firstEpItem.seasonNumber}`,
-        episodeId: firstEpItem.ep.id,
-        episodeNumber: firstEpItem.episodeNumber,
-        episodeTitle: firstEpItem.ep.title || `Episódio ${firstEpItem.episodeNumber}`,
-        thumbnail: firstEpItem.resolvedThumb,
-        duration: firstEpItem.ep.duration?.trim() || undefined,
-        videoUrl: firstEpItem.validVideo,
-        publishedAt: createTime + 1000 + 1,
-        badge: "LANÇAMENTO",
-      });
+      result.push(
+        buildItem(
+          firstEpItem,
+          createTime + firstEpItem.seasonNumber * 1000 + firstEpItem.episodeNumber,
+        ),
+      );
+
+      if (
+        latestEpItem &&
+        latestEpItem.ep.id !== firstEpItem.ep.id &&
+        !(
+          latestEpItem.seasonNumber === firstEpItem.seasonNumber &&
+          latestEpItem.episodeNumber === firstEpItem.episodeNumber
+        )
+      ) {
+        result.push(
+          buildItem(
+            latestEpItem,
+            baseTime + latestEpItem.seasonNumber * 1000 + latestEpItem.episodeNumber,
+          ),
+        );
+      }
       continue;
     }
 
-    // Se houver múltiplos episódios:
-    // Regra 1: O anime deve aparecer em "LANÇAMENTO" apenas uma vez, associado ao episódio 1
-    if (firstEpItem) {
-      result.push({
-        animeId: anime.id,
-        animeTitle,
-        animeAltTitles: altTitles,
-        animeCover: anime.cover,
-        animeBanner: anime.banner || anime.cover,
-        seasonId: firstEpItem.season.id,
-        seasonNumber: firstEpItem.seasonNumber,
-        seasonTitle: firstEpItem.season.title || `Temporada ${firstEpItem.seasonNumber}`,
-        episodeId: firstEpItem.ep.id,
-        episodeNumber: firstEpItem.episodeNumber,
-        episodeTitle: firstEpItem.ep.title || `Episódio ${firstEpItem.episodeNumber}`,
-        thumbnail: firstEpItem.resolvedThumb,
-        duration: firstEpItem.ep.duration?.trim() || undefined,
-        videoUrl: firstEpItem.validVideo,
-        publishedAt: createTime + 1000 + 1,
-        badge: "LANÇAMENTO",
-      });
+    // < 50 episódios publicados: mantém o comportamento atual sem auto-ativar selos
+    const firstEpItem = publishedList.find(
+      (item) => item.seasonNumber === 1 && item.episodeNumber === 1,
+    );
+    const latestEpItem = publishedList[publishedList.length - 1];
+
+    if (publishedList.length === 1 && firstEpItem) {
+      result.push(buildItem(firstEpItem, createTime + 1000 + 1));
+      continue;
     }
 
-    // Regras 2, 3 e 4: Adiciona o último episódio publicado (se for diferente do Episódio 1)
+    if (firstEpItem) {
+      result.push(buildItem(firstEpItem, createTime + 1000 + 1));
+    }
+
     if (
       latestEpItem &&
       (!firstEpItem || latestEpItem.ep.id !== firstEpItem.ep.id)
     ) {
-      const isFinal = isConfirmedFinalEpisode(
-        anime,
-        latestEpItem.seasonNumber,
-        latestEpItem.episodeNumber,
-        latestEpItem.ep.title,
+      result.push(
+        buildItem(
+          latestEpItem,
+          baseTime + latestEpItem.seasonNumber * 1000 + latestEpItem.episodeNumber,
+        ),
       );
-
-      result.push({
-        animeId: anime.id,
-        animeTitle,
-        animeAltTitles: altTitles,
-        animeCover: anime.cover,
-        animeBanner: anime.banner || anime.cover,
-        seasonId: latestEpItem.season.id,
-        seasonNumber: latestEpItem.seasonNumber,
-        seasonTitle: latestEpItem.season.title || `Temporada ${latestEpItem.seasonNumber}`,
-        episodeId: latestEpItem.ep.id,
-        episodeNumber: latestEpItem.episodeNumber,
-        episodeTitle: latestEpItem.ep.title || `Episódio ${latestEpItem.episodeNumber}`,
-        thumbnail: latestEpItem.resolvedThumb,
-        duration: latestEpItem.ep.duration?.trim() || undefined,
-        videoUrl: latestEpItem.validVideo,
-        publishedAt: baseTime + latestEpItem.seasonNumber * 1000 + latestEpItem.episodeNumber,
-        badge: isFinal ? "FINAL" : null,
-      });
     }
-
-    // Note: os episódios intermediários (do episódio 2 ao N-1) NÃO são incluídos na seção,
-    // garantindo que cadastros em massa de dezenas ou centenas de episódios não monopolizem a vitrine.
   }
 
   // Ordena do mais recente para o mais antigo
@@ -842,36 +920,8 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
     const animeTitle = resolveAnimeCanonicalTitle(anime);
     const altTitles = resolveAnimeAltTitles(anime, animeTitle);
     const baseTime = anime.updatedAt || anime.createdAt || 0;
-
-    // Coleta episódios publicados para checar encerramento e primeiro episódio
-    const publishedList: {
-      seasonNumber: number;
-      episodeNumber: number;
-      epId: string;
-      title?: string;
-    }[] = [];
-
-    for (const season of anime.seasons || []) {
-      for (const ep of season.episodes || []) {
-        if (!isEpisodePublished(ep)) continue;
-        publishedList.push({
-          seasonNumber: season.number,
-          episodeNumber: ep.number,
-          epId: ep.id,
-          title: ep.title,
-        });
-      }
-    }
-
-    publishedList.sort(
-      (a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber,
-    );
-
-    const firstEpId = publishedList.find(
-      (p) => p.seasonNumber === 1 && p.episodeNumber === 1,
-    )?.epId;
-
-    const latestEp = publishedList[publishedList.length - 1];
+    const recentBadges = normalizeAnimeRecentBadges(anime.recentBadges);
+    const primaryBadge = resolvePrimaryBadgeFromRecentBadges(recentBadges);
 
     for (const season of anime.seasons || []) {
       for (const ep of season.episodes || []) {
@@ -890,20 +940,8 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
         ].find(isHikariPlayableUrl);
 
         // O peso de ordenação prioriza a atualização do anime + temporada + número
-        const epTime = baseTime + (season.number * 1000) + ep.number;
-
+        const epTime = baseTime + season.number * 1000 + ep.number;
         const resolvedThumb = resolveEpisodeThumbnailUrl(ep);
-
-        let badge: PublishedEpisodeBadge = null;
-        if (ep.id === firstEpId) {
-          badge = "LANÇAMENTO";
-        } else if (
-          latestEp &&
-          ep.id === latestEp.epId &&
-          isConfirmedFinalEpisode(anime, latestEp.seasonNumber, latestEp.episodeNumber, latestEp.title)
-        ) {
-          badge = "FINAL";
-        }
 
         list.push({
           animeId: anime.id,
@@ -921,7 +959,10 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
           duration: ep.duration ? ep.duration.trim() : undefined,
           videoUrl: validVideo || ep.videoUrl,
           publishedAt: epTime,
-          badge,
+          badge: primaryBadge,
+          recentBadges,
+          ...(ep.audio ? { audio: ep.audio } : {}),
+          ...(ep.audioVersion ? { audioVersion: ep.audioVersion } : {}),
         });
       }
     }
@@ -1115,9 +1156,11 @@ export function resolvePublicEpisodes(
       row.duration?.trim() ||
       undefined;
 
+    const localSeason = localAnime?.seasons?.find((s) => s.number === sNum);
+    const localEp = localSeason?.episodes?.find((e) => e.number === epNum);
     const seasonTitle =
       row.seasonTitle?.trim() ||
-      localAnime?.seasons?.find((s) => s.number === sNum)?.title ||
+      localSeason?.title ||
       `Temporada ${sNum}`;
 
     const rawPublishedMs = row.publishedAt ? new Date(row.publishedAt).getTime() : NaN;
@@ -1127,6 +1170,20 @@ export function resolvePublicEpisodes(
       : Number.isFinite(rawCreatedMs)
         ? rawCreatedMs
         : Date.now();
+
+    const hasUnsyncedLocalBadgeEdit = Boolean(
+      localAnime &&
+        localAnime.recentBadges &&
+        (localAnime.updatedAt ?? 0) > (localAnime.syncedAt ?? 0),
+    );
+
+    const resolvedBadges = normalizeAnimeRecentBadges(
+      hasUnsyncedLocalBadgeEdit
+        ? localAnime?.recentBadges
+        : row.animeRecentBadges !== undefined
+          ? row.animeRecentBadges ?? undefined
+          : localAnime?.recentBadges,
+    );
 
     result.push({
       animeId: row.animeId,
@@ -1144,7 +1201,10 @@ export function resolvePublicEpisodes(
       duration,
       videoUrl: validVideo,
       publishedAt,
-      badge: null,
+      badge: resolvePrimaryBadgeFromRecentBadges(resolvedBadges),
+      recentBadges: resolvedBadges,
+      ...(localEp?.audio ? { audio: localEp.audio } : {}),
+      ...(localEp?.audioVersion ? { audioVersion: localEp.audioVersion } : {}),
     });
 
     processedSlots.add(slotKey);
@@ -1159,15 +1219,29 @@ export function resolvePublicEpisodes(
     const altTitles = resolveAnimeAltTitles(anime, animeTitle);
     const baseTime = anime.updatedAt || anime.createdAt || 0;
     const applicableTombstones = tombstones.filter((t) => t.animeId === anime.id);
+    const recentBadges = normalizeAnimeRecentBadges(anime.recentBadges);
+    const primaryBadge = resolvePrimaryBadgeFromRecentBadges(recentBadges);
 
     for (const season of anime.seasons || []) {
       for (const ep of season.episodes || []) {
         if (!isEpisodePublished(ep)) continue;
 
         const slotKey = `${anime.id}:${season.number}:${ep.number}`;
+        const serverAliasSlotKey = anime.serverCatalogId
+          ? `${anime.serverCatalogId}:${season.number}:${ep.number}`
+          : null;
+        const anilistAliasSlotKey =
+          anime.anilistId !== undefined
+            ? `${anime.anilistId}:${season.number}:${ep.number}`
+            : null;
 
-        // Se já foi processado a partir do PostgreSQL, não duplica
-        if (processedSlots.has(slotKey) || processedIds.has(ep.id)) {
+        // Se já foi processado a partir do PostgreSQL (por id, serverCatalogId ou anilistId), não duplica
+        if (
+          processedSlots.has(slotKey) ||
+          (serverAliasSlotKey && processedSlots.has(serverAliasSlotKey)) ||
+          (anilistAliasSlotKey && processedSlots.has(anilistAliasSlotKey)) ||
+          processedIds.has(ep.id)
+        ) {
           continue;
         }
 
@@ -1225,7 +1299,10 @@ export function resolvePublicEpisodes(
           duration: ep.duration?.trim() || undefined,
           videoUrl: validVideo,
           publishedAt: epTime,
-          badge: null,
+          badge: primaryBadge,
+          recentBadges,
+          ...(ep.audio ? { audio: ep.audio } : {}),
+          ...(ep.audioVersion ? { audioVersion: ep.audioVersion } : {}),
         });
 
         processedSlots.add(slotKey);
@@ -1234,110 +1311,132 @@ export function resolvePublicEpisodes(
     }
   }
 
-  // 3. Atribui badges (LANÇAMENTO para S1 E1; FINAL para encerramento confirmado) por anime
-  const epsByAnime = new Map<string, PublishedEpisode[]>();
-  for (const ep of result) {
-    const list = epsByAnime.get(ep.animeId) ?? [];
-    list.push(ep);
-    epsByAnime.set(ep.animeId, list);
-  }
-
-  for (const [animeId, animeEps] of Array.from(epsByAnime.entries())) {
-    animeEps.sort(
-      (a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber,
-    );
-
-    const firstEp = animeEps.find(
-      (e) => e.seasonNumber === 1 && e.episodeNumber === 1,
-    );
-    if (firstEp) {
-      firstEp.badge = "LANÇAMENTO";
-    }
-
-    const latestEp = animeEps[animeEps.length - 1];
-    const localAnime = safeLocals.find((a) => a.id === animeId);
-    const remoteRow = remoteRows.find((r) => r.animeId === animeId);
-
-    const isFinished =
-      (localAnime && isAnimeConfirmedFinished(localAnime)) ||
-      (remoteRow?.animeStatus &&
-        ["FINISHED", "ENCERRADO", "CONCLUÍDO", "CONCLUIDO"].includes(
-          remoteRow.animeStatus.trim().toUpperCase(),
-        ));
-
-    if (latestEp && isFinished && (!firstEp || latestEp.episodeId !== firstEp.episodeId)) {
-      const episodesCount =
-        localAnime?.episodesCount ?? remoteRow?.animeEpisodesCount ?? null;
-
-      let isFinal = false;
-      if (typeof episodesCount === "number" && episodesCount > 0) {
-        isFinal = latestEp.episodeNumber >= episodesCount;
-      } else if (latestEp.episodeTitle) {
-        isFinal = /\b(fim|final|o fim|the end|conclusão|conclusao|último episódio|ultimo episodio)\b/i.test(
-          latestEp.episodeTitle,
-        );
-      }
-
-      if (isFinal) {
-        latestEp.badge = "FINAL";
-      }
-    }
-  }
-
-  // 4. Ordena do mais recente para o mais antigo
+  // 3. Ordena do mais recente para o mais antigo (sem auto-inferir LANÇAMENTO/NOVO/FINAL)
   return result.sort((a, b) => b.publishedAt - a.publishedAt);
 }
 
+function resolveCanonicalRecentAnimeGroupKey(
+  ep: Pick<PublishedEpisode, "animeId" | "animeTitle">,
+  localAnimes: LocalAnime[],
+  remoteRows: PublicEpisodeRow[],
+): string {
+  const isDubbedTitle = (text?: string | null) =>
+    Boolean(text && /\b(dub|dublado|dublada)\b/i.test(text));
+  const epIsDubbed = isDubbedTitle(ep.animeTitle);
+
+  const directLocal = localAnimes.find(
+    (a) => a.id === ep.animeId || a.serverCatalogId === ep.animeId,
+  );
+  if (directLocal) {
+    return directLocal.serverCatalogId || directLocal.id;
+  }
+
+  const anilistLocal = localAnimes.find((a) => {
+    if (a.anilistId === undefined || String(a.anilistId) !== ep.animeId) {
+      return false;
+    }
+    const localTitle = `${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`;
+    return isDubbedTitle(localTitle) === epIsDubbed;
+  });
+  if (anilistLocal) {
+    return anilistLocal.serverCatalogId || anilistLocal.id;
+  }
+
+  const matchingRemote = remoteRows.find((r) => r.animeId === ep.animeId);
+  if (matchingRemote?.animeAnilistId) {
+    const canonicalRemote = remoteRows.find(
+      (r) =>
+        r.animeAnilistId === matchingRemote.animeAnilistId &&
+        !/^\d+$/.test(r.animeId) &&
+        isDubbedTitle(r.animeTitle) === epIsDubbed,
+    );
+    if (canonicalRemote) {
+      return canonicalRemote.animeId;
+    }
+    return `anilist:${matchingRemote.animeAnilistId}:${epIsDubbed ? "dub" : "sub"}`;
+  }
+
+  return ep.animeId;
+}
+
 /**
- * Retorna os episódios selecionados para a vitrine da Home ("Novos Episódios"),
- * respeitando as 5 regras de negócio para vitrines:
- * 1. LANÇAMENTO para o Episódio 1 (apenas uma vez por anime).
- * 2. Destaca o episódio mais recente publicado de cada anime.
- * 3. Selo FINAL somente quando o anime estiver confirmado como concluído.
- * 4. Evita que cadastros em massa de dezenas/centenas de episódios monopolizem a Home,
- *    omitindo episódios intermediários na Home (todos continuam disponíveis em /episodes).
- * 5. Limita a 18 episódios no total para manter a performance da vitrine.
+ * Retorna os episódios selecionados para a seção "Episódios Recentes":
+ * - Animes com < 50 episódios publicados: mantém o comportamento atual.
+ * - Animes com >= 50 episódios publicados: exibe apenas 2 registros (Episódio 1 e Episódio final publicado),
+ *   identificados pela numeração real (seasonNumber, episodeNumber), omitindo intermediários.
+ * - Selos manuais (LANÇAMENTO, NOVO, FINAL) nunca são inferidos automaticamente.
  */
 export function resolvePublicRecentEpisodes(
   serverResult?: PublicEpisodesResult | null,
   localAnimes?: LocalAnime[],
   options?: { outbox?: OutboxOperation[]; tombstones?: TombstoneRecord[] },
 ): PublishedEpisode[] {
-  const all = resolvePublicEpisodes(serverResult, localAnimes, options);
+  const safeLocals = Array.isArray(localAnimes) ? localAnimes : [];
+  const remoteRows = Array.isArray(serverResult?.episodes)
+    ? serverResult.episodes
+    : [];
+
+  const all = resolvePublicEpisodes(serverResult, safeLocals, options);
   if (all.length === 0) return [];
 
   const epsByAnime = new Map<string, PublishedEpisode[]>();
   for (const ep of all) {
-    const list = epsByAnime.get(ep.animeId) ?? [];
+    const groupKey = resolveCanonicalRecentAnimeGroupKey(
+      ep,
+      safeLocals,
+      remoteRows,
+    );
+    const list = epsByAnime.get(groupKey) ?? [];
     list.push(ep);
-    epsByAnime.set(ep.animeId, list);
+    epsByAnime.set(groupKey, list);
   }
 
   const selected: PublishedEpisode[] = [];
 
   for (const [, animeEps] of Array.from(epsByAnime.entries())) {
-    // Ordena do menor ao maior slot para identificar primeiro e último
-    animeEps.sort(
-      (a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber,
+    // Deduplica por slot real (seasonNumber, episodeNumber) mantendo a entrada prioritária
+    const dedupedBySlot = new Map<string, PublishedEpisode>();
+    for (const ep of animeEps) {
+      const sNum = ep.seasonNumber || 1;
+      const slotKey = `${sNum}:${ep.episodeNumber}`;
+      if (!dedupedBySlot.has(slotKey)) {
+        dedupedBySlot.set(slotKey, ep);
+      }
+    }
+
+    const uniqueEps = Array.from(dedupedBySlot.values()).sort(
+      (a, b) =>
+        (a.seasonNumber || 1) - (b.seasonNumber || 1) ||
+        a.episodeNumber - b.episodeNumber,
     );
 
-    const firstEp = animeEps.find(
-      (e) => e.seasonNumber === 1 && e.episodeNumber === 1,
-    );
-    const latestEp = animeEps[animeEps.length - 1];
+    if (uniqueEps.length === 0) continue;
 
-    if (animeEps.length === 1 && firstEp) {
+    if (uniqueEps.length >= 50) {
+      // Regra obrigatória (>= 50 episódios publicados): apenas Episódio 1 e Episódio final publicado
+      const firstEp =
+        uniqueEps.find((e) => e.seasonNumber === 1 && e.episodeNumber === 1) ??
+        uniqueEps.find((e) => e.episodeNumber === 1) ??
+        uniqueEps[0];
+      const finalEp = uniqueEps[uniqueEps.length - 1];
+
       selected.push(firstEp);
+
+      if (
+        finalEp &&
+        finalEp.episodeId !== firstEp.episodeId &&
+        !(
+          (finalEp.seasonNumber || 1) === (firstEp.seasonNumber || 1) &&
+          finalEp.episodeNumber === firstEp.episodeNumber
+        )
+      ) {
+        selected.push(finalEp);
+      }
       continue;
     }
 
-    if (firstEp) {
-      selected.push(firstEp);
-    }
-
-    if (latestEp && (!firstEp || latestEp.episodeId !== firstEp.episodeId)) {
-      selected.push(latestEp);
-    }
+    // Animes com < 50 episódios publicados: mantém o comportamento atual
+    selected.push(...uniqueEps);
   }
 
   // Ordena do mais recente para o mais antigo e limita aos 18 da vitrine

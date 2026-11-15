@@ -1,6 +1,7 @@
 import { getSql } from "@/lib/db";
 import { isCustomImageUrl, type Anime, type HomeCatalog, type Season, type SlimAnime } from "@/lib/types";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
+import { loadAnimeRecentBadgesFromDb } from "@/lib/catalog-badges";
 
 export interface DbCatalogAnimeRow {
   id: string;
@@ -371,6 +372,13 @@ async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | null> {
 
     const seasons = Array.from(seasonMap.values()).sort((a, b) => a.number - b.number);
     const updatedAtMs = toTimestampMs(row.updatedAt);
+    const recentBadges = await loadAnimeRecentBadgesFromDb({
+      id: row.id,
+      anilistId: row.anilistId,
+      malId: row.malId,
+      kitsuId: row.kitsuId,
+      allowExternalFallback: false,
+    });
 
     return {
       id: row.id,
@@ -402,6 +410,7 @@ async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | null> {
       staff: [],
       catalogUpdatedAt: updatedAtMs || undefined,
       serverCatalogId: row.id,
+      ...(recentBadges ? { recentBadges } : {}),
     };
   } catch (err) {
     console.warn("[catalog-server-overlay] Falha ao montar anime local do banco:", err);
@@ -418,13 +427,18 @@ export async function applyDbCatalogOverlayToDetail(
   }
 
   const index = await loadCatalogIndex();
-  if (!index) {
-    return detail;
-  }
+  const match = index ? findMatchingRow(index, detail, requestedId) : undefined;
+  const recentBadges = await loadAnimeRecentBadgesFromDb({
+    id: match?.id ?? detail.id,
+    serverCatalogId: match?.id ?? detail.serverCatalogId ?? requestedId,
+    anilistId: match?.anilistId ?? detail.anilistId ?? null,
+    malId: match?.malId ?? detail.malId ?? null,
+    kitsuId: match?.kitsuId ?? detail.kitsuId ?? null,
+    allowExternalFallback: !match,
+  });
 
-  const match = findMatchingRow(index, detail, requestedId);
   if (!match) {
-    return detail;
+    return recentBadges ? { ...detail, recentBadges } : detail;
   }
 
   const mergedSlim = mergeRowIntoSlim(detail, match);
@@ -436,6 +450,7 @@ export async function applyDbCatalogOverlayToDetail(
   return {
     ...detail,
     ...mergedSlim,
+    ...(recentBadges ? { recentBadges } : {}),
     resolvedMobileBanner: bannerWasCustomized
       ? {
           url: cleanDbBanner,

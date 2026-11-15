@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { adminMiddleware, bearerForwardMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
-import type { Episode, Season } from "@/lib/types";
+import type { AnimeRecentBadges, Episode, Season } from "@/lib/types";
 import {
   readTombstones,
   readTombstoneRecords,
@@ -263,6 +263,10 @@ export interface PublicEpisodeRow {
   animeEpisodesCount: number | null;
   animeCreatedAt: string | null;
   animeUpdatedAt: string | null;
+  animeAnilistId?: number | null;
+  animeMalId?: number | null;
+  animeKitsuId?: number | null;
+  animeRecentBadges?: AnimeRecentBadges | null;
   seasonTitle: string | null;
 }
 
@@ -293,55 +297,74 @@ export async function executeGetPublicCatalogEpisodes(options?: {
 }): Promise<PublicEpisodesResult> {
   try {
     const sql = await getSql();
+    const {
+      loadAllAnimeRecentBadgesFromDb,
+      findAnimeRecentBadgesInLookup,
+    } = await import("@/lib/catalog-badges");
     const limit =
       typeof options?.limit === "number" && options.limit > 0
         ? options.limit
-        : 2000;
+        : 10000;
     const offset =
       typeof options?.offset === "number" && options.offset >= 0
         ? options.offset
         : 0;
 
-    const rows = await sql.query<PublicEpisodeRow>(
-      `SELECT
-         e."id",
-         e."animeId",
-         e."seasonNumber",
-         e."number",
-         e."title",
-         e."thumbnail",
-         e."duration",
-         e."synopsis",
-         e."videoUrl",
-         e."videoUrl2",
-         e."videoUrl3",
-         e."videoUrl4",
-         e."videoUrl5",
-         e."published",
-         e."publishedAt",
-         e."createdAt",
-         e."updatedAt",
-         COALESCE(NULLIF(a."title", ''), a."titleRomaji", a."titleEnglish", 'Anime') AS "animeTitle",
-         a."titleRomaji" AS "animeTitleRomaji",
-         a."titleEnglish" AS "animeTitleEnglish",
-         a."titleNative" AS "animeTitleNative",
-         a."cover" AS "animeCover",
-         a."banner" AS "animeBanner",
-         a."status" AS "animeStatus",
-         a."episodesCount" AS "animeEpisodesCount",
-         a."createdAt" AS "animeCreatedAt",
-         a."updatedAt" AS "animeUpdatedAt",
-         s."title" AS "seasonTitle"
-       FROM "catalog_episode" e
-       LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
-       LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
-       WHERE e."published" = true
-       ORDER BY e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."seasonNumber" DESC, e."number" DESC
-       LIMIT $1 OFFSET $2;`,
-      [limit, offset],
-    );
+    const [rows, badgeLookup] = await Promise.all([
+      sql.query<PublicEpisodeRow>(
+        `SELECT
+           e."id",
+           e."animeId",
+           e."seasonNumber",
+           e."number",
+           e."title",
+           e."thumbnail",
+           e."duration",
+           e."synopsis",
+           e."videoUrl",
+           e."videoUrl2",
+           e."videoUrl3",
+           e."videoUrl4",
+           e."videoUrl5",
+           e."published",
+           e."publishedAt",
+           e."createdAt",
+           e."updatedAt",
+           COALESCE(NULLIF(a."title", ''), a."titleRomaji", a."titleEnglish", 'Anime') AS "animeTitle",
+           a."titleRomaji" AS "animeTitleRomaji",
+           a."titleEnglish" AS "animeTitleEnglish",
+           a."titleNative" AS "animeTitleNative",
+           a."cover" AS "animeCover",
+           a."banner" AS "animeBanner",
+           a."status" AS "animeStatus",
+           a."episodesCount" AS "animeEpisodesCount",
+           a."createdAt" AS "animeCreatedAt",
+           a."updatedAt" AS "animeUpdatedAt",
+           a."anilistId" AS "animeAnilistId",
+           a."malId" AS "animeMalId",
+           a."kitsuId" AS "animeKitsuId",
+           s."title" AS "seasonTitle"
+         FROM "catalog_episode" e
+         LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
+         LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
+         WHERE e."published" = true
+         ORDER BY e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."seasonNumber" DESC, e."number" DESC
+         LIMIT $1 OFFSET $2;`,
+        [limit, offset],
+      ),
+      loadAllAnimeRecentBadgesFromDb(),
+    ]);
 
-    const episodes = Array.isArray(rows) ? rows : [];
+    const episodes = (Array.isArray(rows) ? rows : []).map((row) => ({
+      ...row,
+      animeRecentBadges: findAnimeRecentBadgesInLookup(badgeLookup, {
+        id: row.animeId,
+        anilistId: row.animeAnilistId ?? null,
+        malId: row.animeMalId ?? null,
+        kitsuId: row.animeKitsuId ?? null,
+        allowExternalFallback: false,
+      }),
+    }));
 
     return {
       status: episodes.length > 0 ? "success" : "empty",

@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { adminMiddleware } from "@/lib/auth/middleware";
+import type { AnimeRecentBadges } from "@/lib/types";
 
 export interface AdminSystemStatus {
   connected: boolean;
@@ -155,6 +156,7 @@ export interface AdminCatalogSyncMetaItem {
   titleEnglish: string | null;
   titleNative: string | null;
   hidden: boolean;
+  recentBadges?: AnimeRecentBadges | null;
   updatedAt: number;
 }
 
@@ -172,30 +174,37 @@ export const getAdminCatalogSyncMeta = createServerFn({
     const { toTimestampMs } = await import(
       "@/lib/catalog-server-overlay.server"
     );
+    const {
+      findAnimeRecentBadgesInLookup,
+      loadAllAnimeRecentBadgesFromDb,
+    } = await import("@/lib/catalog-badges");
 
     try {
       const sql = await getSql();
-      const rows = await sql.query<{
-        id: string;
-        anilistId: number | null;
-        malId: number | null;
-        kitsuId: number | null;
-        cover: string | null;
-        banner: string | null;
-        title: string;
-        titleRomaji: string | null;
-        titleEnglish: string | null;
-        titleNative: string | null;
-        hidden: boolean;
-        updatedAt: string | Date | null;
-      }>(
-        `SELECT
-           "id", "anilistId", "malId", "kitsuId",
-           "cover", "banner", "title", "titleRomaji",
-           "titleEnglish", "titleNative", "hidden", "updatedAt"
-         FROM "catalog_anime"
-         ORDER BY "updatedAt" DESC;`,
-      );
+      const [rows, badgeLookup] = await Promise.all([
+        sql.query<{
+          id: string;
+          anilistId: number | null;
+          malId: number | null;
+          kitsuId: number | null;
+          cover: string | null;
+          banner: string | null;
+          title: string;
+          titleRomaji: string | null;
+          titleEnglish: string | null;
+          titleNative: string | null;
+          hidden: boolean;
+          updatedAt: string | Date | null;
+        }>(
+          `SELECT
+             "id", "anilistId", "malId", "kitsuId",
+             "cover", "banner", "title", "titleRomaji",
+             "titleEnglish", "titleNative", "hidden", "updatedAt"
+           FROM "catalog_anime"
+           ORDER BY "updatedAt" DESC;`,
+        ),
+        loadAllAnimeRecentBadgesFromDb().catch(() => undefined),
+      ]);
 
       return (rows ?? []).map((row) => ({
         id: row.id,
@@ -209,6 +218,15 @@ export const getAdminCatalogSyncMeta = createServerFn({
         titleEnglish: row.titleEnglish ?? null,
         titleNative: row.titleNative ?? null,
         hidden: Boolean(row.hidden),
+        recentBadges: badgeLookup
+          ? findAnimeRecentBadgesInLookup(badgeLookup, {
+              id: row.id,
+              anilistId: row.anilistId,
+              malId: row.malId,
+              kitsuId: row.kitsuId,
+              allowExternalFallback: false,
+            }) ?? null
+          : null,
         updatedAt: toTimestampMs(row.updatedAt),
       }));
     } catch (err) {

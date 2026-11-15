@@ -45,7 +45,9 @@ import { getBearerToken } from "@/lib/auth/client";
 import { searchCatalog } from "@/lib/api";
 import {
   animeToLocal,
+  areAnimeRecentBadgesEqual,
   displayTitle,
+  normalizeAnimeRecentBadges,
   type LocalAnime,
   type SlimAnime,
 } from "@/lib/types";
@@ -284,7 +286,19 @@ function AdminIndex() {
           match.updatedAt,
         );
 
-        if (useServerCover || useServerBanner) {
+        const hasUnsyncedLocalEdits = Boolean(
+          local.syncedAt && (local.updatedAt ?? 0) > local.syncedAt,
+        );
+        const normalizedRemoteBadges = match.recentBadges
+          ? normalizeAnimeRecentBadges(match.recentBadges)
+          : undefined;
+        const useServerBadges = Boolean(
+          normalizedRemoteBadges &&
+            (!hasUnsyncedLocalEdits || !local.recentBadges) &&
+            !areAnimeRecentBadgesEqual(local.recentBadges, normalizedRemoteBadges),
+        );
+
+        if (useServerCover || useServerBanner || useServerBadges) {
           const nextUpdatedAt =
             Math.max(local.updatedAt ?? 0, match.updatedAt || 0) || local.updatedAt;
           const nextSyncedAt =
@@ -293,6 +307,7 @@ function AdminIndex() {
             ...local,
             cover: useServerCover && match.cover ? match.cover : local.cover,
             banner: useServerBanner && match.banner ? match.banner : local.banner,
+            recentBadges: useServerBadges ? normalizedRemoteBadges : local.recentBadges,
             updatedAt: nextUpdatedAt,
             syncedAt: nextSyncedAt,
           });
