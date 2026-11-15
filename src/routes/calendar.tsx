@@ -658,62 +658,69 @@ function CalendarPage() {
   const activeDayEpisodes = episodesByDay.get(activeDay?.dateKey ?? "") || [];
 
   return (
-    <div className="space-y-4 sm:space-y-5 pt-1 sm:pt-3 pb-12">
+    <div className="space-y-6 pb-16">
       {/* =========================================================
-          CABEÇALHO DA PÁGINA: PROGRAMAÇÃO SEMANAL E CALENDÁRIO
+          CABEÇALHO DA PÁGINA: ESTILO TEMPORADAS (HIKARI)
       ========================================================== */}
-      <header className="space-y-0.5">
-        <p className="text-[11px] font-semibold tracking-[0.28em] text-muted uppercase">
-          Programação Semanal
-        </p>
+      <header className="relative overflow-hidden rounded-3xl border border-purple-500/20 bg-gradient-to-r from-[#120f24] via-[#0d0b17] to-[#0a0814] p-6 sm:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.7)]">
+        <div className="absolute -right-12 -top-12 size-64 rounded-full bg-purple-500/10 blur-3xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-2 rounded-xl border border-purple-500/35 bg-purple-500/15 px-3 py-1 text-xs font-semibold text-purple-300 shadow-sm">
+              <CalendarIcon className="size-3.5 text-purple-400" />
+              <span>Programação Oficial</span>
+            </div>
+            <h1 className="font-display text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-fg">
+              Calendário da Semana
+            </h1>
+            <p className="text-xs sm:text-sm text-muted max-w-xl leading-relaxed">
+              Acompanhe em tempo real os lançamentos de episódios sincronizados com o horário de Brasília (UTC-3).
+            </p>
+          </div>
 
-        <h1 className="font-display text-2xl font-extrabold tracking-tight sm:text-3xl md:text-4xl text-fg">
-          Calendário
-        </h1>
-      </header>
-
-      {/* =========================================================
-          DIAS DA SEMANA: SEGUNDA A DOMINGO (SEM SOBREPOSIÇÃO)
-      ========================================================== */}
-      <div>
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-subtle px-1">
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-2.5 self-start md:self-auto bg-black/40 border border-white/10 rounded-2xl p-1.5 backdrop-blur-md">
             <button
               type="button"
               onClick={() => handleWeekChange(weekOffset - 1)}
-              title="Semana anterior"
-              className="inline-flex size-6 sm:size-7 items-center justify-center rounded-lg border border-border/60 bg-elevated/60 text-muted hover:border-purple-500/40 hover:bg-elevated hover:text-fg transition-colors"
+              className="px-3 py-2 rounded-xl bg-white/5 hover:bg-purple-500/20 hover:text-purple-300 text-xs font-semibold text-muted transition-colors"
             >
-              <ChevronLeft className="size-3.5 sm:size-4" />
-            </button>
-            <span className="font-medium text-fg/90">
-              Semana de {weekInfo.weekRangeLabel}
-            </span>
-            <button
-              type="button"
-              onClick={() => handleWeekChange(weekOffset + 1)}
-              title="Próxima semana"
-              className="inline-flex size-6 sm:size-7 items-center justify-center rounded-lg border border-border/60 bg-elevated/60 text-muted hover:border-purple-500/40 hover:bg-elevated hover:text-fg transition-colors"
-            >
-              <ChevronRight className="size-3.5 sm:size-4" />
+              Semana Anterior
             </button>
             {weekOffset !== 0 && (
               <button
                 type="button"
                 onClick={() => handleWeekChange(0)}
-                className="text-[10px] font-semibold text-purple-400 hover:text-purple-300 underline underline-offset-2 ml-1"
+                className="px-3 py-2 rounded-xl bg-purple-500 text-white hover:bg-purple-600 text-xs font-semibold transition-colors shadow-md shadow-purple-500/20"
               >
-                Voltar para esta semana
+                Hoje
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => handleWeekChange(weekOffset + 1)}
+              className="px-3 py-2 rounded-xl bg-white/5 hover:bg-purple-500/20 hover:text-purple-300 text-xs font-semibold text-muted transition-colors"
+            >
+              Próxima Semana
+            </button>
           </div>
-          <span>
+        </div>
+      </header>
+
+      {/* =========================================================
+          DIAS DA SEMANA: SEGUNDA A DOMINGO (SEM SETAS LATERAIS)
+      ========================================================== */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1 text-xs text-muted">
+          <span className="font-medium">
+            Período: <strong className="text-fg font-semibold">Semana de {weekInfo.weekRangeLabel}</strong>
+          </span>
+          <span className="tabular-nums text-purple-300 font-medium">
             {loading ? "Carregando..." : `${totalWeekEpisodes} animes previstos`}
           </span>
         </div>
 
         {/* Grade de 7 dias da semana: Segunda a Domingo */}
-        <div className="grid grid-cols-7 gap-1 sm:gap-2 w-full">
+        <div className="grid grid-cols-7 gap-1.5 sm:gap-2.5 w-full">
           {weekInfo.days.map((day) => {
             const count = episodesByDay.get(day.dateKey)?.length ?? 0;
             const isSelected = selectedDayKey === day.dateKey;
@@ -723,10 +730,10 @@ function CalendarPage() {
                 key={day.dateKey}
                 type="button"
                 onClick={() => setSelectedDayKey(day.dateKey)}
-                className={`flex flex-col items-center justify-center rounded-xl py-2 px-1 sm:py-3 sm:px-2 text-center transition-all min-w-0 border ${
+                className={`flex flex-col items-center justify-center rounded-2xl py-3 px-1 sm:py-4 sm:px-2 text-center transition-all min-w-0 border ${
                   isSelected
-                    ? "border-purple-500 bg-purple-500/20 text-white shadow-md shadow-purple-500/10 ring-1 ring-purple-500"
-                    : "border-border/60 bg-elevated/60 text-muted hover:border-purple-500/30 hover:bg-elevated hover:text-fg"
+                    ? "border-purple-500 bg-gradient-to-b from-purple-500/25 to-purple-600/15 text-white shadow-lg shadow-purple-500/20 ring-1 ring-purple-500"
+                    : "border-white/10 bg-[#120f24]/70 text-muted hover:border-purple-500/40 hover:bg-[#181530] hover:text-fg"
                 }`}
               >
                 {/* Nome do dia: abreviado em telas pequenas, completo em telas maiores */}
@@ -736,19 +743,19 @@ function CalendarPage() {
                 </span>
 
                 {/* Data: DD/MM */}
-                <span className="mt-1 text-xs sm:text-sm font-bold text-fg leading-none">
+                <span className="mt-1 text-xs sm:text-base font-bold text-fg leading-none">
                   {day.dateStr}
                 </span>
 
                 {/* Indicador 'Hoje' ou Quantidade */}
-                <div className="mt-1.5 flex items-center justify-center">
+                <div className="mt-2 flex items-center justify-center">
                   {day.isToday ? (
-                    <span className="rounded-full bg-purple-500 px-1.5 py-0.5 text-[9px] font-bold text-white uppercase tracking-wider leading-none">
+                    <span className="rounded-full bg-purple-500 px-2 py-0.5 text-[9px] font-bold text-white uppercase tracking-wider leading-none shadow-sm">
                       Hoje
                     </span>
                   ) : (
                     <span
-                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium leading-none ${
                         isSelected
                           ? "bg-purple-500/40 text-purple-200"
                           : "bg-white/10 text-muted"

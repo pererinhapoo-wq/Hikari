@@ -108,7 +108,7 @@ export function acquireScrollLock(): () => void {
       savedStyles = null;
       savedScrollY = 0;
 
-      // 1. Restaura os estilos inline originais do body e html
+      // 1. Restaura os estilos inline originais do body e html antes de mover o scroll
       body.style.position = stylesToRestore.bodyPosition;
       body.style.top = stylesToRestore.bodyTop;
       body.style.left = stylesToRestore.bodyLeft;
@@ -120,11 +120,26 @@ export function acquireScrollLock(): () => void {
       docEl.style.scrollBehavior = stylesToRestore.htmlScrollBehavior;
 
       // 2. Restaura imediatamente a posição de rolagem original sem animação
-      window.scrollTo(0, targetScroll);
+      window.scrollTo({
+        top: targetScroll,
+        left: 0,
+        behavior: "instant",
+      });
 
-      // 3. Reforço no frame seguinte caso o navegador tente reiniciar o scroll durante o reflow
+      // 3. Reforço duplo em rAF para garantir estabilidade em mobile e desktop durante o reflow do DOM
       requestAnimationFrame(() => {
-        window.scrollTo(0, targetScroll);
+        window.scrollTo({
+          top: targetScroll,
+          left: 0,
+          behavior: "instant",
+        });
+        requestAnimationFrame(() => {
+          window.scrollTo({
+            top: targetScroll,
+            left: 0,
+            behavior: "instant",
+          });
+        });
       });
     }
   };
