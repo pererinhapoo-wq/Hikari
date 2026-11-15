@@ -70,10 +70,13 @@ const clientInFlightPromises = new Map<string, Promise<CatalogEpisodesResult>>()
 /**
  * Invalida o cache em memória de episódios para um anime específico (ou todo o cache).
  */
-export function invalidateCatalogEpisodesCache(animeId?: string): void {
-  if (animeId) {
-    clientCatalogEpisodesCache.delete(animeId);
-    clientInFlightPromises.delete(animeId);
+export function invalidateCatalogEpisodesCache(...animeIds: (string | undefined)[]): void {
+  const ids = animeIds.filter((id): id is string => typeof id === "string" && Boolean(id.trim()));
+  if (ids.length > 0) {
+    for (const id of ids) {
+      clientCatalogEpisodesCache.delete(id);
+      clientInFlightPromises.delete(id);
+    }
   } else {
     clientCatalogEpisodesCache.clear();
     clientInFlightPromises.clear();
@@ -110,9 +113,29 @@ export async function executeGetCatalogEpisodes(
   try {
     const sql = await getSql();
 
+    const candidateIds = [cleanId];
+    try {
+      const numId = /^\d+$/.test(cleanId) ? parseInt(cleanId, 10) : null;
+      const matched = await sql.query<{ id: string; anilistId: number | null }>(
+        `SELECT "id", "anilistId" FROM "catalog_anime"
+         WHERE "id" = $1
+            OR ($2::int IS NOT NULL AND ("anilistId" = $2 OR "malId" = $2 OR "kitsuId" = $2))
+         LIMIT 1;`,
+        [cleanId, numId],
+      );
+      if (matched[0]?.id && !candidateIds.includes(matched[0].id)) {
+        candidateIds.push(matched[0].id);
+      }
+      if (matched[0]?.anilistId && !candidateIds.includes(String(matched[0].anilistId))) {
+        candidateIds.push(String(matched[0].anilistId));
+      }
+    } catch {
+      // ignore
+    }
+
     const whereClause = options?.includeUnpublished
-      ? `WHERE "animeId" = $1`
-      : `WHERE "animeId" = $1 AND "published" = true`;
+      ? `WHERE "animeId" = ANY($1::text[])`
+      : `WHERE "animeId" = ANY($1::text[]) AND "published" = true`;
 
     // 1. Episódios, ordenados por temporada e número
     const episodeRows = await sql.query<CatalogEpisodeItem>(
@@ -137,7 +160,7 @@ export async function executeGetCatalogEpisodes(
        FROM "catalog_episode"
        ${whereClause}
        ORDER BY "seasonNumber" ASC, "number" ASC;`,
-      [cleanId],
+      [candidateIds],
     );
 
     // 2. Metadados de temporadas, ordenados por posição e número
@@ -149,9 +172,9 @@ export async function executeGetCatalogEpisodes(
          "position",
          "createdAt"
        FROM "catalog_season"
-       WHERE "animeId" = $1
+       WHERE "animeId" = ANY($1::text[])
        ORDER BY "position" ASC, "number" ASC;`,
-      [cleanId],
+      [candidateIds],
     );
 
     return {

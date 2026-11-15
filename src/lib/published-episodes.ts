@@ -964,11 +964,13 @@ export function resolvePublicEpisodes(
         ? readTombstoneRecords()
         : [];
 
-  const hasRemoteEpisodes =
+  const hasRemoteEpisodes = Boolean(
     serverResult &&
-    serverResult.status === "success" &&
-    Array.isArray(serverResult.episodes) &&
-    serverResult.episodes.length > 0;
+      (serverResult.status === "success" ||
+        (!("status" in serverResult) && Array.isArray((serverResult as any).episodes))) &&
+      Array.isArray(serverResult.episodes) &&
+      serverResult.episodes.length > 0,
+  );
 
   // Se o servidor retornou erro, ou está vazio sem episódios remotos, utiliza o fallback local seguro
   if (!hasRemoteEpisodes) {
@@ -1043,7 +1045,12 @@ export function resolvePublicEpisodes(
 
     if (!validVideo) continue; // Descarta se não houver stream reproduzível
 
-    const localAnime = safeLocals.find((a) => a.id === row.animeId);
+    const localAnime = safeLocals.find(
+      (a) =>
+        a.id === row.animeId ||
+        a.serverCatalogId === row.animeId ||
+        (a.anilistId !== undefined && String(a.anilistId) === row.animeId),
+    );
 
     // Resolve títulos canônicos e variações alternativas
     const animeTitle =

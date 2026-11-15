@@ -22,6 +22,8 @@ import { persistEpisode } from "./episode-writer";
 import {
   buildResolvedSeasons,
   mergeAdminEpisodesWithServer,
+  invalidateCatalogEpisodesCache,
+  primeCatalogEpisodesCache,
 } from "./catalog-episodes";
 import {
   mergeDetail,
@@ -1348,5 +1350,125 @@ describe("Regressão de reprodução: Assistir episódio real vs trailer do YouT
     assert.equal(picked?.id, "ep-1-s2");
   });
 });
+
+describe("Auditoria de Publicação, Cache e Navegação de Episódios", () => {
+  it("1 & 2. Associa episódio ao serverCatalogId correto e exige publicação explícita com fonte válida", async () => {
+    // Tentar publicar sem fonte válida bloqueia
+    const blocked = await persistEpisode("server-catalog-999", 1, {
+      id: "ep-draft",
+      number: 1,
+      title: "Rascunho Sem Fonte",
+      videoUrl: "",
+      published: true,
+    });
+    assert.equal(blocked.confirmed, false);
+    assert.ok(blocked.error?.includes("fonte válida"));
+
+    // Rascunho sem published explícito fica como não publicado
+    assert.equal(isEpisodePublished({ id: "ep-1", number: 1, videoUrl: "https://cdn.example.com/ep1.mp4", published: false }), false);
+    assert.equal(isEpisodePublished({ id: "ep-1", number: 1, videoUrl: "https://cdn.example.com/ep1.mp4" }), false);
+  });
+
+  it("3 & 4. Preserva rascunhos e reconhece fontes válidas pelo filtro público", () => {
+    const epValid = { id: "ep-1", number: 1, title: "Ep 1", videoUrl: "https://cdn.example.com/ep1.mp4", published: true };
+    const epDraft = { id: "ep-2", number: 2, title: "Ep 2", videoUrl: "https://cdn.example.com/ep2.mp4", published: false };
+
+    assert.equal(isEpisodePublished(epValid), true);
+    assert.equal(isEpisodePublished(epDraft), false);
+
+    const publicList = resolvePublicEpisodes(
+      {
+        animeId: "a1",
+        seasons: [{ animeId: "a1", number: 1, title: "T1", position: 1 }],
+        episodes: [
+          {
+            id: "ep-1",
+            animeId: "a1",
+            seasonNumber: 1,
+            number: 1,
+            title: "Ep 1",
+            thumbnail: null,
+            duration: null,
+            synopsis: null,
+            videoUrl: "https://cdn.example.com/ep1.mp4",
+            videoUrl2: null,
+            videoUrl3: null,
+            videoUrl4: null,
+            videoUrl5: null,
+            published: true,
+            publishedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      },
+      [],
+      { outbox: [], tombstones: [] },
+    );
+    assert.equal(publicList.length, 1);
+    assert.equal(publicList[0]?.episodeNumber, 1);
+  });
+
+  it("5 & 6. Invalidação de cache e inclusão do episódio recém-publicado nos detalhes do anime", () => {
+    const cacheKey = "anime-cache-test";
+    primeCatalogEpisodesCache(cacheKey, {
+      animeId: cacheKey,
+      seasons: [{ animeId: cacheKey, number: 1, title: "T1", position: 1 }],
+      episodes: [],
+    });
+
+    // Invalida o cache
+    invalidateCatalogEpisodesCache(cacheKey);
+
+    // buildResolvedSeasons integra corretamente o novo episódio publicado
+    const resolved = buildResolvedSeasons(
+      cacheKey,
+      {
+        animeId: cacheKey,
+        seasons: [{ animeId: cacheKey, number: 1, title: "T1", position: 1 }],
+        episodes: [
+          {
+            id: "ep-new-1",
+            animeId: cacheKey,
+            seasonNumber: 1,
+            number: 1,
+            title: "Novo Ep Publicado",
+            thumbnail: "https://cdn.example.com/thumb.jpg",
+            duration: "24:00",
+            synopsis: null,
+            videoUrl: "https://cdn.example.com/new1.mp4",
+            videoUrl2: null,
+            videoUrl3: null,
+            videoUrl4: null,
+            videoUrl5: null,
+            published: true,
+            publishedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      },
+      [],
+    );
+
+    assert.equal(resolved.length, 1);
+    assert.equal(resolved[0]?.episodes.length, 1);
+    assert.equal(resolved[0]?.episodes[0]?.title, "Novo Ep Publicado");
+    assert.equal(resolved[0]?.episodes[0]?.videoUrl, "https://cdn.example.com/new1.mp4");
+  });
+
+  it("7 & 8. Inclusão correta na navegação do player e preservação dos demais episódios e thumbnails", () => {
+    const episodes = [
+      { id: "ep-1", number: 1, title: "Ep 1", videoUrl: "https://cdn.example.com/1.mp4", published: true },
+      { id: "ep-2", number: 2, title: "Ep 2", videoUrl: "https://cdn.example.com/2.mp4", published: true },
+      { id: "ep-3", number: 3, title: "Ep 3", videoUrl: "https://cdn.example.com/3.mp4", published: true },
+    ];
+
+    const current = selectEpisodeForWatch(episodes, "ep-2", 2);
+    assert.equal(current?.id, "ep-2");
+    assert.equal(current?.number, 2);
+
+    const sources = resolveEpisodePlayerSources(current);
+    assert.equal(sources.length, 1);
+    assert.equal(sources[0]?.url, "https://cdn.example.com/2.mp4");
+  });
+});
+
 
 

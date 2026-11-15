@@ -1,6 +1,7 @@
 import type { Episode } from "@/lib/types";
 import { getBearerToken } from "@/lib/auth/client";
-import { addTombstone, clearTombstone } from "@/lib/catalog-storage";
+import { clearTombstone } from "@/lib/catalog-storage";
+import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 import { hasEpisodePlayableSource } from "@/lib/published-episodes";
 import { useHikariStore } from "@/lib/store";
 
@@ -375,6 +376,8 @@ export async function flushOutbox(options?: {
           remainingOps.splice(idx, 1);
           writeOutbox(remainingOps);
         }
+
+        invalidateCatalogEpisodesCache(op.animeId);
         continue;
       }
 
@@ -540,6 +543,8 @@ export async function persistEpisode(
           ),
       );
       writeOutbox(filtered);
+
+      invalidateCatalogEpisodesCache(animeId);
 
       return {
         confirmed: true,

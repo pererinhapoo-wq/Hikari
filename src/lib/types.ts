@@ -162,6 +162,7 @@ export type LocalAnime = {
   studios?: string[];
   characters?: AnimeCharacter[];
   staff?: AnimeStaff[];
+  serverCatalogId?: string;
 };
 
 export type HomeCatalog = {
@@ -260,6 +261,7 @@ export function localToAnime(local: LocalAnime): Anime {
     characters: local.characters ?? [],
     staff: local.staff ?? [],
     catalogUpdatedAt: local.updatedAt || undefined,
+    serverCatalogId: local.serverCatalogId,
   };
 }
 
@@ -411,10 +413,11 @@ export function animeToLocal(
       existing?.id ??
       (isLocalSource
         ? anime.id
-        : `local-${crypto.randomUUID()}`),
+        : anime.serverCatalogId || `local-${crypto.randomUUID()}`),
     anilistId: anime.anilistId ?? existing?.anilistId,
     malId: anime.malId ?? existing?.malId,
     kitsuId: anime.kitsuId ?? existing?.kitsuId,
+    serverCatalogId: anime.serverCatalogId ?? existing?.serverCatalogId,
     titleRomaji: anime.titles.romaji,
     titleEnglish: anime.titles.english,
     titleNative: anime.titles.native,

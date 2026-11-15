@@ -378,6 +378,7 @@ export function resolveAdminAnimeWithRemote(
     return {
       ...base,
       id: remote.serverCatalogId || base.id,
+      serverCatalogId: remote.serverCatalogId || base.serverCatalogId,
       seasons: mergedSeasons.length > 0 ? mergedSeasons : base.seasons,
       updatedAt: remote.catalogUpdatedAt ?? base.updatedAt,
       syncedAt: remote.catalogUpdatedAt ?? undefined,
@@ -407,6 +408,7 @@ export function resolveAdminAnimeWithRemote(
 
   return {
     ...storedMatch,
+    serverCatalogId: remote.serverCatalogId || storedMatch.serverCatalogId || undefined,
     anilistId: storedMatch.anilistId ?? remote.anilistId,
     malId: storedMatch.malId ?? remote.malId,
     kitsuId: storedMatch.kitsuId ?? remote.kitsuId,
@@ -474,6 +476,7 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
     if (!remote) {
       return {
         ...local,
+        serverCatalogId: byId.serverCatalogId || undefined,
         seasons: resolvedSeasons,
         studios: local.studios ?? [],
         characters: local.characters ?? [],
@@ -499,6 +502,7 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
     return {
       ...remote,
       ...local,
+      serverCatalogId: remote.serverCatalogId || byId.serverCatalogId || undefined,
       titles: local.titles,
       cover: local.cover || remote.cover,
       banner: local.banner || remote.banner,

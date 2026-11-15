@@ -66,6 +66,22 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           const data = parsed.data;
           const sql = await getSql();
 
+          // Reconciliação canônica do animeId:
+          // Se data.animeId for um alias (ex.: anilistId numérico) ou ID local, verifica se já existe
+          // registro correspondente em "catalog_anime" e utiliza seu "id" canônico.
+          let canonicalAnimeId = data.animeId;
+          const numId = /^\d+$/.test(data.animeId) ? parseInt(data.animeId, 10) : null;
+          const animeMatch = await sql.query<{ id: string }>(
+            `SELECT "id" FROM "catalog_anime"
+             WHERE "id" = $1
+                OR ($2::int IS NOT NULL AND ("anilistId" = $2 OR "malId" = $2 OR "kitsuId" = $2))
+             LIMIT 1;`,
+            [data.animeId, numId],
+          );
+          if (animeMatch[0]?.id) {
+            canonicalAnimeId = animeMatch[0].id;
+          }
+
           // 4. Buscar registros existentes por ID e por Slot (animeId, seasonNumber, number)
           const existingByIdRows = await sql.query<{
             id: string;
@@ -114,16 +130,17 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                     "duration", "synopsis", "videoUrl", "videoUrl2", "videoUrl3",
                     "videoUrl4", "videoUrl5", "published", "publishedAt"
              FROM "catalog_episode"
-             WHERE "animeId" = $1 AND "seasonNumber" = $2 AND "number" = $3 LIMIT 1;`,
-            [data.animeId, data.seasonNumber, data.number],
+             WHERE ("animeId" = $1 OR "animeId" = $2) AND "seasonNumber" = $3 AND "number" = $4 LIMIT 1;`,
+            [canonicalAnimeId, data.animeId, data.seasonNumber, data.number],
           );
           const existingBySlot = existingBySlotRows[0] || null;
 
           // 5. Conflito de integridade: se o ID recebido já existe, ele NÃO pode pertencer a outro slot
           if (
             existingById &&
-            (existingById.animeId !== data.animeId ||
-              existingById.seasonNumber !== data.seasonNumber ||
+            existingById.animeId !== canonicalAnimeId &&
+            existingById.animeId !== data.animeId &&
+            (existingById.seasonNumber !== data.seasonNumber ||
               existingById.number !== data.number)
           ) {
             return Response.json(
@@ -212,12 +229,12 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             null;
 
           // 8. Garantir que o anime e a temporada existam no catálogo
-          const fallbackAnimeTitle = data.animeTitle?.trim() || data.animeId;
+          const fallbackAnimeTitle = data.animeTitle?.trim() || canonicalAnimeId;
           await sql.query(
             `INSERT INTO "catalog_anime" ("id", "title", "createdAt", "updatedAt")
              VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
              ON CONFLICT ("id") DO NOTHING;`,
-            [data.animeId, fallbackAnimeTitle],
+            [canonicalAnimeId, fallbackAnimeTitle],
           );
 
           const seasonTitle = `Temporada ${data.seasonNumber}`;
@@ -225,7 +242,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             `INSERT INTO "catalog_season" ("animeId", "number", "title", "position", "createdAt")
              VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
              ON CONFLICT ("animeId", "number") DO NOTHING;`,
-            [data.animeId, data.seasonNumber, seasonTitle, data.seasonNumber - 1],
+            [canonicalAnimeId, data.seasonNumber, seasonTitle, data.seasonNumber - 1],
           );
 
           // 9. Gravação segura contra concorrência usando constraint UNIQUE (animeId, seasonNumber, number)
@@ -291,7 +308,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
              RETURNING "id", "published", "publishedAt";`,
             [
               canonicalId,
-              data.animeId,
+              canonicalAnimeId,
               data.seasonNumber,
               data.number,
               title,
