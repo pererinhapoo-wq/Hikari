@@ -12,6 +12,7 @@ import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
+  ArrowUp,
   Ban,
   CheckCircle2,
   ChevronDown,
@@ -51,6 +52,10 @@ import { cn } from "@/lib/utils";
 import { useScrollLock } from "@/lib/scroll-lock";
 import { TypingIndicator } from "@/components/comments/TypingIndicator";
 import { useCommentTyping } from "@/components/comments/useCommentTyping";
+import {
+  type AppliedNewCommentsPayload,
+  useCommentUpdates,
+} from "@/components/comments/useCommentUpdates";
 
 /* ========================================================= */
 /* TIPO DO COMENTÁRIO                                        */
@@ -489,6 +494,40 @@ export function EpisodeCommentsSection({
   const newCommentTimeoutRef =
     useRef<number | null>(null);
 
+  const [commentsBaselineSince, setCommentsBaselineSince] =
+    useState<string | null>(null);
+
+  const [revealedCommentIds, setRevealedCommentIds] =
+    useState<Record<string, boolean>>({});
+
+  const revealedTimerRef =
+    useRef<number | null>(null);
+
+  const ownCommentIdsRef =
+    useRef<Set<string>>(new Set());
+
+  const loadedCommentIds = useMemo(
+    () => new Set(comments.map((c) => c.id)),
+    [comments],
+  );
+
+  useEffect(() => {
+    ownCommentIdsRef.current.clear();
+    if (revealedTimerRef.current !== null) {
+      window.clearTimeout(revealedTimerRef.current);
+      revealedTimerRef.current = null;
+    }
+    setRevealedCommentIds({});
+  }, [animeId, episodeId]);
+
+  useEffect(() => {
+    return () => {
+      if (revealedTimerRef.current !== null) {
+        window.clearTimeout(revealedTimerRef.current);
+      }
+    };
+  }, []);
+
 
 
   /* ====================================================== */
@@ -671,6 +710,96 @@ export function EpisodeCommentsSection({
     sessionReady: !sessionLoading,
     containerRef: commentsSectionRef,
     enabled: settings.modules.comments,
+  });
+
+  const handleApplyNewComments = useCallback(
+    (payload: AppliedNewCommentsPayload) => {
+      if (payload.comments.length > 0) {
+        setComments((prev) => {
+          const existingIds = new Set(prev.map((c) => c.id));
+          const newRoots: Comment[] = [];
+          const newNonRoots: Comment[] = [];
+
+          for (const item of payload.comments) {
+            if (existingIds.has(item.id)) continue;
+            existingIds.add(item.id);
+            if (!item.parentId) {
+              newRoots.push(item);
+            } else {
+              newNonRoots.push(item);
+            }
+          }
+
+          if (newRoots.length === 0 && newNonRoots.length === 0) {
+            return prev;
+          }
+
+          newRoots.sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          );
+
+          return [...newRoots, ...prev, ...newNonRoots];
+        });
+
+        setRootOrder((prev) => {
+          const existingSet = new Set(prev);
+          const incomingRoots = payload.comments
+            .filter((c) => !c.parentId && !existingSet.has(c.id))
+            .sort(
+              (a, b) =>
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+            )
+            .map((c) => c.id);
+
+          if (incomingRoots.length === 0) return prev;
+          return [...incomingRoots, ...prev];
+        });
+      }
+
+      if (payload.totalCount !== null) {
+        setTotalCount(payload.totalCount);
+      }
+      if (payload.totalRoots !== null) {
+        setTotalRoots(payload.totalRoots);
+      }
+      if (payload.serverTime) {
+        setCommentsBaselineSince(payload.serverTime);
+      }
+
+      if (payload.newIds.length > 0) {
+        const highlightMap: Record<string, boolean> = {};
+        for (const id of payload.newIds) {
+          highlightMap[id] = true;
+        }
+        setRevealedCommentIds(highlightMap);
+        if (revealedTimerRef.current !== null) {
+          window.clearTimeout(revealedTimerRef.current);
+        }
+        revealedTimerRef.current = window.setTimeout(() => {
+          setRevealedCommentIds({});
+          revealedTimerRef.current = null;
+        }, 3200);
+      }
+    },
+    [],
+  );
+
+  const {
+    pendingNewCount,
+    isRevealingNewComments,
+    revealNewComments,
+  } = useCommentUpdates({
+    animeId,
+    episodeId,
+    viewerUserId: effectiveUserId ?? null,
+    sessionReady: !sessionLoading,
+    baselineSince: commentsBaselineSince,
+    loadedCommentIds,
+    ownCommentIdsRef,
+    containerRef: commentsSectionRef,
+    enabled: settings.modules.comments,
+    onApplyNewComments: handleApplyNewComments,
   });
 
   /* ====================================================== */
@@ -1453,6 +1582,8 @@ export function EpisodeCommentsSection({
           setRootOrder([]);
           setNextCursor(null);
           setHasMore(false);
+          setCommentsBaselineSince(null);
+          setRevealedCommentIds({});
         } else {
           setLoadingMore(true);
           setLoadMoreError(null);
@@ -1511,6 +1642,11 @@ export function EpisodeCommentsSection({
           setComments(loaded);
           const roots = loaded.filter((c: Comment) => !c.parentId);
           setRootOrder(roots.map((c) => c.id));
+          const resolvedBaseline =
+            typeof data?.serverTime === "string" && data.serverTime.trim()
+              ? data.serverTime.trim()
+              : new Date().toISOString();
+          setCommentsBaselineSince(resolvedBaseline);
         } else {
           setComments((prev) => {
             const existingIds = new Set(prev.map((c) => c.id));
@@ -1800,6 +1936,7 @@ export function EpisodeCommentsSection({
         }
 
         if (data.comment) {
+          ownCommentIdsRef.current.add(data.comment.id);
           setComments((current) => {
             if (current.some((c) => c.id === data.comment.id)) return current;
             return [data.comment, ...current];
@@ -1903,6 +2040,7 @@ export function EpisodeCommentsSection({
         }
 
         if (data.comment) {
+          ownCommentIdsRef.current.add(data.comment.id);
           setComments((current) => {
             if (current.some((c) => c.id === data.comment.id)) return current;
             return [...current, data.comment];
@@ -3377,6 +3515,36 @@ export function EpisodeCommentsSection({
           )}
 
           {/* =============================================== */}
+          {/* AVISO DISCRETO DE NOVOS COMENTÁRIOS PUBLICADOS  */}
+          {/* =============================================== */}
+
+          {pendingNewCount > 0 && (
+            <div className="mt-3 flex items-center justify-center sm:justify-start px-1">
+              <button
+                type="button"
+                onClick={() => {
+                  void revealNewComments();
+                }}
+                disabled={isRevealingNewComments}
+                data-testid="new-comments-notice"
+                aria-live="polite"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#a855f7]/35 bg-[#a855f7]/12 px-3 py-1 text-xs font-medium text-[#e9d5ff] hover:bg-[#a855f7]/22 hover:border-[#a855f7]/55 hover:text-white active:[transform:scale(0.98)] disabled:opacity-60 transition-[background-color,border-color,color,transform] duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none touch-manipulation shadow-sm cursor-pointer"
+              >
+                {isRevealingNewComments ? (
+                  <Loader2 className="size-3 shrink-0 animate-spin text-[#c084fc]" />
+                ) : (
+                  <ArrowUp className="size-3 shrink-0 text-[#c084fc]" />
+                )}
+                <span>
+                  {pendingNewCount === 1
+                    ? "+1 novo comentário"
+                    : `+${pendingNewCount} novos comentários`}
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* =============================================== */}
           {/* LISTA DE COMENTÁRIOS REDESENHADA (SEM CARTÕES PESADOS) */}
           {/* =============================================== */}
 
@@ -3505,7 +3673,10 @@ export function EpisodeCommentsSection({
                                 highlighted={highlightedCommentId === reply.id}
                                 onRequireLogin={() => setLoginOpen(true)}
                                 showMedia={showMedia}
-                                isNew={newCommentId === reply.id}
+                                isNew={
+                                  newCommentId === reply.id ||
+                                  Boolean(revealedCommentIds[reply.id])
+                                }
                               />
                               {renderThreadReplies(reply, depth + 1)}
                             </div>
@@ -3601,7 +3772,10 @@ export function EpisodeCommentsSection({
                         highlighted={highlightedCommentId === comment.id}
                         onRequireLogin={() => setLoginOpen(true)}
                         showMedia={showMedia}
-                        isNew={newCommentId === comment.id}
+                        isNew={
+                          newCommentId === comment.id ||
+                          Boolean(revealedCommentIds[comment.id])
+                        }
                       />
 
                       {renderThreadReplies(comment, 1)}

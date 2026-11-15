@@ -157,7 +157,8 @@ export const Route = createFileRoute("/api/comments")({
           let countSql = `
             select
               count(*)::int as "totalCount",
-              count(*) filter (where c."parentId" is null)::int as "totalRoots"
+              count(*) filter (where c."parentId" is null)::int as "totalRoots",
+              to_char(CURRENT_TIMESTAMP at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "serverTime"
             from "comment" c
             where c."animeId" = $1
           `;
@@ -168,6 +169,9 @@ export const Route = createFileRoute("/api/comments")({
           const countRows: any[] = (await sql.query(countSql, countParams)) as any[];
           const totalCount = Number(countRows[0]?.totalCount) || 0;
           const totalRoots = Number(countRows[0]?.totalRoots) || 0;
+          const serverTime = countRows[0]?.serverTime
+            ? String(countRows[0].serverTime)
+            : new Date().toISOString();
 
           // 2. Localização antecipada de link direto / comentário alvo (targetCommentId)
           let targetFound = false;
@@ -343,6 +347,7 @@ export const Route = createFileRoute("/api/comments")({
                 targetFound,
                 currentUserId,
                 isAdmin,
+                serverTime,
               },
               {
                 headers: {
@@ -520,6 +525,7 @@ export const Route = createFileRoute("/api/comments")({
               targetFound,
               currentUserId,
               isAdmin,
+              serverTime,
             },
             {
               headers: {
