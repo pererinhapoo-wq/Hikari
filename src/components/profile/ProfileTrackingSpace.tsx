@@ -31,7 +31,7 @@ export type SortOption = "updatedAt" | "title" | "score" | "episodes";
 export interface ProfileTrackingSpaceProps {
   items?: UserAnimeTrackingItem[];
   loading?: boolean;
-  onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
+  onUpdateItem?: (updatedItem: UserAnimeTrackingItem, previousAnimeId?: string) => void;
   activeFilter?: FilterOption;
   onFilterChange?: (filter: FilterOption) => void;
   hideFilterBar?: boolean;
@@ -277,6 +277,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
   const [editingItem, setEditingItem] = useState<UserAnimeTrackingItem | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const updatingIdsRef = useRef<Set<string>>(new Set());
   const [activeMobileCardId, setActiveMobileCardId] = useState<string | null>(null);
 
   // Oculta controles no mobile ao tocar fora de qualquer card ativo
@@ -550,8 +551,32 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
   }, [hasMore, dataLoading, loadNextPage]);
 
   const applyItemMutationToCache = useCallback(
-    (nextItem: UserAnimeTrackingItem, prevStatus?: TrackingStatus) => {
+    (
+      nextItem: UserAnimeTrackingItem,
+      prevStatus?: TrackingStatus,
+      previousAnimeId?: string,
+    ) => {
       const prefix = `${scopePrefix}::`;
+      const matchIds = new Set<string>([nextItem.animeId]);
+      if (previousAnimeId) {
+        matchIds.add(previousAnimeId);
+      }
+
+      const upsertDeduped = (list: UserAnimeTrackingItem[]) => {
+        const result: UserAnimeTrackingItem[] = [];
+        let inserted = false;
+        for (const entry of list) {
+          if (matchIds.has(entry.animeId)) {
+            if (!inserted) {
+              result.push(nextItem);
+              inserted = true;
+            }
+          } else {
+            result.push(entry);
+          }
+        }
+        return { result, inserted };
+      };
 
       setFilterCache((prev) => {
         const updatedCache: Record<string, FilterCacheEntry> = {};
@@ -565,27 +590,34 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
           const keyFilter = key.slice(prefix.length) as FilterOption;
 
           if (keyFilter === "all") {
+            const { result, inserted } = upsertDeduped(entry.items);
+            const finalItems = inserted ? result : [nextItem, ...result];
+            loadedIdSetsRef.current.set(
+              key,
+              new Set(finalItems.map((i) => i.animeId)),
+            );
             updatedCache[key] = {
               ...entry,
-              items: entry.items.map((i) =>
-                i.animeId === nextItem.animeId ? nextItem : i,
-              ),
+              items: finalItems,
             };
           } else if (keyFilter === nextItem.status) {
-            const exists = entry.items.some((i) => i.animeId === nextItem.animeId);
+            const exists = entry.items.some((i) => matchIds.has(i.animeId));
             if (exists) {
+              const { result } = upsertDeduped(entry.items);
+              loadedIdSetsRef.current.set(
+                key,
+                new Set(result.map((i) => i.animeId)),
+              );
               updatedCache[key] = {
                 ...entry,
-                items: entry.items.map((i) =>
-                  i.animeId === nextItem.animeId ? nextItem : i,
-                ),
+                items: result,
               };
             } else {
               // Invalida aba de destino em cache para rebuscar ordenado quando visitada
               loadedIdSetsRef.current.delete(key);
             }
           } else {
-            const filtered = entry.items.filter((i) => i.animeId !== nextItem.animeId);
+            const filtered = entry.items.filter((i) => !matchIds.has(i.animeId));
             if (filtered.length !== entry.items.length) {
               loadedIdSetsRef.current.set(
                 key,
@@ -622,7 +654,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
   // Callback estável para incremento rápido (+1 ep)
   const handleQuickIncrement = useCallback(async (item: UserAnimeTrackingItem) => {
-    if (isReadOnly) return;
+    if (isReadOnly || updatingIdsRef.current.has(item.animeId)) return;
     const currentWatched = item.episodesWatched ?? 0;
     const maxEps = item.episodesCount ?? null;
     if (maxEps !== null && maxEps > 0 && currentWatched >= maxEps) {
@@ -635,6 +667,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
         ? "completed"
         : item.status;
 
+    updatingIdsRef.current.add(item.animeId);
     setUpdatingId(item.animeId);
 
     const previousItem = { ...item };
@@ -644,8 +677,8 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       status: nextStatus,
     };
 
-    applyItemMutationToCache(updatedItem, previousItem.status);
-    onUpdateItem?.(updatedItem);
+    applyItemMutationToCache(updatedItem, previousItem.status, item.animeId);
+    onUpdateItem?.(updatedItem, item.animeId);
 
     try {
       const res = await upsertTrackingFn({
@@ -660,6 +693,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
       const finalItem: UserAnimeTrackingItem = {
         ...updatedItem,
+        animeId: res.animeId,
         status: res.status,
         score: res.score,
         episodesWatched: res.episodesWatched,
@@ -668,15 +702,16 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
         updatedAt: res.updatedAt,
       };
 
-      applyItemMutationToCache(finalItem, updatedItem.status);
-      onUpdateItem?.(finalItem);
-      toast.success(`Episódio ${nextWatched}${maxEps ? ` de ${maxEps}` : ""} marcado!`);
+      applyItemMutationToCache(finalItem, updatedItem.status, item.animeId);
+      onUpdateItem?.(finalItem, item.animeId);
+      toast.success(`Episódio ${finalItem.episodesWatched}${maxEps ? ` de ${maxEps}` : ""} marcado!`);
     } catch (err) {
-      applyItemMutationToCache(previousItem, updatedItem.status);
-      onUpdateItem?.(previousItem);
+      applyItemMutationToCache(previousItem, updatedItem.status, item.animeId);
+      onUpdateItem?.(previousItem, item.animeId);
       toast.error(err instanceof Error ? err.message : "Erro ao atualizar episódios.");
     } finally {
-      setUpdatingId(null);
+      updatingIdsRef.current.delete(item.animeId);
+      setUpdatingId((curr) => (curr === item.animeId ? null : curr));
     }
   }, [applyItemMutationToCache, isReadOnly, onUpdateItem, upsertTrackingFn]);
 
@@ -705,8 +740,8 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       episodesWatched: resolvedEpisodes,
     };
 
-    applyItemMutationToCache(optimisticItem, previousItem.status);
-    onUpdateItem?.(optimisticItem);
+    applyItemMutationToCache(optimisticItem, previousItem.status, targetItem.animeId);
+    onUpdateItem?.(optimisticItem, targetItem.animeId);
 
     try {
       const res = await upsertTrackingFn({
@@ -721,6 +756,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
       const finalItem: UserAnimeTrackingItem = {
         ...targetItem,
+        animeId: res.animeId,
         status: res.status,
         score: res.score,
         episodesWatched: res.episodesWatched,
@@ -729,12 +765,12 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
         updatedAt: res.updatedAt,
       };
 
-      applyItemMutationToCache(finalItem, optimisticItem.status);
-      onUpdateItem?.(finalItem);
+      applyItemMutationToCache(finalItem, optimisticItem.status, targetItem.animeId);
+      onUpdateItem?.(finalItem, targetItem.animeId);
       toast.success("Coleção atualizada com sucesso!");
     } catch (err) {
-      applyItemMutationToCache(previousItem, optimisticItem.status);
-      onUpdateItem?.(previousItem);
+      applyItemMutationToCache(previousItem, optimisticItem.status, targetItem.animeId);
+      onUpdateItem?.(previousItem, targetItem.animeId);
       throw err;
     }
   }, [applyItemMutationToCache, editingItem, isReadOnly, onUpdateItem, upsertTrackingFn]);

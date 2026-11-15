@@ -16,57 +16,7 @@ import {
   type ClearEpisodeProgressResponse,
 } from "@/types/profile-playback";
 import type { AnimeSnapshot } from "@/types/profile-tracking";
-
-/**
- * Normaliza e constrói o snapshot de metadados essenciais do anime.
- */
-function buildAnimeSnapshot(
-  catalogRow: {
-    title: string;
-    titleRomaji: string | null;
-    titleEnglish: string | null;
-    titleNative: string | null;
-    cover: string | null;
-    banner: string | null;
-    format: string | null;
-    year: number | null;
-    episodesCount: number | null;
-    status: string | null;
-  } | null,
-  inputSnapshot?: AnimeSnapshot | null,
-): AnimeSnapshot {
-  return {
-    title: catalogRow?.title ?? inputSnapshot?.title?.trim() ?? "Sem título",
-    titleRomaji:
-      catalogRow?.titleRomaji ?? inputSnapshot?.titleRomaji?.trim() ?? null,
-    titleEnglish:
-      catalogRow?.titleEnglish ?? inputSnapshot?.titleEnglish?.trim() ?? null,
-    titleNative:
-      catalogRow?.titleNative ?? inputSnapshot?.titleNative?.trim() ?? null,
-    cover: catalogRow?.cover ?? inputSnapshot?.cover?.trim() ?? null,
-    banner: catalogRow?.banner ?? inputSnapshot?.banner?.trim() ?? null,
-    format: catalogRow?.format ?? inputSnapshot?.format?.trim() ?? null,
-    year:
-      catalogRow?.year !== undefined && catalogRow?.year !== null
-        ? Number(catalogRow.year)
-        : inputSnapshot?.year !== undefined && inputSnapshot?.year !== null
-          ? Number(inputSnapshot.year)
-          : null,
-    episodesCount:
-      catalogRow?.episodesCount !== undefined &&
-      catalogRow?.episodesCount !== null
-        ? Number(catalogRow.episodesCount)
-        : inputSnapshot?.episodesCount !== undefined &&
-            inputSnapshot?.episodesCount !== null
-          ? Number(inputSnapshot.episodesCount)
-          : null,
-    status: catalogRow?.status ?? inputSnapshot?.status?.trim() ?? null,
-    score:
-      inputSnapshot?.score !== undefined && inputSnapshot?.score !== null
-        ? Number(inputSnapshot.score)
-        : null,
-  };
-}
+import { resolveAndConsolidateTrackingTarget } from "@/lib/tracking-canonical";
 
 /**
  * Executa o início de sessão de reprodução para um usuário autenticado.
@@ -79,31 +29,20 @@ export async function executeStartEpisodeSession(
 
   const sql = await getSql();
 
-  // Consulta catálogo canônico para compor snapshot se existir
-  const catalogRows = await sql.query<{
-    title: string;
-    titleRomaji: string | null;
-    titleEnglish: string | null;
-    titleNative: string | null;
-    cover: string | null;
-    banner: string | null;
-    format: string | null;
-    year: number | null;
-    episodesCount: number | null;
-    status: string | null;
-  }>(
-    `SELECT "title", "titleRomaji", "titleEnglish", "titleNative", "cover", "banner", "format", "year", "episodesCount", "status"
-     FROM "catalog_anime" WHERE "id" = $1 LIMIT 1`,
-    [animeId],
+  // Resolve animeId canônico e consolida eventuais duplicatas existentes
+  const resolved = await resolveAndConsolidateTrackingTarget(
+    sql,
+    userId,
+    animeId,
+    animeSnapshot,
   );
-
-  const catalogRow = catalogRows[0] ?? null;
-  const cleanSnapshot = buildAnimeSnapshot(catalogRow, animeSnapshot);
+  const targetAnimeId = resolved.canonicalAnimeId;
+  const cleanSnapshot = resolved.mergedSnapshot;
 
   const newPlaybackSessionId = crypto.randomUUID();
   const durationParam = duration && duration > 0 ? Math.round(duration) : null;
 
-  // 1. Garante de forma atômica e segura que o acompanhamento existe
+  // 1. Garante de forma atômica e segura que o acompanhamento existe no ID canônico
   await sql.query(
     `INSERT INTO "user_anime_tracking" (
       "userId", "animeId", "status", "episodesWatched", "animeSnapshot", "startedAt", "createdAt", "updatedAt"
@@ -112,9 +51,11 @@ export async function executeStartEpisodeSession(
       $1, $2, 'watching', 0, $3::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
     )
     ON CONFLICT ("userId", "animeId") DO UPDATE
-    SET "updatedAt" = CURRENT_TIMESTAMP
+    SET
+      "animeSnapshot" = COALESCE(EXCLUDED."animeSnapshot", "user_anime_tracking"."animeSnapshot"),
+      "updatedAt" = CURRENT_TIMESTAMP
     RETURNING "userId", "animeId";`,
-    [userId, animeId, JSON.stringify(cleanSnapshot)],
+    [userId, targetAnimeId, JSON.stringify(cleanSnapshot)],
   );
 
   // 2. Ordem estrita de bloqueios:
@@ -158,7 +99,7 @@ export async function executeStartEpisodeSession(
     playbackSessionId: string;
   }>(atomicSessionQuery, [
     userId,
-    animeId,
+    targetAnimeId,
     episodeId,
     episodeNumber,
     durationParam,
@@ -171,6 +112,7 @@ export async function executeStartEpisodeSession(
   }
 
   return {
+    animeId: targetAnimeId,
     playbackSessionId: record.playbackSessionId,
     currentTime: Number(record.currentTime) || 0,
     duration: record.duration !== null ? Number(record.duration) : null,
@@ -213,26 +155,14 @@ export async function executeHeartbeatEpisodeProgress(
 
   const sql = await getSql();
 
-  // Garante que o acompanhamento existe
-  const catalogRows = await sql.query<{
-    title: string;
-    titleRomaji: string | null;
-    titleEnglish: string | null;
-    titleNative: string | null;
-    cover: string | null;
-    banner: string | null;
-    format: string | null;
-    year: number | null;
-    episodesCount: number | null;
-    status: string | null;
-  }>(
-    `SELECT "title", "titleRomaji", "titleEnglish", "titleNative", "cover", "banner", "format", "year", "episodesCount", "status"
-     FROM "catalog_anime" WHERE "id" = $1 LIMIT 1`,
-    [animeId],
+  const resolved = await resolveAndConsolidateTrackingTarget(
+    sql,
+    userId,
+    animeId,
+    animeSnapshot,
   );
-
-  const catalogRow = catalogRows[0] ?? null;
-  const cleanSnapshot = buildAnimeSnapshot(catalogRow, animeSnapshot);
+  const targetAnimeId = resolved.canonicalAnimeId;
+  const cleanSnapshot = resolved.mergedSnapshot;
 
   await sql.query(
     `INSERT INTO "user_anime_tracking" (
@@ -242,9 +172,11 @@ export async function executeHeartbeatEpisodeProgress(
       $1, $2, 'watching', 0, $3::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
     )
     ON CONFLICT ("userId", "animeId") DO UPDATE
-    SET "updatedAt" = CURRENT_TIMESTAMP
+    SET
+      "animeSnapshot" = COALESCE(EXCLUDED."animeSnapshot", "user_anime_tracking"."animeSnapshot"),
+      "updatedAt" = CURRENT_TIMESTAMP
     RETURNING "userId", "animeId";`,
-    [userId, animeId, JSON.stringify(cleanSnapshot)],
+    [userId, targetAnimeId, JSON.stringify(cleanSnapshot)],
   );
 
   const roundCurrentTime = Math.max(0, Math.round(currentTime));
@@ -258,10 +190,16 @@ export async function executeHeartbeatEpisodeProgress(
   // 4. user_anime_tracking e user_episode_progress UPDATE
   const atomicHeartbeatQuery = `
     WITH tracking_lock AS (
-      SELECT "userId", "animeId"
+      SELECT "userId", "animeId", "episodesWatched"
       FROM "user_anime_tracking"
       WHERE "userId" = $1 AND "animeId" = $2
       FOR UPDATE
+    ),
+    existing_ep AS (
+      SELECT exists (
+        SELECT 1 FROM "user_watched_episode"
+        WHERE "userId" = $1 AND "animeId" = $2 AND "episodeId" = $3
+      ) AS "wasWatched"
     ),
     progress_lock AS (
       SELECT
@@ -377,11 +315,18 @@ export async function executeHeartbeatEpisodeProgress(
     tracking_update AS (
       UPDATE "user_anime_tracking" uat
       SET
-        "episodesWatched" = ec.total,
+        "episodesWatched" = GREATEST(
+          ec.total,
+          CASE
+            WHEN ee."wasWatched" = false AND (cc."episodeNumber" <= 0 OR cc."episodeNumber" > tl."episodesWatched")
+              THEN tl."episodesWatched" + 1
+            ELSE tl."episodesWatched"
+          END
+        ),
         "status" = CASE WHEN uat."status" = 'planning' THEN 'watching' ELSE uat."status" END,
         "startedAt" = COALESCE(uat."startedAt", CURRENT_TIMESTAMP),
         "updatedAt" = CURRENT_TIMESTAMP
-      FROM ep_count ec, completion_check cc
+      FROM ep_count ec, completion_check cc, tracking_lock tl, existing_ep ee
       WHERE uat."userId" = cc."userId"
         AND uat."animeId" = cc."animeId"
         AND cc."shouldComplete" = true
@@ -411,7 +356,7 @@ export async function executeHeartbeatEpisodeProgress(
     episodesWatched: number | null;
   }>(atomicHeartbeatQuery, [
     userId,
-    animeId,
+    targetAnimeId,
     episodeId,
     playbackSessionId,
     roundCurrentTime,
@@ -429,6 +374,7 @@ export async function executeHeartbeatEpisodeProgress(
 
   return {
     success: true,
+    animeId: targetAnimeId,
     currentTime: Number(result.currentTime) || 0,
     duration: result.duration !== null ? Number(result.duration) : null,
     accumulatedTime: Number(result.accumulatedTime) || 0,
@@ -459,6 +405,7 @@ export async function executeGetEpisodeProgress(
   const { animeId, episodeId } = data;
 
   const sql = await getSql();
+  const resolved = await resolveAndConsolidateTrackingTarget(sql, userId, animeId);
 
   const query = `
     SELECT
@@ -477,7 +424,9 @@ export async function executeGetEpisodeProgress(
     FROM "user_episode_progress" uep
     LEFT JOIN "user_watched_episode" uwe
       ON uwe."userId" = uep."userId" AND uwe."animeId" = uep."animeId" AND uwe."episodeId" = uep."episodeId"
-    WHERE uep."userId" = $1 AND uep."animeId" = $2 AND uep."episodeId" = $3;
+    WHERE uep."userId" = $1 AND uep."animeId" = ANY($2::text[]) AND uep."episodeId" = $3
+    ORDER BY uep."updatedAt" DESC
+    LIMIT 1;
   `;
 
   const rows = await sql.query<{
@@ -493,7 +442,7 @@ export async function executeGetEpisodeProgress(
     playbackSessionId: string | null;
     updatedAt: string;
     isWatched: boolean;
-  }>(query, [userId, animeId, episodeId]);
+  }>(query, [userId, resolved.candidateIds, episodeId]);
 
   const row = rows[0];
   if (!row) {
@@ -538,14 +487,15 @@ export async function executeClearEpisodeProgress(
   const { animeId, episodeId } = data;
 
   const sql = await getSql();
+  const resolved = await resolveAndConsolidateTrackingTarget(sql, userId, animeId);
 
   const query = `
     DELETE FROM "user_episode_progress"
-    WHERE "userId" = $1 AND "animeId" = $2 AND "episodeId" = $3
+    WHERE "userId" = $1 AND "animeId" = ANY($2::text[]) AND "episodeId" = $3
     RETURNING "episodeId";
   `;
 
-  const rows = await sql.query<{ episodeId: string }>(query, [userId, animeId, episodeId]);
+  const rows = await sql.query<{ episodeId: string }>(query, [userId, resolved.candidateIds, episodeId]);
 
   return {
     success: true,
@@ -617,12 +567,12 @@ export const getAnimeWatchedEpisodes = createServerFn({
   .handler(async ({ context, data }): Promise<string[]> => {
     try {
       const sql = await getSql();
+      const resolved = await resolveAndConsolidateTrackingTarget(sql, context.userId, data.animeId);
       const rows = await sql.query<{ episodeId: string }>(
-        `SELECT "episodeId"
+        `SELECT DISTINCT "episodeId"
          FROM "user_watched_episode"
-         WHERE "userId" = $1 AND "animeId" = $2
-         ORDER BY "watchedAt" ASC;`,
-        [context.userId, data.animeId],
+         WHERE "userId" = $1 AND "animeId" = ANY($2::text[])`,
+        [context.userId, resolved.candidateIds],
       );
       return rows.map((r) => r.episodeId);
     } catch (err) {

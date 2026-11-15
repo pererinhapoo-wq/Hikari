@@ -128,10 +128,17 @@ import {
 } from "@/lib/types";
 import { cn, stripHtml, youtubeIdFrom } from "@/lib/utils";
 import {
+  fetchAnimeUserInitialState,
   getMyAnimeTracking,
   removeAnimeTracking,
   upsertAnimeTracking,
 } from "@/lib/profile-tracking.functions";
+import type { AnimeUserInitialState } from "@/types/profile-tracking";
+import {
+  clearAnimeUserClientCache,
+  getAnimeUserClientCache,
+  saveAnimeUserClientCache,
+} from "@/lib/anime-user-client-cache";
 import {
   addProfileFavorite,
   getMyProfileFavorites,
@@ -292,7 +299,7 @@ export const Route = createFileRoute("/anime/$id")({
           m.warmAnimeBannerOnClient(params.id, null),
         );
       }
-      return { remote: null };
+      return { remote: null, initialUserStatus: null };
     }
 
     const remote = await fetchAnimeDetail({
@@ -305,7 +312,44 @@ export const Route = createFileRoute("/anime/$id")({
       );
     }
 
-    return { remote };
+    const candidateIds = Array.from(
+      new Set(
+        [
+          params.id,
+          remote?.id,
+          remote?.serverCatalogId,
+          remote?.anilistId != null ? String(remote.anilistId) : null,
+          remote?.malId != null ? `mal-${remote.malId}` : null,
+          remote?.malId != null ? String(remote.malId) : null,
+          remote?.kitsuId != null ? `kitsu-${remote.kitsuId}` : null,
+          remote?.kitsuId != null ? String(remote.kitsuId) : null,
+        ].filter((x): x is string => typeof x === "string" && Boolean(x.trim())),
+      ),
+    );
+
+    const titles = remote
+      ? [
+          remote.title,
+          remote.titles?.romaji,
+          remote.titles?.english,
+          remote.titles?.native,
+        ].filter((x): x is string => typeof x === "string" && Boolean(x.trim()))
+      : [];
+
+    let initialUserStatus: AnimeUserInitialState | null = null;
+    try {
+      initialUserStatus = await fetchAnimeUserInitialState({
+        data: {
+          animeId: remote?.id || params.id,
+          candidateIds,
+          titles,
+        },
+      });
+    } catch {
+      initialUserStatus = null;
+    }
+
+    return { remote, initialUserStatus };
   },
   head: ({ loaderData, params }) => {
     const remote = loaderData?.remote ?? null;
@@ -569,6 +613,10 @@ function makeAnimeSnapshot(anime: Anime) {
       anime.episodesCount || (anime.seasons?.[0]?.episodes?.length ?? null),
     status: anime.status || null,
     score: anime.score || null,
+    anilistId: anime.anilistId ?? null,
+    malId: anime.malId ?? null,
+    kitsuId: anime.kitsuId ?? null,
+    serverCatalogId: anime.serverCatalogId ?? null,
   };
 }
 
@@ -598,16 +646,25 @@ const TrailerFacade = memo(function TrailerFacade({
 
 function AnimePage() {
   const { id } = Route.useParams();
-  const { remote } = Route.useLoaderData();
-  return <AnimePageContent key={id} id={id} remote={remote} />;
+  const { remote, initialUserStatus } = Route.useLoaderData();
+  return (
+    <AnimePageContent
+      key={id}
+      id={id}
+      remote={remote}
+      initialUserStatus={initialUserStatus}
+    />
+  );
 }
 
 function AnimePageContent({
   id,
   remote: rawRemote,
+  initialUserStatus,
 }: {
   id: string;
   remote: Anime | null;
+  initialUserStatus?: AnimeUserInitialState | null;
 }) {
   const remote = useMemo(() => {
     if (!rawRemote) return null;
@@ -1147,6 +1204,9 @@ function AnimePageContent({
   const animeEnglishTitle = anime?.titles?.english ?? "";
   const animeNativeTitle = anime?.titles?.native ?? "";
 
+  const animeTrackingSnapshotRef = useRef<ReturnType<typeof makeAnimeSnapshot> | undefined>(undefined);
+  animeTrackingSnapshotRef.current = anime ? makeAnimeSnapshot(anime) : undefined;
+
   // Consulta status de acompanhamento e favoritos do usuário para este anime e demais entidades
   useEffect(() => {
     if (userPending) {
@@ -1192,6 +1252,7 @@ function AnimePageContent({
         data: {
           animeId: animePrimaryId,
           animeIds: idsToQuery,
+          animeSnapshot: animeTrackingSnapshotRef.current,
         },
       })
       .then((items) => {
@@ -1459,7 +1520,7 @@ function AnimePageContent({
     const previousScore = trackingScore;
     const previousDbAnimeId = trackingDbAnimeId;
     const isNewEntry = previousStatus === null;
-    const targetAnimeId = trackingDbAnimeId || anime.id;
+    const targetAnimeId = trackingDbAnimeId || anime.serverCatalogId || anime.id;
 
     trackingMutationVersionRef.current += 1;
     setTrackingStatus(data.status);
@@ -1518,7 +1579,7 @@ function AnimePageContent({
     const previousEpisodes = trackingEpisodesWatched;
     const previousScore = trackingScore;
     const previousDbAnimeId = trackingDbAnimeId;
-    const targetAnimeId = trackingDbAnimeId || anime.id;
+    const targetAnimeId = trackingDbAnimeId || anime.serverCatalogId || anime.id;
 
     trackingMutationVersionRef.current += 1;
     setTrackingStatus(null);

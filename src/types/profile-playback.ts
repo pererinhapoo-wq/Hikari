@@ -15,6 +15,7 @@ export const startEpisodeSessionSchema = z.object({
 export type StartEpisodeSessionInput = z.infer<typeof startEpisodeSessionSchema>;
 
 export interface StartEpisodeSessionResponse {
+  animeId?: string;
   playbackSessionId: string;
   currentTime: number;
   duration: number | null;
@@ -40,6 +41,7 @@ export type HeartbeatEpisodeProgressInput = z.infer<typeof heartbeatEpisodeProgr
 
 export interface HeartbeatEpisodeProgressResponse {
   success: boolean;
+  animeId?: string;
   currentTime: number;
   duration: number | null;
   accumulatedTime: number;

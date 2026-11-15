@@ -41,6 +41,10 @@ export const animeSnapshotSchema = z
     episodesCount: z.number().int().optional().nullable(),
     status: z.string().trim().optional().nullable(),
     score: z.number().optional().nullable(),
+    anilistId: z.number().int().positive().optional().nullable(),
+    malId: z.number().int().positive().optional().nullable(),
+    kitsuId: z.number().int().positive().optional().nullable(),
+    serverCatalogId: z.string().trim().optional().nullable(),
   })
   .catchall(z.union([z.string(), z.number(), z.boolean(), z.null()]))
   .optional()
@@ -85,6 +89,7 @@ export const getMyAnimeTrackingSchema = z
     status: trackingStatusSchema.optional(),
     animeId: z.string().trim().min(1).optional(),
     animeIds: z.array(z.string().trim().min(1)).max(20).optional(),
+    animeSnapshot: animeSnapshotSchema,
     minimal: z.boolean().optional(),
   })
   .optional();
@@ -394,3 +399,36 @@ export const STATUS_ORDER: TrackingStatus[] = [
   "dropped",
   "planning",
 ];
+
+export const getAnimeUserInitialStateSchema = z.object({
+  animeId: z.string().trim().min(1),
+  candidateIds: z.array(z.string().trim().min(1)).optional(),
+  titles: z.array(z.string().trim()).optional(),
+});
+
+export type GetAnimeUserInitialStateInput = z.infer<
+  typeof getAnimeUserInitialStateSchema
+>;
+
+export type AnimeUserInitialState = {
+  userId: string;
+  tracking: {
+    status: TrackingStatus;
+    score: number | null;
+    episodesWatched: number;
+    animeId: string;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  isFavorite: boolean;
+  favFavoriteId: string | null;
+  favoriteEntities: Array<{
+    id: string;
+    targetType: "anime" | "character" | "studio" | "company" | "person";
+    targetId: string;
+    title: string | null;
+  }>;
+  continueEpisode: { id: string; number: number } | null;
+  watchedEpisodeIds: string[];
+};
+

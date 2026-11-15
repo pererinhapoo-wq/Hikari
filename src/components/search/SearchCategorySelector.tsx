@@ -1,40 +1,35 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Film, Search as SearchIcon, Users } from "lucide-react";
+import { Check, ChevronDown, Mic2, Sparkles, Tv, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type SearchCategory = "tudo" | "movies" | "series" | "people" | "animes";
+export type SearchCategory = "animes" | "users" | "people" | "characters";
 
 export interface CategoryOption {
   id: SearchCategory;
   label: string;
-  icon: typeof Film;
+  icon: typeof Tv;
 }
 
 export const CATEGORIES: CategoryOption[] = [
   {
-    id: "tudo",
-    label: "Tudo",
-    icon: SearchIcon,
+    id: "animes",
+    label: "Animes",
+    icon: Tv,
   },
   {
-    id: "movies",
-    label: "Filmes",
-    icon: Film,
-  },
-  {
-    id: "series",
-    label: "Séries",
-    icon: Film,
-  },
-  {
-    id: "people",
-    label: "Pessoas",
+    id: "users",
+    label: "Usuários",
     icon: Users,
   },
   {
-    id: "animes",
-    label: "Animes",
-    icon: Film,
+    id: "people",
+    label: "People",
+    icon: Mic2,
+  },
+  {
+    id: "characters",
+    label: "Personagens",
+    icon: Sparkles,
   },
 ];
 

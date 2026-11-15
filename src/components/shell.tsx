@@ -37,7 +37,7 @@ import {
   cn,
   currentAnimeSeason,
 } from "@/lib/utils";
-import { useScrollLock } from "@/lib/scroll-lock";
+import { isScrollLocked, useScrollLock } from "@/lib/scroll-lock";
 import {
   setShellUiReady,
   useNotificationsPresentationReady,
@@ -217,6 +217,13 @@ function ShellHeaderWrapper({
 
     const evaluateScroll = () => {
       rafId = null;
+      if (isScrollLocked()) {
+        if (keepVisible && !showHeaderRef.current) {
+          commitHeaderDataset(isScrolledRef.current, true);
+        }
+        return;
+      }
+
       const currentScrollY = window.scrollY;
 
       // Se qualquer painel/menu/busca estiver aberto, mantém o cabeçalho visível

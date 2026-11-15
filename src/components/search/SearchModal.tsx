@@ -9,10 +9,10 @@ import {
 import { searchCatalog } from "@/lib/api";
 import { searchUsers, type SearchUserItem } from "@/lib/profile.functions";
 import {
-  searchCharacters,
   searchPeople,
-  type SearchCharacterItem,
+  searchCharacters,
   type SearchPersonItem,
+  type SearchCharacterItem,
 } from "@/lib/search-entities";
 import { displayTitle, type SlimAnime } from "@/lib/types";
 import { overlayList } from "@/lib/overlay";
@@ -29,6 +29,11 @@ interface SearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialCategory?: SearchCategory;
+}
+
+function normalizeSearchCategory(value?: string): SearchCategory {
+  if (value === "users" || value === "people" || value === "characters") return value;
+  return "animes";
 }
 
 /**
@@ -122,14 +127,16 @@ export function SearchModal({
   onClose,
   initialCategory = "animes",
 }: SearchModalProps) {
+  const navigate = useNavigate();
   const [animationState, setAnimationState] = useState<"open" | "closed">("open");
   const [isRendered, setIsRendered] = useState(isOpen);
-  const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const [category, setCategory] = useState<SearchCategory>(initialCategory);
+  const [category, setCategory] = useState<SearchCategory>(() =>
+    normalizeSearchCategory(initialCategory),
+  );
   const [query, setQuery] = useState("");
   const [lockedHeight, setLockedHeight] = useState<number | null>(null);
 
@@ -139,6 +146,7 @@ export function SearchModal({
   const [animeLoadingMore, setAnimeLoadingMore] = useState(false);
   const [animePage, setAnimePage] = useState(1);
   const [animeHasNext, setAnimeHasNext] = useState(false);
+  const [animeFetchedQuery, setAnimeFetchedQuery] = useState("");
 
   // Resultados de Usuários
   const [userResults, setUserResults] = useState<SearchUserItem[]>([]);
@@ -146,13 +154,7 @@ export function SearchModal({
   const [userLoadingMore, setUserLoadingMore] = useState(false);
   const [userPage, setUserPage] = useState(1);
   const [userHasNext, setUserHasNext] = useState(false);
-
-  // Resultados de Personagens
-  const [characterResults, setCharacterResults] = useState<SearchCharacterItem[]>([]);
-  const [characterLoading, setCharacterLoading] = useState(false);
-  const [characterLoadingMore, setCharacterLoadingMore] = useState(false);
-  const [characterPage, setCharacterPage] = useState(1);
-  const [characterHasNext, setCharacterHasNext] = useState(false);
+  const [userFetchedQuery, setUserFetchedQuery] = useState("");
 
   // Resultados de People
   const [peopleResults, setPeopleResults] = useState<SearchPersonItem[]>([]);
@@ -160,6 +162,12 @@ export function SearchModal({
   const [peopleLoadingMore, setPeopleLoadingMore] = useState(false);
   const [peoplePage, setPeoplePage] = useState(1);
   const [peopleHasNext, setPeopleHasNext] = useState(false);
+  const [peopleFetchedQuery, setPeopleFetchedQuery] = useState("");
+
+  const debounceTimerRef = useRef<number | null>(null);
+  const animeReqIdRef = useRef(0);
+  const userReqIdRef = useRef(0);
+  const peopleReqIdRef = useRef(0);
 
   const localAnimes = useHikariStore((s) => s.animes);
 
@@ -170,7 +178,7 @@ export function SearchModal({
     if (isOpen) {
       setIsRendered(true);
       setAnimationState("open");
-      
+
       const initialHeight = window.visualViewport?.height ?? window.innerHeight;
       setLockedHeight(initialHeight);
 
@@ -189,6 +197,10 @@ export function SearchModal({
   }, [isOpen]);
 
   const handleClose = useCallback(() => {
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
     inputRef.current?.blur();
     setAnimationState("closed");
     onClose();
@@ -213,48 +225,60 @@ export function SearchModal({
   const handleClear = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    animeReqIdRef.current += 1;
+    userReqIdRef.current += 1;
+    peopleReqIdRef.current += 1;
     setQuery("");
     setAnimeResults([]);
     setUserResults([]);
-    setCharacterResults([]);
     setPeopleResults([]);
+    setAnimeFetchedQuery("");
+    setUserFetchedQuery("");
+    setPeopleFetchedQuery("");
     setAnimePage(1);
     setUserPage(1);
-    setCharacterPage(1);
     setPeoplePage(1);
     setAnimeHasNext(false);
     setUserHasNext(false);
-    setCharacterHasNext(false);
     setPeopleHasNext(false);
+    setAnimeLoading(false);
+    setUserLoading(false);
+    setPeopleLoading(false);
     inputRef.current?.focus({ preventScroll: true });
   };
 
-  // Troca de categoria
+  // Troca de categoria (mantém categorias estritamente isoladas)
   const handleCategoryChange = (nextCategory: SearchCategory) => {
-    setCategory(nextCategory);
+    const normalized = normalizeSearchCategory(nextCategory);
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    setCategory(normalized);
     inputRef.current?.focus({ preventScroll: true });
   };
 
   /* =========================================================
-     1. BUSCA DE ANIMES
+     EXECUTORES DE BUSCA ISOLADOS POR CATEGORIA
   ========================================================== */
-  useEffect(() => {
-    if (!isOpen || (category !== "animes" && category !== "tudo" && category !== "movies" && category !== "series")) {
-      return;
-    }
+  const runAnimeSearch = useCallback(
+    async (rawQuery: string) => {
+      const trimmed = rawQuery.trim();
+      const reqId = ++animeReqIdRef.current;
 
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setAnimeResults([]);
-      setAnimeLoading(false);
-      setAnimeHasNext(false);
-      setAnimePage(1);
-      return;
-    }
+      if (!trimmed) {
+        setAnimeResults([]);
+        setAnimeFetchedQuery("");
+        setAnimeLoading(false);
+        setAnimeHasNext(false);
+        setAnimePage(1);
+        return;
+      }
 
-    let cancelled = false;
-
-    const timer = window.setTimeout(async () => {
       setAnimeLoading(true);
       setAnimePage(1);
 
@@ -271,7 +295,7 @@ export function SearchModal({
           },
         });
 
-        if (cancelled) return;
+        if (reqId !== animeReqIdRef.current) return;
 
         const normalized = trimmed
           .normalize("NFD")
@@ -310,39 +334,232 @@ export function SearchModal({
           merged.push(anime);
         }
 
-        if (!cancelled) {
-          let finalResults = merged;
-          if (category === "movies") {
-            finalResults = merged.filter((a) => a.format === "MOVIE");
-          } else if (category === "series") {
-            finalResults = merged.filter((a) => a.format !== "MOVIE");
-          }
-          setAnimeResults(finalResults);
+        if (reqId === animeReqIdRef.current) {
+          setAnimeResults(merged);
+          setAnimeFetchedQuery(trimmed);
           setAnimeHasNext(Boolean(result.hasNext));
         }
       } catch {
-        if (!cancelled) {
+        if (reqId === animeReqIdRef.current) {
           setAnimeResults([]);
+          setAnimeFetchedQuery(trimmed);
           setAnimeHasNext(false);
         }
       } finally {
-        if (!cancelled) {
+        if (reqId === animeReqIdRef.current) {
           setAnimeLoading(false);
         }
+      }
+    },
+    [localAnimes],
+  );
+
+  const runUserSearch = useCallback(async (rawQuery: string) => {
+    let clean = rawQuery.trim();
+    if (clean.startsWith("@")) {
+      clean = clean.slice(1).trim();
+    }
+
+    const reqId = ++userReqIdRef.current;
+
+    if (clean.length < 2) {
+      setUserResults([]);
+      setUserFetchedQuery("");
+      setUserLoading(false);
+      setUserHasNext(false);
+      setUserPage(1);
+      return;
+    }
+
+    setUserLoading(true);
+    setUserPage(1);
+
+    try {
+      const users = await searchUsers({
+        data: {
+          query: clean,
+          page: 1,
+          limit: 18,
+        },
+      });
+
+      if (reqId === userReqIdRef.current) {
+        setUserResults(users);
+        setUserFetchedQuery(clean);
+        setUserHasNext(users.length >= 18);
+      }
+    } catch {
+      if (reqId === userReqIdRef.current) {
+        setUserResults([]);
+        setUserFetchedQuery(clean);
+        setUserHasNext(false);
+      }
+    } finally {
+      if (reqId === userReqIdRef.current) {
+        setUserLoading(false);
+      }
+    }
+  }, []);
+
+  const runPeopleSearch = useCallback(async (rawQuery: string) => {
+    const trimmed = rawQuery.trim();
+    const reqId = ++peopleReqIdRef.current;
+
+    if (!trimmed) {
+      setPeopleResults([]);
+      setPeopleFetchedQuery("");
+      setPeopleLoading(false);
+      setPeopleHasNext(false);
+      setPeoplePage(1);
+      return;
+    }
+
+    setPeopleLoading(true);
+    setPeoplePage(1);
+
+    try {
+      const result = await searchPeople(trimmed, 1, 18);
+      if (reqId === peopleReqIdRef.current) {
+        setPeopleResults(result.items);
+        setPeopleFetchedQuery(trimmed);
+        setPeopleHasNext(result.hasNext);
+      }
+    } catch {
+      if (reqId === peopleReqIdRef.current) {
+        setPeopleResults([]);
+        setPeopleFetchedQuery(trimmed);
+        setPeopleHasNext(false);
+      }
+    } finally {
+      if (reqId === peopleReqIdRef.current) {
+        setPeopleLoading(false);
+      }
+    }
+  }, []);
+
+  /* =========================================================
+     DISPARO INSTANTÂNEO (DEBOUNCE AO DIGITAR)
+  ========================================================== */
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+
+    const trimmed = query.trim();
+
+    if (!trimmed) {
+      if (category === "animes") {
+        animeReqIdRef.current += 1;
+        setAnimeResults([]);
+        setAnimeFetchedQuery("");
+        setAnimeLoading(false);
+        setAnimeHasNext(false);
+        setAnimePage(1);
+      } else if (category === "users") {
+        userReqIdRef.current += 1;
+        setUserResults([]);
+        setUserFetchedQuery("");
+        setUserLoading(false);
+        setUserHasNext(false);
+        setUserPage(1);
+      } else {
+        peopleReqIdRef.current += 1;
+        setPeopleResults([]);
+        setPeopleFetchedQuery("");
+        setPeopleLoading(false);
+        setPeopleHasNext(false);
+        setPeoplePage(1);
+      }
+      return;
+    }
+
+    if (category === "users") {
+      const clean = trimmed.replace(/^@/, "").trim();
+      if (clean.length < 2) {
+        userReqIdRef.current += 1;
+        setUserResults([]);
+        setUserFetchedQuery("");
+        setUserLoading(false);
+        setUserHasNext(false);
+        setUserPage(1);
+        return;
+      }
+    }
+
+    debounceTimerRef.current = window.setTimeout(() => {
+      debounceTimerRef.current = null;
+      if (category === "animes") {
+        void runAnimeSearch(query);
+      } else if (category === "users") {
+        void runUserSearch(query);
+      } else {
+        void runPeopleSearch(query);
       }
     }, 250);
 
     return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
+      if (debounceTimerRef.current !== null) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
     };
-  }, [isOpen, category, query, localAnimes]);
+  }, [isOpen, category, query, runAnimeSearch, runUserSearch, runPeopleSearch]);
 
+  /* =========================================================
+     ENVIO POR TECLADO (ENTER / IR) — SEM NAVEGAR E SEM FLASH
+  ========================================================== */
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+
+    if (typeof window !== "undefined" && window.innerWidth <= 640) {
+      inputRef.current?.blur();
+    }
+
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    handleClose();
+    void navigate({
+      to: "/search",
+      search: {
+        q: trimmed,
+        ...(category !== "animes" ? { tab: category } : {}),
+        ...(isAdultArea ? { adult: true } : {}),
+      },
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.keyCode === 13) {
+      e.preventDefault();
+      const form = e.currentTarget.form;
+      if (form) {
+        form.requestSubmit();
+      } else {
+        handleFormSubmit({
+          preventDefault: () => {},
+          currentTarget: { form: null },
+        } as unknown as React.FormEvent<HTMLFormElement>);
+      }
+    }
+  };
+
+  /* =========================================================
+     PAGINAÇÃO (SCROLL INFINITO)
+  ========================================================== */
   const loadMoreAnimes = useCallback(async () => {
     if (animeLoading || animeLoadingMore || !animeHasNext) return;
     const trimmed = query.trim();
     if (!trimmed) return;
 
+    const reqId = animeReqIdRef.current;
     setAnimeLoadingMore(true);
     const nextPage = animePage + 1;
 
@@ -358,6 +575,8 @@ export function SearchModal({
           adult: isAdultArea,
         },
       });
+
+      if (reqId !== animeReqIdRef.current) return;
 
       const remote = overlayList(result.items ?? [], localAnimes);
       setAnimeResults((prev) => {
@@ -375,69 +594,15 @@ export function SearchModal({
       setAnimePage(nextPage);
       setAnimeHasNext(Boolean(result.hasNext));
     } catch {
-      setAnimeHasNext(false);
+      if (reqId === animeReqIdRef.current) {
+        setAnimeHasNext(false);
+      }
     } finally {
-      setAnimeLoadingMore(false);
+      if (reqId === animeReqIdRef.current) {
+        setAnimeLoadingMore(false);
+      }
     }
   }, [animeLoading, animeLoadingMore, animeHasNext, query, animePage, localAnimes]);
-
-  /* =========================================================
-     2. BUSCA DE USUÁRIOS
-  ========================================================== */
-  useEffect(() => {
-    if (!isOpen || category !== "users") {
-      return;
-    }
-
-    let clean = query.trim();
-    if (clean.startsWith("@")) {
-      clean = clean.slice(1).trim();
-    }
-
-    if (clean.length < 2) {
-      setUserResults([]);
-      setUserLoading(false);
-      setUserHasNext(false);
-      setUserPage(1);
-      return;
-    }
-
-    let cancelled = false;
-
-    const timer = window.setTimeout(async () => {
-      setUserLoading(true);
-      setUserPage(1);
-
-      try {
-        const users = await searchUsers({
-          data: {
-            query: clean,
-            page: 1,
-            limit: 18,
-          },
-        });
-
-        if (!cancelled) {
-          setUserResults(users);
-          setUserHasNext(users.length >= 18);
-        }
-      } catch {
-        if (!cancelled) {
-          setUserResults([]);
-          setUserHasNext(false);
-        }
-      } finally {
-        if (!cancelled) {
-          setUserLoading(false);
-        }
-      }
-    }, 250);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [isOpen, category, query]);
 
   const loadMoreUsers = useCallback(async () => {
     if (userLoading || userLoadingMore || !userHasNext) return;
@@ -445,6 +610,7 @@ export function SearchModal({
     if (clean.startsWith("@")) clean = clean.slice(1).trim();
     if (clean.length < 2) return;
 
+    const reqId = userReqIdRef.current;
     setUserLoadingMore(true);
     const nextPage = userPage + 1;
 
@@ -456,6 +622,8 @@ export function SearchModal({
           limit: 18,
         },
       });
+
+      if (reqId !== userReqIdRef.current) return;
 
       setUserResults((prev) => {
         const seen = new Set(prev.map((u) => u.userId));
@@ -472,146 +640,29 @@ export function SearchModal({
       setUserPage(nextPage);
       setUserHasNext(users.length >= 18);
     } catch {
-      setUserHasNext(false);
+      if (reqId === userReqIdRef.current) {
+        setUserHasNext(false);
+      }
     } finally {
-      setUserLoadingMore(false);
+      if (reqId === userReqIdRef.current) {
+        setUserLoadingMore(false);
+      }
     }
   }, [userLoading, userLoadingMore, userHasNext, query, userPage]);
-
-  /* =========================================================
-     3. BUSCA DE PERSONAGENS
-  ========================================================== */
-  useEffect(() => {
-    if (!isOpen || category !== "characters") {
-      return;
-    }
-
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setCharacterResults([]);
-      setCharacterLoading(false);
-      setCharacterHasNext(false);
-      setCharacterPage(1);
-      return;
-    }
-
-    let cancelled = false;
-
-    const timer = window.setTimeout(async () => {
-      setCharacterLoading(true);
-      setCharacterPage(1);
-
-      try {
-        const result = await searchCharacters(trimmed, 1, 18);
-        if (!cancelled) {
-          setCharacterResults(result.items);
-          setCharacterHasNext(result.hasNext);
-        }
-      } catch {
-        if (!cancelled) {
-          setCharacterResults([]);
-          setCharacterHasNext(false);
-        }
-      } finally {
-        if (!cancelled) {
-          setCharacterLoading(false);
-        }
-      }
-    }, 250);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [isOpen, category, query]);
-
-  const loadMoreCharacters = useCallback(async () => {
-    if (characterLoading || characterLoadingMore || !characterHasNext) return;
-    const trimmed = query.trim();
-    if (!trimmed) return;
-
-    setCharacterLoadingMore(true);
-    const nextPage = characterPage + 1;
-
-    try {
-      const result = await searchCharacters(trimmed, nextPage, 18);
-      setCharacterResults((prev) => {
-        const seen = new Set(prev.map((c) => c.id));
-        const additions: SearchCharacterItem[] = [];
-        for (const item of result.items) {
-          if (!seen.has(item.id)) {
-            seen.add(item.id);
-            additions.push(item);
-          }
-        }
-        return [...prev, ...additions];
-      });
-      setCharacterPage(nextPage);
-      setCharacterHasNext(result.hasNext);
-    } catch {
-      setCharacterHasNext(false);
-    } finally {
-      setCharacterLoadingMore(false);
-    }
-  }, [characterLoading, characterLoadingMore, characterHasNext, query, characterPage]);
-
-  /* =========================================================
-     4. BUSCA DE PEOPLE
-  ========================================================== */
-  useEffect(() => {
-    if (!isOpen || category !== "people") {
-      return;
-    }
-
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setPeopleResults([]);
-      setPeopleLoading(false);
-      setPeopleHasNext(false);
-      setPeoplePage(1);
-      return;
-    }
-
-    let cancelled = false;
-
-    const timer = window.setTimeout(async () => {
-      setPeopleLoading(true);
-      setPeoplePage(1);
-
-      try {
-        const result = await searchPeople(trimmed, 1, 18);
-        if (!cancelled) {
-          setPeopleResults(result.items);
-          setPeopleHasNext(result.hasNext);
-        }
-      } catch {
-        if (!cancelled) {
-          setPeopleResults([]);
-          setPeopleHasNext(false);
-        }
-      } finally {
-        if (!cancelled) {
-          setPeopleLoading(false);
-        }
-      }
-    }, 250);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [isOpen, category, query]);
 
   const loadMorePeople = useCallback(async () => {
     if (peopleLoading || peopleLoadingMore || !peopleHasNext) return;
     const trimmed = query.trim();
     if (!trimmed) return;
 
+    const reqId = peopleReqIdRef.current;
     setPeopleLoadingMore(true);
     const nextPage = peoplePage + 1;
 
     try {
       const result = await searchPeople(trimmed, nextPage, 18);
+      if (reqId !== peopleReqIdRef.current) return;
+
       setPeopleResults((prev) => {
         const seen = new Set(prev.map((p) => p.id));
         const additions: SearchPersonItem[] = [];
@@ -626,9 +677,13 @@ export function SearchModal({
       setPeoplePage(nextPage);
       setPeopleHasNext(result.hasNext);
     } catch {
-      setPeopleHasNext(false);
+      if (reqId === peopleReqIdRef.current) {
+        setPeopleHasNext(false);
+      }
     } finally {
-      setPeopleLoadingMore(false);
+      if (reqId === peopleReqIdRef.current) {
+        setPeopleLoadingMore(false);
+      }
     }
   }, [peopleLoading, peopleLoadingMore, peopleHasNext, query, peoplePage]);
 
@@ -646,8 +701,6 @@ export function SearchModal({
             void loadMoreAnimes();
           } else if (category === "users" && userHasNext && !userLoading && !userLoadingMore) {
             void loadMoreUsers();
-          } else if (category === "characters" && characterHasNext && !characterLoading && !characterLoadingMore) {
-            void loadMoreCharacters();
           } else if (category === "people" && peopleHasNext && !peopleLoading && !peopleLoadingMore) {
             void loadMorePeople();
           }
@@ -671,10 +724,6 @@ export function SearchModal({
     userLoading,
     userLoadingMore,
     loadMoreUsers,
-    characterHasNext,
-    characterLoading,
-    characterLoadingMore,
-    loadMoreCharacters,
     peopleHasNext,
     peopleLoading,
     peopleLoadingMore,
@@ -683,87 +732,63 @@ export function SearchModal({
 
   if (!isRendered) return null;
 
-  const userQueryClean = query.trim().replace(/^@/, "").trim();
+  const trimmedQuery = query.trim();
+  const userQueryClean = trimmedQuery.replace(/^@/, "").trim();
+  const isAdultArea =
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/adult");
 
   const isCurrentLoading =
     category === "animes"
       ? animeLoading
       : category === "users"
         ? userLoading
-        : category === "characters"
-          ? characterLoading
-          : peopleLoading;
+        : peopleLoading;
 
   const isCurrentLoadingMore =
     category === "animes"
       ? animeLoadingMore
       : category === "users"
         ? userLoadingMore
-        : category === "characters"
-          ? characterLoadingMore
-          : peopleLoadingMore;
+        : peopleLoadingMore;
 
   const currentCount =
     category === "animes"
       ? animeResults.length
       : category === "users"
         ? userResults.length
-        : category === "characters"
-          ? characterResults.length
-          : peopleResults.length;
+        : peopleResults.length;
 
   const currentHasMore =
     category === "animes"
       ? animeHasNext
       : category === "users"
         ? userHasNext
-        : category === "characters"
-          ? characterHasNext
-          : peopleHasNext;
+        : peopleHasNext;
 
   const placeholderText =
     category === "animes"
       ? "Buscar no Hikari..."
       : category === "users"
         ? "Buscar usuários por @username..."
-        : category === "characters"
-          ? "Buscar personagens..."
-          : "Buscar profissionais (People)...";
+        : "Buscar profissionais (People)...";
 
-  const handleEnterNavigation = () => {
-    const clean = query.trim();
-    if (!clean) return;
-
-    if (category === "animes") {
-      handleClose();
-      void navigate({
-        to: "/search",
-        search: { q: clean },
-      });
-    } else if (category === "users") {
-      if (userResults.length > 0) {
-        handleClose();
-        void navigate({
-          to: "/profile/$nick",
-          params: { nick: userResults[0].nick },
-        });
-      } else {
-        handleClose();
-        void navigate({
-          to: "/search",
-          search: { q: clean, tab: "users" },
-        });
-      }
-    } else {
-      handleClose();
-      void navigate({
-        to: "/search",
-        search: { q: clean, tab: category },
-      });
-    }
-  };
-
-  const hasQuery = query.trim().length > 0;
+  const hasQuery = trimmedQuery.length > 0;
+  const isWaitingFirstAnimeFetch =
+    category === "animes" &&
+    hasQuery &&
+    animeResults.length === 0 &&
+    animeFetchedQuery !== trimmedQuery;
+  const isWaitingFirstUserFetch =
+    category === "users" &&
+    userQueryClean.length >= 2 &&
+    userResults.length === 0 &&
+    userFetchedQuery !== userQueryClean;
+  const isWaitingFirstPeopleFetch =
+    category === "people" &&
+    hasQuery &&
+    peopleResults.length === 0 &&
+    peopleFetchedQuery !== trimmedQuery;
 
   return (
     <div
@@ -791,9 +816,10 @@ export function SearchModal({
         className="sr-modal-window relative z-10"
       >
         {/* =========================================================
-            BARRA DE BUSCA SUPERIOR
+            BARRA DE BUSCA SUPERIOR (FORMULÁRIO NATIVO ENTER / IR)
         ========================================================== */}
-        <div
+        <form
+          onSubmit={handleFormSubmit}
           className="relative border-b shrink-0 flex items-center [&>*+*]:ml-[12px]"
           style={{
             display: "flex",
@@ -816,19 +842,13 @@ export function SearchModal({
 
           <input
             ref={inputRef}
-            type="text"
-            enterKeyHint="search"
+            type="search"
+            enterKeyHint="go"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                (e.currentTarget as HTMLInputElement).blur();
-                handleEnterNavigation();
-              }
-            }}
-            placeholder={placeholderText}
-            className="flex-1 min-w-0 bg-transparent border-0 outline-none shadow-none focus:outline-[2px] focus:outline-[var(--violet-400)] focus:outline-offset-[-2px] placeholder:text-[var(--text-4)] placeholder:font-normal"
+            onKeyDown={handleKeyDown}
+            placeholder=""
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none shadow-none focus:outline-[2px] focus:outline-[var(--violet-400)] focus:outline-offset-[-2px] placeholder:text-[var(--text-4)] placeholder:font-normal [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
             style={{
               flex: 1,
               minWidth: 0,
@@ -895,7 +915,7 @@ export function SearchModal({
           >
             ESC
           </button>
-        </div>
+        </form>
 
         {/* =========================================================
             HEADER DE RÓTULO E CONTAGEM (Apenas com consulta)
@@ -903,10 +923,18 @@ export function SearchModal({
         {hasQuery && (
           <div className="sr-section-label">
             <div className="flex items-center justify-between">
-              <span>{category === "tudo" ? "TUDO" : category === "movies" ? "FILMES" : category === "series" ? "SÉRIES" : category === "people" ? "PESSOAS" : "ANIMES"}</span>
+              <span>
+                {category === "animes"
+                  ? "ANIMES"
+                  : category === "users"
+                    ? "USUÁRIOS"
+                    : "PEOPLE"}
+              </span>
               <span style={{ color: "var(--violet-200)" }}>
                 {isCurrentLoading
-                  ? "..."
+                  ? currentCount > 0
+                    ? `${currentCount} ${currentCount === 1 ? "resultado" : "resultados"} · atualizando`
+                    : "..."
                   : `${currentCount} ${currentCount === 1 ? "resultado" : "resultados"}`}
               </span>
             </div>
@@ -949,19 +977,17 @@ export function SearchModal({
                   ? "Pesquise animes por título original, romaji ou em português."
                   : category === "users"
                     ? "Encontre amigos e membros da comunidade pelo @username."
-                    : category === "characters"
-                      ? "Pesquise personagens favoritos de suas obras."
-                      : "Pesquise dubladores, diretores e profissionais de produção."}
+                    : "Pesquise dubladores, diretores e profissionais de produção."}
               </p>
             </div>
           )}
 
           {/* =========================================================
-              1. RESULTADOS DE ANIMES
+              1. RESULTADOS DE ANIMES (Estritamente isolado)
           ========================================================== */}
-          {(category === "animes" || category === "tudo" || category === "movies" || category === "series") && hasQuery && (
+          {category === "animes" && hasQuery && (
             <div>
-              {animeLoading && animeResults.length === 0 ? (
+              {(animeLoading || isWaitingFirstAnimeFetch) && animeResults.length === 0 ? (
                 <div className="space-y-1 p-0.5">
                   {Array.from({ length: 6 }).map((_, i) => (
                     <div key={i} className="sr-item skeleton">
@@ -973,10 +999,6 @@ export function SearchModal({
                     </div>
                   ))}
                 </div>
-              ) : animeLoading && animeResults.length > 0 ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="sr-spinner" />
-                </div>
               ) : animeResults.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
                   <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
@@ -986,11 +1008,11 @@ export function SearchModal({
                     Nenhum anime encontrado
                   </h2>
                   <p className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm" style={{ fontFamily: "var(--font-sans)" }}>
-                    Não encontramos resultados para &quot;{query.trim()}&quot;. Tente outro título.
+                    Não encontramos resultados para &quot;{trimmedQuery}&quot;. Tente outro título.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-0.5">
+                <div className={cn("space-y-0.5 transition-opacity duration-150", animeLoading && "opacity-75")}>
                   {animeResults.map((anime) => {
                     const coverAttrs = anime.cover
                       ? getResponsiveCoverAttrs(anime.cover, "thumb")
@@ -1062,7 +1084,7 @@ export function SearchModal({
           )}
 
           {/* =========================================================
-              2. RESULTADOS DE USUÁRIOS
+              2. RESULTADOS DE USUÁRIOS (Estritamente isolado -> /profile/$nick)
           ========================================================== */}
           {category === "users" && hasQuery && (
             <div>
@@ -1075,7 +1097,7 @@ export function SearchModal({
                     Pesquise por @username ou nome de exibição para encontrar membros.
                   </p>
                 </div>
-              ) : userLoading && userResults.length === 0 ? (
+              ) : (userLoading || isWaitingFirstUserFetch) && userResults.length === 0 ? (
                 <div className="space-y-1 p-0.5">
                   {Array.from({ length: 6 }).map((_, i) => (
                     <div key={i} className="sr-item skeleton">
@@ -1087,10 +1109,6 @@ export function SearchModal({
                     </div>
                   ))}
                 </div>
-              ) : userLoading && userResults.length > 0 ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="sr-spinner" />
-                </div>
               ) : userResults.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
                   <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
@@ -1100,11 +1118,11 @@ export function SearchModal({
                     Nenhum usuário encontrado
                   </h2>
                   <p className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm" style={{ fontFamily: "var(--font-sans)" }}>
-                    Não encontramos membros com &quot;{query.trim()}&quot;. Tente outro username ou nome.
+                    Não encontramos membros com &quot;{trimmedQuery}&quot;. Tente outro username ou nome.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-0.5">
+                <div className={cn("space-y-0.5 transition-opacity duration-150", userLoading && "opacity-75")}>
                   {userResults.map((person) => {
                     const avatarLetter = (
                       person.displayName ||
@@ -1141,7 +1159,7 @@ export function SearchModal({
                         </div>
 
                         <div>
-                          <span className="sr-type person">PESSOA</span>
+                          <span className="sr-type person">USUÁRIO</span>
                         </div>
                       </Link>
                     );
@@ -1152,11 +1170,11 @@ export function SearchModal({
           )}
 
           {/* =========================================================
-              3. RESULTADOS DE PEOPLE
+              3. RESULTADOS DE PEOPLE (Estritamente isolado)
           ========================================================== */}
           {category === "people" && hasQuery && (
             <div>
-              {peopleLoading && peopleResults.length === 0 ? (
+              {(peopleLoading || isWaitingFirstPeopleFetch) && peopleResults.length === 0 ? (
                 <div className="space-y-1 p-0.5">
                   {Array.from({ length: 6 }).map((_, i) => (
                     <div key={i} className="sr-item skeleton">
@@ -1168,10 +1186,6 @@ export function SearchModal({
                     </div>
                   ))}
                 </div>
-              ) : peopleLoading && peopleResults.length > 0 ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="sr-spinner" />
-                </div>
               ) : peopleResults.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
                   <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
@@ -1181,11 +1195,11 @@ export function SearchModal({
                     Nenhum profissional encontrado
                   </h2>
                   <p className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm" style={{ fontFamily: "var(--font-sans)" }}>
-                    Não encontramos profissionais para &quot;{query.trim()}&quot;.
+                    Não encontramos profissionais para &quot;{trimmedQuery}&quot;.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-0.5">
+                <div className={cn("space-y-0.5 transition-opacity duration-150", peopleLoading && "opacity-75")}>
                   {peopleResults.map((person) => {
                     const imageSrc = person.image?.large || person.image?.medium || "";
                     const animeId = person.anime?.id;
@@ -1206,7 +1220,7 @@ export function SearchModal({
                           </p>
 
                           <div>
-                            <span className="sr-type person">STAFF</span>
+                            <span className="sr-type person">PEOPLE</span>
                           </div>
                         </div>
                       </>
@@ -1224,87 +1238,6 @@ export function SearchModal({
                       </Link>
                     ) : (
                       <div key={person.id} className="sr-item group">
-                        {itemContent}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* =========================================================
-              4. RESULTADOS DE PERSONAGENS
-          ========================================================== */}
-          {category === "characters" && hasQuery && (
-            <div>
-              {characterLoading && characterResults.length === 0 ? (
-                <div className="space-y-1 p-0.5">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="sr-item skeleton">
-                      <div className="sr-poster" />
-                      <div className="min-w-0 space-y-2 py-1">
-                        <p className="sr-title" />
-                        <div className="sr-sub" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : characterLoading && characterResults.length > 0 ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="sr-spinner" />
-                </div>
-              ) : characterResults.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-                  <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
-                    <SearchIcon className="size-6" />
-                  </div>
-                  <h2 className="text-[16px] font-semibold text-[var(--text-1)]" style={{ fontFamily: "var(--font-sans)" }}>
-                    Nenhum personagem encontrado
-                  </h2>
-                  <p className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm" style={{ fontFamily: "var(--font-sans)" }}>
-                    Não encontramos personagens para &quot;{query.trim()}&quot;.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-0.5">
-                  {characterResults.map((character) => {
-                    const imageSrc = character.image?.large || character.image?.medium || "";
-                    const animeId = character.anime?.id;
-
-                    const itemContent = (
-                      <>
-                        <SearchPoster src={imageSrc} alt={character.name.full} />
-
-                        <div className="min-w-0 flex-1">
-                          <p className="sr-title">
-                            {character.name.full}
-                          </p>
-
-                          <p className="sr-sub truncate">
-                            {character.role || "Personagem"}
-                            {character.anime?.title ? ` · ${character.anime.title}` : ""}
-                          </p>
-
-                          <div>
-                            <span className="sr-type">PERSONAGEM</span>
-                          </div>
-                        </div>
-                      </>
-                    );
-
-                    return animeId ? (
-                      <Link
-                        key={character.id}
-                        to="/anime/$id"
-                        params={{ id: String(animeId) }}
-                        onClick={handleClose}
-                        className="sr-item group"
-                      >
-                        {itemContent}
-                      </Link>
-                    ) : (
-                      <div key={character.id} className="sr-item group">
                         {itemContent}
                       </div>
                     );
@@ -1332,7 +1265,6 @@ export function SearchModal({
             </div>
           )}
         </div>
-
       </div>
     </div>
   );

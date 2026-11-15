@@ -19,60 +19,14 @@ import {
   type WatchedEpisodeItem,
   type AnimeSnapshot,
   type TrackingStatus,
+  getAnimeUserInitialStateSchema,
+  type AnimeUserInitialState,
 } from "@/types/profile-tracking";
-
-/**
- * Normaliza e constrói o snapshot de metadados essenciais do anime.
- * Se o anime existir no catálogo canônico ("catalog_anime"), aproveita os dados oficiais.
- * Se for anime local ("local-*") ou externo, preserva o snapshot recebido do cliente.
- */
-function buildAnimeSnapshot(
-  catalogRow: {
-    title: string;
-    titleRomaji: string | null;
-    titleEnglish: string | null;
-    titleNative: string | null;
-    cover: string | null;
-    banner: string | null;
-    format: string | null;
-    year: number | null;
-    episodesCount: number | null;
-    status: string | null;
-  } | null,
-  inputSnapshot?: AnimeSnapshot | null,
-): AnimeSnapshot {
-  return {
-    title: catalogRow?.title ?? inputSnapshot?.title?.trim() ?? "Sem título",
-    titleRomaji:
-      catalogRow?.titleRomaji ?? inputSnapshot?.titleRomaji?.trim() ?? null,
-    titleEnglish:
-      catalogRow?.titleEnglish ?? inputSnapshot?.titleEnglish?.trim() ?? null,
-    titleNative:
-      catalogRow?.titleNative ?? inputSnapshot?.titleNative?.trim() ?? null,
-    cover: catalogRow?.cover ?? inputSnapshot?.cover?.trim() ?? null,
-    banner: catalogRow?.banner ?? inputSnapshot?.banner?.trim() ?? null,
-    format: catalogRow?.format ?? inputSnapshot?.format?.trim() ?? null,
-    year:
-      catalogRow?.year !== undefined && catalogRow?.year !== null
-        ? Number(catalogRow.year)
-        : inputSnapshot?.year !== undefined && inputSnapshot?.year !== null
-          ? Number(inputSnapshot.year)
-          : null,
-    episodesCount:
-      catalogRow?.episodesCount !== undefined &&
-      catalogRow?.episodesCount !== null
-        ? Number(catalogRow.episodesCount)
-        : inputSnapshot?.episodesCount !== undefined &&
-            inputSnapshot?.episodesCount !== null
-          ? Number(inputSnapshot.episodesCount)
-          : null,
-    status: catalogRow?.status ?? inputSnapshot?.status?.trim() ?? null,
-    score:
-      inputSnapshot?.score !== undefined && inputSnapshot?.score !== null
-        ? Number(inputSnapshot.score)
-        : null,
-  };
-}
+import {
+  consolidateUserTrackingDuplicates,
+  dedupePublicTrackingItems,
+  resolveAndConsolidateTrackingTarget,
+} from "@/lib/tracking-canonical";
 
 /**
  * 1. upsertAnimeTracking — Criar ou atualizar acompanhamento de anime.
@@ -90,26 +44,15 @@ export const upsertAnimeTracking = createServerFn({
 
     const sql = await getSql();
 
-    // 1. Consulta catálogo canônico (se existir) para compor snapshot
-    const catalogRows = await sql.query<{
-      title: string;
-      titleRomaji: string | null;
-      titleEnglish: string | null;
-      titleNative: string | null;
-      cover: string | null;
-      banner: string | null;
-      format: string | null;
-      year: number | null;
-      episodesCount: number | null;
-      status: string | null;
-    }>(
-      `SELECT "title", "titleRomaji", "titleEnglish", "titleNative", "cover", "banner", "format", "year", "episodesCount", "status"
-       FROM "catalog_anime" WHERE "id" = $1 LIMIT 1`,
-      [animeId],
+    // 1. Resolve ID canônico e consolida duplicatas pré-existentes do mesmo anime
+    const resolved = await resolveAndConsolidateTrackingTarget(
+      sql,
+      userId,
+      animeId,
+      animeSnapshot,
     );
-
-    const catalogRow = catalogRows[0] ?? null;
-    const cleanSnapshot = buildAnimeSnapshot(catalogRow, animeSnapshot);
+    const targetAnimeId = resolved.canonicalAnimeId;
+    const cleanSnapshot = resolved.mergedSnapshot;
 
     const hasScore = score !== undefined;
     const hasEpisodesWatched = episodesWatched !== undefined && episodesWatched !== null;
@@ -119,9 +62,9 @@ export const upsertAnimeTracking = createServerFn({
       episodesWatched: number;
     }>(
       `SELECT "episodesWatched" FROM "user_anime_tracking" WHERE "userId" = $1 AND "animeId" = $2 LIMIT 1`,
-      [userId, animeId],
+      [userId, targetAnimeId],
     );
-    const prevEpWatched = existingTrackingRows[0]?.episodesWatched ?? null;
+    const prevEpWatched = existingTrackingRows[0]?.episodesWatched ?? resolved.existingEpisodesWatched;
 
     // Tratamento coerente de datas
     let startedParam: string | null = startedAt ?? null;
@@ -149,7 +92,7 @@ export const upsertAnimeTracking = createServerFn({
         "score" = CASE WHEN $9::boolean = true THEN EXCLUDED."score" ELSE "user_anime_tracking"."score" END,
         "episodesWatched" = CASE WHEN $10::boolean = true THEN EXCLUDED."episodesWatched" ELSE "user_anime_tracking"."episodesWatched" END,
         "animeSnapshot" = COALESCE(EXCLUDED."animeSnapshot", "user_anime_tracking"."animeSnapshot"),
-        "startedAt" = COALESCE(EXCLUDED."startedAt", "user_anime_tracking"."startedAt"),
+        "startedAt" = COALESCE("user_anime_tracking"."startedAt", EXCLUDED."startedAt"),
         "completedAt" = CASE
           WHEN EXCLUDED."status" = 'completed' THEN COALESCE(EXCLUDED."completedAt", "user_anime_tracking"."completedAt", CURRENT_TIMESTAMP)
           ELSE EXCLUDED."completedAt"
@@ -171,7 +114,7 @@ export const upsertAnimeTracking = createServerFn({
       updatedAt: string;
     }>(query, [
       userId,
-      animeId,
+      targetAnimeId,
       status,
       score ?? null,
       episodesWatched ?? null,
@@ -193,9 +136,9 @@ export const upsertAnimeTracking = createServerFn({
       try {
         const epRows = await sql.query<{ id: string }>(
           `SELECT "id" FROM "catalog_episode" WHERE "animeId" = $1 AND "number" = $2 LIMIT 1`,
-          [animeId, finalWatched],
+          [targetAnimeId, finalWatched],
         );
-        const resolvedEpId = epRows[0]?.id || `${animeId}-ep-${finalWatched}`;
+        const resolvedEpId = epRows[0]?.id || `${targetAnimeId}-ep-${finalWatched}`;
 
         await sql.query(
           `INSERT INTO "user_watched_episode" (
@@ -204,7 +147,7 @@ export const upsertAnimeTracking = createServerFn({
           VALUES ($1, $2, $3, $4, 'manual', CURRENT_TIMESTAMP)
           ON CONFLICT ("userId", "animeId", "episodeId") DO UPDATE
           SET "watchedAt" = CURRENT_TIMESTAMP, "episodeNumber" = EXCLUDED."episodeNumber", "origin" = 'manual'`,
-          [userId, animeId, resolvedEpId, finalWatched],
+          [userId, targetAnimeId, resolvedEpId, finalWatched],
         );
       } catch (err) {
         console.warn("Erro ao registrar episódio assistido na tabela user_watched_episode:", err);
@@ -238,16 +181,30 @@ export const getMyAnimeTracking = createServerFn({
     const userId = context.userId;
     const statusFilter = data?.status ?? null;
     const animeIdFilter = data?.animeId ? data.animeId.trim() : null;
+    const isMinimal = Boolean(data?.minimal);
+
+    const sql = await getSql();
+
     const rawCandidateIds = [
       ...(animeIdFilter ? [animeIdFilter] : []),
       ...(data?.animeIds ?? []).map((id) => id.trim()).filter(Boolean),
     ];
+
+    if (animeIdFilter) {
+      const resolved = await resolveAndConsolidateTrackingTarget(
+        sql,
+        userId,
+        animeIdFilter,
+        data?.animeSnapshot,
+      );
+      rawCandidateIds.push(...resolved.candidateIds);
+    } else if (rawCandidateIds.length === 0) {
+      await consolidateUserTrackingDuplicates(sql, userId);
+    }
+
     const uniqueCandidateIds = Array.from(new Set(rawCandidateIds));
     const animeIdsFilter =
       uniqueCandidateIds.length > 0 ? uniqueCandidateIds : null;
-    const isMinimal = Boolean(data?.minimal);
-
-    const sql = await getSql();
 
     if (isMinimal) {
       const rows = await sql.query<{
@@ -585,7 +542,7 @@ export async function executeGetPublicAnimeTracking(
     catalogStatus: string | null;
   }>(query, [cleanTargetUserId, statusFilter, animeIdFilter]);
 
-  return rows.map((row) => {
+  const items = rows.map((row) => {
     let snapshotObj: AnimeSnapshot | null = null;
     if (
       row.animeSnapshot &&
@@ -664,6 +621,8 @@ export async function executeGetPublicAnimeTracking(
       animeSnapshot: snapshotObj,
     };
   });
+
+  return animeIdFilter ? items : dedupePublicTrackingItems(items);
 }
 
 export const getPublicAnimeTracking = createServerFn({
@@ -699,6 +658,10 @@ export const getMyAnimeTrackingPaginated = createServerFn({
     const offset = (page - 1) * limit;
 
     const sql = await getSql();
+
+    if (page === 1) {
+      await consolidateUserTrackingDuplicates(sql, userId);
+    }
 
     // 1. Contagens totais agrupadas por status em uma consulta rápida única
     const countRows = await sql.query<{ status: TrackingStatus; count: number }>(
@@ -1079,10 +1042,11 @@ export async function executeGetPublicAnimeTrackingPaginated(
     };
   });
 
+  const dedupedItems = dedupePublicTrackingItems(items);
   const hasMore = offset + items.length < currentTotal;
 
   return {
-    items,
+    items: dedupedItems,
     total: currentTotal,
     page,
     limit,
@@ -1120,6 +1084,7 @@ export const getAnimeTrackingByStatus = createServerFn({
     const status = data.status;
 
     const sql = await getSql();
+    await consolidateUserTrackingDuplicates(sql, userId);
 
     const query = `
       SELECT
@@ -1258,14 +1223,15 @@ export const removeAnimeTracking = createServerFn({
     const { animeId } = data;
 
     const sql = await getSql();
+    const resolved = await resolveAndConsolidateTrackingTarget(sql, userId, animeId);
 
     const query = `
       DELETE FROM "user_anime_tracking"
-      WHERE "userId" = $1 AND "animeId" = $2
+      WHERE "userId" = $1 AND "animeId" = ANY($2::text[])
       RETURNING "animeId";
     `;
 
-    const rows = await sql.query<{ animeId: string }>(query, [userId, animeId]);
+    const rows = await sql.query<{ animeId: string }>(query, [userId, resolved.candidateIds]);
 
     if (rows.length === 0) {
       throw new Error("Acompanhamento não encontrado.");
@@ -1273,7 +1239,7 @@ export const removeAnimeTracking = createServerFn({
 
     return {
       success: true,
-      removedAnimeId: animeId,
+      removedAnimeId: rows[0].animeId,
     };
   });
 
@@ -1470,28 +1436,17 @@ export const markEpisodeWatched = createServerFn({
 
       const sql = await getSql();
 
-      // Consulta catálogo canônico para compor snapshot se existir
-      const catalogRows = await sql.query<{
-        title: string;
-        titleRomaji: string | null;
-        titleEnglish: string | null;
-        titleNative: string | null;
-        cover: string | null;
-        banner: string | null;
-        format: string | null;
-        year: number | null;
-        episodesCount: number | null;
-        status: string | null;
-      }>(
-        `SELECT "title", "titleRomaji", "titleEnglish", "titleNative", "cover", "banner", "format", "year", "episodesCount", "status"
-         FROM "catalog_anime" WHERE "id" = $1 LIMIT 1`,
-        [animeId],
+      // Resolve animeId canônico e consolida duplicatas antes de registrar episódio
+      const resolved = await resolveAndConsolidateTrackingTarget(
+        sql,
+        userId,
+        animeId,
+        animeSnapshot,
       );
+      const targetAnimeId = resolved.canonicalAnimeId;
+      const cleanSnapshot = resolved.mergedSnapshot;
 
-      const catalogRow = catalogRows[0] ?? null;
-      const cleanSnapshot = buildAnimeSnapshot(catalogRow, animeSnapshot);
-
-      // Garante atomicamente que a linha de acompanhamento exista e seja obtida com lock via ON CONFLICT DO UPDATE
+      // Garante atomicamente que a linha de acompanhamento exista
       await sql.query(
         `INSERT INTO "user_anime_tracking" (
           "userId", "animeId", "status", "episodesWatched", "animeSnapshot", "startedAt", "createdAt", "updatedAt"
@@ -1500,21 +1455,30 @@ export const markEpisodeWatched = createServerFn({
           $1, $2, 'watching', 0, $3::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
         ON CONFLICT ("userId", "animeId") DO UPDATE
-        SET "updatedAt" = CURRENT_TIMESTAMP
+        SET
+          "animeSnapshot" = COALESCE(EXCLUDED."animeSnapshot", "user_anime_tracking"."animeSnapshot"),
+          "updatedAt" = CURRENT_TIMESTAMP
         RETURNING "userId", "animeId";`,
-        [userId, animeId, JSON.stringify(cleanSnapshot)],
+        [userId, targetAnimeId, JSON.stringify(cleanSnapshot)],
       );
 
       // Ordem rigorosa de bloqueios:
       // 1. user_anime_tracking FOR UPDATE
+      // 2. Verifica estado pré-existente do episódio (evita regressão de contagem manual)
       // 3. user_watched_episode INSERT
       // 4. user_anime_tracking UPDATE do contador e status
       const atomicMarkQuery = `
         WITH tracking_lock AS (
-          SELECT "userId", "animeId"
+          SELECT "userId", "animeId", "episodesWatched"
           FROM "user_anime_tracking"
           WHERE "userId" = $1 AND "animeId" = $2
           FOR UPDATE
+        ),
+        existing_ep AS (
+          SELECT exists (
+            SELECT 1 FROM "user_watched_episode"
+            WHERE "userId" = $1 AND "animeId" = $2 AND "episodeId" = $3
+          ) AS "wasWatched"
         ),
         watched_insert AS (
           INSERT INTO "user_watched_episode" (
@@ -1534,11 +1498,18 @@ export const markEpisodeWatched = createServerFn({
         tracking_update AS (
           UPDATE "user_anime_tracking" uat
           SET
-            "episodesWatched" = ec.total,
+            "episodesWatched" = GREATEST(
+              ec.total,
+              CASE
+                WHEN ee."wasWatched" = false AND ($4::int <= 0 OR $4::int > tl."episodesWatched")
+                  THEN tl."episodesWatched" + 1
+                ELSE tl."episodesWatched"
+              END
+            ),
             "status" = CASE WHEN uat."status" = 'planning' THEN 'watching' ELSE uat."status" END,
             "startedAt" = COALESCE(uat."startedAt", CURRENT_TIMESTAMP),
             "updatedAt" = CURRENT_TIMESTAMP
-          FROM ep_count ec, tracking_lock tl
+          FROM ep_count ec, tracking_lock tl, existing_ep ee
           WHERE uat."userId" = tl."userId" AND uat."animeId" = tl."animeId"
           RETURNING uat."episodesWatched", uat."status"
         )
@@ -1558,7 +1529,7 @@ export const markEpisodeWatched = createServerFn({
         episodeId: string;
         episodeNumber: number;
         episodesWatched: number;
-      }>(atomicMarkQuery, [userId, animeId, episodeId, episodeNumber]);
+      }>(atomicMarkQuery, [userId, targetAnimeId, episodeId, episodeNumber]);
 
       const res = results[0];
       if (!res) {
@@ -1602,7 +1573,8 @@ export const unmarkEpisodeWatched = createServerFn({
       const { animeId, episodeId } = data;
 
       const sql = await getSql();
-
+      const resolved = await resolveAndConsolidateTrackingTarget(sql, userId, animeId);
+      const targetAnimeId = resolved.canonicalAnimeId;
 
       // Ordem rigorosa de bloqueios:
       // 1. user_anime_tracking FOR UPDATE
@@ -1610,7 +1582,7 @@ export const unmarkEpisodeWatched = createServerFn({
       // 4. user_anime_tracking UPDATE do contador
       const atomicUnmarkQuery = `
         WITH tracking_lock AS (
-          SELECT "userId", "animeId"
+          SELECT "userId", "animeId", "episodesWatched"
           FROM "user_anime_tracking"
           WHERE "userId" = $1 AND "animeId" = $2
           FOR UPDATE
@@ -1631,7 +1603,10 @@ export const unmarkEpisodeWatched = createServerFn({
         tracking_update AS (
           UPDATE "user_anime_tracking" uat
           SET
-            "episodesWatched" = ec.total,
+            "episodesWatched" = GREATEST(
+              ec.total,
+              GREATEST(0, tl."episodesWatched" - 1)
+            ),
             "updatedAt" = CURRENT_TIMESTAMP
           FROM ep_count ec, tracking_lock tl, deleted_ep de
           WHERE uat."userId" = tl."userId" AND uat."animeId" = tl."animeId"
@@ -1653,7 +1628,7 @@ export const unmarkEpisodeWatched = createServerFn({
         animeId: string;
         deletedCount: number;
         episodesWatched: number;
-      }>(atomicUnmarkQuery, [userId, animeId, episodeId]);
+      }>(atomicUnmarkQuery, [userId, targetAnimeId, episodeId]);
 
       const res = results[0];
       if (!res || res.deletedCount === 0) {
@@ -1668,3 +1643,188 @@ export const unmarkEpisodeWatched = createServerFn({
       };
     },
   );
+
+/**
+ * 11. fetchAnimeUserInitialState — Carrega o estado inicial do usuário para a página de detalhes
+ * (acompanhamento, favoritos e continuar assistindo) em uma única chamada no loader para eliminar flash.
+ */
+export const fetchAnimeUserInitialState = createServerFn({
+  method: "GET",
+})
+  .middleware([optionalAuthMiddleware])
+  .validator(getAnimeUserInitialStateSchema)
+  .handler(async ({ context, data }): Promise<AnimeUserInitialState | null> => {
+    const userId = context.userId;
+    if (!userId) {
+      return null;
+    }
+
+    const sql = await getSql();
+    const rawCandidateIds = [
+      data.animeId,
+      ...(data.candidateIds ?? []),
+    ]
+      .map((id) => (typeof id === "string" ? id.trim() : ""))
+      .filter(Boolean);
+
+    try {
+      const resolved = await resolveAndConsolidateTrackingTarget(
+        sql,
+        userId,
+        data.animeId,
+      );
+      if (resolved?.candidateIds?.length) {
+        rawCandidateIds.push(...resolved.candidateIds);
+      }
+    } catch {
+      // Ignora erro se registro do anime ainda não existe
+    }
+
+    const candidateIds = Array.from(new Set(rawCandidateIds));
+    if (candidateIds.length === 0) {
+      return null;
+    }
+
+    const titlesList = (data.titles ?? [])
+      .map((t) => (typeof t === "string" ? t.toLowerCase().trim() : ""))
+      .filter(Boolean);
+    const normalizedTitles = new Set(titlesList);
+
+    // 1. Busca acompanhamento em user_anime_tracking
+    const trackingRows = await sql.query<{
+      userId: string;
+      animeId: string;
+      status: TrackingStatus;
+      score: string | number | null;
+      episodesWatched: number;
+      createdAt: string;
+      updatedAt: string;
+    }>(
+      `SELECT
+         uat."userId",
+         uat."animeId",
+         uat."status",
+         uat."score",
+         uat."episodesWatched",
+         uat."createdAt",
+         uat."updatedAt"
+       FROM "user_anime_tracking" uat
+       WHERE uat."userId" = $1
+         AND (
+           uat."animeId" = ANY($2::text[])
+           OR ($3::text[] IS NOT NULL AND array_length($3::text[], 1) > 0 AND LOWER(TRIM(COALESCE(uat."animeSnapshot"->>'title', uat."animeSnapshot"->>'titleRomaji', uat."animeSnapshot"->>'titleEnglish', ''))) = ANY($3::text[]))
+         )
+       ORDER BY uat."updatedAt" DESC
+       LIMIT 1;`,
+      [userId, candidateIds, titlesList.length > 0 ? titlesList : null],
+    );
+
+    // 2. Busca favoritos oficiais em user_favorite
+    const favoriteRows = await sql.query<{
+      id: string;
+      targetType: "anime" | "character" | "studio" | "company" | "person";
+      targetId: string;
+      title: string | null;
+      nativeTitle: string | null;
+    }>(
+      `SELECT
+         uf."id",
+         uf."targetType",
+         COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "targetId",
+         COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name") AS "title",
+         COALESCE(ca."titleNative", cc."nativeName", cp."nativeName") AS "nativeTitle"
+       FROM "user_favorite" uf
+       LEFT JOIN "catalog_anime" ca ON uf."targetType" = 'anime' AND uf."animeId" = ca."id"
+       LEFT JOIN "catalog_character" cc ON uf."targetType" = 'character' AND uf."characterId" = cc."id"
+       LEFT JOIN "catalog_studio" cs ON uf."targetType" = 'studio' AND uf."studioId" = cs."id"
+       LEFT JOIN "catalog_company" cco ON uf."targetType" = 'company' AND uf."companyId" = cco."id"
+       LEFT JOIN "catalog_person" cp ON uf."targetType" = 'person' AND uf."personId" = cp."id"
+       WHERE uf."userId" = $1;`,
+      [userId],
+    );
+
+    const idsSet = new Set(candidateIds);
+    const favMatch = favoriteRows.find((row) => {
+      if (row.targetType !== "anime") return false;
+      if (idsSet.has(row.targetId)) return true;
+      const t = (row.title || "").toLowerCase().trim();
+      const nt = (row.nativeTitle || "").toLowerCase().trim();
+      if (t && normalizedTitles.has(t)) return true;
+      if (nt && normalizedTitles.has(nt)) return true;
+      return false;
+    });
+
+    const isFavorite = Boolean(favMatch);
+    const favFavoriteId = favMatch?.id ?? null;
+
+    // 3. Progresso técnico de reprodução e episódios assistidos
+    const progressRows = await sql.query<{
+      episodeId: string;
+      episodeNumber: number;
+      currentTime: number;
+      duration: number | null;
+      updatedAt: string;
+    }>(
+      `SELECT "episodeId", "episodeNumber", "currentTime", "duration", "updatedAt"
+       FROM "user_episode_progress"
+       WHERE "userId" = $1 AND "animeId" = ANY($2::text[])
+       ORDER BY "updatedAt" DESC
+       LIMIT 1;`,
+      [userId, candidateIds],
+    );
+
+    const watchedRows = await sql.query<{
+      episodeId: string;
+      episodeNumber: number;
+      watchedAt: string;
+    }>(
+      `SELECT "episodeId", "episodeNumber", "watchedAt"
+       FROM "user_watched_episode"
+       WHERE "userId" = $1 AND "animeId" = ANY($2::text[])
+       ORDER BY "watchedAt" DESC;`,
+      [userId, candidateIds],
+    );
+
+    let continueEpisode: { id: string; number: number } | null = null;
+    if (progressRows.length > 0) {
+      continueEpisode = {
+        id: progressRows[0].episodeId,
+        number: progressRows[0].episodeNumber,
+      };
+    } else if (watchedRows.length > 0) {
+      continueEpisode = {
+        id: watchedRows[0].episodeId,
+        number: watchedRows[0].episodeNumber,
+      };
+    }
+
+    const trackingRow = trackingRows[0] ?? null;
+
+    return {
+      userId,
+      tracking: trackingRow
+        ? {
+            status: trackingRow.status,
+            score:
+              trackingRow.score !== null && trackingRow.score !== undefined
+                ? Number(trackingRow.score)
+                : null,
+            episodesWatched: Number(trackingRow.episodesWatched) || 0,
+            animeId: trackingRow.animeId,
+            createdAt: String(trackingRow.createdAt),
+            updatedAt: String(trackingRow.updatedAt),
+          }
+        : null,
+      isFavorite,
+      favFavoriteId,
+      favoriteEntities: favoriteRows.map((r) => ({
+        id: r.id,
+        targetType: r.targetType,
+        targetId: r.targetId,
+        title: r.title,
+      })),
+      continueEpisode,
+      watchedEpisodeIds: watchedRows.map((r) => r.episodeId),
+    };
+  });
+

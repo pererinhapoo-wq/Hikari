@@ -565,6 +565,7 @@ function WatchPage() {
   } | null>(null);
 
   const playbackSessionIdRef = useRef<string | null>(null);
+  const canonicalAnimeIdRef = useRef<string | null>(null);
   const sessionStartingRef = useRef<boolean>(false);
   const isPlayingRef = useRef<boolean>(false);
   const isBufferingRef = useRef<boolean>(false);
@@ -588,6 +589,7 @@ function WatchPage() {
 
   useEffect(() => {
     playbackSessionIdRef.current = null;
+    canonicalAnimeIdRef.current = null;
     sessionStartingRef.current = false;
     isPlayingRef.current = false;
     isBufferingRef.current = false;
@@ -668,8 +670,21 @@ function WatchPage() {
       const dur = totalDuration > 0 ? Math.floor(totalDuration) : undefined;
       const snap = {
         title: displayTitle(anime),
+        titleRomaji: anime.titles?.romaji || null,
+        titleEnglish: anime.titles?.english || null,
+        titleNative: anime.titles?.native || null,
         cover: current.thumbnail || anime.cover,
+        format: anime.format || null,
+        year: anime.year || anime.startDate?.year || null,
+        episodesCount:
+          anime.episodesCount || (anime.seasons?.[0]?.episodes?.length ?? null),
+        anilistId: anime.anilistId ?? null,
+        malId: anime.malId ?? null,
+        kitsuId: anime.kitsuId ?? null,
+        serverCatalogId: anime.serverCatalogId ?? null,
       };
+      const targetAnimeId =
+        canonicalAnimeIdRef.current || anime.serverCatalogId || anime.id;
 
       // 1. Inicia a sessão se ainda não tiver sido iniciada
       if (!playbackSessionIdRef.current) {
@@ -678,7 +693,7 @@ function WatchPage() {
         try {
           const session = await startEpisodeSession({
             data: {
-              animeId: anime.id,
+              animeId: targetAnimeId,
               episodeId: current.id,
               episodeNumber: current.number,
               duration: dur,
@@ -686,6 +701,9 @@ function WatchPage() {
             },
           });
           playbackSessionIdRef.current = session.playbackSessionId;
+          if (session.animeId) {
+            canonicalAnimeIdRef.current = session.animeId;
+          }
           lastHeartbeatTimestampRef.current = Date.now();
         } catch {
           // Preserva a reprodução mesmo se o servidor estiver temporariamente indisponível
@@ -713,7 +731,7 @@ function WatchPage() {
       try {
         const hb = await heartbeatEpisodeProgress({
           data: {
-            animeId: anime.id,
+            animeId: canonicalAnimeIdRef.current || targetAnimeId,
             episodeId: current.id,
             playbackSessionId: sessionId,
             currentTime: Math.floor(time),
@@ -726,6 +744,9 @@ function WatchPage() {
             animeSnapshot: snap,
           },
         });
+        if (hb.animeId) {
+          canonicalAnimeIdRef.current = hb.animeId;
+        }
         if (hb.completed) {
           isCompletedRef.current = true;
         }

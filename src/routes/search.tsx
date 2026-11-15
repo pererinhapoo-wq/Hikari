@@ -10,16 +10,17 @@ import {
   Search as SearchIcon,
   SlidersHorizontal,
   Tv,
-  UserRound,
   Users,
   X,
 } from "lucide-react";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type FormEvent,
   type ReactNode,
 } from "react";
 
@@ -47,9 +48,7 @@ import { displayTitle, type SlimAnime } from "@/lib/types";
 import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import type { SearchCategory } from "@/components/search/SearchCategorySelector";
 import {
-  searchCharacters,
   searchPeople,
-  type SearchCharacterItem,
   type SearchPersonItem,
 } from "@/lib/search-entities";
 import { cn } from "@/lib/utils";
@@ -70,7 +69,6 @@ const CATEGORY_TABS: {
   { id: "animes", label: "Animes", icon: Tv },
   { id: "users", label: "Usuários", icon: Users },
   { id: "people", label: "People", icon: Mic2 },
-  { id: "characters", label: "Personagens", icon: UserRound },
 ];
 
 type Search = {
@@ -131,7 +129,7 @@ export const Route =
           : undefined,
 
       tab:
-        raw.tab === "users" || raw.tab === "people" || raw.tab === "characters"
+        raw.tab === "users" || raw.tab === "people"
           ? raw.tab
           : undefined,
     }),
@@ -139,11 +137,25 @@ export const Route =
     loaderDeps: ({ search }) => search,
 
     loader: async ({ deps }) => {
+      const activeTab: SearchCategory = deps.tab ?? "animes";
+      if (activeTab !== "animes") {
+        return {
+          result: {
+            items: [],
+            page: 1,
+            hasNext: false,
+            source: "anilist" as const,
+          },
+          genres: [] as string[],
+        };
+      }
+
+      const { tab: _tab, ...catalogDeps } = deps;
       const [result, genres] = await Promise.all([
         searchCatalog({
           data: {
-            ...deps,
-            page: deps.page ?? 1,
+            ...catalogDeps,
+            page: catalogDeps.page ?? 1,
           },
         }),
         fetchGenres(),
@@ -157,6 +169,7 @@ export const Route =
 
     head: ({ match }) => {
       const search = (match?.search ?? {}) as Search;
+      const activeTab: SearchCategory = search.tab ?? "animes";
       const hasQueryOrFilter = Boolean(
         search.q ||
         search.genre ||
@@ -167,15 +180,22 @@ export const Route =
         (search.page && search.page > 1)
       );
 
+      const scopeLabel =
+        activeTab === "users"
+          ? "usuários"
+          : activeTab === "people"
+            ? "profissionais"
+            : "animes no catálogo";
+
       const title = search.q
-        ? `Buscar "${search.q}" no catálogo — HIKARI`
+        ? `Buscar "${search.q}" em ${scopeLabel} — HIKARI`
         : search.genre
           ? `Animes do gênero ${search.genre} — HIKARI`
-          : "Buscar animes no catálogo — HIKARI";
+          : `Buscar ${scopeLabel} — HIKARI`;
 
       const description = search.q
-        ? `Resultados da busca por "${search.q}" no catálogo do HIKARI. Assista e explore informações completas de animes.`
-        : "Filtre e encontre animes por gênero, ano de lançamento, temporada e formato no catálogo completo do HIKARI.";
+        ? `Resultados da busca por "${search.q}" no HIKARI.`
+        : "Filtre e encontre animes, usuários e profissionais (People) no HIKARI.";
 
       const canonicalUrl = buildCleanCanonical("/search");
 
@@ -208,24 +228,8 @@ export const Route =
       };
     },
 
-    pendingComponent: SearchPending,
-
     component: SearchPage,
   });
-
-function SearchPending() {
-  return (
-    <div className="grid grid-cols-3 gap-2.5 pt-6 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-      {Array.from({ length: 12 }, (_, i) => (
-        <div key={i} className="min-w-0">
-          <div className="aspect-[2/3] w-full bg-[#141224] animate-pulse border border-white/5" />
-          <div className="mt-2 h-3 w-3/4 bg-white/5 animate-pulse" />
-          <div className="mt-1 h-2.5 w-1/2 bg-white/5 animate-pulse" />
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function SearchPage() {
   const search = Route.useSearch();
@@ -235,46 +239,16 @@ function SearchPage() {
 
   /*
    * =========================================================
-   * RELOAD REAL DA PÁGINA
-   * =========================================================
-   */
-  const [clearingOnReload, setClearingOnReload] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const navigation = window.performance.getEntriesByType(
-      "navigation",
-    )[0] as PerformanceNavigationTiming | undefined;
-
-    const alreadyHandled = Boolean(
-      (
-        window as Window & {
-          __hikariSearchReloadHandled?: boolean;
-        }
-      ).__hikariSearchReloadHandled,
-    );
-
-    if (navigation?.type === "reload" && !alreadyHandled) {
-      (
-        window as Window & {
-          __hikariSearchReloadHandled?: boolean;
-        }
-      ).__hikariSearchReloadHandled = true;
-      setClearingOnReload(true);
-    }
-  }, []);
-
-  /*
-   * =========================================================
    * CAMPO DE BUSCA & ESTADOS
    * =========================================================
    */
   const [draft, setDraft] = useState(() => search.q ?? "");
   const firstSearchSync = useRef(true);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const currentPage = search.page ?? 1;
 
-  const [remoteAnimeItems, setRemoteAnimeItems] = useState<typeof result.items>([]);
+  const [remoteAnimeItems, setRemoteAnimeItems] = useState<typeof result.items>(() => result.items);
   useEffect(() => {
     if (currentPage === 1) {
       setRemoteAnimeItems(result.items);
@@ -286,12 +260,34 @@ function SearchPage() {
     });
   }, [result.items, currentPage]);
 
-  const activeTab: SearchCategory = search.tab ?? "animes";
+  const activeTab: SearchCategory =
+    search.tab === "users" || search.tab === "people" ? search.tab : "animes";
+
+  const animeDebounceTimerRef = useRef<number | null>(null);
+  const userDebounceTimerRef = useRef<number | null>(null);
+  const peopleDebounceTimerRef = useRef<number | null>(null);
+  const userReqIdRef = useRef(0);
+  const peopleReqIdRef = useRef(0);
 
   const handleTabChange = (nextTab: SearchCategory) => {
+    if (animeDebounceTimerRef.current !== null) {
+      window.clearTimeout(animeDebounceTimerRef.current);
+      animeDebounceTimerRef.current = null;
+    }
+    if (userDebounceTimerRef.current !== null) {
+      window.clearTimeout(userDebounceTimerRef.current);
+      userDebounceTimerRef.current = null;
+    }
+    if (peopleDebounceTimerRef.current !== null) {
+      window.clearTimeout(peopleDebounceTimerRef.current);
+      peopleDebounceTimerRef.current = null;
+    }
+
+    const q = draft.trim();
     void navigate({
       search: {
         ...search,
+        q: q || undefined,
         tab: nextTab === "animes" ? undefined : nextTab,
         page: 1,
       },
@@ -310,19 +306,20 @@ function SearchPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersLoadingMore, setUsersLoadingMore] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
+  const [usersFetchedQuery, setUsersFetchedQuery] = useState("");
   const isFetchingMoreUsersRef = useRef(false);
 
   /*
    * =========================================================
-   * PESQUISA DE PERSONAGENS & PEOPLE
+   * PESQUISA DE PEOPLE
    * =========================================================
    */
-  const [characterResults, setCharacterResults] = useState<SearchCharacterItem[]>([]);
   const [peopleResults, setPeopleResults] = useState<SearchPersonItem[]>([]);
   const [entityLoading, setEntityLoading] = useState(false);
   const [entityLoadingMore, setEntityLoadingMore] = useState(false);
   const [entityHasNext, setEntityHasNext] = useState(false);
   const [entityPage, setEntityPage] = useState(1);
+  const [peopleFetchedQuery, setPeopleFetchedQuery] = useState("");
   const isFetchingMoreEntitiesRef = useRef(false);
 
   /*
@@ -342,9 +339,62 @@ function SearchPage() {
     userQueryClean = userQueryClean.slice(1).trim();
   }
 
+  const runUsersSearch = useCallback(async (rawQuery: string) => {
+    let clean = rawQuery.trim();
+    if (clean.startsWith("@")) {
+      clean = clean.slice(1).trim();
+    }
+
+    const reqId = ++userReqIdRef.current;
+
+    if (clean.length < 2) {
+      setUserResults([]);
+      setHasMoreUsers(false);
+      setUsersLoading(false);
+      setUsersError(null);
+      setUsersFetchedQuery("");
+      setUsersPage(1);
+      return;
+    }
+
+    setUsersLoading(true);
+    setUsersError(null);
+
+    try {
+      const results = await searchUsers({
+        data: {
+          query: clean,
+          page: 1,
+          limit: 20,
+        },
+      });
+      if (reqId !== userReqIdRef.current) return;
+      setUserResults(results);
+      setUsersPage(1);
+      setHasMoreUsers(results.length >= 20);
+      setUsersFetchedQuery(clean);
+    } catch (err) {
+      if (reqId !== userReqIdRef.current) return;
+      console.error("Erro ao buscar usuários:", err);
+      setUsersError("Não foi possível carregar os usuários. Tente novamente.");
+      setUserResults([]);
+      setHasMoreUsers(false);
+      setUsersFetchedQuery(clean);
+    } finally {
+      if (reqId === userReqIdRef.current) {
+        setUsersLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (activeTab !== "users") {
       return;
+    }
+
+    if (userDebounceTimerRef.current !== null) {
+      window.clearTimeout(userDebounceTimerRef.current);
+      userDebounceTimerRef.current = null;
     }
 
     let clean = draft.trim();
@@ -353,40 +403,30 @@ function SearchPage() {
     }
 
     if (clean.length < 2) {
+      userReqIdRef.current += 1;
       setUserResults([]);
       setHasMoreUsers(false);
       setUsersLoading(false);
       setUsersError(null);
+      setUsersFetchedQuery("");
       return;
     }
 
-    setUsersLoading(true);
-    setUsersError(null);
+    const isInitialUrlMatch = clean === (search.q ?? "").trim().replace(/^@/, "").trim() && usersFetchedQuery !== clean;
+    const delay = isInitialUrlMatch ? 0 : 280;
 
-    const timer = window.setTimeout(async () => {
-      try {
-        const results = await searchUsers({
-          data: {
-            query: clean,
-            page: 1,
-            limit: 20,
-          },
-        });
-        setUserResults(results);
-        setUsersPage(1);
-        setHasMoreUsers(results.length >= 20);
-      } catch (err) {
-        console.error("Erro ao buscar usuários:", err);
-        setUsersError("Não foi possível carregar os usuários. Tente novamente.");
-        setUserResults([]);
-        setHasMoreUsers(false);
-      } finally {
-        setUsersLoading(false);
+    userDebounceTimerRef.current = window.setTimeout(() => {
+      userDebounceTimerRef.current = null;
+      void runUsersSearch(draft);
+    }, delay);
+
+    return () => {
+      if (userDebounceTimerRef.current !== null) {
+        window.clearTimeout(userDebounceTimerRef.current);
+        userDebounceTimerRef.current = null;
       }
-    }, 350);
-
-    return () => window.clearTimeout(timer);
-  }, [activeTab, draft]);
+    };
+  }, [activeTab, draft, search.q, usersFetchedQuery, runUsersSearch]);
 
   const handleLoadMoreUsers = async () => {
     if (usersLoadingMore || isFetchingMoreUsersRef.current || !hasMoreUsers) {
@@ -399,6 +439,7 @@ function SearchPage() {
     }
     if (clean.length < 2) return;
 
+    const reqId = userReqIdRef.current;
     const nextPage = usersPage + 1;
     isFetchingMoreUsersRef.current = true;
     setUsersLoadingMore(true);
@@ -411,6 +452,7 @@ function SearchPage() {
           limit: 20,
         },
       });
+      if (reqId !== userReqIdRef.current) return;
 
       setUserResults((prev) => {
         const existingIds = new Set(prev.map((u) => u.userId));
@@ -428,47 +470,73 @@ function SearchPage() {
     }
   };
 
-  useEffect(() => {
-    if (activeTab !== "characters" && activeTab !== "people") return;
-    const clean = draft.trim();
-    if (clean.length < 2) {
-      setCharacterResults([]);
+  const runPeopleSearch = useCallback(async (rawQuery: string) => {
+    const clean = rawQuery.trim();
+    const reqId = ++peopleReqIdRef.current;
+
+    if (!clean) {
       setPeopleResults([]);
       setEntityHasNext(false);
       setEntityPage(1);
+      setEntityLoading(false);
+      setPeopleFetchedQuery("");
       return;
     }
-    let cancelled = false;
+
     setEntityLoading(true);
-    const timer = window.setTimeout(async () => {
-      try {
-        const res =
-          activeTab === "characters"
-            ? await searchCharacters(clean, 1, 18)
-            : await searchPeople(clean, 1, 18);
-        if (cancelled) return;
-        if (activeTab === "characters") {
-          setCharacterResults(res.items as SearchCharacterItem[]);
-        } else {
-          setPeopleResults(res.items as SearchPersonItem[]);
-        }
-        setEntityHasNext(res.hasNext);
-        setEntityPage(1);
-      } catch {
-        if (!cancelled) {
-          setCharacterResults([]);
-          setPeopleResults([]);
-          setEntityHasNext(false);
-        }
-      } finally {
-        if (!cancelled) setEntityLoading(false);
+    try {
+      const res = await searchPeople(clean, 1, 18);
+      if (reqId !== peopleReqIdRef.current) return;
+      setPeopleResults(res.items);
+      setEntityHasNext(res.hasNext);
+      setEntityPage(1);
+      setPeopleFetchedQuery(clean);
+    } catch {
+      if (reqId !== peopleReqIdRef.current) return;
+      setPeopleResults([]);
+      setEntityHasNext(false);
+      setPeopleFetchedQuery(clean);
+    } finally {
+      if (reqId === peopleReqIdRef.current) {
+        setEntityLoading(false);
       }
-    }, 300);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== "people") return;
+
+    if (peopleDebounceTimerRef.current !== null) {
+      window.clearTimeout(peopleDebounceTimerRef.current);
+      peopleDebounceTimerRef.current = null;
+    }
+
+    const clean = draft.trim();
+    if (!clean) {
+      peopleReqIdRef.current += 1;
+      setPeopleResults([]);
+      setEntityHasNext(false);
+      setEntityPage(1);
+      setEntityLoading(false);
+      setPeopleFetchedQuery("");
+      return;
+    }
+
+    const isInitialUrlMatch = clean === (search.q ?? "").trim() && peopleFetchedQuery !== clean;
+    const delay = isInitialUrlMatch ? 0 : 280;
+
+    peopleDebounceTimerRef.current = window.setTimeout(() => {
+      peopleDebounceTimerRef.current = null;
+      void runPeopleSearch(clean);
+    }, delay);
+
     return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
+      if (peopleDebounceTimerRef.current !== null) {
+        window.clearTimeout(peopleDebounceTimerRef.current);
+        peopleDebounceTimerRef.current = null;
+      }
     };
-  }, [activeTab, draft]);
+  }, [activeTab, draft, search.q, peopleFetchedQuery, runPeopleSearch]);
 
   const loadMoreEntities = async () => {
     if (
@@ -476,32 +544,24 @@ function SearchPage() {
       entityLoadingMore ||
       isFetchingMoreEntitiesRef.current ||
       !entityHasNext ||
-      (activeTab !== "characters" && activeTab !== "people")
+      activeTab !== "people"
     ) {
       return;
     }
     const clean = draft.trim();
-    if (clean.length < 2) return;
+    if (!clean) return;
 
+    const reqId = peopleReqIdRef.current;
     const nextPage = entityPage + 1;
     isFetchingMoreEntitiesRef.current = true;
     setEntityLoadingMore(true);
     try {
-      const res =
-        activeTab === "characters"
-          ? await searchCharacters(clean, nextPage, 18)
-          : await searchPeople(clean, nextPage, 18);
-      if (activeTab === "characters") {
-        setCharacterResults((prev) => {
-          const seen = new Set(prev.map((x) => x.id));
-          return [...prev, ...(res.items as SearchCharacterItem[]).filter((x) => !seen.has(x.id))];
-        });
-      } else {
-        setPeopleResults((prev) => {
-          const seen = new Set(prev.map((x) => x.id));
-          return [...prev, ...(res.items as SearchPersonItem[]).filter((x) => !seen.has(x.id))];
-        });
-      }
+      const res = await searchPeople(clean, nextPage, 18);
+      if (reqId !== peopleReqIdRef.current) return;
+      setPeopleResults((prev) => {
+        const seen = new Set(prev.map((x) => x.id));
+        return [...prev, ...res.items.filter((x) => !seen.has(x.id))];
+      });
       setEntityPage(nextPage);
       setEntityHasNext(res.hasNext);
     } finally {
@@ -509,29 +569,6 @@ function SearchPage() {
       setEntityLoadingMore(false);
     }
   };
-
-  /*
-   * =========================================================
-   * LIMPAR BUSCA NO RELOAD REAL
-   * =========================================================
-   */
-  useEffect(() => {
-    if (!clearingOnReload) {
-      return;
-    }
-
-    setDraft("");
-
-    void navigate({
-      search: {
-        genre: search.genre,
-        adult: search.adult,
-      },
-      replace: true,
-    }).finally(() => {
-      setClearingOnReload(false);
-    });
-  }, [clearingOnReload, navigate, search.genre, search.adult]);
 
   /*
    * =========================================================
@@ -544,12 +581,8 @@ function SearchPage() {
       return;
     }
 
-    if (clearingOnReload) {
-      return;
-    }
-
     setDraft(search.q ?? "");
-  }, [search.q, clearingOnReload]);
+  }, [search.q]);
 
   /*
    * =========================================================
@@ -557,12 +590,13 @@ function SearchPage() {
    * =========================================================
    */
   useEffect(() => {
-    if (clearingOnReload) {
+    if (activeTab !== "animes") {
       return;
     }
 
-    if (activeTab !== "animes") {
-      return;
+    if (animeDebounceTimerRef.current !== null) {
+      window.clearTimeout(animeDebounceTimerRef.current);
+      animeDebounceTimerRef.current = null;
     }
 
     const q = draft.trim();
@@ -577,7 +611,8 @@ function SearchPage() {
       return;
     }
 
-    const timer = window.setTimeout(() => {
+    animeDebounceTimerRef.current = window.setTimeout(() => {
+      animeDebounceTimerRef.current = null;
       void navigate({
         search: {
           ...search,
@@ -586,18 +621,106 @@ function SearchPage() {
         },
         replace: true,
       });
-    }, 700);
+    }, 450);
 
-    return () => window.clearTimeout(timer);
-  }, [draft, navigate, search, clearingOnReload, activeTab]);
+    return () => {
+      if (animeDebounceTimerRef.current !== null) {
+        window.clearTimeout(animeDebounceTimerRef.current);
+        animeDebounceTimerRef.current = null;
+      }
+    };
+  }, [draft, navigate, search, activeTab]);
 
   /*
    * =========================================================
-   * RESULTADOS DE ANIMES
+   * ENVIO PELO TECLADO (ENTER / IR) — SEM FLASH E CONSISTENTE
+   * =========================================================
+   */
+  const handleSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    if (animeDebounceTimerRef.current !== null) {
+      window.clearTimeout(animeDebounceTimerRef.current);
+      animeDebounceTimerRef.current = null;
+    }
+    if (userDebounceTimerRef.current !== null) {
+      window.clearTimeout(userDebounceTimerRef.current);
+      userDebounceTimerRef.current = null;
+    }
+    if (peopleDebounceTimerRef.current !== null) {
+      window.clearTimeout(peopleDebounceTimerRef.current);
+      peopleDebounceTimerRef.current = null;
+    }
+
+    const q = draft.trim();
+    const currentUrlQ = (search.q ?? "").trim();
+
+    if (typeof window !== "undefined" && window.innerWidth <= 640) {
+      inputRef.current?.blur();
+    }
+
+    if (activeTab === "animes") {
+      if (q !== currentUrlQ) {
+        void navigate({
+          search: {
+            ...search,
+            q: q || undefined,
+            page: 1,
+          },
+          replace: true,
+        });
+      }
+      return;
+    }
+
+    if (q !== currentUrlQ) {
+      void navigate({
+        search: {
+          ...search,
+          q: q || undefined,
+          tab: activeTab,
+          page: 1,
+        },
+        replace: true,
+      });
+    }
+
+    if (activeTab === "users") {
+      const cleanUser = q.replace(/^@/, "").trim();
+      if (usersFetchedQuery === cleanUser && !usersLoading && userResults.length > 0) {
+        return;
+      }
+      void runUsersSearch(q);
+    } else if (activeTab === "people") {
+      if (peopleFetchedQuery === q && !entityLoading && peopleResults.length > 0) {
+        return;
+      }
+      void runPeopleSearch(q);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.keyCode === 13) {
+      e.preventDefault();
+      const form = e.currentTarget.form;
+      if (form) {
+        form.requestSubmit();
+      } else {
+        handleSearchSubmit({
+          preventDefault: () => {},
+          currentTarget: { form: null },
+        } as unknown as FormEvent<HTMLFormElement>);
+      }
+    }
+  };
+
+  /*
+   * =========================================================
+   * RESULTADOS DE ANIMES (ESTRITAMENTE ISOLADO)
    * =========================================================
    */
   const items = useMemo(() => {
-    if (clearingOnReload) {
+    if (activeTab !== "animes") {
       return [];
     }
 
@@ -662,13 +785,13 @@ function SearchPage() {
       ...remote.filter((anime) => !seen.has(anime.id)),
     ];
   }, [
+    activeTab,
     currentPage,
     locals,
     remoteAnimeItems,
     search.q,
     search.genre,
     search.adult,
-    clearingOnReload,
   ]);
 
   /*
@@ -733,7 +856,7 @@ function SearchPage() {
           });
         } else if (activeTab === "users" && hasMoreUsers) {
           void handleLoadMoreUsersRef.current();
-        } else if ((activeTab === "characters" || activeTab === "people") && entityHasNext) {
+        } else if (activeTab === "people" && entityHasNext) {
           void loadMoreEntitiesRef.current();
         }
       },
@@ -754,19 +877,6 @@ function SearchPage() {
 
   /*
    * =========================================================
-   * BLOQUEIO DURANTE RELOAD
-   * =========================================================
-   */
-  if (clearingOnReload) {
-    return (
-      <div className="space-y-6 pt-6 max-w-7xl mx-auto px-2.5 sm:px-4">
-        <SearchPending />
-      </div>
-    );
-  }
-
-  /*
-   * =========================================================
    * RENDER PRINCIPAL
    * =========================================================
    */
@@ -777,7 +887,7 @@ function SearchPage() {
       ====================================================== */}
       <div className="rounded-2xl border border-white/10 bg-[#141224]/90 p-3 sm:p-4.5 shadow-xl backdrop-blur-md space-y-3.5">
         {/* Rótulo e Campo de busca */}
-        <div className="space-y-1.5">
+        <form onSubmit={handleSearchSubmit} className="space-y-1.5">
           <label
             htmlFor="search-page-input"
             className="block text-xs font-medium text-zinc-400"
@@ -787,35 +897,14 @@ function SearchPage() {
           <div className="relative flex items-center rounded-xl border border-white/10 bg-[#0c0a17] px-3 py-1.5 sm:py-2 transition-all focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/30">
             <SearchIcon className="size-4 shrink-0 text-zinc-400 mr-2.5" />
             <input
+              ref={inputRef}
               id="search-page-input"
               type="search"
-              enterKeyHint="search"
+              enterKeyHint="go"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  (e.currentTarget as HTMLInputElement).blur();
-                  const q = draft.trim();
-                  void navigate({
-                    search: {
-                      ...search,
-                      q: q || undefined,
-                      page: 1,
-                    },
-                    replace: true,
-                  });
-                }
-              }}
-              placeholder={
-                activeTab === "animes"
-                  ? "Buscar animes..."
-                  : activeTab === "users"
-                    ? "Buscar usuários..."
-                    : activeTab === "characters"
-                      ? "Buscar personagens..."
-                      : "Buscar profissionais (People)..."
-              }
+              onKeyDown={handleKeyDown}
+              placeholder=""
               className="w-full bg-transparent text-xs sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
             />
             {draft.length > 0 && (
@@ -837,10 +926,10 @@ function SearchPage() {
               </button>
             )}
           </div>
-        </div>
+        </form>
 
-        {/* Categorias horizontais (Animes, Usuários, People, Personagens) */}
-        <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+        {/* Categorias horizontais estritas (Animes, Usuários, People) */}
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
           {CATEGORY_TABS.map((cat) => {
             const isActive = activeTab === cat.id;
             const Icon = cat.icon;
@@ -850,7 +939,7 @@ function SearchPage() {
                 type="button"
                 onClick={() => handleTabChange(cat.id)}
                 className={cn(
-                  "flex items-center justify-center gap-1 sm:gap-1.5 rounded-xl py-2 px-0.5 sm:px-1 text-center transition-all text-[10px] sm:text-xs font-medium cursor-pointer select-none",
+                  "flex items-center justify-center gap-1.5 rounded-xl py-2 px-1 sm:px-2 text-center transition-all text-[11px] sm:text-xs font-medium cursor-pointer select-none",
                   isActive
                     ? "bg-gradient-to-r from-purple-600 via-purple-500 to-fuchsia-600 text-white shadow-[0_4px_16px_rgba(168,85,247,0.35)] border border-purple-400/40"
                     : "bg-white/[0.04] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.08] border border-white/5",
@@ -858,7 +947,7 @@ function SearchPage() {
               >
                 <Icon
                   className={cn(
-                    "size-3 sm:size-3.5 shrink-0",
+                    "size-3.5 shrink-0",
                     isActive ? "text-white" : "text-zinc-400",
                   )}
                 />
@@ -1015,18 +1104,14 @@ function SearchPage() {
               ? "Explorar Animes"
               : activeTab === "users"
                 ? "Explorar Usuários"
-                : activeTab === "people"
-                  ? "Explorar People"
-                  : "Explorar Personagens"}
+                : "Explorar People"}
         </h1>
         <p className="mt-0.5 text-xs sm:text-sm text-zinc-400">
           {activeTab === "animes"
             ? `${items.length} ${items.length === 1 ? "resultado" : "resultados"}`
             : activeTab === "users"
               ? `${userResults.length} ${userResults.length === 1 ? "resultado" : "resultados"}`
-              : activeTab === "people"
-                ? `${peopleResults.length} ${peopleResults.length === 1 ? "resultado" : "resultados"}`
-                : `${characterResults.length} ${characterResults.length === 1 ? "resultado" : "resultados"}`}
+              : `${peopleResults.length} ${peopleResults.length === 1 ? "resultado" : "resultados"}`}
         </p>
       </div>
 
@@ -1091,7 +1176,7 @@ function SearchPage() {
       ====================================================== */}
       {activeTab === "users" && (
         <section className="space-y-4">
-          {usersLoading && (
+          {usersLoading && userResults.length === 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
@@ -1132,6 +1217,7 @@ function SearchPage() {
           {!usersLoading &&
             !usersError &&
             userQueryClean.length >= 2 &&
+            usersFetchedQuery === userQueryClean &&
             userResults.length === 0 && (
               <div className="py-20 text-center">
                 <Users className="mx-auto size-8 text-zinc-500" />
@@ -1144,9 +1230,14 @@ function SearchPage() {
               </div>
             )}
 
-          {!usersLoading && !usersError && userResults.length > 0 && (
+          {!usersError && userResults.length > 0 && (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div
+                className={cn(
+                  "grid grid-cols-1 sm:grid-cols-2 gap-3 transition-opacity duration-150",
+                  usersLoading && "opacity-75",
+                )}
+              >
                 {userResults.map((person) => {
                   const avatarLetter = (
                     person.displayName ||
@@ -1228,56 +1319,6 @@ function SearchPage() {
       )}
 
       {/* =====================================================
-          CONTEÚDO: ABA PERSONAGENS
-      ====================================================== */}
-      {activeTab === "characters" && (
-        <section className="space-y-4">
-          {entityLoading && characterResults.length === 0 && (
-            <div className="py-12 flex items-center justify-center gap-2 text-sm text-zinc-400">
-              <div className="size-4 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
-              <span>Pesquisando personagens...</span>
-            </div>
-          )}
-
-          {!entityLoading && draft.trim().length < 2 && (
-            <div className="py-20 text-center">
-              <UserRound className="mx-auto size-8 text-zinc-500" />
-              <p className="mt-4 font-display text-2xl text-zinc-200">
-                Pesquise um personagem
-              </p>
-              <p className="mt-2 text-sm text-zinc-400">
-                Digite o nome de um personagem de anime.
-              </p>
-            </div>
-          )}
-
-          {characterResults.length > 0 && (
-            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-              {characterResults.map((char) => (
-                <SearchCharacterResultCard key={char.id} character={char} />
-              ))}
-            </div>
-          )}
-
-          <div ref={entitySentinelRef} className="h-6" aria-hidden="true" />
-          {entityLoadingMore && (
-            <div className="py-4 flex items-center justify-center gap-2 text-xs text-zinc-400">
-              <div className="size-3.5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
-              <span>Carregando mais personagens...</span>
-            </div>
-          )}
-
-          {!entityLoading &&
-            draft.trim().length >= 2 &&
-            characterResults.length === 0 && (
-              <p className="py-16 text-center text-sm text-zinc-400">
-                Nenhum personagem encontrado para &quot;{draft.trim()}&quot;.
-              </p>
-            )}
-        </section>
-      )}
-
-      {/* =====================================================
           CONTEÚDO: ABA PEOPLE
       ====================================================== */}
       {activeTab === "people" && (
@@ -1289,7 +1330,7 @@ function SearchPage() {
             </div>
           )}
 
-          {!entityLoading && draft.trim().length < 2 && (
+          {!entityLoading && draft.trim().length === 0 && (
             <div className="py-20 text-center">
               <Mic2 className="mx-auto size-8 text-zinc-500" />
               <p className="mt-4 font-display text-2xl text-zinc-200">
@@ -1302,7 +1343,12 @@ function SearchPage() {
           )}
 
           {peopleResults.length > 0 && (
-            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+            <div
+              className={cn(
+                "grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 transition-opacity duration-150",
+                entityLoading && "opacity-75",
+              )}
+            >
               {peopleResults.map((person) => (
                 <SearchPersonResultCard key={person.id} person={person} />
               ))}
@@ -1318,7 +1364,8 @@ function SearchPage() {
           )}
 
           {!entityLoading &&
-            draft.trim().length >= 2 &&
+            draft.trim().length > 0 &&
+            peopleFetchedQuery === draft.trim() &&
             peopleResults.length === 0 && (
               <p className="py-16 text-center text-sm text-zinc-400">
                 Nenhum profissional encontrado para &quot;{draft.trim()}&quot;.
@@ -1436,103 +1483,6 @@ function SearchAnimeResultCard({ anime }: { anime: SlimAnime }) {
         </div>
       </Link>
     </article>
-  );
-}
-
-/* ===========================================================
-   CARD DE PERSONAGEM NA BUSCA
-=========================================================== */
-function SearchCharacterResultCard({
-  character,
-}: {
-  character: SearchCharacterItem;
-}) {
-  const animeId = character.anime?.id;
-  const imageSrc = character.image?.large || character.image?.medium || "";
-
-  const card = (
-    <article className="group flex flex-col min-w-0">
-      <div className="
-        relative
-        aspect-[2/3]
-        w-full
-        overflow-hidden
-        rounded-none
-        bg-[#0d0c16]
-        border
-        border-white/10
-        shadow-sm
-        transition-all
-        duration-200
-        ease-out
-        group-hover:border-purple-500/50
-        group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
-        group-active:border-purple-400
-        group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
-      ">
-        {imageSrc ? (
-          <img
-            src={imageSrc}
-            alt={character.name.full}
-            loading="lazy"
-            decoding="async"
-            className="
-              size-full
-              object-cover
-              transition-transform
-              duration-300
-              ease-out
-              group-hover:scale-[1.03]
-              group-active:scale-[1.01]
-              motion-reduce:transform-none
-            "
-          />
-        ) : (
-          <div className="flex size-full items-center justify-center text-zinc-600">
-            <UserRound className="size-8" />
-          </div>
-        )}
-      </div>
-
-      <div className="mt-2 flex flex-col px-0.5">
-        <h3
-          title={character.name.full}
-          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
-        >
-          {character.name.full}
-        </h3>
-        <p className="mt-0.5 truncate text-[10.5px] sm:text-xs text-zinc-400">
-          {character.role || "Personagem"}
-          {character.anime?.title ? ` · ${character.anime.title}` : ""}
-        </p>
-      </div>
-    </article>
-  );
-
-  return animeId ? (
-    <Link
-      to="/anime/$id"
-      params={{ id: String(animeId) }}
-      className="
-        block
-        outline-none
-        focus-visible:ring-2
-        focus-visible:ring-purple-400
-        transition-all
-        duration-150
-        ease-out
-        active:scale-[0.96]
-        active:brightness-110
-        [@media(hover:hover)]:hover:brightness-105
-        motion-reduce:transition-none
-        motion-reduce:transform-none
-        -webkit-tap-highlight-color-transparent
-      "
-    >
-      {card}
-    </Link>
-  ) : (
-    card
   );
 }
 

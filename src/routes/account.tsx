@@ -903,11 +903,28 @@ function AccountProfile() {
     [],
   );
 
-  const handleUpdateTrackingItem = useCallback((updated: UserAnimeTrackingItem) => {
-    setTrackingItems((prev) =>
-      prev.map((item) => (item.animeId === updated.animeId ? updated : item)),
-    );
-  }, []);
+  const handleUpdateTrackingItem = useCallback(
+    (updated: UserAnimeTrackingItem, previousAnimeId?: string) => {
+      setTrackingItems((prev) => {
+        const matchIds = new Set<string>([updated.animeId]);
+        if (previousAnimeId) matchIds.add(previousAnimeId);
+        const next: UserAnimeTrackingItem[] = [];
+        let inserted = false;
+        for (const item of prev) {
+          if (matchIds.has(item.animeId)) {
+            if (!inserted) {
+              next.push(updated);
+              inserted = true;
+            }
+          } else {
+            next.push(item);
+          }
+        }
+        return inserted ? next : [updated, ...next];
+      });
+    },
+    [],
+  );
 
   const handleRemoveFavorite = useCallback(
     async (item: ProfileFavoriteItem) => {
