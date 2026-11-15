@@ -9,6 +9,7 @@ import {
   Lock,
   Search as SearchIcon,
   SlidersHorizontal,
+  Sparkles,
   Tv,
   Users,
   X,
@@ -49,7 +50,9 @@ import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import type { SearchCategory } from "@/components/search/SearchCategorySelector";
 import {
   searchPeople,
+  searchCharacters,
   type SearchPersonItem,
+  type SearchCharacterItem,
 } from "@/lib/search-entities";
 import { cn } from "@/lib/utils";
 
@@ -69,6 +72,7 @@ const CATEGORY_TABS: {
   { id: "animes", label: "Animes", icon: Tv },
   { id: "users", label: "Usuários", icon: Users },
   { id: "people", label: "People", icon: Mic2 },
+  { id: "characters", label: "Personagens", icon: Sparkles },
 ];
 
 type Search = {
@@ -129,7 +133,7 @@ export const Route =
           : undefined,
 
       tab:
-        raw.tab === "users" || raw.tab === "people"
+        raw.tab === "users" || raw.tab === "people" || raw.tab === "characters"
           ? raw.tab
           : undefined,
     }),
@@ -185,7 +189,9 @@ export const Route =
           ? "usuários"
           : activeTab === "people"
             ? "profissionais"
-            : "animes no catálogo";
+            : activeTab === "characters"
+              ? "personagens"
+              : "animes no catálogo";
 
       const title = search.q
         ? `Buscar "${search.q}" em ${scopeLabel} — HIKARI`
@@ -195,7 +201,7 @@ export const Route =
 
       const description = search.q
         ? `Resultados da busca por "${search.q}" no HIKARI.`
-        : "Filtre e encontre animes, usuários e profissionais (People) no HIKARI.";
+        : "Filtre e encontre animes, personagens, usuários e profissionais (People) no HIKARI.";
 
       const canonicalUrl = buildCleanCanonical("/search");
 
@@ -261,13 +267,17 @@ function SearchPage() {
   }, [result.items, currentPage]);
 
   const activeTab: SearchCategory =
-    search.tab === "users" || search.tab === "people" ? search.tab : "animes";
+    search.tab === "users" || search.tab === "people" || search.tab === "characters"
+      ? search.tab
+      : "animes";
 
   const animeDebounceTimerRef = useRef<number | null>(null);
   const userDebounceTimerRef = useRef<number | null>(null);
   const peopleDebounceTimerRef = useRef<number | null>(null);
+  const characterDebounceTimerRef = useRef<number | null>(null);
   const userReqIdRef = useRef(0);
   const peopleReqIdRef = useRef(0);
+  const characterReqIdRef = useRef(0);
 
   const handleTabChange = (nextTab: SearchCategory) => {
     if (animeDebounceTimerRef.current !== null) {
@@ -281,6 +291,10 @@ function SearchPage() {
     if (peopleDebounceTimerRef.current !== null) {
       window.clearTimeout(peopleDebounceTimerRef.current);
       peopleDebounceTimerRef.current = null;
+    }
+    if (characterDebounceTimerRef.current !== null) {
+      window.clearTimeout(characterDebounceTimerRef.current);
+      characterDebounceTimerRef.current = null;
     }
 
     const q = draft.trim();
@@ -323,11 +337,25 @@ function SearchPage() {
   const isFetchingMoreEntitiesRef = useRef(false);
 
   /*
+   * =========================================================
+   * PESQUISA DE PERSONAGENS
+   * =========================================================
+   */
+  const [characterResults, setCharacterResults] = useState<SearchCharacterItem[]>([]);
+  const [characterLoading, setCharacterLoading] = useState(false);
+  const [characterLoadingMore, setCharacterLoadingMore] = useState(false);
+  const [characterHasNext, setCharacterHasNext] = useState(false);
+  const [characterPage, setCharacterPage] = useState(1);
+  const [characterFetchedQuery, setCharacterFetchedQuery] = useState("");
+  const isFetchingMoreCharactersRef = useRef(false);
+
+  /*
    * SENTINELAS PARA ROLAGEM INFINITA AUTOMÁTICA
    */
   const animeSentinelRef = useRef<HTMLDivElement>(null);
   const userSentinelRef = useRef<HTMLDivElement>(null);
   const entitySentinelRef = useRef<HTMLDivElement>(null);
+  const characterSentinelRef = useRef<HTMLDivElement>(null);
   const isNavigatingAnimeRef = useRef(false);
 
   useEffect(() => {
@@ -570,6 +598,106 @@ function SearchPage() {
     }
   };
 
+  const runCharacterSearch = useCallback(async (rawQuery: string) => {
+    const clean = rawQuery.trim();
+    const reqId = ++characterReqIdRef.current;
+
+    if (!clean) {
+      setCharacterResults([]);
+      setCharacterHasNext(false);
+      setCharacterPage(1);
+      setCharacterLoading(false);
+      setCharacterFetchedQuery("");
+      return;
+    }
+
+    setCharacterLoading(true);
+    try {
+      const res = await searchCharacters(clean, 1, 18);
+      if (reqId !== characterReqIdRef.current) return;
+      setCharacterResults(res.items);
+      setCharacterHasNext(res.hasNext);
+      setCharacterPage(1);
+      setCharacterFetchedQuery(clean);
+    } catch {
+      if (reqId !== characterReqIdRef.current) return;
+      setCharacterResults([]);
+      setCharacterHasNext(false);
+      setCharacterFetchedQuery(clean);
+    } finally {
+      if (reqId === characterReqIdRef.current) {
+        setCharacterLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== "characters") return;
+
+    if (characterDebounceTimerRef.current !== null) {
+      window.clearTimeout(characterDebounceTimerRef.current);
+      characterDebounceTimerRef.current = null;
+    }
+
+    const clean = draft.trim();
+    if (!clean) {
+      characterReqIdRef.current += 1;
+      setCharacterResults([]);
+      setCharacterHasNext(false);
+      setCharacterPage(1);
+      setCharacterLoading(false);
+      setCharacterFetchedQuery("");
+      return;
+    }
+
+    const isInitialUrlMatch = clean === (search.q ?? "").trim() && characterFetchedQuery !== clean;
+    const delay = isInitialUrlMatch ? 0 : 280;
+
+    characterDebounceTimerRef.current = window.setTimeout(() => {
+      characterDebounceTimerRef.current = null;
+      void runCharacterSearch(clean);
+    }, delay);
+
+    return () => {
+      if (characterDebounceTimerRef.current !== null) {
+        window.clearTimeout(characterDebounceTimerRef.current);
+        characterDebounceTimerRef.current = null;
+      }
+    };
+  }, [activeTab, draft, search.q, characterFetchedQuery, runCharacterSearch]);
+
+  const loadMoreCharacters = async () => {
+    if (
+      characterLoading ||
+      characterLoadingMore ||
+      isFetchingMoreCharactersRef.current ||
+      !characterHasNext ||
+      activeTab !== "characters"
+    ) {
+      return;
+    }
+    const clean = draft.trim();
+    if (!clean) return;
+
+    const reqId = characterReqIdRef.current;
+    const nextPage = characterPage + 1;
+    isFetchingMoreCharactersRef.current = true;
+    setCharacterLoadingMore(true);
+    try {
+      const res = await searchCharacters(clean, nextPage, 18);
+      if (reqId !== characterReqIdRef.current) return;
+      setCharacterResults((prev) => {
+        const seen = new Set(prev.map((x) => x.id));
+        return [...prev, ...res.items.filter((x) => !seen.has(x.id))];
+      });
+      setCharacterPage(nextPage);
+      setCharacterHasNext(res.hasNext);
+    } finally {
+      isFetchingMoreCharactersRef.current = false;
+      setCharacterLoadingMore(false);
+    }
+  };
+
   /*
    * =========================================================
    * SINCRONIZAR CAMPO COM A URL
@@ -651,6 +779,10 @@ function SearchPage() {
       window.clearTimeout(peopleDebounceTimerRef.current);
       peopleDebounceTimerRef.current = null;
     }
+    if (characterDebounceTimerRef.current !== null) {
+      window.clearTimeout(characterDebounceTimerRef.current);
+      characterDebounceTimerRef.current = null;
+    }
 
     const q = draft.trim();
     const currentUrlQ = (search.q ?? "").trim();
@@ -696,6 +828,11 @@ function SearchPage() {
         return;
       }
       void runPeopleSearch(q);
+    } else if (activeTab === "characters") {
+      if (characterFetchedQuery === q && !characterLoading && characterResults.length > 0) {
+        return;
+      }
+      void runCharacterSearch(q);
     }
   };
 
@@ -833,6 +970,8 @@ function SearchPage() {
   handleLoadMoreUsersRef.current = handleLoadMoreUsers;
   const loadMoreEntitiesRef = useRef(loadMoreEntities);
   loadMoreEntitiesRef.current = loadMoreEntities;
+  const loadMoreCharactersRef = useRef(loadMoreCharacters);
+  loadMoreCharactersRef.current = loadMoreCharacters;
 
   useEffect(() => {
     const target =
@@ -840,7 +979,9 @@ function SearchPage() {
         ? animeSentinelRef.current
         : activeTab === "users"
           ? userSentinelRef.current
-          : entitySentinelRef.current;
+          : activeTab === "people"
+            ? entitySentinelRef.current
+            : characterSentinelRef.current;
 
     if (!target || typeof IntersectionObserver === "undefined") return;
 
@@ -858,6 +999,8 @@ function SearchPage() {
           void handleLoadMoreUsersRef.current();
         } else if (activeTab === "people" && entityHasNext) {
           void loadMoreEntitiesRef.current();
+        } else if (activeTab === "characters" && characterHasNext) {
+          void loadMoreCharactersRef.current();
         }
       },
       { rootMargin: "600px 0px" },
@@ -873,6 +1016,7 @@ function SearchPage() {
     navigate,
     hasMoreUsers,
     entityHasNext,
+    characterHasNext,
   ]);
 
   /*
@@ -928,8 +1072,8 @@ function SearchPage() {
           </div>
         </form>
 
-        {/* Categorias horizontais estritas (Animes, Usuários, People) */}
-        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+        {/* Categorias horizontais estritas (Animes, Usuários, People, Personagens) */}
+        <div className="grid grid-cols-4 gap-1 sm:gap-2">
           {CATEGORY_TABS.map((cat) => {
             const isActive = activeTab === cat.id;
             const Icon = cat.icon;
@@ -939,7 +1083,7 @@ function SearchPage() {
                 type="button"
                 onClick={() => handleTabChange(cat.id)}
                 className={cn(
-                  "flex items-center justify-center gap-1.5 rounded-xl py-2 px-1 sm:px-2 text-center transition-all text-[11px] sm:text-xs font-medium cursor-pointer select-none",
+                  "flex items-center justify-center gap-0.5 min-[380px]:gap-1 sm:gap-1.5 rounded-xl py-2 px-0.5 min-[380px]:px-1 sm:px-2 text-center transition-all text-[10px] min-[380px]:text-[11px] sm:text-xs font-medium cursor-pointer select-none",
                   isActive
                     ? "bg-gradient-to-r from-purple-600 via-purple-500 to-fuchsia-600 text-white shadow-[0_4px_16px_rgba(168,85,247,0.35)] border border-purple-400/40"
                     : "bg-white/[0.04] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.08] border border-white/5",
@@ -947,7 +1091,7 @@ function SearchPage() {
               >
                 <Icon
                   className={cn(
-                    "size-3.5 shrink-0",
+                    "size-3 sm:size-3.5 shrink-0",
                     isActive ? "text-white" : "text-zinc-400",
                   )}
                 />
@@ -1104,14 +1248,18 @@ function SearchPage() {
               ? "Explorar Animes"
               : activeTab === "users"
                 ? "Explorar Usuários"
-                : "Explorar People"}
+                : activeTab === "people"
+                  ? "Explorar People"
+                  : "Explorar Personagens"}
         </h1>
         <p className="mt-0.5 text-xs sm:text-sm text-zinc-400">
           {activeTab === "animes"
             ? `${items.length} ${items.length === 1 ? "resultado" : "resultados"}`
             : activeTab === "users"
               ? `${userResults.length} ${userResults.length === 1 ? "resultado" : "resultados"}`
-              : `${peopleResults.length} ${peopleResults.length === 1 ? "resultado" : "resultados"}`}
+              : activeTab === "people"
+                ? `${peopleResults.length} ${peopleResults.length === 1 ? "resultado" : "resultados"}`
+                : `${characterResults.length} ${characterResults.length === 1 ? "resultado" : "resultados"}`}
         </p>
       </div>
 
@@ -1373,6 +1521,62 @@ function SearchPage() {
             )}
         </section>
       )}
+
+      {/* =====================================================
+          CONTEÚDO: ABA PERSONAGENS
+      ====================================================== */}
+      {activeTab === "characters" && (
+        <section className="space-y-4">
+          {characterLoading && characterResults.length === 0 && (
+            <div className="py-12 flex items-center justify-center gap-2 text-sm text-zinc-400">
+              <div className="size-4 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+              <span>Pesquisando personagens...</span>
+            </div>
+          )}
+
+          {!characterLoading && draft.trim().length === 0 && (
+            <div className="py-20 text-center">
+              <Sparkles className="mx-auto size-8 text-zinc-500" />
+              <p className="mt-4 font-display text-2xl text-zinc-200">
+                Pesquise personagens
+              </p>
+              <p className="mt-2 text-sm text-zinc-400">
+                Encontre seus personagens favoritos de animes pelo nome.
+              </p>
+            </div>
+          )}
+
+          {characterResults.length > 0 && (
+            <div
+              className={cn(
+                "grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 transition-opacity duration-150",
+                characterLoading && "opacity-75",
+              )}
+            >
+              {characterResults.map((character) => (
+                <SearchCharacterResultCard key={character.id} character={character} />
+              ))}
+            </div>
+          )}
+
+          <div ref={characterSentinelRef} className="h-6" aria-hidden="true" />
+          {characterLoadingMore && (
+            <div className="py-4 flex items-center justify-center gap-2 text-xs text-zinc-400">
+              <div className="size-3.5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+              <span>Carregando mais personagens...</span>
+            </div>
+          )}
+
+          {!characterLoading &&
+            draft.trim().length > 0 &&
+            characterFetchedQuery === draft.trim() &&
+            characterResults.length === 0 && (
+              <p className="py-16 text-center text-sm text-zinc-400">
+                Nenhum personagem encontrado para &quot;{draft.trim()}&quot;.
+              </p>
+            )}
+        </section>
+      )}
     </div>
   );
 }
@@ -1551,6 +1755,103 @@ function SearchPersonResultCard({
         <p className="mt-0.5 truncate text-[10.5px] sm:text-xs text-zinc-400">
           {person.role || "Profissional"}
           {person.anime?.title ? ` · ${person.anime.title}` : ""}
+        </p>
+      </div>
+    </article>
+  );
+
+  return animeId ? (
+    <Link
+      to="/anime/$id"
+      params={{ id: String(animeId) }}
+      className="
+        block
+        outline-none
+        focus-visible:ring-2
+        focus-visible:ring-purple-400
+        transition-all
+        duration-150
+        ease-out
+        active:scale-[0.96]
+        active:brightness-110
+        [@media(hover:hover)]:hover:brightness-105
+        motion-reduce:transition-none
+        motion-reduce:transform-none
+        -webkit-tap-highlight-color-transparent
+      "
+    >
+      {card}
+    </Link>
+  ) : (
+    card
+  );
+}
+
+/* ===========================================================
+   CARD DE PERSONAGEM NA BUSCA
+=========================================================== */
+function SearchCharacterResultCard({
+  character,
+}: {
+  character: SearchCharacterItem;
+}) {
+  const animeId = character.anime?.id;
+  const imageSrc = character.image?.large || character.image?.medium || "";
+
+  const card = (
+    <article className="group flex flex-col min-w-0">
+      <div className="
+        relative
+        aspect-[2/3]
+        w-full
+        overflow-hidden
+        rounded-none
+        bg-[#0d0c16]
+        border
+        border-white/10
+        shadow-sm
+        transition-all
+        duration-200
+        ease-out
+        group-hover:border-purple-500/50
+        group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+        group-active:border-purple-400
+        group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
+      ">
+        {imageSrc ? (
+          <img
+            src={imageSrc}
+            alt={character.name.full}
+            loading="lazy"
+            decoding="async"
+            className="
+              size-full
+              object-cover
+              transition-transform
+              duration-300
+              ease-out
+              group-hover:scale-[1.03]
+              group-active:scale-[1.01]
+              motion-reduce:transform-none
+            "
+          />
+        ) : (
+          <div className="flex size-full items-center justify-center text-zinc-600">
+            <Sparkles className="size-8" />
+          </div>
+        )}
+      </div>
+
+      <div className="mt-2 flex flex-col px-0.5">
+        <h3
+          title={character.name.full}
+          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+        >
+          {character.name.full}
+        </h3>
+        <p className="mt-0.5 truncate text-[10.5px] sm:text-xs text-zinc-400">
+          {character.role || (character.name?.native ? character.name.native : "Personagem")}
+          {character.anime?.title ? ` · ${character.anime.title}` : ""}
         </p>
       </div>
     </article>

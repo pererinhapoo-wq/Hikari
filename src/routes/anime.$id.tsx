@@ -736,21 +736,86 @@ function AnimePageContent({
 
   const locals = useHikariStore((s) => s.animes);
 
-  const inList = useHikariStore(
-    (s) =>
-      Boolean(
-        user &&
-          (s.myList.includes(id) ||
-            (remote?.id ? s.myList.includes(remote.id) : false)),
+  const baseAnime = useMemo(
+    () => mergeDetail(remote, id, locals),
+    [remote, id, locals],
+  );
+
+  const matchedLocalForIds = useMemo(
+    () =>
+      baseAnime
+        ? locals.find(
+            (a) =>
+              a.id === baseAnime.id ||
+              (baseAnime.anilistId != null && a.anilistId === baseAnime.anilistId),
+          )
+        : undefined,
+    [baseAnime, locals],
+  );
+
+  const candidateAnimeIds = useMemo(() => {
+    const raw = [
+      baseAnime?.id,
+      id,
+      remote?.id,
+      rawRemote?.id,
+      remote?.serverCatalogId,
+      rawRemote?.serverCatalogId,
+      baseAnime?.serverCatalogId,
+      matchedLocalForIds?.id,
+      baseAnime?.anilistId != null ? String(baseAnime.anilistId) : null,
+      remote?.anilistId != null ? String(remote.anilistId) : null,
+      baseAnime?.malId != null ? `mal-${baseAnime.malId}` : null,
+      baseAnime?.malId != null ? String(baseAnime.malId) : null,
+      remote?.malId != null ? `mal-${remote.malId}` : null,
+      remote?.malId != null ? String(remote.malId) : null,
+      baseAnime?.kitsuId != null ? `kitsu-${baseAnime.kitsuId}` : null,
+      baseAnime?.kitsuId != null ? String(baseAnime.kitsuId) : null,
+      remote?.kitsuId != null ? `kitsu-${remote.kitsuId}` : null,
+      remote?.kitsuId != null ? String(remote.kitsuId) : null,
+    ];
+    return Array.from(
+      new Set(
+        raw
+          .filter((val): val is string => typeof val === "string")
+          .map((val) => val.trim())
+          .filter(Boolean),
       ),
+    );
+  }, [
+    baseAnime?.id,
+    id,
+    remote?.id,
+    rawRemote?.id,
+    remote?.serverCatalogId,
+    rawRemote?.serverCatalogId,
+    baseAnime?.serverCatalogId,
+    matchedLocalForIds?.id,
+    baseAnime?.anilistId,
+    remote?.anilistId,
+    baseAnime?.malId,
+    remote?.malId,
+    baseAnime?.kitsuId,
+    remote?.kitsuId,
+  ]);
+
+  const candidateAnimeIdsKey = candidateAnimeIds.join("|");
+  const candidateAnimeIdSet = useMemo(() => new Set(candidateAnimeIds), [candidateAnimeIds]);
+
+  const inList = useHikariStore((s) =>
+    Boolean(
+      s.myList.some(
+        (listItemId) => candidateAnimeIdSet.has(listItemId) || listItemId === id,
+      ),
+    ),
   );
 
   const toggleList = useHikariStore((s) => s.toggleList);
 
   const continueEntry = useHikariStore((s) =>
-    user
-      ? s.continueWatching.find((entry) => entry.animeId === id)
-      : undefined,
+    s.continueWatching.find(
+      (entry) => candidateAnimeIdSet.has(entry.animeId) || entry.animeId === id,
+    ),
   );
 
   const watchedEpisodes = useHikariStore(
@@ -758,11 +823,6 @@ function AnimePageContent({
       user
         ? (s.userWatchedEpisodes?.[user.id]?.[id] ?? s.watchedEpisodes[id] ?? EMPTY_WATCHED_EPISODES)
         : (s.anonymousWatchedEpisodes?.[id] ?? s.watchedEpisodes[id] ?? EMPTY_WATCHED_EPISODES),
-  );
-
-  const baseAnime = useMemo(
-    () => mergeDetail(remote, id, locals),
-    [remote, id, locals],
   );
 
   const [resolvedSeasons, setResolvedSeasons] = useState<Season[] | null>(() => {
@@ -1071,23 +1131,87 @@ function AnimePageContent({
   const removeProfileFavoriteFnRef = useRef(removeProfileFavoriteFn);
   removeProfileFavoriteFnRef.current = removeProfileFavoriteFn;
 
-  // Estados de Coleção (Minha Coleção) e Favoritos
+  // Estados de Coleção (Minha Coleção) e Favoritos inicializados diretamente dos dados persistidos (sem flash)
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
-  const [trackingStatus, setTrackingStatus] = useState<TrackingStatus | null>(null);
-  const [trackingEpisodesWatched, setTrackingEpisodesWatched] = useState<number>(0);
-  const [trackingScore, setTrackingScore] = useState<number | null>(null);
-  const [trackingDbAnimeId, setTrackingDbAnimeId] = useState<string | null>(null);
+  const [trackingStatus, setTrackingStatus] = useState<TrackingStatus | null>(() => {
+    if (initialUserStatus?.tracking?.status) {
+      return initialUserStatus.tracking.status;
+    }
+    const cached = getAnimeUserClientCache(candidateAnimeIds);
+    if (cached?.trackingStatus) {
+      return cached.trackingStatus;
+    }
+    return null;
+  });
+  const [trackingEpisodesWatched, setTrackingEpisodesWatched] = useState<number>(() => {
+    if (typeof initialUserStatus?.tracking?.episodesWatched === "number") {
+      return initialUserStatus.tracking.episodesWatched;
+    }
+    const cached = getAnimeUserClientCache(candidateAnimeIds);
+    if (typeof cached?.episodesWatched === "number") {
+      return cached.episodesWatched;
+    }
+    return 0;
+  });
+  const [trackingScore, setTrackingScore] = useState<number | null>(() => {
+    if (initialUserStatus?.tracking?.score !== undefined) {
+      return initialUserStatus.tracking.score;
+    }
+    const cached = getAnimeUserClientCache(candidateAnimeIds);
+    if (cached?.score !== undefined) {
+      return cached.score;
+    }
+    return null;
+  });
+  const [trackingDbAnimeId, setTrackingDbAnimeId] = useState<string | null>(() => {
+    if (initialUserStatus?.tracking?.animeId) {
+      return initialUserStatus.tracking.animeId;
+    }
+    const cached = getAnimeUserClientCache(candidateAnimeIds);
+    return cached?.dbAnimeId ?? null;
+  });
   const [trackingTimestamps, setTrackingTimestamps] = useState<{
     createdAt: string;
     updatedAt: string;
-  }>({ createdAt: "", updatedAt: "" });
+  }>(() => {
+    if (initialUserStatus?.tracking) {
+      return {
+        createdAt: initialUserStatus.tracking.createdAt || "",
+        updatedAt: initialUserStatus.tracking.updatedAt || "",
+      };
+    }
+    const cached = getAnimeUserClientCache(candidateAnimeIds);
+    return {
+      createdAt: cached?.createdAt || "",
+      updatedAt: cached?.updatedAt || "",
+    };
+  });
   const [trackingLoading, setTrackingLoading] = useState(false);
-  const [hydratedTrackingUserId, setHydratedTrackingUserId] = useState<string | null>(null);
+  const [hydratedTrackingUserId, setHydratedTrackingUserId] = useState<string | null>(
+    () => initialUserStatus?.userId ?? null,
+  );
 
-  const [isFavorite, setIsFavorite] = useState(false);
-  const [favFavoriteId, setFavFavoriteId] = useState<string | null>(null);
+  const [isFavorite, setIsFavorite] = useState<boolean>(() => {
+    if (initialUserStatus && typeof initialUserStatus.isFavorite === "boolean") {
+      return initialUserStatus.isFavorite;
+    }
+    const cached = getAnimeUserClientCache(candidateAnimeIds);
+    if (cached && typeof cached.isFavorite === "boolean") {
+      return cached.isFavorite;
+    }
+    return false;
+  });
+  const [favFavoriteId, setFavFavoriteId] = useState<string | null>(() => {
+    if (initialUserStatus?.favFavoriteId) {
+      return initialUserStatus.favFavoriteId;
+    }
+    const cached = getAnimeUserClientCache(candidateAnimeIds);
+    return cached?.favFavoriteId ?? null;
+  });
   const [favoriteLoading, setFavoriteLoading] = useState(false);
-  const [hydratedFavoriteUserId, setHydratedFavoriteUserId] = useState<string | null>(null);
+  const [hydratedFavoriteUserId, setHydratedFavoriteUserId] = useState<string | null>(
+    () => initialUserStatus?.userId ?? null,
+  );
 
   const trackingMutationVersionRef = useRef(0);
   const favoriteMutationVersionRef = useRef(0);
@@ -1095,57 +1219,45 @@ function AnimePageContent({
   // Mapa de favoritos do perfil indexados por targetType:targetId e targetType:title
   const [favoriteEntities, setFavoriteEntities] = useState<
     Map<string, { id: string; targetType: FavoriteTargetType; targetId: string }>
-  >(new Map());
+  >(() => {
+    const map = new Map<string, { id: string; targetType: FavoriteTargetType; targetId: string }>();
+    if (initialUserStatus?.favoriteEntities) {
+      for (const item of initialUserStatus.favoriteEntities) {
+        map.set(`${item.targetType}:${item.targetId}`, {
+          id: item.id,
+          targetType: item.targetType,
+          targetId: item.targetId,
+        });
+        if (item.title) {
+          map.set(`${item.targetType}:${item.title.toLowerCase().trim()}`, {
+            id: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+          });
+        }
+      }
+    }
+    return map;
+  });
+
+  // Sincroniza estado inicial do loader para o cache síncrono local
+  useEffect(() => {
+    if (initialUserStatus) {
+      saveAnimeUserClientCache(candidateAnimeIds, {
+        trackingStatus: initialUserStatus.tracking?.status ?? null,
+        episodesWatched: initialUserStatus.tracking?.episodesWatched ?? 0,
+        score: initialUserStatus.tracking?.score ?? null,
+        dbAnimeId: initialUserStatus.tracking?.animeId ?? null,
+        createdAt: initialUserStatus.tracking?.createdAt ?? "",
+        updatedAt: initialUserStatus.tracking?.updatedAt ?? "",
+        isFavorite: initialUserStatus.isFavorite,
+        favFavoriteId: initialUserStatus.favFavoriteId,
+        continueEpisode: initialUserStatus.continueEpisode,
+      });
+    }
+  }, [initialUserStatus, candidateAnimeIds]);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
-
-  const matchedLocalForIds = useMemo(
-    () =>
-      anime
-        ? locals.find(
-            (a) =>
-              a.id === anime.id ||
-              (anime.anilistId != null && a.anilistId === anime.anilistId),
-          )
-        : undefined,
-    [anime, locals],
-  );
-
-  const candidateAnimeIds = useMemo(() => {
-    const raw = [
-      anime?.id,
-      id,
-      remote?.id,
-      remote?.serverCatalogId,
-      anime?.serverCatalogId,
-      matchedLocalForIds?.id,
-      anime?.anilistId != null ? String(anime.anilistId) : null,
-      anime?.malId != null ? `mal-${anime.malId}` : null,
-      anime?.malId != null ? String(anime.malId) : null,
-      anime?.kitsuId != null ? `kitsu-${anime.kitsuId}` : null,
-      anime?.kitsuId != null ? String(anime.kitsuId) : null,
-    ];
-    return Array.from(
-      new Set(
-        raw
-          .filter((val): val is string => typeof val === "string")
-          .map((val) => val.trim())
-          .filter(Boolean),
-      ),
-    );
-  }, [
-    anime?.id,
-    id,
-    remote?.id,
-    remote?.serverCatalogId,
-    anime?.serverCatalogId,
-    matchedLocalForIds?.id,
-    anime?.anilistId,
-    anime?.malId,
-    anime?.kitsuId,
-  ]);
-
-  const candidateAnimeIdsKey = candidateAnimeIds.join("|");
 
   const isTrackingHydrating =
     userPending ||
@@ -1269,12 +1381,26 @@ function AnimePageContent({
             createdAt: item.createdAt || "",
             updatedAt: item.updatedAt || "",
           });
+          saveAnimeUserClientCache(idsToQuery, {
+            trackingStatus: item.status,
+            episodesWatched: item.episodesWatched ?? 0,
+            score: item.score ?? null,
+            dbAnimeId: item.animeId,
+            createdAt: item.createdAt || "",
+            updatedAt: item.updatedAt || "",
+          });
         } else {
           setTrackingDbAnimeId(null);
           setTrackingStatus(null);
           setTrackingEpisodesWatched(0);
           setTrackingScore(null);
           setTrackingTimestamps({ createdAt: "", updatedAt: "" });
+          saveAnimeUserClientCache(idsToQuery, {
+            trackingStatus: null,
+            episodesWatched: 0,
+            score: null,
+            dbAnimeId: null,
+          });
         }
       })
       .catch((err) => {
@@ -1325,9 +1451,17 @@ function AnimePageContent({
         if (match) {
           setIsFavorite(true);
           setFavFavoriteId(match.id);
+          saveAnimeUserClientCache(idsToQuery, {
+            isFavorite: true,
+            favFavoriteId: match.id,
+          });
         } else {
           setIsFavorite(false);
           setFavFavoriteId(null);
+          saveAnimeUserClientCache(idsToQuery, {
+            isFavorite: false,
+            favFavoriteId: null,
+          });
         }
       })
       .catch((err) => {
@@ -1548,6 +1682,14 @@ function AnimePageContent({
         updatedAt: saved.updatedAt || "",
       });
       setHydratedTrackingUserId(user.id);
+      saveAnimeUserClientCache(candidateAnimeIds, {
+        trackingStatus: saved.status,
+        episodesWatched: saved.episodesWatched ?? 0,
+        score: saved.score ?? null,
+        dbAnimeId: saved.animeId,
+        createdAt: saved.createdAt || "",
+        updatedAt: saved.updatedAt || "",
+      });
 
       if (!inList) {
         toggleList(anime, user.id);
@@ -1595,6 +1737,12 @@ function AnimePageContent({
         },
       });
       setHydratedTrackingUserId(user.id);
+      saveAnimeUserClientCache(candidateAnimeIds, {
+        trackingStatus: null,
+        episodesWatched: 0,
+        score: null,
+        dbAnimeId: null,
+      });
 
       if (inList) {
         toggleList(anime, user.id);
@@ -1640,6 +1788,10 @@ function AnimePageContent({
         setFavFavoriteId(created.id);
         setIsFavorite(true);
         setHydratedFavoriteUserId(user.id);
+        saveAnimeUserClientCache(candidateAnimeIds, {
+          isFavorite: true,
+          favFavoriteId: created.id,
+        });
         notifyToast("success", "Adicionado aos seus favoritos!");
       } else {
         await removeProfileFavoriteFnRef.current({
@@ -1652,6 +1804,10 @@ function AnimePageContent({
         setFavFavoriteId(null);
         setIsFavorite(false);
         setHydratedFavoriteUserId(user.id);
+        saveAnimeUserClientCache(candidateAnimeIds, {
+          isFavorite: false,
+          favFavoriteId: null,
+        });
         notifyToast("info", "Removido dos favoritos.");
       }
     } catch (err: unknown) {
@@ -2249,17 +2405,73 @@ function AnimePageContent({
   /*
    * CONTINUAR
    *
-   * Procura exatamente o episódio onde
-   * o usuário parou.
+   * Procura exatamente o episódio onde o usuário parou,
+   * unificando loader do servidor (initialUserStatus), cache local síncrono
+   * e zustand store (continueWatching) para exibição imediata sem flash de "Assistir".
    */
-  const continueEpisode =
-    user && continueEntry
-      ? allEpisodes.find(
-          (episode) =>
-            episode.id ===
-            continueEntry.episodeId,
-        )
-      : undefined;
+  const persistedContinueInfo = useMemo(() => {
+    if (initialUserStatus?.continueEpisode) {
+      return {
+        id: initialUserStatus.continueEpisode.id,
+        number: initialUserStatus.continueEpisode.number,
+      };
+    }
+    const cached = getAnimeUserClientCache(candidateAnimeIds);
+    if (cached?.continueEpisode) {
+      return {
+        id: cached.continueEpisode.id,
+        number: cached.continueEpisode.number,
+      };
+    }
+    if (continueEntry) {
+      return {
+        id: continueEntry.episodeId,
+        number: continueEntry.episodeNumber || 1,
+      };
+    }
+    return null;
+  }, [initialUserStatus?.continueEpisode, candidateAnimeIds, continueEntry]);
+
+  const matchedEpisodeFromAll = useMemo(() => {
+    if (!allEpisodes || allEpisodes.length === 0 || !persistedContinueInfo) {
+      return null;
+    }
+    const byId = allEpisodes.find((ep) => ep.id === persistedContinueInfo.id);
+    if (byId) return byId;
+
+    if (typeof persistedContinueInfo.number === "number" && persistedContinueInfo.number > 0) {
+      const byNum = allEpisodes.find((ep) => ep.number === persistedContinueInfo.number);
+      if (byNum) return byNum;
+    }
+    return null;
+  }, [allEpisodes, persistedContinueInfo]);
+
+  const continueEpisode = useMemo(() => {
+    if (matchedEpisodeFromAll) {
+      return matchedEpisodeFromAll;
+    }
+    if (persistedContinueInfo) {
+      return {
+        id: persistedContinueInfo.id || `ep-${persistedContinueInfo.number}`,
+        number: persistedContinueInfo.number,
+        title: continueEntry?.episodeTitle || `Episódio ${persistedContinueInfo.number}`,
+        numberDisplay: String(persistedContinueInfo.number),
+        seasonId: currentSeason?.id ?? "",
+      };
+    }
+    return undefined;
+  }, [matchedEpisodeFromAll, persistedContinueInfo, continueEntry?.episodeTitle, currentSeason?.id]);
+
+  useEffect(() => {
+    if (continueEpisode) {
+      saveAnimeUserClientCache(candidateAnimeIds, {
+        continueEpisode: {
+          id: continueEpisode.id,
+          number: continueEpisode.number,
+        },
+      });
+    }
+  }, [continueEpisode, candidateAnimeIds]);
 
   const continueTarget =
     continueEpisode ??
@@ -2533,7 +2745,9 @@ function AnimePageContent({
                   }}
                 >
                   <Play className="size-4 fill-current pointer-events-none transition-transform duration-250 ease-out [@media(hover:hover)]:group-hover:scale-105" />
-                  <span>{watchButtonLabel}</span>
+                  <span id="hikari-watch-btn-text" suppressHydrationWarning>
+                    {watchButtonLabel}
+                  </span>
                 </Link>
 
                 {/* 1. BOTÃO MINHA COLEÇÃO (IDENTIDADE PRÓPRIA & REUTILIZA MODAL DO PERFIL) */}
@@ -2590,6 +2804,8 @@ function AnimePageContent({
                         />
                       </span>
                       <span
+                        id="hikari-collection-btn-text"
+                        suppressHydrationWarning
                         className={cn(
                           "font-bold tracking-tight text-white",
                           COLLECTION_STATUS_CONFIG[trackingStatus].textColor,
@@ -2616,7 +2832,11 @@ function AnimePageContent({
                       <span className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-violet-400/30 bg-violet-500/20 shadow-[0_0_10px_rgba(139,92,246,0.25)] transition-all duration-300 group-hover:scale-110 group-hover:border-violet-400/60 group-hover:bg-violet-500/30">
                         <Bookmark className="size-3.5 text-violet-300 transition-colors group-hover:text-violet-100" />
                       </span>
-                      <span className="font-semibold tracking-tight text-zinc-100 group-hover:text-white transition-colors">
+                      <span
+                        id="hikari-collection-btn-text"
+                        suppressHydrationWarning
+                        className="font-semibold tracking-tight text-zinc-100 group-hover:text-white transition-colors"
+                      >
                         Minha Coleção
                       </span>
                     </div>
@@ -2682,6 +2902,8 @@ function AnimePageContent({
                       />
                     </span>
                     <span
+                      id="hikari-favorite-btn-text"
+                      suppressHydrationWarning
                       className={cn(
                         "tracking-tight transition-colors",
                         isFavorite
@@ -2693,6 +2915,12 @@ function AnimePageContent({
                     </span>
                   </div>
                 </button>
+
+                <script
+                  dangerouslySetInnerHTML={{
+                    __html: `(function(){try{var rc=localStorage.getItem("hikari_anime_user_cache_v1");var rs=localStorage.getItem("hikari-user-state-v1");var c=rc?JSON.parse(rc):{};var s=rs?JSON.parse(rs):{};var ids=${JSON.stringify(candidateAnimeIds)};var k=null;for(var i=0;i<ids.length;i++){if(c[ids[i]]){k=c[ids[i]];break;}}var num=k&&k.continueEpisode?k.continueEpisode.number:null;if(!num&&s&&s.state&&Array.isArray(s.state.continueWatching)){for(var j=0;j<s.state.continueWatching.length;j++){var e=s.state.continueWatching[j];if(ids.indexOf(e.animeId)!==-1||e.animeId===${JSON.stringify(id)}){num=e.episodeNumber||1;break;}}}if(num){var w=document.getElementById("hikari-watch-btn-text");if(w)w.textContent="Continuar no ep. "+num;}var st=k&&k.trackingStatus?k.trackingStatus:null;if(st){var m={watching:"Assistindo",completed:"Concluído",on_hold:"Em espera",dropped:"Abandonado",planning:"Planejo Assistir"};var cl=document.getElementById("hikari-collection-btn-text");if(cl&&m[st])cl.textContent=m[st];}var fav=k&&k.isFavorite===true;if(fav){var f=document.getElementById("hikari-favorite-btn-text");if(f)f.textContent="Favoritado";}}catch(e){}})();`,
+                  }}
+                />
 
                 {canEdit && (
                   <Link

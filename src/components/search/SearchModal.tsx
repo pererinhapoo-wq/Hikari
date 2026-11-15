@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Film,
   Search as SearchIcon,
+  Sparkles,
   Star,
   X,
 } from "lucide-react";
@@ -164,10 +165,19 @@ export function SearchModal({
   const [peopleHasNext, setPeopleHasNext] = useState(false);
   const [peopleFetchedQuery, setPeopleFetchedQuery] = useState("");
 
+  // Resultados de Personagens
+  const [characterResults, setCharacterResults] = useState<SearchCharacterItem[]>([]);
+  const [characterLoading, setCharacterLoading] = useState(false);
+  const [characterLoadingMore, setCharacterLoadingMore] = useState(false);
+  const [characterPage, setCharacterPage] = useState(1);
+  const [characterHasNext, setCharacterHasNext] = useState(false);
+  const [characterFetchedQuery, setCharacterFetchedQuery] = useState("");
+
   const debounceTimerRef = useRef<number | null>(null);
   const animeReqIdRef = useRef(0);
   const userReqIdRef = useRef(0);
   const peopleReqIdRef = useRef(0);
+  const characterReqIdRef = useRef(0);
 
   const localAnimes = useHikariStore((s) => s.animes);
 
@@ -232,22 +242,28 @@ export function SearchModal({
     animeReqIdRef.current += 1;
     userReqIdRef.current += 1;
     peopleReqIdRef.current += 1;
+    characterReqIdRef.current += 1;
     setQuery("");
     setAnimeResults([]);
     setUserResults([]);
     setPeopleResults([]);
+    setCharacterResults([]);
     setAnimeFetchedQuery("");
     setUserFetchedQuery("");
     setPeopleFetchedQuery("");
+    setCharacterFetchedQuery("");
     setAnimePage(1);
     setUserPage(1);
     setPeoplePage(1);
+    setCharacterPage(1);
     setAnimeHasNext(false);
     setUserHasNext(false);
     setPeopleHasNext(false);
+    setCharacterHasNext(false);
     setAnimeLoading(false);
     setUserLoading(false);
     setPeopleLoading(false);
+    setCharacterLoading(false);
     inputRef.current?.focus({ preventScroll: true });
   };
 
@@ -437,6 +453,42 @@ export function SearchModal({
     }
   }, []);
 
+  const runCharacterSearch = useCallback(async (rawQuery: string) => {
+    const trimmed = rawQuery.trim();
+    const reqId = ++characterReqIdRef.current;
+
+    if (!trimmed) {
+      setCharacterResults([]);
+      setCharacterFetchedQuery("");
+      setCharacterLoading(false);
+      setCharacterHasNext(false);
+      setCharacterPage(1);
+      return;
+    }
+
+    setCharacterLoading(true);
+    setCharacterPage(1);
+
+    try {
+      const result = await searchCharacters(trimmed, 1, 18);
+      if (reqId === characterReqIdRef.current) {
+        setCharacterResults(result.items);
+        setCharacterFetchedQuery(trimmed);
+        setCharacterHasNext(result.hasNext);
+      }
+    } catch {
+      if (reqId === characterReqIdRef.current) {
+        setCharacterResults([]);
+        setCharacterFetchedQuery(trimmed);
+        setCharacterHasNext(false);
+      }
+    } finally {
+      if (reqId === characterReqIdRef.current) {
+        setCharacterLoading(false);
+      }
+    }
+  }, []);
+
   /* =========================================================
      DISPARO INSTANTÂNEO (DEBOUNCE AO DIGITAR)
   ========================================================== */
@@ -465,13 +517,20 @@ export function SearchModal({
         setUserLoading(false);
         setUserHasNext(false);
         setUserPage(1);
-      } else {
+      } else if (category === "people") {
         peopleReqIdRef.current += 1;
         setPeopleResults([]);
         setPeopleFetchedQuery("");
         setPeopleLoading(false);
         setPeopleHasNext(false);
         setPeoplePage(1);
+      } else {
+        characterReqIdRef.current += 1;
+        setCharacterResults([]);
+        setCharacterFetchedQuery("");
+        setCharacterLoading(false);
+        setCharacterHasNext(false);
+        setCharacterPage(1);
       }
       return;
     }
@@ -495,8 +554,10 @@ export function SearchModal({
         void runAnimeSearch(query);
       } else if (category === "users") {
         void runUserSearch(query);
-      } else {
+      } else if (category === "people") {
         void runPeopleSearch(query);
+      } else {
+        void runCharacterSearch(query);
       }
     }, 250);
 
@@ -506,7 +567,7 @@ export function SearchModal({
         debounceTimerRef.current = null;
       }
     };
-  }, [isOpen, category, query, runAnimeSearch, runUserSearch, runPeopleSearch]);
+  }, [isOpen, category, query, runAnimeSearch, runUserSearch, runPeopleSearch, runCharacterSearch]);
 
   /* =========================================================
      ENVIO POR TECLADO (ENTER / IR) — SEM NAVEGAR E SEM FLASH
@@ -687,6 +748,43 @@ export function SearchModal({
     }
   }, [peopleLoading, peopleLoadingMore, peopleHasNext, query, peoplePage]);
 
+  const loadMoreCharacters = useCallback(async () => {
+    if (characterLoading || characterLoadingMore || !characterHasNext) return;
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    const reqId = characterReqIdRef.current;
+    setCharacterLoadingMore(true);
+    const nextPage = characterPage + 1;
+
+    try {
+      const result = await searchCharacters(trimmed, nextPage, 18);
+      if (reqId !== characterReqIdRef.current) return;
+
+      setCharacterResults((prev) => {
+        const seen = new Set(prev.map((c) => c.id));
+        const additions: SearchCharacterItem[] = [];
+        for (const item of result.items) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            additions.push(item);
+          }
+        }
+        return [...prev, ...additions];
+      });
+      setCharacterPage(nextPage);
+      setCharacterHasNext(result.hasNext);
+    } catch {
+      if (reqId === characterReqIdRef.current) {
+        setCharacterHasNext(false);
+      }
+    } finally {
+      if (reqId === characterReqIdRef.current) {
+        setCharacterLoadingMore(false);
+      }
+    }
+  }, [characterLoading, characterLoadingMore, characterHasNext, query, characterPage]);
+
   /* =========================================================
      OBSERVER DE SCROLL INFINITO
   ========================================================== */
@@ -703,6 +801,8 @@ export function SearchModal({
             void loadMoreUsers();
           } else if (category === "people" && peopleHasNext && !peopleLoading && !peopleLoadingMore) {
             void loadMorePeople();
+          } else if (category === "characters" && characterHasNext && !characterLoading && !characterLoadingMore) {
+            void loadMoreCharacters();
           }
         }
       },
@@ -728,6 +828,10 @@ export function SearchModal({
     peopleLoading,
     peopleLoadingMore,
     loadMorePeople,
+    characterHasNext,
+    characterLoading,
+    characterLoadingMore,
+    loadMoreCharacters,
   ]);
 
   if (!isRendered) return null;
@@ -743,35 +847,45 @@ export function SearchModal({
       ? animeLoading
       : category === "users"
         ? userLoading
-        : peopleLoading;
+        : category === "people"
+          ? peopleLoading
+          : characterLoading;
 
   const isCurrentLoadingMore =
     category === "animes"
       ? animeLoadingMore
       : category === "users"
         ? userLoadingMore
-        : peopleLoadingMore;
+        : category === "people"
+          ? peopleLoadingMore
+          : characterLoadingMore;
 
   const currentCount =
     category === "animes"
       ? animeResults.length
       : category === "users"
         ? userResults.length
-        : peopleResults.length;
+        : category === "people"
+          ? peopleResults.length
+          : characterResults.length;
 
   const currentHasMore =
     category === "animes"
       ? animeHasNext
       : category === "users"
         ? userHasNext
-        : peopleHasNext;
+        : category === "people"
+          ? peopleHasNext
+          : characterHasNext;
 
-  const placeholderText =
+  const _placeholderText =
     category === "animes"
       ? "Buscar no Hikari..."
       : category === "users"
         ? "Buscar usuários por @username..."
-        : "Buscar profissionais (People)...";
+        : category === "people"
+          ? "Buscar profissionais (People)..."
+          : "Buscar personagens de animes...";
 
   const hasQuery = trimmedQuery.length > 0;
   const isWaitingFirstAnimeFetch =
@@ -789,6 +903,11 @@ export function SearchModal({
     hasQuery &&
     peopleResults.length === 0 &&
     peopleFetchedQuery !== trimmedQuery;
+  const isWaitingFirstCharacterFetch =
+    category === "characters" &&
+    hasQuery &&
+    characterResults.length === 0 &&
+    characterFetchedQuery !== trimmedQuery;
 
   return (
     <div
@@ -928,7 +1047,9 @@ export function SearchModal({
                   ? "ANIMES"
                   : category === "users"
                     ? "USUÁRIOS"
-                    : "PEOPLE"}
+                    : category === "people"
+                      ? "PEOPLE"
+                      : "PERSONAGENS"}
               </span>
               <span style={{ color: "var(--violet-200)" }}>
                 {isCurrentLoading
@@ -977,7 +1098,9 @@ export function SearchModal({
                   ? "Pesquise animes por título original, romaji ou em português."
                   : category === "users"
                     ? "Encontre amigos e membros da comunidade pelo @username."
-                    : "Pesquise dubladores, diretores e profissionais de produção."}
+                    : category === "people"
+                      ? "Pesquise dubladores, diretores e profissionais de produção."
+                      : "Pesquise personagens por nome original ou em inglês."}
               </p>
             </div>
           )}
@@ -1238,6 +1361,84 @@ export function SearchModal({
                       </Link>
                     ) : (
                       <div key={person.id} className="sr-item group">
+                        {itemContent}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* =========================================================
+              4. RESULTADOS DE PERSONAGENS (Estritamente isolado)
+          ========================================================== */}
+          {category === "characters" && hasQuery && (
+            <div>
+              {(characterLoading || isWaitingFirstCharacterFetch) && characterResults.length === 0 ? (
+                <div className="space-y-1 p-0.5">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="sr-item skeleton">
+                      <div className="sr-poster" />
+                      <div className="min-w-0 space-y-2 py-1">
+                        <p className="sr-title" />
+                        <div className="sr-sub" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : characterResults.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                  <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
+                    <Sparkles className="size-6" />
+                  </div>
+                  <h2 className="text-[16px] font-semibold text-[var(--text-1)]" style={{ fontFamily: "var(--font-sans)" }}>
+                    Nenhum personagem encontrado
+                  </h2>
+                  <p className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm" style={{ fontFamily: "var(--font-sans)" }}>
+                    Não encontramos personagens para &quot;{trimmedQuery}&quot;.
+                  </p>
+                </div>
+              ) : (
+                <div className={cn("space-y-0.5 transition-opacity duration-150", characterLoading && "opacity-75")}>
+                  {characterResults.map((character) => {
+                    const imageSrc = character.image?.large || character.image?.medium || "";
+                    const animeId = character.anime?.id;
+                    const roleText = character.role || (character.name?.native ? character.name.native : "Personagem");
+
+                    const itemContent = (
+                      <>
+                        <SearchPoster src={imageSrc} alt={character.name.full} />
+
+                        <div className="min-w-0 flex-1">
+                          <p className="sr-title">
+                            {character.name.full}
+                          </p>
+
+                          <p className="sr-sub truncate">
+                            {roleText}
+                            {character.anime?.title ? ` · ${character.anime.title}` : ""}
+                          </p>
+
+                          <div>
+                            <span className="sr-type person">PERSONAGEM</span>
+                          </div>
+                        </div>
+                      </>
+                    );
+
+                    return animeId ? (
+                      <Link
+                        key={character.id}
+                        to="/anime/$id"
+                        params={{ id: String(animeId) }}
+                        onClick={handleClose}
+                        className="sr-item group"
+                      >
+                        {itemContent}
+                      </Link>
+                    ) : (
+                      <div key={character.id} className="sr-item group">
                         {itemContent}
                       </div>
                     );
