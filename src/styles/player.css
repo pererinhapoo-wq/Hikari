@@ -10,6 +10,14 @@
   border-radius:1rem;
   background:#000;
   isolation:isolate;
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none;
+}
+.hikari-video-player *{
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none;
 }
 .hikari-video-player:fullscreen,
 .hikari-video-player:-webkit-full-screen{

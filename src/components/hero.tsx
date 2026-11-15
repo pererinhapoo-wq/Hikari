@@ -697,6 +697,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
         {/* Controles de Ação */}
         <div
           onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
           className="mt-2.5 flex items-center justify-center gap-2.5 sm:gap-3 w-auto pt-0.5"
         >
           {/* Botão Assistir: Inspirado na referência com acabamento vibrante e identidade Hikari */}
@@ -704,10 +705,9 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
             to="/watch/$id/$ep"
             params={{ id: anime.id, ep: "ep-1" }}
             preload="intent"
-            style={{ touchAction: "manipulation" }}
-            className="inline-flex items-center justify-center gap-2 h-9 sm:h-10 px-4.5 sm:px-5.5 rounded-xl sm:rounded-2xl bg-gradient-to-r from-purple-600 via-purple-500 to-fuchsia-600 hover:from-purple-500 hover:via-purple-400 hover:to-fuchsia-500 text-white font-bold text-xs sm:text-sm tracking-wide border border-white/20 shadow-[0_4px_20px_rgba(168,85,247,0.38)] hover:shadow-[0_4px_26px_rgba(168,85,247,0.55)] cursor-pointer select-none transition-[box-shadow,background-color,opacity] duration-140 ease-out"
+            className="inline-flex items-center justify-center gap-2 h-9 sm:h-10 px-4.5 sm:px-5.5 rounded-xl sm:rounded-2xl bg-gradient-to-r from-purple-600 via-purple-500 to-fuchsia-600 [@media(hover:hover)]:hover:from-purple-500 [@media(hover:hover)]:hover:via-purple-400 [@media(hover:hover)]:hover:to-fuchsia-500 active:brightness-110 text-white font-bold text-xs sm:text-sm tracking-wide border border-white/20 shadow-[0_4px_20px_rgba(168,85,247,0.38)] [@media(hover:hover)]:hover:shadow-[0_4px_26px_rgba(168,85,247,0.55)] cursor-pointer select-none touch-manipulation [-webkit-tap-highlight-color:transparent] transition-[box-shadow,background-color,opacity,filter] duration-140 ease-out"
           >
-            <Play className="size-3.5 sm:size-4 fill-white text-white shrink-0" />
+            <Play className="size-3.5 sm:size-4 fill-white text-white shrink-0 pointer-events-none" />
             <span>Assistir</span>
           </Link>
 

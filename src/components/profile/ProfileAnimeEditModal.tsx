@@ -7,7 +7,7 @@ import {
   X,
   Loader2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HikariImage } from "@/components/ui/hikari-image";
 import type {
   TrackingStatus,
@@ -112,15 +112,22 @@ export function ProfileAnimeEditModal({
     setError(null);
   }
 
-  // Sincroniza estado quando o anime selecionado mudar ou sofrer atualização externa
+  const wasOpenRef = useRef(false);
+
+  // Sincroniza estado somente ao abrir o modal ou trocar de anime (evita sobrescrever edições em curso)
   useEffect(() => {
-    if (item) {
+    const justOpened = isOpen && !wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+    if (!item) return;
+
+    if (justOpened || item.animeId !== prevAnimeId) {
+      setPrevAnimeId(item.animeId);
       setStatus(item.status);
       setScore(item.score ?? null);
       setEpisodesWatched(item.episodesWatched ?? 0);
       setError(null);
     }
-  }, [item]);
+  }, [isOpen, item, prevAnimeId]);
 
   useScrollLock(isOpen);
 

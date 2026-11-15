@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import {
   Bookmark,
   Check,
@@ -127,6 +128,16 @@ import {
   type SlimAnime,
 } from "@/lib/types";
 import { cn, stripHtml, youtubeIdFrom } from "@/lib/utils";
+import {
+  getMyAnimeTracking,
+  removeAnimeTracking,
+  upsertAnimeTracking,
+} from "@/lib/profile-tracking.functions";
+import {
+  addProfileFavorite,
+  getMyProfileFavorites,
+  removeProfileFavorite,
+} from "@/lib/profile-favorites.functions";
 import type { SelectedEntityTarget } from "@/components/anime/EntityWorksExpansion";
 
 const ProfileAnimeEditModal = lazy(() =>
@@ -664,7 +675,7 @@ function AnimePageContent({
 
   const hydrated = useHikariStore((s) => s.hydrated);
 
-  const { user } = useCurrentUserState();
+  const { user, isPending: userPending } = useCurrentUserState();
   const canEdit = isHikariAdmin(user?.primaryEmail);
 
   const locals = useHikariStore((s) => s.animes);
@@ -984,16 +995,46 @@ function AnimePageContent({
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const [isWatchPressing, setIsWatchPressing] = useState(false);
 
+  const getMyAnimeTrackingFn = useServerFn(getMyAnimeTracking);
+  const upsertAnimeTrackingFn = useServerFn(upsertAnimeTracking);
+  const removeAnimeTrackingFn = useServerFn(removeAnimeTracking);
+  const getMyProfileFavoritesFn = useServerFn(getMyProfileFavorites);
+  const addProfileFavoriteFn = useServerFn(addProfileFavorite);
+  const removeProfileFavoriteFn = useServerFn(removeProfileFavorite);
+
+  const getMyAnimeTrackingFnRef = useRef(getMyAnimeTrackingFn);
+  getMyAnimeTrackingFnRef.current = getMyAnimeTrackingFn;
+  const upsertAnimeTrackingFnRef = useRef(upsertAnimeTrackingFn);
+  upsertAnimeTrackingFnRef.current = upsertAnimeTrackingFn;
+  const removeAnimeTrackingFnRef = useRef(removeAnimeTrackingFn);
+  removeAnimeTrackingFnRef.current = removeAnimeTrackingFn;
+  const getMyProfileFavoritesFnRef = useRef(getMyProfileFavoritesFn);
+  getMyProfileFavoritesFnRef.current = getMyProfileFavoritesFn;
+  const addProfileFavoriteFnRef = useRef(addProfileFavoriteFn);
+  addProfileFavoriteFnRef.current = addProfileFavoriteFn;
+  const removeProfileFavoriteFnRef = useRef(removeProfileFavoriteFn);
+  removeProfileFavoriteFnRef.current = removeProfileFavoriteFn;
+
   // Estados de Coleção (Minha Coleção) e Favoritos
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus | null>(null);
   const [trackingEpisodesWatched, setTrackingEpisodesWatched] = useState<number>(0);
   const [trackingScore, setTrackingScore] = useState<number | null>(null);
+  const [trackingDbAnimeId, setTrackingDbAnimeId] = useState<string | null>(null);
+  const [trackingTimestamps, setTrackingTimestamps] = useState<{
+    createdAt: string;
+    updatedAt: string;
+  }>({ createdAt: "", updatedAt: "" });
   const [trackingLoading, setTrackingLoading] = useState(false);
+  const [hydratedTrackingUserId, setHydratedTrackingUserId] = useState<string | null>(null);
 
   const [isFavorite, setIsFavorite] = useState(false);
   const [favFavoriteId, setFavFavoriteId] = useState<string | null>(null);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [hydratedFavoriteUserId, setHydratedFavoriteUserId] = useState<string | null>(null);
+
+  const trackingMutationVersionRef = useRef(0);
+  const favoriteMutationVersionRef = useRef(0);
 
   // Mapa de favoritos do perfil indexados por targetType:targetId e targetType:title
   const [favoriteEntities, setFavoriteEntities] = useState<
@@ -1002,16 +1043,78 @@ function AnimePageContent({
 
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  const matchedLocalForIds = useMemo(
+    () =>
+      anime
+        ? locals.find(
+            (a) =>
+              a.id === anime.id ||
+              (anime.anilistId != null && a.anilistId === anime.anilistId),
+          )
+        : undefined,
+    [anime, locals],
+  );
+
+  const candidateAnimeIds = useMemo(() => {
+    const raw = [
+      anime?.id,
+      id,
+      remote?.id,
+      remote?.serverCatalogId,
+      anime?.serverCatalogId,
+      matchedLocalForIds?.id,
+      anime?.anilistId != null ? String(anime.anilistId) : null,
+      anime?.malId != null ? `mal-${anime.malId}` : null,
+      anime?.malId != null ? String(anime.malId) : null,
+      anime?.kitsuId != null ? `kitsu-${anime.kitsuId}` : null,
+      anime?.kitsuId != null ? String(anime.kitsuId) : null,
+    ];
+    return Array.from(
+      new Set(
+        raw
+          .filter((val): val is string => typeof val === "string")
+          .map((val) => val.trim())
+          .filter(Boolean),
+      ),
+    );
+  }, [
+    anime?.id,
+    id,
+    remote?.id,
+    remote?.serverCatalogId,
+    anime?.serverCatalogId,
+    matchedLocalForIds?.id,
+    anime?.anilistId,
+    anime?.malId,
+    anime?.kitsuId,
+  ]);
+
+  const candidateAnimeIdsKey = candidateAnimeIds.join("|");
+
+  const isTrackingHydrating =
+    userPending ||
+    (Boolean(user?.id && anime?.id) && hydratedTrackingUserId !== user?.id);
+  const isFavoriteHydrating =
+    userPending ||
+    (Boolean(user?.id && anime?.id) && hydratedFavoriteUserId !== user?.id);
+
+  const isCollectionBusy = trackingLoading || isTrackingHydrating;
+  const isFavoriteBusy = favoriteLoading || isFavoriteHydrating;
+
+  const animeModalTitle = anime ? displayTitle(anime) : "";
+  const animeModalEpisodesCount =
+    anime?.episodesCount || (anime?.seasons?.[0]?.episodes?.length ?? null);
+
   // Item de acompanhamento estruturado para reutilização do ProfileAnimeEditModal do Perfil
   const trackingItem: UserAnimeTrackingItem | null = useMemo(() => {
     if (!anime) return null;
     return {
       userId: user?.id ?? "",
-      animeId: anime.id,
+      animeId: trackingDbAnimeId || anime.id,
       status: trackingStatus || "watching",
       score: trackingScore,
       episodesWatched: trackingEpisodesWatched || 0,
-      title: displayTitle(anime),
+      title: animeModalTitle,
       titleRomaji: anime.titles?.romaji || null,
       titleEnglish: anime.titles?.english || null,
       titleNative: anime.titles?.native || null,
@@ -1019,66 +1122,116 @@ function AnimePageContent({
       banner: anime.banner || null,
       format: anime.format || null,
       year: anime.year || anime.startDate?.year || null,
-      episodesCount:
-        anime.episodesCount || (anime.seasons?.[0]?.episodes?.length ?? null),
+      episodesCount: animeModalEpisodesCount,
       animeStatus: anime.status || null,
       startedAt: null,
       completedAt: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: trackingTimestamps.createdAt,
+      updatedAt: trackingTimestamps.updatedAt,
       animeSnapshot: makeAnimeSnapshot(anime),
     };
   }, [
     user?.id,
     anime,
+    trackingDbAnimeId,
     trackingStatus,
     trackingScore,
     trackingEpisodesWatched,
+    animeModalTitle,
+    animeModalEpisodesCount,
+    trackingTimestamps.createdAt,
+    trackingTimestamps.updatedAt,
   ]);
+
+  const animePrimaryId = anime?.id ?? "";
+  const animeRomajiTitle = anime?.titles?.romaji ?? "";
+  const animeEnglishTitle = anime?.titles?.english ?? "";
+  const animeNativeTitle = anime?.titles?.native ?? "";
 
   // Consulta status de acompanhamento e favoritos do usuário para este anime e demais entidades
   useEffect(() => {
-    if (!user?.id || !anime?.id) {
+    if (userPending) {
+      return;
+    }
+
+    if (!user?.id) {
       setTrackingStatus(null);
       setTrackingEpisodesWatched(0);
       setTrackingScore(null);
+      setTrackingDbAnimeId(null);
+      setTrackingTimestamps({ createdAt: "", updatedAt: "" });
+      setHydratedTrackingUserId(null);
       setIsFavorite(false);
       setFavFavoriteId(null);
       setFavoriteEntities(new Map());
+      setHydratedFavoriteUserId(null);
+      return;
+    }
+
+    if (!animePrimaryId) {
       return;
     }
 
     let active = true;
+    const currentUserId = user.id;
+    const idsToQuery = candidateAnimeIdsKey.split("|").filter(Boolean);
+    const idsSet = new Set(idsToQuery);
+    const trackingVersionAtStart = trackingMutationVersionRef.current;
+    const favoriteVersionAtStart = favoriteMutationVersionRef.current;
 
-    // 1. Busca acompanhamento da lista do usuário
-    void import("@/lib/profile-tracking.functions")
-      .then(({ getMyAnimeTracking }) =>
-        getMyAnimeTracking({ data: { animeId: anime.id } }),
-      )
+    const currentTitle = animeModalTitle.toLowerCase().trim();
+    const romaji = animeRomajiTitle.toLowerCase().trim();
+    const english = animeEnglishTitle.toLowerCase().trim();
+    const nativeTitle = animeNativeTitle.toLowerCase().trim();
+    const normalizedTitles = new Set(
+      [currentTitle, romaji, english, nativeTitle].filter(Boolean),
+    );
+
+    // 1. Busca acompanhamento da lista do usuário usando todos os IDs candidatos do anime
+    void getMyAnimeTrackingFnRef
+      .current({
+        data: {
+          animeId: animePrimaryId,
+          animeIds: idsToQuery,
+        },
+      })
       .then((items) => {
         if (!active) return;
+        if (trackingMutationVersionRef.current !== trackingVersionAtStart) return;
         if (items && items.length > 0) {
-          const item = items[0];
+          const item =
+            items.find((row) => row.animeId === animePrimaryId) ?? items[0];
+          setTrackingDbAnimeId(item.animeId);
           setTrackingStatus(item.status);
           setTrackingEpisodesWatched(item.episodesWatched ?? 0);
           setTrackingScore(item.score ?? null);
+          setTrackingTimestamps({
+            createdAt: item.createdAt || "",
+            updatedAt: item.updatedAt || "",
+          });
         } else {
+          setTrackingDbAnimeId(null);
           setTrackingStatus(null);
           setTrackingEpisodesWatched(0);
           setTrackingScore(null);
+          setTrackingTimestamps({ createdAt: "", updatedAt: "" });
         }
       })
       .catch((err) => {
         console.warn("Erro ao buscar acompanhamento do anime:", err);
+      })
+      .finally(() => {
+        if (!active) return;
+        setHydratedTrackingUserId(currentUserId);
       });
 
     // 2. Busca favoritos oficiais do perfil (anime, personagens, estúdios, pessoas)
-    void import("@/lib/profile-favorites.functions")
-      .then(({ getMyProfileFavorites }) =>
-        getMyProfileFavorites({ data: {} }),
-      )
+    void getMyProfileFavoritesFnRef
+      .current({ data: {} })
       .then((res) => {
         if (!active) return;
+        if (favoriteMutationVersionRef.current !== favoriteVersionAtStart) return;
+
         const newMap = new Map<
           string,
           { id: string; targetType: FavoriteTargetType; targetId: string }
@@ -1099,23 +1252,13 @@ function AnimePageContent({
         }
         setFavoriteEntities(newMap);
 
-        const currentTitle = displayTitle(anime).toLowerCase().trim();
-        const romaji = (anime.titles?.romaji || "").toLowerCase().trim();
-        const english = (anime.titles?.english || "").toLowerCase().trim();
-        const kitsuKey = anime.kitsuId ? `kitsu-${anime.kitsuId}` : null;
-        const anilistKey = anime.anilistId ? String(anime.anilistId) : null;
-        const malKey = anime.malId ? String(anime.malId) : null;
-
         const match = res.items.find((item) => {
           if (item.targetType !== "anime") return false;
-          if (item.targetId === anime.id) return true;
-          if (kitsuKey && item.targetId === kitsuKey) return true;
-          if (anilistKey && item.targetId === anilistKey) return true;
-          if (malKey && item.targetId === malKey) return true;
-          if (item.title) {
-            const t = item.title.toLowerCase().trim();
-            if (t && (t === currentTitle || t === romaji || t === english)) return true;
-          }
+          if (idsSet.has(item.targetId)) return true;
+          const itemTitle = (item.title || "").toLowerCase().trim();
+          const itemNative = (item.nativeTitle || "").toLowerCase().trim();
+          if (itemTitle && normalizedTitles.has(itemTitle)) return true;
+          if (itemNative && normalizedTitles.has(itemNative)) return true;
           return false;
         });
 
@@ -1129,12 +1272,25 @@ function AnimePageContent({
       })
       .catch((err) => {
         console.warn("Erro ao buscar favoritos:", err);
+      })
+      .finally(() => {
+        if (!active) return;
+        setHydratedFavoriteUserId(currentUserId);
       });
 
     return () => {
       active = false;
     };
-  }, [user?.id, anime?.id]);
+  }, [
+    userPending,
+    user?.id,
+    animePrimaryId,
+    animeModalTitle,
+    animeRomajiTitle,
+    animeEnglishTitle,
+    animeNativeTitle,
+    candidateAnimeIdsKey,
+  ]);
 
   const isEntityFavorited = useCallback(
     (
@@ -1210,11 +1366,8 @@ function AnimePageContent({
       });
 
       try {
-        const { addProfileFavorite, removeProfileFavorite } = await import(
-          "@/lib/profile-favorites.functions"
-        );
         if (willBeFavorite) {
-          const created = await addProfileFavorite({
+          const created = await addProfileFavoriteFnRef.current({
             data: {
               targetType: params.targetType,
               targetId: params.targetId,
@@ -1228,7 +1381,7 @@ function AnimePageContent({
             const realFav = {
               id: created.id,
               targetType: params.targetType,
-              targetId: params.targetId,
+              targetId: created.targetId || params.targetId,
             };
             next.set(keyId, realFav);
             next.set(keyName, realFav);
@@ -1247,7 +1400,7 @@ function AnimePageContent({
             `${typeLabel} "${params.name}" adicionado aos favoritos!`,
           );
         } else {
-          await removeProfileFavorite({
+          await removeProfileFavoriteFnRef.current({
             data: {
               targetType: params.targetType,
               targetId: existing?.targetId || params.targetId,
@@ -1300,31 +1453,41 @@ function AnimePageContent({
       setShowAuthModal(true);
       return;
     }
-    if (!anime) return;
+    if (!anime || isCollectionBusy) return;
 
     const previousStatus = trackingStatus;
     const previousEpisodes = trackingEpisodesWatched;
     const previousScore = trackingScore;
+    const previousDbAnimeId = trackingDbAnimeId;
     const isNewEntry = previousStatus === null;
+    const targetAnimeId = trackingDbAnimeId || anime.id;
 
+    trackingMutationVersionRef.current += 1;
     setTrackingStatus(data.status);
     setTrackingEpisodesWatched(data.episodesWatched);
     setTrackingScore(data.score);
     setTrackingLoading(true);
 
     try {
-      const { upsertAnimeTracking } = await import(
-        "@/lib/profile-tracking.functions"
-      );
-      await upsertAnimeTracking({
+      const saved = await upsertAnimeTrackingFnRef.current({
         data: {
-          animeId: anime.id,
+          animeId: targetAnimeId,
           status: data.status,
           episodesWatched: data.episodesWatched,
           score: data.score,
           animeSnapshot: makeAnimeSnapshot(anime),
         },
       });
+
+      setTrackingDbAnimeId(saved.animeId);
+      setTrackingStatus(saved.status);
+      setTrackingEpisodesWatched(saved.episodesWatched ?? 0);
+      setTrackingScore(saved.score ?? null);
+      setTrackingTimestamps({
+        createdAt: saved.createdAt || "",
+        updatedAt: saved.updatedAt || "",
+      });
+      setHydratedTrackingUserId(user.id);
 
       if (!inList) {
         toggleList(anime, user.id);
@@ -1333,10 +1496,11 @@ function AnimePageContent({
       notifyToast(
         "success",
         isNewEntry
-          ? `Adicionado à sua coleção como "${COLLECTION_STATUS_CONFIG[data.status].label}"!`
-          : `Coleção atualizada para "${COLLECTION_STATUS_CONFIG[data.status].label}"!`,
+          ? `Adicionado à sua coleção como "${COLLECTION_STATUS_CONFIG[saved.status].label}"!`
+          : `Coleção atualizada para "${COLLECTION_STATUS_CONFIG[saved.status].label}"!`,
       );
     } catch (err: unknown) {
+      setTrackingDbAnimeId(previousDbAnimeId);
       setTrackingStatus(previousStatus);
       setTrackingEpisodesWatched(previousEpisodes);
       setTrackingScore(previousScore);
@@ -1349,26 +1513,28 @@ function AnimePageContent({
   };
 
   const _handleRemoveCollection = async () => {
-    if (!user || !anime) return;
+    if (!user || !anime || isCollectionBusy) return;
 
     const previousStatus = trackingStatus;
     const previousEpisodes = trackingEpisodesWatched;
     const previousScore = trackingScore;
+    const previousDbAnimeId = trackingDbAnimeId;
+    const targetAnimeId = trackingDbAnimeId || anime.id;
 
+    trackingMutationVersionRef.current += 1;
     setTrackingStatus(null);
     setTrackingEpisodesWatched(0);
     setTrackingScore(null);
+    setTrackingDbAnimeId(null);
     setTrackingLoading(true);
 
     try {
-      const { removeAnimeTracking } = await import(
-        "@/lib/profile-tracking.functions"
-      );
-      await removeAnimeTracking({
+      await removeAnimeTrackingFnRef.current({
         data: {
-          animeId: anime.id,
+          animeId: targetAnimeId,
         },
       });
+      setHydratedTrackingUserId(user.id);
 
       if (inList) {
         toggleList(anime, user.id);
@@ -1376,6 +1542,7 @@ function AnimePageContent({
 
       notifyToast("info", "Anime removido da sua coleção.");
     } catch (err: unknown) {
+      setTrackingDbAnimeId(previousDbAnimeId);
       setTrackingStatus(previousStatus);
       setTrackingEpisodesWatched(previousEpisodes);
       setTrackingScore(previousScore);
@@ -1392,18 +1559,18 @@ function AnimePageContent({
       setShowAuthModal(true);
       return;
     }
-    if (!anime || favoriteLoading) return;
+    if (!anime || isFavoriteBusy) return;
 
     const willBeFavorite = !isFavorite;
+    const previousFavoriteId = favFavoriteId;
+
+    favoriteMutationVersionRef.current += 1;
     setIsFavorite(willBeFavorite);
     setFavoriteLoading(true);
 
     try {
-      const { addProfileFavorite, removeProfileFavorite } = await import(
-        "@/lib/profile-favorites.functions"
-      );
       if (willBeFavorite) {
-        const created = await addProfileFavorite({
+        const created = await addProfileFavoriteFnRef.current({
           data: {
             targetType: "anime",
             targetId: anime.id,
@@ -1411,20 +1578,25 @@ function AnimePageContent({
           },
         });
         setFavFavoriteId(created.id);
+        setIsFavorite(true);
+        setHydratedFavoriteUserId(user.id);
         notifyToast("success", "Adicionado aos seus favoritos!");
       } else {
-        await removeProfileFavorite({
+        await removeProfileFavoriteFnRef.current({
           data: {
             targetType: "anime",
             targetId: anime.id,
-            favoriteId: favFavoriteId ?? undefined,
+            favoriteId: previousFavoriteId ?? undefined,
           },
         });
         setFavFavoriteId(null);
+        setIsFavorite(false);
+        setHydratedFavoriteUserId(user.id);
         notifyToast("info", "Removido dos favoritos.");
       }
     } catch (err: unknown) {
       setIsFavorite(!willBeFavorite);
+      setFavFavoriteId(previousFavoriteId);
       const msg = err instanceof Error ? err.message : "Erro ao atualizar favoritos.";
       notifyToast("error", msg);
     } finally {
@@ -2270,11 +2442,11 @@ function AnimePageContent({
                     ep: `ep-${continueTarget?.number || 1}`,
                   }}
                   className={cn(
-                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 px-5 sm:px-6 text-sm sm:text-base font-semibold text-white shadow-[0_4px_20px_rgba(168,85,247,0.35)] transition-all duration-250 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
-                    "hover:from-purple-500 hover:to-purple-400 hover:shadow-[0_4px_26px_rgba(168,85,247,0.5)] hover:brightness-110",
-                    "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.96]",
+                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 px-5 sm:px-6 text-sm sm:text-base font-semibold text-white shadow-[0_4px_20px_rgba(168,85,247,0.35)] transition-[color,background-color,border-color,box-shadow,filter,transform] duration-250 ease-out select-none touch-manipulation [-webkit-tap-highlight-color:transparent] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+                    "[@media(hover:hover)]:hover:from-purple-500 [@media(hover:hover)]:hover:to-purple-400 [@media(hover:hover)]:hover:shadow-[0_4px_26px_rgba(168,85,247,0.5)] [@media(hover:hover)]:hover:brightness-110",
+                    "[@media(hover:hover)]:motion-safe:hover:scale-[1.02] [@media(hover:hover)]:motion-safe:active:scale-[0.96]",
                     "active:brightness-125 active:shadow-[0_0_28px_rgba(168,85,247,0.65)]",
-                    isWatchPressing && "motion-safe:scale-[0.96] brightness-125 shadow-[0_0_28px_rgba(168,85,247,0.65)]"
+                    isWatchPressing && "[@media(hover:hover)]:motion-safe:scale-[0.96] brightness-125 shadow-[0_0_28px_rgba(168,85,247,0.65)]"
                   )}
                   onClick={(e) => {
                     setIsWatchPressing(true);
@@ -2300,7 +2472,7 @@ function AnimePageContent({
                     }
                   }}
                 >
-                  <Play className="size-4 fill-current pointer-events-none transition-transform duration-250 ease-out group-hover:scale-105" />
+                  <Play className="size-4 fill-current pointer-events-none transition-transform duration-250 ease-out [@media(hover:hover)]:group-hover:scale-105" />
                   <span>{watchButtonLabel}</span>
                 </Link>
 
@@ -2308,23 +2480,26 @@ function AnimePageContent({
                 <button
                   type="button"
                   onClick={() => {
+                    if (isCollectionBusy) return;
                     if (!user) {
                       setShowAuthModal(true);
                       return;
                     }
                     setIsCollectionModalOpen(true);
                   }}
-                  disabled={trackingLoading}
+                  disabled={isCollectionBusy}
                   aria-label={
-                    trackingStatus
-                      ? `Gerenciar Coleção: ${COLLECTION_STATUS_CONFIG[trackingStatus].label}`
-                      : "Adicionar à Minha Coleção"
+                    isCollectionBusy
+                      ? "Carregando status da coleção"
+                      : trackingStatus
+                        ? `Gerenciar Coleção: ${COLLECTION_STATUS_CONFIG[trackingStatus].label}`
+                        : "Adicionar à Minha Coleção"
                   }
                   className={cn(
                     "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-2xl px-4 sm:px-5 text-sm sm:text-base font-semibold select-none cursor-pointer overflow-hidden bg-black/75 md:bg-black/60 md:backdrop-blur-md transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
                     "before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:transition-opacity before:duration-300",
                     "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.97]",
-                    trackingStatus
+                    trackingStatus && !isCollectionBusy
                       ? cn(
                           "border bg-gradient-to-r",
                           COLLECTION_STATUS_CONFIG[trackingStatus].border,
@@ -2346,7 +2521,7 @@ function AnimePageContent({
                     aria-hidden="true"
                   />
 
-                  {trackingLoading ? (
+                  {isCollectionBusy ? (
                     <Loader2 className="relative z-10 size-4 animate-spin text-violet-300" />
                   ) : trackingStatus ? (
                     <div className="relative z-10 flex items-center gap-2">
@@ -2396,13 +2571,19 @@ function AnimePageContent({
                 <button
                   type="button"
                   onClick={() => void handleToggleFavorite()}
-                  disabled={favoriteLoading}
-                  aria-label={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+                  disabled={isFavoriteBusy}
+                  aria-label={
+                    isFavoriteBusy
+                      ? "Carregando status de favorito"
+                      : isFavorite
+                        ? "Remover dos favoritos"
+                        : "Adicionar aos favoritos"
+                  }
                   className={cn(
                     "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-2xl px-4 sm:px-5 text-sm sm:text-base font-semibold select-none cursor-pointer overflow-hidden bg-black/75 md:bg-black/60 md:backdrop-blur-md transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400",
                     "before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:transition-opacity before:duration-300",
                     "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.97]",
-                    isFavorite
+                    isFavorite && !isFavoriteBusy
                       ? cn(
                           "border border-rose-400/80 bg-gradient-to-r from-[#5a0828] via-[#40071c] to-[#250410] text-white",
                           "shadow-[0_4px_22px_rgba(0,0,0,0.6),0_0_28px_rgba(244,63,94,0.45),inset_0_1px_2px_rgba(255,255,255,0.25)]",
@@ -2421,14 +2602,14 @@ function AnimePageContent({
                   <span
                     className={cn(
                       "pointer-events-none absolute inset-0 transition-opacity duration-300",
-                      isFavorite
+                      isFavorite && !isFavoriteBusy
                         ? "bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.2),transparent_70%)] opacity-100"
                         : "bg-[radial-gradient(ellipse_at_top,rgba(244,63,94,0.18),transparent_70%)] opacity-80 group-hover:opacity-100",
                     )}
                     aria-hidden="true"
                   />
 
-                  {favoriteLoading ? (
+                  {isFavoriteBusy ? (
                     <Loader2 className="relative z-10 size-4 animate-spin text-rose-400" />
                   ) : (
                     <div className="relative z-10 flex items-center gap-2">
@@ -2472,7 +2653,7 @@ function AnimePageContent({
                     search={{
                       importId: anime.id,
                     }}
-                    className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 sm:px-5 text-sm sm:text-base font-medium text-zinc-300 shadow-sm transition-all duration-200 ease-out hover:border-purple-500/40 hover:bg-[#1a142e] hover:text-white hover:brightness-110 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
+                    className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 sm:px-5 text-sm sm:text-base font-medium text-zinc-300 shadow-sm transition-[color,background-color,border-color,box-shadow,filter,transform] duration-200 ease-out [@media(hover:hover)]:hover:border-purple-500/40 [@media(hover:hover)]:hover:bg-[#1a142e] [@media(hover:hover)]:hover:text-white [@media(hover:hover)]:hover:brightness-110 [@media(hover:hover)]:motion-safe:hover:scale-[1.02] [@media(hover:hover)]:motion-safe:active:scale-[0.98] active:bg-[#1a142e] active:text-white select-none touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -2484,7 +2665,7 @@ function AnimePageContent({
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      className="size-4 text-zinc-400"
+                      className="size-4 text-zinc-400 pointer-events-none"
                       aria-hidden="true"
                     >
                       <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
@@ -3492,15 +3673,15 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
         onClick={() => onSelect(ep.id)}
         className={cn(
           "group relative flex gap-3 rounded-xl border p-2.5 select-none touch-manipulation [-webkit-tap-highlight-color:transparent] [contain:layout_paint_style] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/80",
-          "motion-safe:transition-[transform,border-color,background-color,box-shadow] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:transform-none",
+          "motion-safe:transition-[border-color,background-color,box-shadow] [@media(hover:hover)]:motion-safe:transition-[transform,border-color,background-color,box-shadow] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:transform-none",
           "[@media(hover:hover)]:motion-safe:hover:-translate-y-0.5",
-          "motion-safe:active:scale-[0.982] active:border-purple-400/85 active:bg-[#1c1435]/95 active:ring-1 active:ring-purple-400/45 active:shadow-[0_0_24px_rgba(168,85,247,0.38)]",
+          "[@media(hover:hover)]:motion-safe:active:scale-[0.982] active:border-purple-400/85 active:bg-[#1c1435]/95 active:ring-1 active:ring-purple-400/45 active:shadow-[0_0_24px_rgba(168,85,247,0.38)]",
           watched
             ? "border-purple-500/30 bg-[#141026]/90 [@media(hover:hover)]:hover:bg-[#1a1530] [@media(hover:hover)]:hover:border-purple-500/50"
             : "border-purple-500/15 bg-[#0f0d18]/90 [@media(hover:hover)]:hover:border-purple-500/40 [@media(hover:hover)]:hover:bg-[#161326]",
           "shadow-[0_2px_12px_rgba(0,0,0,0.3)] [@media(hover:hover)]:hover:shadow-[0_4px_20px_rgba(168,85,247,0.15)]",
           isSelecting &&
-            "!border-purple-400/85 !bg-[#1c1435]/95 ring-1 ring-purple-400/45 !shadow-[0_0_24px_rgba(168,85,247,0.4)] motion-safe:animate-[episodeTapPulse_220ms_cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none",
+            "!border-purple-400/85 !bg-[#1c1435]/95 ring-1 ring-purple-400/45 !shadow-[0_0_24px_rgba(168,85,247,0.4)] [@media(hover:hover)]:motion-safe:animate-[episodeTapPulse_220ms_cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none",
         )}
       >
         {/* Realce luminoso violeta ao selecionar */}

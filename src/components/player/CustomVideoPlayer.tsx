@@ -1135,6 +1135,24 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     activePointerRef.current = null;
   }, []);
 
+  const handleContextMenu = useCallback((e: React.SyntheticEvent) => {
+    e.preventDefault();
+  }, []);
+
+  useEffect(() => {
+    const containerEl = containerRef.current;
+    if (!containerEl) return;
+
+    const suppressNativeContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+    };
+
+    containerEl.addEventListener('contextmenu', suppressNativeContextMenu, { capture: true });
+    return () => {
+      containerEl.removeEventListener('contextmenu', suppressNativeContextMenu, { capture: true });
+    };
+  }, []);
+
   // Media callbacks forwarding Video.js <Video> events to Hikari progress/session tracking
   const handleTimeUpdate = useCallback(() => {
     const el = videoRef.current;
@@ -1240,6 +1258,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
       onPointerDown={handleContainerPointerDown}
       onPointerUp={handleContainerPointerUp}
       onPointerCancel={handleContainerPointerCancel}
+      onContextMenu={handleContextMenu}
       data-controls={controlsVisible ? 'visible' : 'hidden'}
       data-paused={isPaused ? 'true' : 'false'}
       data-playing={isPlaying ? 'true' : 'false'}
@@ -1252,8 +1271,11 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
           src={isHls && hasMseSupport ? undefined : effectiveVideoUrl || undefined}
           poster={effectivePosterUrl || undefined}
           controls={false}
+          controlsList="nodownload nopictureinpicture"
+          disablePictureInPicture
           playsInline
           autoPlay={autoPlay}
+          onContextMenu={handleContextMenu}
           onPlay={handlePlayEvent}
           onPlaying={handlePlayingEvent}
           onPause={handlePauseEvent}

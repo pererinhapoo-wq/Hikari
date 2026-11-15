@@ -543,7 +543,7 @@ export const addProfileFavorite = createServerFn({
         id: record.id,
         userId: record.userId,
         targetType: record.targetType,
-        targetId,
+        targetId: finalTargetId,
         position: Number(record.position),
         createdAt: record.createdAt,
       };
@@ -588,7 +588,15 @@ export const removeProfileFavorite = createServerFn({
           ($2::text IS NOT NULL AND uf."id" = $2)
           OR (
             $3::text IS NOT NULL AND $4::text IS NOT NULL AND uf."targetType" = $3 AND (
-              ($3 = 'anime' AND (uf."animeId" = $4 OR uf."animeId" IN (SELECT ca."id" FROM "catalog_anime" ca WHERE ca."title" = $4))) OR
+              ($3 = 'anime' AND (
+                uf."animeId" = $4 OR
+                uf."animeId" IN (
+                  SELECT ca."id" FROM "catalog_anime" ca
+                  WHERE LOWER(TRIM(ca."title")) = LOWER(TRIM($4))
+                     OR LOWER(TRIM(COALESCE(ca."titleRomaji", ''))) = LOWER(TRIM($4))
+                     OR LOWER(TRIM(COALESCE(ca."titleEnglish", ''))) = LOWER(TRIM($4))
+                )
+              )) OR
               ($3 = 'character' AND (uf."characterId" = $4 OR uf."characterId" IN (SELECT cc."id" FROM "catalog_character" cc WHERE cc."name" = $4))) OR
               ($3 = 'studio' AND (uf."studioId" = $4 OR uf."studioId" IN (SELECT cs."id" FROM "catalog_studio" cs WHERE cs."name" = $4))) OR
               ($3 = 'company' AND (uf."companyId" = $4 OR uf."companyId" IN (SELECT cco."id" FROM "catalog_company" cco WHERE cco."name" = $4))) OR

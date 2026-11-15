@@ -238,6 +238,13 @@ export const getMyAnimeTracking = createServerFn({
     const userId = context.userId;
     const statusFilter = data?.status ?? null;
     const animeIdFilter = data?.animeId ? data.animeId.trim() : null;
+    const rawCandidateIds = [
+      ...(animeIdFilter ? [animeIdFilter] : []),
+      ...(data?.animeIds ?? []).map((id) => id.trim()).filter(Boolean),
+    ];
+    const uniqueCandidateIds = Array.from(new Set(rawCandidateIds));
+    const animeIdsFilter =
+      uniqueCandidateIds.length > 0 ? uniqueCandidateIds : null;
     const isMinimal = Boolean(data?.minimal);
 
     const sql = await getSql();
@@ -267,9 +274,9 @@ export const getMyAnimeTracking = createServerFn({
          FROM "user_anime_tracking" uat
          WHERE uat."userId" = $1
            AND ($2::text IS NULL OR uat."status" = $2)
-           AND ($3::text IS NULL OR uat."animeId" = $3)
+           AND ($3::text[] IS NULL OR uat."animeId" = ANY($3::text[]))
          ORDER BY uat."updatedAt" DESC;`,
-        [userId, statusFilter, animeIdFilter],
+        [userId, statusFilter, animeIdsFilter],
       );
 
       return rows.map((row) => ({
@@ -322,7 +329,7 @@ export const getMyAnimeTracking = createServerFn({
       LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
       WHERE uat."userId" = $1
         AND ($2::text IS NULL OR uat."status" = $2)
-        AND ($3::text IS NULL OR uat."animeId" = $3)
+        AND ($3::text[] IS NULL OR uat."animeId" = ANY($3::text[]))
       ORDER BY uat."updatedAt" DESC;
     `;
 
@@ -347,7 +354,7 @@ export const getMyAnimeTracking = createServerFn({
       catalogYear: number | null;
       catalogEpisodesCount: number | null;
       catalogStatus: string | null;
-    }>(query, [userId, statusFilter, animeIdFilter]);
+    }>(query, [userId, statusFilter, animeIdsFilter]);
 
     return rows.map((row) => {
       let snapshotObj: AnimeSnapshot | null = null;
