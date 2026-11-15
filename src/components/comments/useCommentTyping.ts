@@ -1,14 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { getBearerToken } from "@/lib/auth/client";
 
+const POLL_INTERVAL_MS = 2500;
+const MAX_POLL_BACKOFF_MS = 15000;
 const HEARTBEAT_INTERVAL_MS = 1800;
 const INACTIVITY_STOP_MS = 2800;
 const MIN_LOCAL_EXPIRY_MS = 1200;
 
-interface TypingStreamPayload {
+interface TypingViewPayload {
   isTyping?: boolean;
   typingCount?: number;
   expiresInMs?: number;
+}
+
+interface TypingPostJob {
+  animeId: string;
+  episodeId: string;
+  active: boolean;
+  keepalive: boolean;
+}
+
+export interface UseCommentTypingOptions {
+  animeId: string;
+  episodeId: string;
+  viewerUserId: string | null;
+  sessionReady?: boolean;
+  containerRef?: RefObject<HTMLElement | null>;
+  enabled?: boolean;
 }
 
 function buildAuthHeaders(extra?: Record<string, string>): Record<string, string> {
@@ -23,20 +41,50 @@ export function useCommentTyping({
   animeId,
   episodeId,
   viewerUserId,
-}: {
-  animeId: string;
-  episodeId: string;
-  viewerUserId: string | null;
-}) {
+  sessionReady = true,
+  containerRef,
+  enabled = true,
+}: UseCommentTypingOptions) {
+  const trimmedAnimeId = animeId.trim();
+  const trimmedEpisodeId = episodeId.trim();
+
   const [remoteTyping, setRemoteTyping] = useState(false);
   const [remoteTypingCount, setRemoteTypingCount] = useState(0);
+  const [isTabVisible, setIsTabVisible] = useState(() =>
+    typeof document === "undefined" ? true : document.visibilityState === "visible",
+  );
+  const [isSectionVisible, setIsSectionVisible] = useState(() => {
+    if (!containerRef) return true;
+    if (typeof window === "undefined") return false;
+    return !("IntersectionObserver" in window);
+  });
 
   const isLocallyTypingRef = useRef(false);
   const lastSentAtRef = useRef(0);
+  const authRejectedRef = useRef(false);
   const inactivityTimerRef = useRef<number | null>(null);
   const remoteExpiryTimerRef = useRef<number | null>(null);
-  const roomRef = useRef({ animeId, episodeId, viewerUserId });
-  roomRef.current = { animeId, episodeId, viewerUserId };
+  const pendingPostRef = useRef<TypingPostJob | null>(null);
+  const postInFlightRef = useRef(false);
+  const postAbortRef = useRef<AbortController | null>(null);
+
+  const contextRef = useRef({
+    animeId: trimmedAnimeId,
+    episodeId: trimmedEpisodeId,
+    viewerUserId,
+    enabled,
+  });
+  contextRef.current = {
+    animeId: trimmedAnimeId,
+    episodeId: trimmedEpisodeId,
+    viewerUserId,
+    enabled,
+  };
+
+  // Reset 401 lock when the authenticated user changes
+  useEffect(() => {
+    authRejectedRef.current = false;
+  }, [viewerUserId]);
 
   const clearRemoteExpiryTimer = useCallback(() => {
     if (remoteExpiryTimerRef.current !== null) {
@@ -52,62 +100,175 @@ export function useCommentTyping({
     }
   }, []);
 
-  const postTypingStatus = useCallback(
+  const sendKeepaliveStop = useCallback(
+    (targetAnimeId: string, targetEpisodeId: string) => {
+      if (typeof window === "undefined" || !targetAnimeId || !targetEpisodeId) return;
+
+      pendingPostRef.current = null;
+      postAbortRef.current?.abort();
+      postAbortRef.current = null;
+
+      void fetch("/api/comments/typing", {
+        method: "POST",
+        credentials: "include",
+        keepalive: true,
+        cache: "no-store",
+        headers: buildAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          animeId: targetAnimeId,
+          episodeId: targetEpisodeId,
+          active: false,
+        }),
+      }).catch(() => {
+        // Ignore transient network errors on unload/hide
+      });
+    },
+    [],
+  );
+
+  const drainPostQueue = useCallback(async () => {
+    if (typeof window === "undefined" || postInFlightRef.current) return;
+
+    postInFlightRef.current = true;
+    try {
+      while (pendingPostRef.current) {
+        const job = pendingPostRef.current;
+        pendingPostRef.current = null;
+
+        if (!job.animeId || !job.episodeId) continue;
+        if (job.active && authRejectedRef.current) continue;
+
+        const controller = new AbortController();
+        postAbortRef.current = controller;
+
+        try {
+          const response = await fetch("/api/comments/typing", {
+            method: "POST",
+            credentials: "include",
+            keepalive: job.keepalive,
+            cache: "no-store",
+            headers: buildAuthHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({
+              animeId: job.animeId,
+              episodeId: job.episodeId,
+              active: job.active,
+            }),
+            signal: job.keepalive ? undefined : controller.signal,
+          });
+
+          if (postAbortRef.current === controller) {
+            postAbortRef.current = null;
+          }
+
+          if (response.status === 401) {
+            authRejectedRef.current = true;
+            isLocallyTypingRef.current = false;
+            lastSentAtRef.current = 0;
+            clearInactivityTimer();
+            if (job.active) {
+              continue;
+            }
+          } else if (!response.ok && job.active) {
+            // Allow retry on subsequent keystrokes or heartbeats after 5xx/4xx
+            isLocallyTypingRef.current = false;
+            lastSentAtRef.current = 0;
+          }
+        } catch (err) {
+          if (postAbortRef.current === controller) {
+            postAbortRef.current = null;
+          }
+          const isAbort = err instanceof DOMException && err.name === "AbortError";
+          if (!isAbort && job.active) {
+            isLocallyTypingRef.current = false;
+            lastSentAtRef.current = 0;
+          }
+        }
+      }
+    } finally {
+      postInFlightRef.current = false;
+    }
+  }, [clearInactivityTimer]);
+
+  const enqueueTypingPost = useCallback(
     (
       targetAnimeId: string,
       targetEpisodeId: string,
       active: boolean,
       keepalive = false,
     ) => {
-      if (typeof window === "undefined" || !targetAnimeId) return;
+      if (typeof window === "undefined" || !targetAnimeId || !targetEpisodeId) return;
 
-      void fetch("/api/comments/typing", {
-        method: "POST",
-        credentials: "include",
+      if (!active && keepalive) {
+        sendKeepaliveStop(targetAnimeId, targetEpisodeId);
+        return;
+      }
+
+      // If user stopped typing while an `active: true` request is in flight,
+      // abort the superseded start/heartbeat so `active: false` executes next cleanly.
+      if (!active && postInFlightRef.current && postAbortRef.current) {
+        postAbortRef.current.abort();
+      }
+
+      pendingPostRef.current = {
+        animeId: targetAnimeId,
+        episodeId: targetEpisodeId,
+        active,
         keepalive,
-        headers: buildAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          animeId: targetAnimeId,
-          episodeId: targetEpisodeId,
-          active,
-        }),
-      }).catch(() => {
-        // Ignore transient network errors for ephemeral typing state
-      });
+      };
+      void drainPostQueue();
     },
-    [],
+    [drainPostQueue, sendKeepaliveStop],
   );
 
-  const stopTypingNow = useCallback(() => {
-    clearInactivityTimer();
-    if (!isLocallyTypingRef.current) return;
+  const stopTypingNow = useCallback(
+    (useKeepalive = false) => {
+      clearInactivityTimer();
+      if (!isLocallyTypingRef.current) {
+        // Also cancel any queued `active: true` not yet flushed
+        if (pendingPostRef.current?.active) {
+          pendingPostRef.current = null;
+        }
+        return;
+      }
 
-    isLocallyTypingRef.current = false;
-    lastSentAtRef.current = 0;
+      isLocallyTypingRef.current = false;
+      lastSentAtRef.current = 0;
 
-    const { animeId: curAnimeId, episodeId: curEpisodeId, viewerUserId: curUid } =
-      roomRef.current;
-    if (curUid && curAnimeId) {
-      postTypingStatus(curAnimeId, curEpisodeId, false, true);
-    }
-  }, [clearInactivityTimer, postTypingStatus]);
+      const {
+        animeId: curAnimeId,
+        episodeId: curEpisodeId,
+        viewerUserId: curUid,
+      } = contextRef.current;
+
+      if (curUid && curAnimeId && curEpisodeId) {
+        enqueueTypingPost(curAnimeId, curEpisodeId, false, useKeepalive === true);
+      }
+    },
+    [clearInactivityTimer, enqueueTypingPost],
+  );
 
   const notifyTypingInput = useCallback(
     (hasNonEmptyText: boolean) => {
-      const { animeId: curAnimeId, episodeId: curEpisodeId, viewerUserId: curUid } =
-        roomRef.current;
-
-      if (!curUid || !curAnimeId) return;
+      const {
+        animeId: curAnimeId,
+        episodeId: curEpisodeId,
+        viewerUserId: curUid,
+        enabled: curEnabled,
+      } = contextRef.current;
 
       if (!hasNonEmptyText) {
-        stopTypingNow();
+        stopTypingNow(false);
+        return;
+      }
+
+      if (!curEnabled || !curUid || !curAnimeId || !curEpisodeId || authRejectedRef.current) {
         return;
       }
 
       clearInactivityTimer();
       inactivityTimerRef.current = window.setTimeout(() => {
         inactivityTimerRef.current = null;
-        stopTypingNow();
+        stopTypingNow(false);
       }, INACTIVITY_STOP_MS);
 
       const now = Date.now();
@@ -117,30 +278,144 @@ export function useCommentTyping({
       ) {
         isLocallyTypingRef.current = true;
         lastSentAtRef.current = now;
-        postTypingStatus(curAnimeId, curEpisodeId, true, false);
+        enqueueTypingPost(curAnimeId, curEpisodeId, true, false);
       }
     },
-    [clearInactivityTimer, postTypingStatus, stopTypingNow],
+    [clearInactivityTimer, enqueueTypingPost, stopTypingNow],
   );
 
-  // Real-time SSE subscription for remote users typing in this (animeId, episodeId) room
+  // Track browser tab visibility and page exit
   useEffect(() => {
-    if (typeof window === "undefined" || !animeId || !episodeId) {
-      setRemoteTyping(false);
-      setRemoteTypingCount(0);
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    const syncVisibility = () => {
+      const visible = document.visibilityState === "visible";
+      setIsTabVisible(visible);
+      if (!visible) {
+        stopTypingNow(true);
+      }
+    };
+
+    const handlePageHide = () => {
+      stopTypingNow(true);
+    };
+
+    syncVisibility();
+    document.addEventListener("visibilitychange", syncVisibility);
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      document.removeEventListener("visibilitychange", syncVisibility);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [stopTypingNow]);
+
+  // Track whether the comments section is inside the visible viewport
+  useEffect(() => {
+    if (!containerRef) {
+      setIsSectionVisible(true);
       return;
     }
 
-    let cancelled = false;
-    let abortController: AbortController | null = null;
-    let reconnectTimer: number | null = null;
-    let retryAttempt = 0;
+    if (typeof window === "undefined") {
+      setIsSectionVisible(false);
+      return;
+    }
 
+    const target = containerRef.current;
+    if (!target) {
+      setIsSectionVisible(false);
+      return;
+    }
+
+    if (!("IntersectionObserver" in window)) {
+      setIsSectionVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        setIsSectionVisible(entry.isIntersecting);
+      },
+      {
+        root: null,
+        rootMargin: "0px",
+        threshold: 0,
+      },
+    );
+
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+    };
+  }, [containerRef, enabled, trimmedAnimeId, trimmedEpisodeId]);
+
+  // Reset typing view immediately on room switch/disable, and stop active typing on unmount or room switch
+  useEffect(() => {
     setRemoteTyping(false);
     setRemoteTypingCount(0);
     clearRemoteExpiryTimer();
 
-    const applyTypingPayload = (payload: TypingStreamPayload) => {
+    return () => {
+      clearInactivityTimer();
+      clearRemoteExpiryTimer();
+      pendingPostRef.current = null;
+      if (isLocallyTypingRef.current) {
+        isLocallyTypingRef.current = false;
+        lastSentAtRef.current = 0;
+        if (viewerUserId && trimmedAnimeId && trimmedEpisodeId) {
+          sendKeepaliveStop(trimmedAnimeId, trimmedEpisodeId);
+        }
+      }
+    };
+  }, [
+    trimmedAnimeId,
+    trimmedEpisodeId,
+    viewerUserId,
+    enabled,
+    clearInactivityTimer,
+    clearRemoteExpiryTimer,
+    sendKeepaliveStop,
+  ]);
+
+  // Adaptive HTTP polling: only runs when comments are enabled, session is ready, tab is foreground, and section is visible
+  const shouldPoll =
+    typeof window !== "undefined" &&
+    enabled &&
+    sessionReady &&
+    Boolean(trimmedAnimeId && trimmedEpisodeId) &&
+    isTabVisible &&
+    isSectionVisible;
+
+  useEffect(() => {
+    if (!shouldPoll) {
+      return;
+    }
+
+    let cancelled = false;
+    let pollTimer: number | null = null;
+    let activeController: AbortController | null = null;
+    let consecutiveErrors = 0;
+
+    const clearPollTimer = () => {
+      if (pollTimer !== null) {
+        window.clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const scheduleNext = (delayMs: number) => {
+      clearPollTimer();
+      if (cancelled) return;
+      pollTimer = window.setTimeout(() => {
+        pollTimer = null;
+        void pollOnce();
+      }, delayMs);
+    };
+
+    const applyTypingPayload = (payload: TypingViewPayload) => {
       if (cancelled) return;
       clearRemoteExpiryTimer();
 
@@ -165,74 +440,54 @@ export function useCommentTyping({
       }
     };
 
-    const connect = async () => {
+    const pollOnce = async () => {
       if (cancelled) return;
 
-      abortController?.abort();
+      activeController?.abort();
       const controller = new AbortController();
-      abortController = controller;
+      activeController = controller;
 
       try {
         const params = new URLSearchParams({
-          animeId,
-          episodeId,
-          stream: "1",
+          animeId: trimmedAnimeId,
+          episodeId: trimmedEpisodeId,
         });
 
         const response = await fetch(`/api/comments/typing?${params.toString()}`, {
           method: "GET",
           credentials: "include",
-          headers: buildAuthHeaders({ Accept: "text/event-stream" }),
+          headers: buildAuthHeaders({ Accept: "application/json" }),
           signal: controller.signal,
           cache: "no-store",
         });
 
-        if (!response.ok || !response.body) {
-          throw new Error(`SSE status ${response.status}`);
+        if (cancelled || controller.signal.aborted) return;
+
+        if (response.status === 401 || response.status === 403) {
+          clearRemoteExpiryTimer();
+          setRemoteTyping(false);
+          setRemoteTypingCount(0);
+          consecutiveErrors = Math.min(consecutiveErrors + 1, 3);
+          scheduleNext(Math.min(MAX_POLL_BACKOFF_MS, POLL_INTERVAL_MS * 2));
+          return;
         }
 
-        retryAttempt = 0;
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (!cancelled && !controller.signal.aborted) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (!value) continue;
-
-          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-
-          let boundary = buffer.indexOf("\n\n");
-          while (boundary !== -1) {
-            const rawFrame = buffer.slice(0, boundary);
-            buffer = buffer.slice(boundary + 2);
-            boundary = buffer.indexOf("\n\n");
-
-            if (!rawFrame.trim()) continue;
-
-            let eventType = "message";
-            const dataLines: string[] = [];
-
-            for (const line of rawFrame.split("\n")) {
-              if (line.startsWith(":")) continue;
-              if (line.startsWith("event:")) {
-                eventType = line.slice(6).trim();
-              } else if (line.startsWith("data:")) {
-                dataLines.push(line.slice(5).trim());
-              }
-            }
-
-            if (eventType === "typing" && dataLines.length > 0) {
-              try {
-                const parsed = JSON.parse(dataLines.join("\n")) as TypingStreamPayload;
-                applyTypingPayload(parsed);
-              } catch {
-                // Ignore malformed frame
-              }
-            }
-          }
+        if (!response.ok) {
+          consecutiveErrors = Math.min(consecutiveErrors + 1, 3);
+          const backoffMs = Math.min(
+            MAX_POLL_BACKOFF_MS,
+            POLL_INTERVAL_MS * 2 ** consecutiveErrors,
+          );
+          scheduleNext(backoffMs);
+          return;
         }
+
+        const payload = (await response.json()) as TypingViewPayload;
+        if (cancelled || controller.signal.aborted) return;
+
+        consecutiveErrors = 0;
+        applyTypingPayload(payload);
+        scheduleNext(POLL_INTERVAL_MS);
       } catch (err) {
         if (
           cancelled ||
@@ -241,61 +496,30 @@ export function useCommentTyping({
         ) {
           return;
         }
-      }
 
-      if (!cancelled) {
-        const delayMs = Math.min(3000, 600 * 2 ** retryAttempt) + Math.floor(Math.random() * 250);
-        retryAttempt = Math.min(retryAttempt + 1, 4);
-        reconnectTimer = window.setTimeout(() => {
-          reconnectTimer = null;
-          void connect();
-        }, delayMs);
+        consecutiveErrors = Math.min(consecutiveErrors + 1, 3);
+        const backoffMs = Math.min(
+          MAX_POLL_BACKOFF_MS,
+          POLL_INTERVAL_MS * 2 ** consecutiveErrors,
+        );
+        scheduleNext(backoffMs);
       }
     };
 
-    void connect();
-
-    const handleVisibilityOrPageHide = () => {
-      if (document.visibilityState === "hidden") {
-        stopTypingNow();
-      }
-    };
-
-    const handlePageHide = () => {
-      stopTypingNow();
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityOrPageHide);
-    window.addEventListener("pagehide", handlePageHide);
+    void pollOnce();
 
     return () => {
       cancelled = true;
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-      abortController?.abort();
-      clearRemoteExpiryTimer();
-      clearInactivityTimer();
-      document.removeEventListener("visibilitychange", handleVisibilityOrPageHide);
-      window.removeEventListener("pagehide", handlePageHide);
-
-      if (isLocallyTypingRef.current) {
-        isLocallyTypingRef.current = false;
-        lastSentAtRef.current = 0;
-        if (viewerUserId && animeId) {
-          postTypingStatus(animeId, episodeId, false, true);
-        }
-      }
+      clearPollTimer();
+      activeController?.abort();
+      activeController = null;
     };
   }, [
-    animeId,
-    episodeId,
+    shouldPoll,
+    trimmedAnimeId,
+    trimmedEpisodeId,
     viewerUserId,
-    clearInactivityTimer,
     clearRemoteExpiryTimer,
-    postTypingStatus,
-    stopTypingNow,
   ]);
 
   return {

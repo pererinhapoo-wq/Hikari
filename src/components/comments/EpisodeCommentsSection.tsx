@@ -478,7 +478,10 @@ export function EpisodeCommentsSection({
     useState<string | null>(null);
 
   const [sessionLoadingState, setSessionLoadingState] =
-    useState(false);
+    useState(true);
+
+  const commentsSectionRef =
+    useRef<HTMLElement | null>(null);
 
   const [newCommentId, setNewCommentId] =
     useState<string | null>(null);
@@ -665,6 +668,9 @@ export function EpisodeCommentsSection({
     animeId,
     episodeId,
     viewerUserId: effectiveUserId ?? null,
+    sessionReady: !sessionLoading,
+    containerRef: commentsSectionRef,
+    enabled: settings.modules.comments,
   });
 
   /* ====================================================== */
@@ -2589,7 +2595,10 @@ export function EpisodeCommentsSection({
   }
 
   return (
-    <section className="mt-10 border-t border-[#a855f7]/20 pt-8 sm:pt-10">
+    <section
+      ref={commentsSectionRef}
+      className="mt-10 border-t border-[#a855f7]/20 pt-8 sm:pt-10"
+    >
       <div className="grid gap-6 sm:gap-8">
 
           <div className="min-w-0">
