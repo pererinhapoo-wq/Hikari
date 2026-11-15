@@ -342,7 +342,7 @@ function HomeFooterLazy() {
               </div>
 
               {/* Links organizados em colunas */}
-              <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:col-span-7">
+              <div className="grid grid-cols-2 gap-6 sm:grid-cols-2 md:col-span-7">
                 {/* Coluna 1: Institucional */}
                 <div>
                   <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-fg">
@@ -396,41 +396,6 @@ function HomeFooterLazy() {
                         className="text-muted transition-colors hover:text-[#c084fc]"
                       >
                         DMCA / Direitos
-                      </Link>
-                    </li>
-                  </ul>
-                </div>
-
-                {/* Coluna 3: Catálogo */}
-                <div className="col-span-2 sm:col-span-1">
-                  <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-fg">
-                    Catálogo
-                  </h3>
-                  <ul className="space-y-2.5 text-xs sm:text-sm">
-                    <li>
-                      <Link
-                        to="/calendar"
-                        className="text-muted transition-colors hover:text-[#c084fc]"
-                      >
-                        Calendário Semanal
-                      </Link>
-                    </li>
-                    <li>
-                      <Link
-                        to="/browse/$section"
-                        params={{ section: "popular" }}
-                        className="text-muted transition-colors hover:text-[#c084fc]"
-                      >
-                        Explorar Populares
-                      </Link>
-                    </li>
-                    <li>
-                      <Link
-                        to="/browse/$section"
-                        params={{ section: "season" }}
-                        className="text-muted transition-colors hover:text-[#c084fc]"
-                      >
-                        Temporadas
                       </Link>
                     </li>
                   </ul>

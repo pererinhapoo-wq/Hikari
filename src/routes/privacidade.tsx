@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LegalPage } from "@/components/legal-page";
-import { Cookie, ExternalLink, Eye, Lock, ShieldCheck, UserCheck } from "lucide-react";
+import { Cookie, Eye, Lock, ShieldCheck, UserCheck } from "lucide-react";
 
 export const Route = createFileRoute("/privacidade")({
   head: () => ({
@@ -105,76 +105,7 @@ function PrivacidadePage() {
         </ul>
       </section>
 
-      {/* SEÇÃO OBRIGATÓRIA ADSENSE: COOKIES DO GOOGLE E ANÚNCIOS */}
-      <section className="relative overflow-hidden rounded-2xl border border-blue-500/25 bg-blue-950/20 p-6 sm:p-8 space-y-4 shadow-xl">
-        <div className="flex items-start gap-4">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-500/15 text-blue-400">
-            <Cookie className="size-6" />
-          </div>
-          <div className="space-y-3">
-            <h3 className="text-lg sm:text-xl font-bold text-fg">
-              4. Aviso Obrigatório sobre Anúncios do Google e Cookies de Terceiros (Google AdSense)
-            </h3>
-            <p className="text-sm leading-relaxed text-zinc-300">
-              O Hikari pode veicular publicidade fornecida pelo <strong>Google AdSense</strong> e parceiros de tecnologia de anúncios autorizados para financiar a infraestrutura e os custos de manutenção da plataforma. Em conformidade com as diretrizes globais do Google e a legislação de proteção de dados:
-            </p>
-            <ul className="text-sm space-y-2.5 text-zinc-300">
-              <li>
-                <strong>Cookies de Fornecedores Terceiros:</strong> Fornecedores terceiros, incluindo o <strong>Google</strong>, utilizam cookies para veicular anúncios com base nas visitas anteriores do usuário a este site ou a outros sites na rede mundial de computadores.
-              </li>
-              <li>
-                <strong>Cookies de Publicidade:</strong> Com o uso de cookies de publicidade, o Google e seus parceiros podem veicular anúncios para os usuários com base nas visitas feitas ao Hikari e/ou a outros sites na Internet.
-              </li>
-              <li>
-                <strong>Como Desativar a Publicidade Personalizada:</strong> Os usuários podem desativar a publicidade personalizada a qualquer momento acessando a página oficial de{" "}
-                <a
-                  href="https://www.google.com/settings/ads"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 font-semibold text-blue-300 underline hover:text-white"
-                >
-                  Configurações de Anúncios do Google
-                  <ExternalLink className="size-3.5" />
-                </a>.
-              </li>
-              <li>
-                <strong>Desativação Geral de Cookies de Redes de Anúncios:</strong> Como alternativa, o usuário pode desativar o uso de cookies de terceiros para publicidade baseada em interesses visitando os portais da indústria independente{" "}
-                <a
-                  href="https://www.aboutads.info"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 font-semibold text-blue-300 underline hover:text-white"
-                >
-                  www.aboutads.info
-                  <ExternalLink className="size-3.5" />
-                </a>{" "}
-                e{" "}
-                <a
-                  href="https://www.youronlinechoices.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 font-semibold text-blue-300 underline hover:text-white"
-                >
-                  Your Online Choices
-                  <ExternalLink className="size-3.5" />
-                </a>.
-              </li>
-              <li>
-                <strong>Como o Google Usa os Dados:</strong> Para compreender detalhadamente como o Google coleta e processa dados quando você utiliza sites que contêm tecnologias do Google, consulte a política oficial em{" "}
-                <a
-                  href="https://policies.google.com/technologies/ads"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 font-semibold text-blue-300 underline hover:text-white"
-                >
-                  Como o Google usa dados quando você usa sites parceiros
-                  <ExternalLink className="size-3.5" />
-                </a>.
-              </li>
-            </ul>
-          </div>
-        </div>
-      </section>
+
 
       <section className="space-y-4">
         <div className="flex items-center gap-3">

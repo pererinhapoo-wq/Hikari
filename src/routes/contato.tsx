@@ -59,11 +59,11 @@ function ContatoPage() {
           </div>
           <div className="mt-6 pt-4 border-t border-white/5">
             <a
-              href="mailto:contato@hikari.app"
+              href="mailto:matheusmp0653@gmail.com"
               className="inline-flex items-center gap-2 rounded-xl bg-[#a855f7] px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-[#9333ea] hover:shadow-[0_0_18px_rgba(168,85,247,0.4)] !no-underline"
             >
               <Mail className="size-4" />
-              <span>contato@hikari.app</span>
+              <span>matheusmp0653@gmail.com</span>
             </a>
           </div>
         </div>
