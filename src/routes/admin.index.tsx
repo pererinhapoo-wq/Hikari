@@ -821,33 +821,36 @@ function AdminIndex() {
   };
 
   return (
-    <div className="studio-enter space-y-7">
+    <div className="studio-enter space-y-7 pb-8">
       {/* Banners de Progresso e Reenvio em Lotes */}
       {isImporting && importProgress && (
-        <div className="studio-panel rounded-xl border-violet-500/40 p-4 text-sm">
+        <div className="studio-panel rounded-xl border-blue-200 bg-blue-50/60 p-4 text-sm">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-semibold text-violet-300">
+            <span className="font-semibold text-blue-800">
               Sincronizando catálogo no PostgreSQL…
             </span>
-            <span className="studio-mono text-xs text-[var(--color-muted)]">
-              Lote {importProgress.currentBatchIndex} de {importProgress.totalBatches}
+            <span className="studio-mono text-xs text-slate-600">
+              Lote {importProgress.currentBatchIndex} de{" "}
+              {importProgress.totalBatches}
             </span>
           </div>
-          <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
+          <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-slate-200">
             <div
-              className="h-full bg-violet-500 transition-all duration-300"
+              className="h-full bg-blue-700 transition-all duration-300"
               style={{
                 width: `${Math.round(
-                  ((importProgress.completedBatches + importProgress.failedBatches) /
+                  ((importProgress.completedBatches +
+                    importProgress.failedBatches) /
                     importProgress.totalBatches) *
                     100,
                 )}%`,
               }}
             />
           </div>
-          <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-[var(--color-muted)]">
+          <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-slate-600">
             <span className="studio-tabular">
-              {importProgress.processedAnimes} de {importProgress.totalAnimes} animes processados
+              {importProgress.processedAnimes} de {importProgress.totalAnimes}{" "}
+              animes processados
             </span>
             <span className="studio-tabular">
               {importProgress.importedEpisodes} episódios importados
@@ -857,13 +860,14 @@ function AdminIndex() {
       )}
 
       {failedBatches.length > 0 && !isImporting && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-200">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           <div className="space-y-0.5">
-            <p className="font-semibold text-amber-300">
+            <p className="font-semibold text-amber-900">
               Importação parcialmente concluída
             </p>
-            <p className="text-xs text-amber-200/80">
-              {failedBatches.length} lote(s) apresentaram erros e foram mantidos para reenvio seguro.
+            <p className="text-xs text-amber-800">
+              {failedBatches.length} lote(s) apresentaram erros e foram mantidos
+              para reenvio seguro.
             </p>
           </div>
           <Button
@@ -873,14 +877,18 @@ function AdminIndex() {
             disabled={isImporting}
             onClick={async () => {
               setIsImporting(true);
-              toast.info(`Reenviando ${failedBatches.length} lote(s) pendente(s)...`);
+              toast.info(
+                `Reenviando ${failedBatches.length} lote(s) pendente(s)...`,
+              );
               try {
                 const res = await retryFailedBatches(failedBatches, (p) =>
                   setImportProgress(p),
                 );
                 if (res.ok) {
                   setFailedBatches([]);
-                  toast.success("Todos os lotes pendentes foram sincronizados com sucesso!");
+                  toast.success(
+                    "Todos os lotes pendentes foram sincronizados com sucesso!",
+                  );
                   void checkSystem();
                 } else {
                   setFailedBatches(res.failedBatches);
@@ -894,7 +902,7 @@ function AdminIndex() {
                 setIsImporting(false);
               }
             }}
-            className="h-9 border-amber-500/40 text-amber-200 hover:bg-amber-500/20"
+            className="h-9 border-amber-300 bg-white text-xs font-semibold text-amber-900 hover:bg-amber-100"
           >
             Reenviar lotes pendentes ({failedBatches.length})
           </Button>
@@ -904,23 +912,25 @@ function AdminIndex() {
       {/* Cabeçalho Principal — Central de Controle */}
       <StudioPageHeader
         kicker="Console Editorial"
-        title="Central de Controle"
-        description="Visão operacional unificada do Hikari Studio com dados reais do PostgreSQL, fila de sincronização e gestão completa do catálogo."
+        title="Painel Administrativo"
+        description="Gerencie o catálogo do Hikari, sincronize episódios via PostgreSQL/Outbox, acompanhe comentários e suspensões da comunidade."
         status={
           <span
             className={cn(
               "studio-mono inline-flex items-center gap-1.5 font-semibold",
-              systemStatus?.connected ? "text-emerald-400" : "text-amber-300",
+              systemStatus?.connected ? "text-emerald-700" : "text-amber-700",
             )}
           >
-            {systemStatus?.connected ? "PostgreSQL Conectado" : "Verificando banco..."}
+            {systemStatus?.connected
+              ? "PostgreSQL Conectado"
+              : "Verificando banco..."}
           </span>
         }
         actions={
           <>
             <Button
               asChild
-              className="h-10 bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-500"
+              className="h-10 bg-blue-700 px-4 text-xs font-semibold text-white shadow-sm hover:bg-blue-800"
             >
               <Link to="/admin/$id" params={{ id: "new" }}>
                 <Plus className="size-4" />
@@ -932,15 +942,15 @@ function AdminIndex() {
               type="button"
               variant="outline"
               onClick={exportJson}
-              className="h-10 border-[var(--studio-line)] bg-[var(--studio-panel)] px-3 text-xs text-[var(--color-muted)] hover:bg-white/[0.05] hover:text-[var(--color-fg)]"
+              className="h-10 border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               title="Exportar backup completo em arquivo JSON"
             >
-              <Download className="size-4 text-violet-300" />
+              <Download className="size-4 text-blue-700" />
               <span className="hidden sm:inline">Exportar</span>
             </Button>
 
-            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-[var(--studio-line)] bg-[var(--studio-panel)] px-3 text-xs font-medium text-[var(--color-muted)] transition-colors hover:bg-white/[0.05] hover:text-[var(--color-fg)]">
-              <Upload className="size-4 text-violet-300" />
+            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50">
+              <Upload className="size-4 text-blue-700" />
               <span className="hidden sm:inline">Importar JSON</span>
               <input
                 type="file"
@@ -959,12 +969,14 @@ function AdminIndex() {
               variant="outline"
               onClick={() => setToolsOpen(!toolsOpen)}
               className={cn(
-                "h-10 border-[var(--studio-line)] bg-[var(--studio-panel)] px-3.5 text-xs text-[var(--color-muted)] hover:bg-white/[0.05] hover:text-[var(--color-fg)]",
-                toolsOpen && "border-violet-500/45 bg-violet-500/12 text-violet-200",
+                "h-10 px-3.5 text-xs font-semibold transition-colors",
+                toolsOpen
+                  ? "border-blue-600 bg-blue-50 text-blue-700"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
               )}
               title="Abrir ferramentas de importação AniList e backup"
             >
-              <Sparkles className="size-4 text-violet-300" />
+              <Sparkles className="size-4 text-blue-700" />
               <span>AniList &amp; Ferramentas</span>
             </Button>
           </>
@@ -983,10 +995,10 @@ function AdminIndex() {
                 type="button"
                 onClick={() => setToolsTab("anilist")}
                 className={cn(
-                  "h-9 rounded-lg px-3 text-xs font-medium transition-colors",
+                  "h-9 rounded-lg px-3 text-xs font-semibold transition-colors",
                   toolsTab === "anilist"
-                    ? "border border-[var(--studio-accent-border)] bg-[var(--studio-accent-soft)] text-violet-200"
-                    : "text-[var(--color-muted)] hover:bg-white/[0.04] hover:text-[var(--color-fg)]",
+                    ? "border border-blue-200 bg-blue-50 text-blue-700"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
                 )}
               >
                 AniList
@@ -995,10 +1007,10 @@ function AdminIndex() {
                 type="button"
                 onClick={() => setToolsTab("json")}
                 className={cn(
-                  "h-9 rounded-lg px-3 text-xs font-medium transition-colors",
+                  "h-9 rounded-lg px-3 text-xs font-semibold transition-colors",
                   toolsTab === "json"
-                    ? "border border-[var(--studio-accent-border)] bg-[var(--studio-accent-soft)] text-violet-200"
-                    : "text-[var(--color-muted)] hover:bg-white/[0.04] hover:text-[var(--color-fg)]",
+                    ? "border border-blue-200 bg-blue-50 text-blue-700"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
                 )}
               >
                 Backup &amp; JSON
@@ -1006,7 +1018,7 @@ function AdminIndex() {
               <button
                 type="button"
                 onClick={() => setToolsOpen(false)}
-                className="ml-1 flex size-9 items-center justify-center rounded-lg text-[var(--color-muted)] hover:bg-white/10 hover:text-[var(--color-fg)]"
+                className="ml-1 flex size-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                 aria-label="Fechar ferramentas"
               >
                 <X className="size-4" />
@@ -1016,14 +1028,17 @@ function AdminIndex() {
         >
           {toolsTab === "anilist" ? (
             <div className="space-y-4">
-              <p className="text-xs leading-relaxed text-[var(--color-muted)]">
-                Pesquise na base pública do AniList para importar capa, banner, sinopse, gêneros e
-                identificadores externos.
+              <p className="text-xs leading-relaxed text-slate-600">
+                Pesquise na base pública do AniList para importar capa, banner,
+                sinopse, gêneros e identificadores externos.
               </p>
 
-              <form onSubmit={runImportSearch} className="flex flex-col gap-2 sm:flex-row">
+              <form
+                onSubmit={runImportSearch}
+                className="flex flex-col gap-2 sm:flex-row"
+              >
                 <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--color-subtle)]" />
+                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
                   <Input
                     value={importQ}
                     onChange={(e) => setImportQ(e.target.value)}
@@ -1034,7 +1049,7 @@ function AdminIndex() {
                 <Button
                   type="submit"
                   disabled={searchingAniList || !importQ.trim()}
-                  className="h-10 shrink-0 bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-500"
+                  className="h-10 shrink-0 bg-blue-700 px-4 text-xs font-semibold text-white hover:bg-blue-800"
                 >
                   {searchingAniList ? (
                     <>
@@ -1048,7 +1063,7 @@ function AdminIndex() {
               </form>
 
               {hits.length > 0 && (
-                <div className="studio-scroll max-h-80 divide-y divide-[var(--studio-line)] overflow-y-auto rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)]">
+                <div className="studio-scroll max-h-80 divide-y divide-slate-200 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50">
                   {hits.slice(0, 10).map((hit) => {
                     const alreadyInCatalog = animes.some(
                       (a) => a.id === hit.id || a.anilistId === hit.anilistId,
@@ -1056,10 +1071,10 @@ function AdminIndex() {
                     return (
                       <div
                         key={hit.id}
-                        className="flex flex-wrap items-center justify-between gap-3 p-3 transition-colors hover:bg-white/[0.025]"
+                        className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 transition-colors hover:bg-slate-50"
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <div className="h-14 w-10 shrink-0 overflow-hidden rounded border border-[var(--studio-line)] bg-black/40">
+                          <div className="h-14 w-10 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-100">
                             {hit.cover ? (
                               <img
                                 src={hit.cover}
@@ -1068,19 +1083,20 @@ function AdminIndex() {
                                 loading="lazy"
                               />
                             ) : (
-                              <div className="grid size-full place-items-center text-[10px] text-[var(--color-subtle)]">
+                              <div className="grid size-full place-items-center text-[10px] text-slate-400">
                                 —
                               </div>
                             )}
                           </div>
 
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-[var(--color-fg)]">
+                            <p className="truncate text-sm font-semibold text-slate-900">
                               {displayTitle(hit)}
                             </p>
-                            <p className="mt-0.5 truncate text-xs text-[var(--color-muted)]">
+                            <p className="mt-0.5 truncate text-xs text-slate-500">
                               {hit.year || "—"} · {hit.format || "TV"} ·{" "}
-                              {(hit.genres || []).slice(0, 3).join(", ") || "Sem gênero"}
+                              {(hit.genres || []).slice(0, 3).join(", ") ||
+                                "Sem gênero"}
                             </p>
                           </div>
                         </div>
@@ -1092,10 +1108,10 @@ function AdminIndex() {
                             variant="outline"
                             onClick={() => importHit(hit)}
                             className={cn(
-                              "h-9 text-xs",
+                              "h-9 text-xs font-semibold",
                               alreadyInCatalog
-                                ? "border-amber-500/35 text-amber-300 hover:bg-amber-500/12"
-                                : "border-violet-500/35 text-violet-200 hover:bg-violet-500/12",
+                                ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                                : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
                             )}
                           >
                             {alreadyInCatalog ? "Atualizar" : "Importar"}
@@ -1108,7 +1124,7 @@ function AdminIndex() {
                               variant="outline"
                               onClick={() => importHit(hit, true)}
                               title="Importar como novo cadastro independente (ex: versão dublada)"
-                              className="h-9 border-[var(--studio-line)] text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+                              className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
                             >
                               Novo cadastro
                             </Button>
@@ -1122,22 +1138,23 @@ function AdminIndex() {
             </div>
           ) : (
             <div className="space-y-4">
-              <p className="text-xs leading-relaxed text-[var(--color-muted)]">
-                Gere um arquivo JSON completo com todas as temporadas, episódios e metadados ou
-                restaure um backup sincronizando em lotes de 100 com o PostgreSQL.
+              <p className="text-xs leading-relaxed text-slate-600">
+                Gere um arquivo JSON completo com todas as temporadas, episódios e
+                metadados ou restaure um backup sincronizando em lotes de 100
+                com o PostgreSQL.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Button
                   type="button"
                   onClick={exportJson}
-                  className="h-10 bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-500"
+                  className="h-10 bg-blue-700 px-4 text-xs font-semibold text-white hover:bg-blue-800"
                 >
                   <Download className="mr-1.5 size-4" />
                   Baixar hikari-catalogo.json ({animes.length} animes)
                 </Button>
 
-                <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] px-4 text-xs font-medium text-[var(--color-fg)] transition-colors hover:bg-white/[0.06]">
-                  <Upload className="size-4 text-violet-300" />
+                <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50">
+                  <Upload className="size-4 text-blue-700" />
                   <span>Selecionar arquivo JSON para restaurar</span>
                   <input
                     type="file"
@@ -1164,7 +1181,7 @@ function AdminIndex() {
             label: "Títulos no Catálogo",
             value: catalogStats.totalAnimes.toLocaleString("pt-BR"),
             detail: `${catalogStats.visibleAnimes} visíveis · ${catalogStats.hiddenAnimes} ocultos`,
-            accent: "violet",
+            accent: "cobalt",
           },
           {
             label: "Episódios Publicados",
@@ -1177,18 +1194,18 @@ function AdminIndex() {
               ? (systemStatus.serverUsersCount ?? 0).toLocaleString("pt-BR")
               : "—",
             detail: systemStatus?.connected
-              ? `${systemStatus.serverAdminsCount ?? 0} administrador(es)`
+              ? `${systemStatus.serverAdminsCount ?? 0} admin(s) · ${systemStatus.serverActiveBansCount ?? 0} banido(s)`
               : "Consultando PostgreSQL...",
             href: "/admin/users",
           },
           {
-            label: "Moderação Pendente",
+            label: "Comentários & Denúncias",
             value: systemStatus?.connected
-              ? (systemStatus.serverPendingReportsCount ?? 0).toLocaleString("pt-BR")
+              ? (systemStatus.serverCommentsCount ?? 0).toLocaleString("pt-BR")
               : "—",
             detail:
               (systemStatus?.serverPendingReportsCount ?? 0) > 0
-                ? "Comentários aguardando ação"
+                ? `${systemStatus?.serverPendingReportsCount} denúncia(s) pendente(s)`
                 : "Fila de denúncias limpa",
             accent:
               (systemStatus?.serverPendingReportsCount ?? 0) > 0
@@ -1213,27 +1230,27 @@ function AdminIndex() {
         <div className="space-y-6 xl:col-span-7">
           {/* Acesso Rápido aos Módulos */}
           <StudioPanel
-            title="Módulos do Hikari Studio"
-            description="Acesso direto às áreas operacionais, comunidade e infraestrutura."
+            title="Módulos Administrativos"
+            description="Acesso direto às áreas operacionais, moderação de comunidade e infraestrutura."
             icon={<Sparkles className="size-4" />}
           >
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
               {STUDIO_SHORTCUTS.map((item) => {
                 const Icon = item.icon;
                 return (
                   <Link
                     key={item.to}
                     to={item.to}
-                    className="group flex items-start gap-3 rounded-lg border border-[var(--studio-line)] bg-[var(--studio-panel-alt)]/70 p-3 transition-colors hover:border-[var(--studio-accent-border)] hover:bg-[var(--studio-accent-soft)]"
+                    className="group flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3 transition-colors hover:border-blue-300 hover:bg-blue-50/60"
                   >
-                    <div className="grid size-8 shrink-0 place-items-center rounded-md border border-[var(--studio-line)] bg-[var(--studio-panel)] text-violet-300 transition-colors group-hover:border-[var(--studio-accent-border)]">
+                    <div className="grid size-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-blue-700 transition-colors group-hover:border-blue-300 group-hover:bg-blue-700 group-hover:text-white">
                       <Icon className="size-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-semibold text-[var(--color-fg)] group-hover:text-white">
+                      <p className="truncate text-xs font-semibold text-slate-900">
                         {item.title}
                       </p>
-                      <p className="mt-0.5 truncate text-[11px] text-[var(--color-muted)]">
+                      <p className="mt-0.5 truncate text-[11px] text-slate-500">
                         {item.description}
                       </p>
                     </div>
@@ -1253,23 +1270,29 @@ function AdminIndex() {
                 type="button"
                 onClick={checkSystem}
                 disabled={isCheckingSystem}
-                className="flex size-8 items-center justify-center rounded-lg border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] text-[var(--color-muted)] transition-colors hover:border-[var(--studio-line-strong)] hover:text-[var(--color-fg)]"
+                className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900"
                 title="Verificar conectividade agora"
                 aria-label="Atualizar estado do sistema"
               >
                 <RefreshCw
-                  className={cn("size-3.5", isCheckingSystem && "animate-spin")}
+                  className={cn(
+                    "size-3.5",
+                    isCheckingSystem && "animate-spin",
+                  )}
                 />
               </button>
             }
           >
-            <div id="system-status" className="scroll-mt-24 divide-y divide-[var(--studio-line)]">
+            <div
+              id="system-status"
+              className="scroll-mt-24 divide-y divide-slate-200"
+            >
               <div className="flex items-center justify-between gap-3 pb-3">
                 <div className="min-w-0">
-                  <span className="block text-xs font-semibold text-[var(--color-fg)]">
+                  <span className="block text-xs font-semibold text-slate-900">
                     Conexão PostgreSQL
                   </span>
-                  <span className="studio-mono mt-0.5 block truncate text-[11px] text-[var(--color-subtle)]">
+                  <span className="studio-mono mt-0.5 block truncate text-[11px] text-slate-500">
                     {systemStatus?.dbSource === "neon"
                       ? "Neon Cloud Database (Pooled)"
                       : "PostgreSQL Ativo"}
@@ -1278,7 +1301,9 @@ function AdminIndex() {
                 <span
                   className={cn(
                     "studio-mono inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold",
-                    systemStatus?.connected ? "text-emerald-400" : "text-rose-400",
+                    systemStatus?.connected
+                      ? "text-emerald-700"
+                      : "text-rose-700",
                   )}
                 >
                   {systemStatus?.connected ? (
@@ -1286,17 +1311,19 @@ function AdminIndex() {
                   ) : (
                     <AlertTriangle className="size-3.5" />
                   )}
-                  <span>{systemStatus?.connected ? "Conectado" : "Offline"}</span>
+                  <span>
+                    {systemStatus?.connected ? "Conectado" : "Offline"}
+                  </span>
                 </span>
               </div>
 
               {systemStatus?.connected &&
                 typeof systemStatus.serverAnimesCount === "number" && (
                   <div className="flex items-center justify-between gap-3 py-3 text-xs">
-                    <span className="text-[var(--color-muted)]">
+                    <span className="text-slate-600">
                       Registros persistidos no servidor
                     </span>
-                    <span className="studio-mono text-[11px] font-medium text-[var(--color-fg)]">
+                    <span className="studio-mono text-[11px] font-semibold text-slate-900">
                       {systemStatus.serverAnimesCount} animes ·{" "}
                       {systemStatus.serverPublishedEpisodesCount ?? 0}/
                       {systemStatus.serverEpisodesCount ?? 0} eps pub.
@@ -1306,17 +1333,17 @@ function AdminIndex() {
 
               <div className="flex items-center justify-between gap-3 py-3 text-xs">
                 <div>
-                  <span className="block font-semibold text-[var(--color-fg)]">
+                  <span className="block font-semibold text-slate-900">
                     Fila Outbox (Escritas Pendentes)
                   </span>
-                  <span className="mt-0.5 block text-[11px] text-[var(--color-subtle)]">
+                  <span className="mt-0.5 block text-[11px] text-slate-500">
                     Alterações locais aguardando confirmação remota
                   </span>
                 </div>
                 <span
                   className={cn(
                     "studio-mono font-semibold",
-                    pendingCount > 0 ? "text-amber-300" : "text-emerald-400",
+                    pendingCount > 0 ? "text-amber-700" : "text-emerald-700",
                   )}
                 >
                   {pendingCount} pendência(s)
@@ -1325,17 +1352,17 @@ function AdminIndex() {
 
               <div className="flex items-center justify-between gap-3 pt-3 text-xs">
                 <div>
-                  <span className="block font-semibold text-[var(--color-fg)]">
+                  <span className="block font-semibold text-slate-900">
                     Conflitos de Sincronização
                   </span>
-                  <span className="mt-0.5 block text-[11px] text-[var(--color-subtle)]">
+                  <span className="mt-0.5 block text-[11px] text-slate-500">
                     Operações rejeitadas por validação no servidor
                   </span>
                 </div>
                 <span
                   className={cn(
                     "studio-mono font-semibold",
-                    conflictCount > 0 ? "text-rose-400" : "text-[var(--color-muted)]",
+                    conflictCount > 0 ? "text-rose-700" : "text-slate-500",
                   )}
                 >
                   {conflictCount} conflito(s)
@@ -1344,16 +1371,19 @@ function AdminIndex() {
             </div>
 
             {conflictOps.length > 0 && (
-              <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs">
-                <p className="font-semibold text-rose-300">Operações em conflito</p>
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs">
+                <p className="font-semibold text-rose-800">
+                  Operações em conflito
+                </p>
                 <ul className="mt-1.5 space-y-1.5">
                   {conflictOps.slice(0, 3).map((op) => (
                     <li
                       key={op.id}
-                      className="flex items-center justify-between gap-2 text-[11px] text-rose-200/90"
+                      className="flex items-center justify-between gap-2 text-[11px] text-rose-700"
                     >
                       <span className="truncate">
-                        {op.animeId} · T{op.seasonNumber} E{op.episodeNumber ?? "?"}:{" "}
+                        {op.animeId} · T{op.seasonNumber} E
+                        {op.episodeNumber ?? "?"}:{" "}
                         {op.lastError || "Erro de validação"}
                       </span>
                       <button
@@ -1363,7 +1393,7 @@ function AdminIndex() {
                           refreshOutbox();
                           toast.info("Conflito descartado da fila local.");
                         }}
-                        className="shrink-0 text-[11px] font-semibold text-rose-300 underline hover:text-white"
+                        className="shrink-0 text-[11px] font-semibold text-rose-800 underline hover:text-rose-950"
                       >
                         Descartar
                       </button>
@@ -1373,17 +1403,20 @@ function AdminIndex() {
               </div>
             )}
 
-            <div className="mt-4 border-t border-[var(--studio-line)] pt-3.5">
+            <div className="mt-4 border-t border-slate-200 pt-3.5">
               {pendingCount > 0 ? (
                 <Button
                   type="button"
                   size="sm"
                   disabled={isSyncingOutbox}
                   onClick={handleManualSync}
-                  className="h-9 w-full border border-amber-500/35 bg-amber-500/15 text-xs font-semibold text-amber-200 hover:bg-amber-500/25"
+                  className="h-9 w-full border border-amber-300 bg-amber-50 text-xs font-semibold text-amber-900 hover:bg-amber-100"
                 >
                   <RefreshCw
-                    className={cn("mr-1.5 size-3.5", isSyncingOutbox && "animate-spin")}
+                    className={cn(
+                      "mr-1.5 size-3.5",
+                      isSyncingOutbox && "animate-spin",
+                    )}
                   />
                   <span>
                     {isSyncingOutbox
@@ -1392,12 +1425,12 @@ function AdminIndex() {
                   </span>
                 </Button>
               ) : (
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--color-muted)]">
-                  <span className="inline-flex items-center gap-1.5 text-emerald-400">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                  <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
                     <CheckCircle2 className="size-3.5" />
                     <span>Catálogo 100% sincronizado</span>
                   </span>
-                  <span className="studio-mono text-[11px] text-[var(--color-subtle)]">
+                  <span className="studio-mono text-[11px] text-slate-500">
                     AniList: {catalogStats.anilistLinkedAnimes} · Dublados:{" "}
                     {catalogStats.dubbedAnimes}
                   </span>
@@ -1415,7 +1448,7 @@ function AdminIndex() {
           description="Histórico real de alterações no acervo e fila local."
           icon={<Clock className="size-4" />}
           right={
-            <span className="studio-mono text-xs text-[var(--color-muted)]">
+            <span className="studio-mono text-xs text-slate-500">
               {recentActivities.length > 0
                 ? `${recentActivities.length} registros`
                 : "Vazio"}
@@ -1424,22 +1457,25 @@ function AdminIndex() {
         >
           {recentActivities.length === 0 ? (
             <div className="space-y-2.5 py-12 text-center">
-              <div className="mx-auto grid size-10 place-items-center rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] text-[var(--color-subtle)]">
+              <div className="mx-auto grid size-10 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
                 <Activity className="size-5" />
               </div>
-              <p className="text-xs font-semibold text-[var(--color-fg)]">
+              <p className="text-xs font-semibold text-slate-900">
                 Nenhuma atividade recente registrada
               </p>
-              <p className="mx-auto max-w-xs text-xs leading-relaxed text-[var(--color-muted)]">
-                As atualizações de animes, episódios e operações de sincronização aparecerão aqui
-                conforme forem realizadas.
+              <p className="mx-auto max-w-xs text-xs leading-relaxed text-slate-500">
+                As atualizações de animes, episódios e operações de sincronização
+                aparecerão aqui conforme forem realizadas.
               </p>
             </div>
           ) : (
-            <ul className="divide-y divide-[var(--studio-line)]">
+            <ul className="divide-y divide-slate-200">
               {recentActivities.map((act) => (
-                <li key={act.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                  <div className="h-11 w-8 shrink-0 overflow-hidden rounded border border-[var(--studio-line)] bg-black/40">
+                <li
+                  key={act.id}
+                  className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+                >
+                  <div className="h-11 w-8 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-100">
                     {act.cover ? (
                       <img
                         src={act.cover}
@@ -1448,35 +1484,35 @@ function AdminIndex() {
                         loading="lazy"
                       />
                     ) : (
-                      <div className="grid size-full place-items-center text-[10px] text-[var(--color-subtle)]">
+                      <div className="grid size-full place-items-center text-[10px] font-bold text-slate-400">
                         光
                       </div>
                     )}
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold leading-snug text-[var(--color-fg)]">
+                    <p className="truncate text-xs font-semibold leading-snug text-slate-900">
                       {act.title}
                     </p>
-                    <p className="mt-0.5 truncate text-[11px] text-[var(--color-muted)]">
+                    <p className="mt-0.5 truncate text-[11px] text-slate-500">
                       {act.details}
                     </p>
                   </div>
 
                   <div className="shrink-0 text-right">
-                    <span className="studio-mono block text-[10px] text-[var(--color-subtle)]">
+                    <span className="studio-mono block text-[10px] text-slate-500">
                       {formatTime(act.timestamp)}
                     </span>
                     {act.type === "outbox-conflict" ? (
-                      <span className="studio-mono inline-block text-[10px] font-semibold text-rose-400">
+                      <span className="studio-mono inline-block text-[10px] font-semibold text-rose-700">
                         Conflito
                       </span>
                     ) : act.type === "outbox-pending" ? (
-                      <span className="studio-mono inline-block text-[10px] font-semibold text-amber-300">
+                      <span className="studio-mono inline-block text-[10px] font-semibold text-amber-700">
                         Na fila
                       </span>
                     ) : (
-                      <span className="studio-mono inline-block text-[10px] font-semibold text-violet-300">
+                      <span className="studio-mono inline-block text-[10px] font-semibold text-blue-700">
                         Salvo
                       </span>
                     )}
@@ -1486,11 +1522,11 @@ function AdminIndex() {
             </ul>
           )}
 
-          <div className="mt-4 flex items-center justify-between border-t border-[var(--studio-line)] pt-3.5 text-[11px] text-[var(--color-subtle)]">
+          <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3.5 text-[11px] text-slate-500">
             <span>Fonte: IndexedDB &amp; Outbox</span>
             <Link
               to="/admin/quick-update"
-              className="inline-flex items-center gap-1 font-medium text-violet-300 hover:text-violet-200"
+              className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline"
             >
               <span>Atualização Rápida</span>
               <ArrowRight className="size-3" />
@@ -1503,16 +1539,16 @@ function AdminIndex() {
       <section id="catalog" className="scroll-mt-20 space-y-4 pt-2">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-baseline gap-3">
-            <h2 className="font-display text-xl font-bold tracking-tight text-[var(--color-fg)] sm:text-2xl">
+            <h2 className="font-display text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
               Catálogo de Títulos
             </h2>
-            <span className="studio-mono text-xs font-medium text-[var(--color-muted)]">
+            <span className="studio-mono text-xs font-semibold text-slate-500">
               {filtered.length} de {animes.length}
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
               <span className="hidden sm:inline">Exibir:</span>
               <select
                 value={itemsPerPage}
@@ -1526,15 +1562,15 @@ function AdminIndex() {
               </select>
             </div>
 
-            <div className="flex items-center rounded-lg border border-[var(--studio-line)] bg-[var(--studio-panel)] p-0.5">
+            <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
               <button
                 type="button"
                 onClick={() => setViewMode("grid")}
                 className={cn(
                   "flex size-8 items-center justify-center rounded-md transition-colors",
                   viewMode === "grid"
-                    ? "bg-[var(--studio-accent-soft)] text-violet-200"
-                    : "text-[var(--color-muted)] hover:text-[var(--color-fg)]",
+                    ? "bg-blue-700 text-white"
+                    : "text-slate-500 hover:text-slate-900",
                 )}
                 title="Visualização em grade de cards"
                 aria-label="Ver em grade"
@@ -1547,8 +1583,8 @@ function AdminIndex() {
                 className={cn(
                   "flex size-8 items-center justify-center rounded-md transition-colors",
                   viewMode === "table"
-                    ? "bg-[var(--studio-accent-soft)] text-violet-200"
-                    : "text-[var(--color-muted)] hover:text-[var(--color-fg)]",
+                    ? "bg-blue-700 text-white"
+                    : "text-slate-500 hover:text-slate-900",
                 )}
                 title="Visualização em tabela detalhada"
                 aria-label="Ver em tabela"
@@ -1563,7 +1599,7 @@ function AdminIndex() {
         <div className="studio-panel space-y-3 rounded-xl p-4">
           <div className="flex flex-col gap-2.5 sm:flex-row">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--color-subtle)]" />
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
@@ -1574,7 +1610,7 @@ function AdminIndex() {
                 <button
                   type="button"
                   onClick={() => setQ("")}
-                  className="absolute top-1/2 right-2.5 -translate-y-1/2 p-1 text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+                  className="absolute top-1/2 right-2.5 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700"
                   aria-label="Limpar pesquisa"
                 >
                   <X className="size-3.5" />
@@ -1583,7 +1619,7 @@ function AdminIndex() {
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
-              <ArrowUpDown className="hidden size-4 shrink-0 text-violet-300 sm:block" />
+              <ArrowUpDown className="hidden size-4 shrink-0 text-blue-700 sm:block" />
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortOption)}
@@ -1602,15 +1638,17 @@ function AdminIndex() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-[var(--studio-line)] pt-3">
-            <span className="mr-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--color-subtle)]">
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
+            <span className="mr-1 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
               <Filter className="size-3" />
               Filtros:
             </span>
 
             <select
               value={visibilityFilter}
-              onChange={(e) => setVisibilityFilter(e.target.value as VisibilityFilter)}
+              onChange={(e) =>
+                setVisibilityFilter(e.target.value as VisibilityFilter)
+              }
               aria-label="Filtrar por visibilidade"
               className="studio-input h-9 rounded-md px-2.5 text-xs"
             >
@@ -1621,7 +1659,9 @@ function AdminIndex() {
 
             <select
               value={versionFilter}
-              onChange={(e) => setVersionFilter(e.target.value as VersionFilter)}
+              onChange={(e) =>
+                setVersionFilter(e.target.value as VersionFilter)
+              }
               aria-label="Filtrar por versão"
               className="studio-input h-9 rounded-md px-2.5 text-xs"
             >
@@ -1667,7 +1707,7 @@ function AdminIndex() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="ml-auto flex h-9 items-center gap-1 rounded-md px-2.5 text-xs font-medium text-violet-300 hover:bg-violet-500/10 hover:text-violet-200"
+                className="ml-auto flex h-9 items-center gap-1 rounded-md px-2.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
               >
                 <X className="size-3.5" />
                 Limpar filtros
@@ -1685,11 +1725,11 @@ function AdminIndex() {
                 className="studio-panel h-44 animate-pulse rounded-xl p-3.5"
               >
                 <div className="flex gap-3">
-                  <div className="h-28 w-20 rounded-lg bg-white/[0.05]" />
+                  <div className="h-28 w-20 rounded-lg bg-slate-200" />
                   <div className="flex-1 space-y-2.5 py-1">
-                    <div className="h-4 w-3/4 rounded bg-white/[0.06]" />
-                    <div className="h-3 w-1/2 rounded bg-white/[0.04]" />
-                    <div className="h-3 w-1/3 rounded bg-white/[0.04]" />
+                    <div className="h-4 w-3/4 rounded bg-slate-200" />
+                    <div className="h-3 w-1/2 rounded bg-slate-100" />
+                    <div className="h-3 w-1/3 rounded bg-slate-100" />
                   </div>
                 </div>
               </div>
@@ -1697,14 +1737,14 @@ function AdminIndex() {
           </div>
         ) : animes.length === 0 ? (
           <StudioEmptyState
-            icon={<Film className="size-6 text-violet-300" />}
+            icon={<Film className="size-6 text-blue-700" />}
             title="Nenhum título no catálogo local"
             description="Seu catálogo ainda está vazio neste navegador. Você pode cadastrar um título novo, importar do AniList ou restaurar um backup JSON."
             action={
               <>
                 <Button
                   asChild
-                  className="h-10 bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-500"
+                  className="h-10 bg-blue-700 px-4 text-xs font-semibold text-white hover:bg-blue-800"
                 >
                   <Link to="/admin/$id" params={{ id: "new" }}>
                     <Plus className="mr-1.5 size-3.5" />
@@ -1718,9 +1758,9 @@ function AdminIndex() {
                     setToolsOpen(true);
                     setToolsTab("anilist");
                   }}
-                  className="h-10 border-[var(--studio-line)] text-xs"
+                  className="h-10 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
                 >
-                  <Sparkles className="mr-1.5 size-3.5 text-violet-300" />
+                  <Sparkles className="mr-1.5 size-3.5 text-blue-700" />
                   Importar do AniList
                 </Button>
               </>
@@ -1737,7 +1777,7 @@ function AdminIndex() {
                 variant="outline"
                 size="sm"
                 onClick={clearFilters}
-                className="h-9 border-violet-500/35 text-xs text-violet-300"
+                className="h-9 border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700 hover:bg-blue-100"
               >
                 Limpar busca e filtros
               </Button>
@@ -1757,10 +1797,10 @@ function AdminIndex() {
               return (
                 <article
                   key={a.id}
-                  className="studio-panel group flex flex-col justify-between rounded-xl p-3.5 transition-colors hover:border-[var(--studio-accent-border)]"
+                  className="studio-panel group flex flex-col justify-between rounded-xl p-3.5 transition-colors hover:border-blue-300"
                 >
                   <div className="flex gap-3.5">
-                    <div className="relative h-28 w-20 shrink-0 overflow-hidden rounded-lg border border-[var(--studio-line)] bg-black/40">
+                    <div className="relative h-28 w-20 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
                       {a.cover ? (
                         <img
                           src={a.cover}
@@ -1769,56 +1809,56 @@ function AdminIndex() {
                           loading="lazy"
                         />
                       ) : (
-                        <div className="grid size-full place-items-center bg-violet-950/30 font-display text-sm font-bold text-violet-300">
+                        <div className="grid size-full place-items-center bg-blue-50 font-display text-sm font-bold text-blue-700">
                           {displayTitle(a).slice(0, 2).toUpperCase()}
                         </div>
                       )}
 
-                      <span className="studio-mono absolute right-1 bottom-1 rounded bg-black/85 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                      <span className="studio-mono absolute right-1 bottom-1 rounded bg-slate-900/85 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                         {episodesCount} ep
                       </span>
                     </div>
 
                     <div className="flex min-w-0 flex-1 flex-col justify-between">
                       <div>
-                        <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-semibold uppercase tracking-wider">
+                        <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-bold tracking-wider uppercase">
                           {a.hidden && (
-                            <span className="text-rose-400">Oculto</span>
+                            <span className="text-rose-700">Oculto</span>
                           )}
                           {isDub && (
-                            <span className="text-violet-300">Dublado</span>
+                            <span className="text-teal-700">Dublado</span>
                           )}
-                          <span className="studio-mono text-[var(--color-subtle)]">
+                          <span className="studio-mono text-slate-500">
                             {a.format || "TV"}
                           </span>
                         </div>
 
                         <h3
-                          className="line-clamp-2 text-sm font-semibold leading-snug text-[var(--color-fg)] transition-colors group-hover:text-violet-300"
+                          className="line-clamp-2 text-sm font-semibold leading-snug text-slate-900 transition-colors group-hover:text-blue-700"
                           title={displayTitle(a)}
                         >
                           {displayTitle(a)}
                         </h3>
 
                         {a.titleRomaji && a.titleEnglish && (
-                          <p className="mt-0.5 truncate text-[11px] text-[var(--color-muted)]">
+                          <p className="mt-0.5 truncate text-[11px] text-slate-500">
                             {a.titleRomaji}
                           </p>
                         )}
                       </div>
 
-                      <p className="studio-tabular pt-2 text-[11px] text-[var(--color-subtle)]">
+                      <p className="studio-tabular pt-2 text-[11px] text-slate-500">
                         {a.year || "—"} · {a.seasons.length} temp.
                         {a.anilistId ? ` · #${a.anilistId}` : " · Original"}
                       </p>
                     </div>
                   </div>
 
-                  <div className="mt-3.5 flex items-center gap-1.5 border-t border-[var(--studio-line)] pt-2.5">
+                  <div className="mt-3.5 flex items-center gap-1.5 border-t border-slate-200 pt-2.5">
                     <Button
                       asChild
                       size="sm"
-                      className="h-9 flex-1 border border-[var(--studio-accent-border)] bg-[var(--studio-accent-soft)] text-xs font-medium text-violet-200 hover:bg-violet-600/30 hover:text-white"
+                      className="h-9 flex-1 border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700 hover:bg-blue-700 hover:text-white"
                     >
                       <Link
                         to="/admin/$id"
@@ -1843,7 +1883,7 @@ function AdminIndex() {
                       variant="outline"
                       onClick={() => duplicateAsDubbed(a)}
                       title="Criar cadastro independente para a versão dublada deste anime"
-                      className="size-9 border-[var(--studio-line)] p-0 text-[var(--color-muted)] hover:bg-white/[0.06] hover:text-[var(--color-fg)]"
+                      className="size-9 border-slate-200 bg-white p-0 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     >
                       <Copy className="size-3.5" />
                       <span className="sr-only">Versão Dublada</span>
@@ -1861,11 +1901,15 @@ function AdminIndex() {
                             : `${displayTitle(a)} agora está oculto.`,
                         );
                       }}
-                      title={a.hidden ? "Tornar anime visível" : "Ocultar do site público"}
-                      className="size-9 border-[var(--studio-line)] p-0 text-[var(--color-muted)] hover:bg-white/[0.06] hover:text-[var(--color-fg)]"
+                      title={
+                        a.hidden
+                          ? "Tornar anime visível"
+                          : "Ocultar do site público"
+                      }
+                      className="size-9 border-slate-200 bg-white p-0 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     >
                       {a.hidden ? (
-                        <EyeOff className="size-3.5 text-amber-400" />
+                        <EyeOff className="size-3.5 text-amber-600" />
                       ) : (
                         <Eye className="size-3.5" />
                       )}
@@ -1878,7 +1922,7 @@ function AdminIndex() {
                       variant="ghost"
                       onClick={() => setPendingDelete(a.id)}
                       title="Excluir anime"
-                      className="size-9 p-0 text-[var(--color-muted)] hover:bg-rose-500/12 hover:text-rose-400"
+                      className="size-9 p-0 text-slate-500 hover:bg-rose-50 hover:text-rose-700"
                     >
                       <Trash2 className="size-3.5" />
                       <span className="sr-only">Excluir</span>
@@ -1892,17 +1936,21 @@ function AdminIndex() {
           <div className="studio-panel overflow-x-auto rounded-xl">
             <table className="w-full border-collapse text-left text-xs">
               <thead>
-                <tr className="border-b border-[var(--studio-line)] bg-white/[0.02] text-[11px] font-semibold uppercase tracking-wider text-[var(--color-subtle)]">
+                <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
                   <th className="w-14 px-4 py-3">Capa</th>
                   <th className="px-4 py-3">Título</th>
-                  <th className="hidden px-4 py-3 sm:table-cell">Ano / Formato</th>
-                  <th className="hidden px-4 py-3 md:table-cell">Temporadas / Episódios</th>
+                  <th className="hidden px-4 py-3 sm:table-cell">
+                    Ano / Formato
+                  </th>
+                  <th className="hidden px-4 py-3 md:table-cell">
+                    Temporadas / Episódios
+                  </th>
                   <th className="hidden px-4 py-3 lg:table-cell">Origem</th>
                   <th className="px-4 py-3 text-center">Status</th>
                   <th className="px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--studio-line)]">
+              <tbody className="divide-y divide-slate-200 bg-white">
                 {paginatedAnimes.map((a) => {
                   const episodesCount = a.seasons.reduce(
                     (n, s) => n + s.episodes.length,
@@ -1915,10 +1963,10 @@ function AdminIndex() {
                   return (
                     <tr
                       key={a.id}
-                      className="transition-colors hover:bg-white/[0.025]"
+                      className="transition-colors hover:bg-slate-50/80"
                     >
                       <td className="px-4 py-2.5">
-                        <div className="h-12 w-9 shrink-0 overflow-hidden rounded border border-[var(--studio-line)] bg-black/40">
+                        <div className="h-12 w-9 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-100">
                           {a.cover ? (
                             <img
                               src={a.cover}
@@ -1927,7 +1975,7 @@ function AdminIndex() {
                               loading="lazy"
                             />
                           ) : (
-                            <div className="grid size-full place-items-center text-[10px] text-[var(--color-subtle)]">
+                            <div className="grid size-full place-items-center text-[10px] text-slate-400">
                               —
                             </div>
                           )}
@@ -1935,45 +1983,47 @@ function AdminIndex() {
                       </td>
 
                       <td className="min-w-44 px-4 py-2.5">
-                        <p className="line-clamp-1 font-semibold text-[var(--color-fg)]">
+                        <p className="line-clamp-1 font-semibold text-slate-900">
                           {displayTitle(a)}
                         </p>
                         <div className="mt-0.5 flex items-center gap-1.5">
                           {isDub && (
-                            <span className="studio-mono text-[10px] font-medium text-violet-300">
+                            <span className="studio-mono text-[10px] font-semibold text-teal-700">
                               [Dublado]
                             </span>
                           )}
                           {a.titleRomaji && (
-                            <span className="max-w-xs truncate text-[11px] text-[var(--color-muted)]">
+                            <span className="max-w-xs truncate text-[11px] text-slate-500">
                               {a.titleRomaji}
                             </span>
                           )}
                         </div>
                       </td>
 
-                      <td className="studio-tabular hidden px-4 py-2.5 text-[var(--color-muted)] sm:table-cell">
+                      <td className="studio-tabular hidden px-4 py-2.5 text-slate-600 sm:table-cell">
                         {a.year || "—"} · {a.format || "TV"}
                       </td>
 
-                      <td className="studio-tabular hidden px-4 py-2.5 text-[var(--color-muted)] md:table-cell">
+                      <td className="studio-tabular hidden px-4 py-2.5 text-slate-600 md:table-cell">
                         {a.seasons.length} temp. ·{" "}
-                        <span className="font-semibold text-[var(--color-fg)]">
+                        <span className="font-semibold text-slate-900">
                           {episodesCount} eps
                         </span>
                       </td>
 
-                      <td className="studio-mono hidden px-4 py-2.5 text-[11px] text-[var(--color-muted)] lg:table-cell">
-                        {a.anilistId ? `AniList #${a.anilistId}` : "Original local"}
+                      <td className="studio-mono hidden px-4 py-2.5 text-[11px] text-slate-500 lg:table-cell">
+                        {a.anilistId
+                          ? `AniList #${a.anilistId}`
+                          : "Original local"}
                       </td>
 
                       <td className="px-4 py-2.5 text-center">
                         {a.hidden ? (
-                          <span className="studio-mono text-[11px] font-semibold text-rose-400">
+                          <span className="studio-mono inline-flex rounded border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
                             Oculto
                           </span>
                         ) : (
-                          <span className="studio-mono text-[11px] font-semibold text-emerald-400">
+                          <span className="studio-mono inline-flex rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                             Ativo
                           </span>
                         )}
@@ -1984,7 +2034,7 @@ function AdminIndex() {
                           <Button
                             asChild
                             size="sm"
-                            className="h-8 border border-[var(--studio-accent-border)] bg-[var(--studio-accent-soft)] px-3 text-xs text-violet-200 hover:bg-violet-600/35"
+                            className="h-8 border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-700 hover:text-white"
                           >
                             <Link
                               to="/admin/$id"
@@ -2009,7 +2059,7 @@ function AdminIndex() {
                             variant="ghost"
                             onClick={() => duplicateAsDubbed(a)}
                             title="Versão Dublada"
-                            className="size-8 text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+                            className="size-8 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                           >
                             <Copy className="size-3.5" />
                           </Button>
@@ -2020,10 +2070,10 @@ function AdminIndex() {
                             variant="ghost"
                             onClick={() => toggleHidden(a.id)}
                             title={a.hidden ? "Exibir" : "Ocultar"}
-                            className="size-8 text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+                            className="size-8 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                           >
                             {a.hidden ? (
-                              <EyeOff className="size-3.5 text-amber-400" />
+                              <EyeOff className="size-3.5 text-amber-600" />
                             ) : (
                               <Eye className="size-3.5" />
                             )}
@@ -2035,7 +2085,7 @@ function AdminIndex() {
                             variant="ghost"
                             onClick={() => setPendingDelete(a.id)}
                             title="Excluir anime"
-                            className="size-8 text-[var(--color-muted)] hover:text-rose-400"
+                            className="size-8 text-slate-500 hover:bg-rose-50 hover:text-rose-700"
                           >
                             <Trash2 className="size-3.5" />
                           </Button>
@@ -2051,11 +2101,11 @@ function AdminIndex() {
 
         {/* Paginação */}
         {totalPages > 1 && (
-          <div className="flex flex-col items-center justify-between gap-3 border-t border-[var(--studio-line)] pt-4 text-xs text-[var(--color-muted)] sm:flex-row">
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-200 pt-4 text-xs text-slate-600 sm:flex-row">
             <span className="studio-tabular">
-              Página <strong className="text-[var(--color-fg)]">{currentPage}</strong> de{" "}
-              <strong className="text-[var(--color-fg)]">{totalPages}</strong> ({filtered.length}{" "}
-              animes filtrados)
+              Página <strong className="text-slate-900">{currentPage}</strong>{" "}
+              de <strong className="text-slate-900">{totalPages}</strong> (
+              {filtered.length} animes filtrados)
             </span>
 
             <div className="flex items-center gap-1.5">
@@ -2065,7 +2115,7 @@ function AdminIndex() {
                 variant="outline"
                 disabled={currentPage <= 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="h-9 border-[var(--studio-line)] text-xs"
+                className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
               >
                 <ChevronLeft className="mr-1 size-3.5" />
                 Anterior
@@ -2083,10 +2133,10 @@ function AdminIndex() {
                       type="button"
                       onClick={() => setCurrentPage(pageNum)}
                       className={cn(
-                        "studio-mono size-9 rounded-md text-xs font-medium transition-colors",
+                        "studio-mono size-9 rounded-md text-xs font-semibold transition-colors",
                         currentPage === pageNum
-                          ? "bg-violet-600 text-white"
-                          : "border border-[var(--studio-line)] bg-[var(--studio-panel)] text-[var(--color-muted)] hover:bg-white/[0.06] hover:text-[var(--color-fg)]",
+                          ? "bg-blue-700 text-white"
+                          : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900",
                       )}
                     >
                       {pageNum}
@@ -2100,8 +2150,10 @@ function AdminIndex() {
                 size="sm"
                 variant="outline"
                 disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="h-9 border-[var(--studio-line)] text-xs"
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
               >
                 Próxima
                 <ChevronRight className="ml-1 size-3.5" />
@@ -2116,28 +2168,29 @@ function AdminIndex() {
         open={Boolean(pendingDelete)}
         onOpenChange={() => setPendingDelete(null)}
       >
-        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-[var(--studio-line-strong)] bg-[var(--studio-panel)] text-[var(--color-fg)] sm:max-w-md">
+        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-md">
           <div className="flex items-start gap-3.5">
-            <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-rose-500/25 bg-rose-500/12 text-rose-400">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600">
               <AlertTriangle className="size-5" />
             </div>
             <div>
-              <DialogTitle className="font-display text-lg font-semibold text-[var(--color-fg)]">
+              <DialogTitle className="font-display text-lg font-bold text-slate-900">
                 Excluir título do catálogo?
               </DialogTitle>
-              <DialogDescription className="mt-1.5 text-xs leading-relaxed text-[var(--color-muted)]">
-                Todas as temporadas e episódios associados a este anime serão removidos do catálogo
-                no servidor e neste dispositivo. A base pública do AniList continuará inalterada.
+              <DialogDescription className="mt-1.5 text-xs leading-relaxed text-slate-600">
+                Todas as temporadas e episódios associados a este anime serão
+                removidos do catálogo no servidor e neste dispositivo. A base
+                pública do AniList continuará inalterada.
               </DialogDescription>
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end gap-2 border-t border-[var(--studio-line)] pt-3">
+          <div className="mt-6 flex justify-end gap-2 border-t border-slate-200 pt-3">
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               onClick={() => setPendingDelete(null)}
-              className="h-9 text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+              className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
             >
               Cancelar
             </Button>
@@ -2153,26 +2206,36 @@ function AdminIndex() {
                       `/api/admin/catalog-anime?id=${encodeURIComponent(pendingDelete)}`,
                       {
                         method: "DELETE",
-                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                        headers: token
+                          ? { Authorization: `Bearer ${token}` }
+                          : {},
                         credentials: "include",
                       },
                     );
 
                     if (!res.ok) {
                       const errJson = await res.json().catch(() => null);
-                      throw new Error(errJson?.error || "Falha ao excluir anime no servidor.");
+                      throw new Error(
+                        errJson?.error || "Falha ao excluir anime no servidor.",
+                      );
                     }
 
                     removeAnime(pendingDelete);
-                    toast.success("Anime excluído com sucesso do servidor e do dispositivo.");
+                    toast.success(
+                      "Anime excluído com sucesso do servidor e do dispositivo.",
+                    );
                     void checkSystem();
                   } catch (err) {
-                    toast.error(err instanceof Error ? err.message : "Erro ao excluir anime.");
+                    toast.error(
+                      err instanceof Error
+                        ? err.message
+                        : "Erro ao excluir anime.",
+                    );
                   }
                 }
                 setPendingDelete(null);
               }}
-              className="h-9 bg-rose-600 text-xs font-semibold text-white hover:bg-rose-500"
+              className="h-9 bg-rose-600 text-xs font-semibold text-white hover:bg-rose-700"
             >
               Confirmar Exclusão
             </Button>

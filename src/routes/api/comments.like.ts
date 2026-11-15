@@ -1,6 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { resolveApiUser } from "@/lib/auth/api-session";
+import {
+  buildBannedCommentResponse,
+  getActiveUserBan,
+} from "@/lib/moderation-bans.server";
 
 export const Route = createFileRoute("/api/comments/like")({
   server: {
@@ -15,6 +19,11 @@ export const Route = createFileRoute("/api/comments/like")({
               { error: "É necessário estar autenticado para reagir a um comentário." },
               { status: 401 },
             );
+          }
+
+          const activeBan = await getActiveUserBan(sql, apiUser.id);
+          if (activeBan) {
+            return buildBannedCommentResponse(activeBan);
           }
 
           let body: any;

@@ -1,7 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { resolveApiUser } from "@/lib/auth/api-session";
-import { isHikariAdmin } from "@/lib/auth/admin";
+import { isAuthorizedAdminAccount } from "@/lib/auth/admin-guard";
+import {
+  buildBannedCommentResponse,
+  getActiveUserBan,
+} from "@/lib/moderation-bans.server";
 
 export const Route = createFileRoute("/api/comments/edit")({
   server: {
@@ -71,13 +75,23 @@ export const Route = createFileRoute("/api/comments/edit")({
 
           const targetComment = commentRows[0];
           const isOwner = String(targetComment.userId) === apiUser.id;
-          const isAdmin = Boolean(apiUser.email && isHikariAdmin(apiUser.email));
+          const isAdmin = await isAuthorizedAdminAccount({
+            userId: apiUser.id,
+            email: apiUser.email,
+          });
 
           if (!isOwner && !isAdmin) {
             return Response.json(
               { error: "Você não tem permissão para alterar este comentário." },
               { status: 403 },
             );
+          }
+
+          if (!isAdmin) {
+            const activeBan = await getActiveUserBan(sql, apiUser.id);
+            if (activeBan) {
+              return buildBannedCommentResponse(activeBan);
+            }
           }
 
           if (action === "edit") {

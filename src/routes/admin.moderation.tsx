@@ -1,25 +1,41 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  Ban,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clock,
+  ExternalLink,
+  Eye,
   Film,
+  History,
+  Image as ImageIcon,
+  Loader2,
   MessageCircle,
+  MessageSquare,
+  Plus,
   RefreshCw,
   Search,
   ShieldAlert,
+  ShieldCheck,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   User,
+  X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import {
+  type BanModalTargetUser,
   StudioEmptyState,
   StudioLoadingState,
   StudioPageHeader,
   StudioPanel,
   StudioStatStrip,
+  UserBanModal,
 } from "@/components/admin/studio-ui";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,552 +46,1394 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { getBearerToken } from "@/lib/auth/client";
+import {
+  formatBanDateTime,
+  formatBanRemaining,
+  type BanHistoryEntry,
+  type EnrichedActiveUserBan,
+} from "@/lib/moderation-ban-types";
+import { cn } from "@/lib/utils";
+import type {
+  AdminCommentItem,
+  AdminCommentsSummary,
+} from "@/routes/api/admin/comments";
+import type { AdminUserListItem } from "@/routes/api/admin/users";
 
 export const Route = createFileRoute("/admin/moderation")({
   component: AdminModeration,
 });
 
-type ReportReason = {
-  value: string;
-  label: string;
-};
+type ModerationTab = "comments" | "reports" | "bans";
+type CommentFilter = "all" | "reported" | "spoilers" | "roots" | "replies";
 
-type Report = {
-  commentId: string;
-  animeId: string;
-  episodeId: string;
-  content: string;
-  parentId: string | null;
-  isSpoiler: boolean;
-  createdAt: string;
-  updatedAt: string;
-
-  userId: string;
-  userName: string;
-  userEmail: string | null;
-  userImage: string | null;
-
-  reportCount: number;
-  firstReportedAt: string;
-
-  reasons: ReportReason[];
+const INITIAL_SUMMARY: AdminCommentsSummary = {
+  totalComments: 0,
+  totalRoots: 0,
+  totalReplies: 0,
+  reportedComments: 0,
+  pendingReports: 0,
+  spoilersCount: 0,
+  activeBansCount: 0,
 };
 
 function AdminModeration() {
-  const [reports, setReports] = useState<Report[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [reasonFilter, setReasonFilter] = useState("ALL");
+  const [activeTab, setActiveTab] = useState<ModerationTab>("comments");
+
+  // Comentários & Denúncias (PostgreSQL real)
+  const [comments, setComments] = useState<AdminCommentItem[]>([]);
+  const [summary, setSummary] = useState<AdminCommentsSummary>(INITIAL_SUMMARY);
+  const [loadingComments, setLoadingComments] = useState(true);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [commentFilter, setCommentFilter] = useState<CommentFilter>("all");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalFiltered, setTotalFiltered] = useState(0);
+
+  // Banimentos & Histórico
+  const [activeBans, setActiveBans] = useState<EnrichedActiveUserBan[]>([]);
+  const [banHistory, setBanHistory] = useState<BanHistoryEntry[]>([]);
+  const [loadingBans, setLoadingBans] = useState(true);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  // Ações e modais
   const [pendingAction, setPendingAction] = useState<{
-    type: "resolve" | "delete";
-    commentId: string;
+    type: "delete" | "resolve_reports" | "toggle_spoiler";
+    comment: AdminCommentItem;
   } | null>(null);
-  const [processing, setProcessing] = useState(false);
+  const [processingAction, setProcessingAction] = useState(false);
 
-  const loadReports = useCallback(async () => {
-    setLoading(true);
+  const [banTarget, setBanTarget] = useState<BanModalTargetUser | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<{
+    userId: string;
+    userName: string;
+  } | null>(null);
+  const [revokingBan, setRevokingBan] = useState(false);
 
+  // Modal de seleção rápida de usuário para banimento na aba Banimentos
+  const [userLookupOpen, setUserLookupOpen] = useState(false);
+  const [userLookupQuery, setUserLookupQuery] = useState("");
+  const [userLookupResults, setUserLookupResults] = useState<AdminUserListItem[]>([]);
+  const [userLookupLoading, setUserLookupLoading] = useState(false);
+
+  // Preview ampliado de imagem anexada em comentário
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
+  // Debounce da busca de comentários
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Atualização em tempo real do relógio de expiração de banimentos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadComments = useCallback(async () => {
+    setLoadingComments(true);
     try {
       const token = getBearerToken();
-      const headers: Record<string, string> = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const effectiveFilter =
+        activeTab === "reports" ? "pending_reports" : commentFilter;
+      const params = new URLSearchParams({
+        filter: effectiveFilter,
+        page: String(page),
+        limit: "15",
+      });
+      if (searchTerm) {
+        params.set("search", searchTerm);
+      }
 
-      const response = await fetch("/api/admin/comment-reports", {
+      const res = await fetch(`/api/admin/comments?${params.toString()}`, {
         method: "GET",
         credentials: "include",
-        headers,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
-      const data = (await response.json()) as {
-        reports?: Report[];
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        comments?: AdminCommentItem[];
+        summary?: AdminCommentsSummary;
+        pagination?: { total: number; totalPages: number };
         error?: string;
-      };
+      } | null;
 
-      if (!response.ok) {
+      if (!res.ok) {
         throw new Error(
-          data.error ?? "Não foi possível carregar as denúncias.",
+          data?.error || "Não foi possível carregar os comentários.",
         );
       }
 
-      setReports(Array.isArray(data.reports) ? data.reports : []);
-    } catch (error) {
+      setComments(Array.isArray(data?.comments) ? data.comments : []);
+      if (data?.summary) {
+        setSummary(data.summary);
+      }
+      setTotalFiltered(Number(data?.pagination?.total || 0));
+      setTotalPages(Math.max(1, Number(data?.pagination?.totalPages || 1)));
+    } catch (err) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível carregar as denúncias.",
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar os comentários.",
       );
     } finally {
-      setLoading(false);
+      setLoadingComments(false);
+    }
+  }, [activeTab, commentFilter, page, searchTerm]);
+
+  const loadBans = useCallback(async () => {
+    setLoadingBans(true);
+    try {
+      const token = getBearerToken();
+      const res = await fetch("/api/admin/bans", {
+        method: "GET",
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        activeBans?: EnrichedActiveUserBan[];
+        history?: BanHistoryEntry[];
+        error?: string;
+      } | null;
+
+      if (!res.ok) {
+        throw new Error(
+          data?.error || "Não foi possível carregar os banimentos.",
+        );
+      }
+
+      setActiveBans(Array.isArray(data?.activeBans) ? data.activeBans : []);
+      setBanHistory(Array.isArray(data?.history) ? data.history : []);
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar os banimentos.",
+      );
+    } finally {
+      setLoadingBans(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadReports();
-  }, [loadReports]);
+    if (activeTab === "comments" || activeTab === "reports") {
+      void loadComments();
+    }
+  }, [activeTab, loadComments]);
 
-  async function executeAction() {
-    if (!pendingAction) return;
+  useEffect(() => {
+    void loadBans();
+  }, [loadBans]);
 
-    setProcessing(true);
+  // Busca de usuários no modal de novo banimento
+  useEffect(() => {
+    if (!userLookupOpen) return;
+    let cancelled = false;
+
+    const timer = setTimeout(async () => {
+      setUserLookupLoading(true);
+      try {
+        const token = getBearerToken();
+        const params = new URLSearchParams({
+          search: userLookupQuery.trim(),
+          role: "all",
+          page: "1",
+          limit: "12",
+        });
+        const res = await fetch(`/api/admin/users?${params.toString()}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = (await res.json().catch(() => null)) as {
+          users?: AdminUserListItem[];
+        } | null;
+        if (!cancelled) {
+          setUserLookupResults(Array.isArray(data?.users) ? data.users : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setUserLookupResults([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setUserLookupLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [userLookupOpen, userLookupQuery]);
+
+  const handleRefreshAll = () => {
+    void Promise.all([loadComments(), loadBans()]);
+  };
+
+  const executeCommentAction = async () => {
+    if (!pendingAction || processingAction) return;
+    setProcessingAction(true);
 
     try {
       const token = getBearerToken();
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const response = await fetch("/api/admin/comment-reports", {
+      const res = await fetch("/api/admin/comments", {
         method: "POST",
-        headers,
         credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
-          commentId: pendingAction.commentId,
+          commentId: pendingAction.comment.id,
           action: pendingAction.type,
         }),
       });
 
-      const data = (await response.json()) as {
-        success?: boolean;
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        isSpoiler?: boolean;
         error?: string;
-      };
+      } | null;
 
-      if (!response.ok) {
-        throw new Error(data.error ?? "Não foi possível realizar a ação.");
+      if (!res.ok) {
+        throw new Error(
+          data?.error || "Não foi possível concluir a ação no comentário.",
+        );
       }
 
       if (pendingAction.type === "delete") {
-        toast.success("Comentário removido.");
+        toast.success("Comentário removido permanentemente.");
+      } else if (pendingAction.type === "resolve_reports") {
+        toast.success("Denúncias marcadas como resolvidas.");
       } else {
-        toast.success("Denúncia resolvida.");
+        toast.success(
+          data?.isSpoiler
+            ? "Comentário marcado como spoiler."
+            : "Marcação de spoiler removida.",
+        );
       }
 
       setPendingAction(null);
-      await loadReports();
-    } catch (error) {
+      await loadComments();
+    } catch (err) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível realizar a ação.",
+        err instanceof Error
+          ? err.message
+          : "Erro ao executar ação de moderação.",
       );
     } finally {
-      setProcessing(false);
+      setProcessingAction(false);
     }
-  }
+  };
 
-  const availableReasons = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const report of reports) {
-      for (const reason of report.reasons) {
-        if (reason.value && !map.has(reason.value)) {
-          map.set(reason.value, reason.label);
-        }
+  const handleToggleSpoilerInline = async (comment: AdminCommentItem) => {
+    try {
+      const token = getBearerToken();
+      const res = await fetch("/api/admin/comments", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          commentId: comment.id,
+          action: "toggle_spoiler",
+          isSpoiler: !comment.isSpoiler,
+        }),
+      });
+
+      const data = (await res.json().catch(() => null)) as {
+        isSpoiler?: boolean;
+        error?: string;
+      } | null;
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao atualizar alerta de spoiler.");
       }
-    }
-    return Array.from(map.entries()).map(([value, label]) => ({
-      value,
-      label,
-    }));
-  }, [reports]);
 
-  const filteredReports = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return reports.filter((report) => {
-      if (
-        reasonFilter !== "ALL" &&
-        !report.reasons.some((reason) => reason.value === reasonFilter)
-      ) {
-        return false;
-      }
-
-      if (!query) return true;
-
-      return (
-        report.userName.toLowerCase().includes(query) ||
-        report.content.toLowerCase().includes(query) ||
-        report.animeId.toLowerCase().includes(query) ||
-        report.episodeId.toLowerCase().includes(query)
+      toast.success(
+        data?.isSpoiler
+          ? "Spoiler ativado no comentário."
+          : "Spoiler removido do comentário.",
       );
-    });
-  }, [reports, searchQuery, reasonFilter]);
+      await loadComments();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao alterar spoiler.",
+      );
+    }
+  };
 
-  const totalReportCount = useMemo(
-    () => reports.reduce((acc, item) => acc + (item.reportCount || 0), 0),
-    [reports],
-  );
+  const handleConfirmRevokeBan = async () => {
+    if (!revokeTarget || revokingBan) return;
+    setRevokingBan(true);
+    try {
+      const token = getBearerToken();
+      const res = await fetch(
+        `/api/admin/bans?userId=${encodeURIComponent(revokeTarget.userId)}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        },
+      );
+      const data = (await res.json().catch(() => null)) as {
+        message?: string;
+        error?: string;
+      } | null;
 
-  const spoilerCount = useMemo(
-    () => reports.filter((item) => item.isSpoiler).length,
-    [reports],
-  );
+      if (!res.ok) {
+        throw new Error(data?.error || "Não foi possível revogar o banimento.");
+      }
+
+      toast.success(data?.message || "Banimento encerrado antecipadamente.");
+      setRevokeTarget(null);
+      await Promise.all([loadBans(), loadComments()]);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao revogar banimento.",
+      );
+    } finally {
+      setRevokingBan(false);
+    }
+  };
+
+  const isRefreshing = loadingComments || loadingBans;
 
   return (
-    <div className="studio-enter space-y-6 pb-12">
+    <div className="studio-enter space-y-6 pb-8">
       <StudioPageHeader
-        kicker="Comunidade & IA"
-        title="Moderação de Comentários"
-        description="Analise os comentários denunciados pelos usuários e decida se a sinalização deve ser resolvida ou se o comentário deve ser removido."
+        kicker="Comunidade & Segurança"
+        title="Central de Comentários & Moderação"
+        description="Inspecione comentários reais do PostgreSQL, resolva denúncias da comunidade, controle alertas de spoiler e aplique ou revogue banimentos temporários."
         backTo="/admin"
+        backLabel="Voltar ao Painel"
         status={
-          reports.length === 0 ? (
-            <span className="font-medium text-emerald-400">Fila limpa</span>
+          summary.reportedComments > 0 ? (
+            <span className="studio-tabular font-semibold text-amber-700">
+              {summary.reportedComments} comentário(s) com denúncia pendente
+            </span>
           ) : (
-            <span className="studio-tabular font-medium text-amber-300">
-              {reports.length} na fila
+            <span className="font-semibold text-emerald-700">
+              Sem denúncias pendentes
             </span>
           )
         }
         actions={
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void loadReports()}
-            disabled={loading}
-            className="h-9 gap-2 border-[var(--studio-line-strong)] bg-[var(--studio-panel)] px-3.5 text-xs font-medium hover:bg-white/[0.06]"
-          >
-            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
-            {loading ? "Atualizando…" : "Atualizar"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setUserLookupOpen(true)}
+              className="h-9 gap-1.5 border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+            >
+              <Ban className="size-3.5" />
+              Aplicar Banimento
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleRefreshAll}
+              disabled={isRefreshing}
+              className="h-9 gap-1.5 border-slate-300 bg-white px-3.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <RefreshCw
+                className={cn("size-3.5", isRefreshing && "animate-spin")}
+              />
+              {isRefreshing ? "Atualizando…" : "Atualizar"}
+            </Button>
+          </div>
         }
       />
 
+      {/* Indicadores Principais */}
       <StudioStatStrip
-        columns={3}
+        columns={4}
         items={[
           {
-            label: "Comentários na fila",
-            value: reports.length,
-            detail:
-              reports.length === 0
-                ? "Nenhum item aguardando análise"
-                : `${filteredReports.length} visíveis com os filtros atuais`,
-            accent: reports.length > 0 ? "amber" : "emerald",
+            label: "Total de Comentários",
+            value: summary.totalComments.toLocaleString("pt-BR"),
+            detail: `${summary.totalRoots.toLocaleString("pt-BR")} raízes · ${summary.totalReplies.toLocaleString("pt-BR")} respostas`,
+            accent: "cobalt",
           },
           {
-            label: "Total de sinalizações",
-            value: totalReportCount,
-            detail: "Soma das denúncias recebidas",
-            accent: totalReportCount > 0 ? "rose" : "default",
+            label: "Denúncias Pendentes",
+            value: summary.pendingReports.toLocaleString("pt-BR"),
+            detail: `${summary.reportedComments.toLocaleString("pt-BR")} comentário(s) sinalizado(s)`,
+            accent: summary.pendingReports > 0 ? "amber" : "emerald",
           },
           {
-            label: "Com alerta de spoiler",
-            value: spoilerCount,
-            detail: "Comentários marcados com aviso de spoiler",
-            accent: "violet",
+            label: "Com Alerta de Spoiler",
+            value: summary.spoilersCount.toLocaleString("pt-BR"),
+            detail: "Protegidos contra visualização acidental",
+            accent: "default",
+          },
+          {
+            label: "Banimentos Ativos",
+            value: activeBans.length.toLocaleString("pt-BR"),
+            detail: "Suspensões temporárias em vigor",
+            accent: activeBans.length > 0 ? "rose" : "default",
           },
         ]}
       />
 
-      {/* Filtros da Fila */}
-      {reports.length > 0 && (
-        <StudioPanel bodyClassName="p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-[var(--color-subtle)]" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar autor, texto, anime ID ou episódio ID..."
-                aria-label="Buscar denúncias"
-                className="studio-input h-10 pl-9 text-xs"
-              />
-            </div>
+      {/* Navegação por Abas */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+        <div
+          role="tablist"
+          aria-label="Seções de moderação"
+          className="inline-flex flex-wrap gap-1.5 rounded-xl border border-slate-200 bg-white p-1"
+        >
+          {(
+            [
+              {
+                id: "comments" as const,
+                label: "Todos os Comentários",
+                icon: MessageSquare,
+                badge: summary.totalComments,
+              },
+              {
+                id: "reports" as const,
+                label: "Denúncias Pendentes",
+                icon: ShieldAlert,
+                badge: summary.reportedComments,
+                alert: summary.reportedComments > 0,
+              },
+              {
+                id: "bans" as const,
+                label: "Banimentos & Histórico",
+                icon: Ban,
+                badge: activeBans.length,
+                danger: activeBans.length > 0,
+              },
+            ] as const
+          ).map((tab) => {
+            const Icon = tab.icon;
+            const selected = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                role="tab"
+                type="button"
+                aria-selected={selected}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setPage(1);
+                }}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors",
+                  selected
+                    ? "bg-blue-700 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                )}
+              >
+                <Icon className="size-3.5 shrink-0" />
+                <span>{tab.label}</span>
+                <span
+                  className={cn(
+                    "studio-tabular rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none",
+                    selected
+                      ? "bg-white/20 text-white"
+                      : "alert" in tab && tab.alert
+                        ? "bg-amber-100 text-amber-800"
+                        : "danger" in tab && tab.danger
+                          ? "bg-rose-100 text-rose-800"
+                          : "bg-slate-100 text-slate-600",
+                  )}
+                >
+                  {tab.badge}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-            <select
-              value={reasonFilter}
-              onChange={(e) => setReasonFilter(e.target.value)}
-              aria-label="Filtrar por motivo"
-              className="studio-input h-10 w-full cursor-pointer px-3 text-xs sm:w-60"
-            >
-              <option value="ALL">Todos os motivos</option>
-              {availableReasons.map((reason) => (
-                <option key={reason.value} value={reason.value}>
-                  {reason.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </StudioPanel>
-      )}
-
-      {/* Conteúdo */}
-      {loading ? (
-        <StudioLoadingState message="Consultando fila de moderação no PostgreSQL..." />
-      ) : reports.length === 0 ? (
-        <StudioEmptyState
-          icon={<Check className="size-6 text-emerald-400" />}
-          title="Tudo limpo na fila de moderação"
-          description="Não há comentários denunciados aguardando análise da equipe."
-        />
-      ) : filteredReports.length === 0 ? (
-        <StudioEmptyState
-          icon={<ShieldAlert className="size-6 text-[var(--color-muted)]" />}
-          title="Nenhuma denúncia corresponde aos filtros"
-          description={`Limpe a busca ou altere o filtro de motivo para visualizar os ${reports.length} itens da fila.`}
-          action={
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSearchQuery("");
-                setReasonFilter("ALL");
-              }}
-              className="h-9 border-[var(--studio-line-strong)] bg-[var(--studio-panel-alt)] text-xs"
-            >
-              Limpar filtros
-            </Button>
-          }
-        />
-      ) : (
+      {/* Aba 1 & Aba 2: Listagem de Comentários / Denúncias */}
+      {(activeTab === "comments" || activeTab === "reports") && (
         <div className="space-y-4">
-          {filteredReports.map((report) => (
-            <ReportCard
-              key={report.commentId}
-              report={report}
-              onResolve={() =>
-                setPendingAction({
-                  type: "resolve",
-                  commentId: report.commentId,
-                })
+          <StudioPanel bodyClassName="p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Buscar por texto do comentário, autor, @nick, e-mail, anime ou episódio..."
+                  aria-label="Buscar comentários"
+                  className="studio-input h-10 pl-9 pr-8 text-xs"
+                />
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchInput("")}
+                    className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    aria-label="Limpar busca"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {activeTab === "comments" && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(
+                    [
+                      { id: "all", label: "Todos" },
+                      { id: "reported", label: "Denunciados" },
+                      { id: "spoilers", label: "Spoilers" },
+                      { id: "roots", label: "Principais" },
+                      { id: "replies", label: "Respostas" },
+                    ] as const
+                  ).map((chip) => (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      onClick={() => {
+                        setCommentFilter(chip.id);
+                        setPage(1);
+                      }}
+                      className={cn(
+                        "h-8 rounded-lg border px-3 text-xs font-semibold transition-colors",
+                        commentFilter === chip.id
+                          ? "border-blue-600 bg-blue-50 text-blue-700"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+                      )}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </StudioPanel>
+
+          {loadingComments ? (
+            <StudioLoadingState message="Consultando comentários e denúncias no PostgreSQL..." />
+          ) : comments.length === 0 ? (
+            <StudioEmptyState
+              icon={
+                activeTab === "reports" ? (
+                  <Check className="size-6 text-emerald-600" />
+                ) : (
+                  <MessageSquare className="size-6 text-slate-400" />
+                )
               }
-              onDelete={() =>
-                setPendingAction({
-                  type: "delete",
-                  commentId: report.commentId,
-                })
+              title={
+                activeTab === "reports"
+                  ? "Nenhuma denúncia pendente na fila"
+                  : "Nenhum comentário encontrado"
+              }
+              description={
+                searchTerm
+                  ? `Nenhum comentário corresponde ao termo "${searchTerm}".`
+                  : activeTab === "reports"
+                    ? "Todos os comentários sinalizados pela comunidade já foram analisados."
+                    : "Ainda não há comentários registrados para os filtros selecionados."
+              }
+              action={
+                (searchTerm || commentFilter !== "all") && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSearchInput("");
+                      setSearchTerm("");
+                      setCommentFilter("all");
+                      setPage(1);
+                    }}
+                    className="h-9 border-slate-300 bg-white text-xs text-slate-700"
+                  >
+                    Limpar filtros
+                  </Button>
+                )
               }
             />
-          ))}
+          ) : (
+            <>
+              <div className="space-y-3">
+                {comments.map((comment) => (
+                  <CommentModerationCard
+                    key={comment.id}
+                    comment={comment}
+                    nowMs={nowMs}
+                    onToggleSpoiler={() => void handleToggleSpoilerInline(comment)}
+                    onResolveReports={() =>
+                      setPendingAction({ type: "resolve_reports", comment })
+                    }
+                    onDelete={() =>
+                      setPendingAction({ type: "delete", comment })
+                    }
+                    onBanAuthor={() =>
+                      setBanTarget({
+                        userId: comment.userId,
+                        userName: comment.userName,
+                        userEmail: comment.userEmail,
+                        userNick: comment.userNick,
+                      })
+                    }
+                    onRevokeAuthorBan={() =>
+                      setRevokeTarget({
+                        userId: comment.userId,
+                        userName: comment.userName,
+                      })
+                    }
+                    onPreviewImage={(url) => setPreviewImageUrl(url)}
+                  />
+                ))}
+              </div>
+
+              {totalPages > 1 && (
+                <div className="studio-panel flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 text-xs text-slate-600">
+                  <span className="studio-tabular">
+                    Mostrando <strong className="text-slate-900">{comments.length}</strong>{" "}
+                    de <strong className="text-slate-900">{totalFiltered}</strong>{" "}
+                    comentários
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={page <= 1 || loadingComments}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      className="size-8 border-slate-300 bg-white p-0 text-slate-700 hover:bg-slate-50"
+                      aria-label="Página anterior"
+                    >
+                      <ChevronLeft className="size-4" />
+                    </Button>
+                    <span className="studio-mono px-2 text-xs font-semibold text-slate-700">
+                      {page} / {totalPages}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={page >= totalPages || loadingComments}
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      className="size-8 border-slate-300 bg-white p-0 text-slate-700 hover:bg-slate-50"
+                      aria-label="Próxima página"
+                    >
+                      <ChevronRight className="size-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
-      {/* Diálogo de Confirmação */}
+      {/* Aba 3: Banimentos Ativos & Histórico Auditável */}
+      {activeTab === "bans" && (
+        <div className="space-y-6">
+          <StudioPanel
+            title="Usuários Suspensos Atualmente"
+            description="Usuários impedidos de comentar, responder, reagir ou enviar anexos enquanto o prazo não expira."
+            icon={<Ban className="size-4" />}
+            right={
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setUserLookupOpen(true)}
+                className="h-8 gap-1.5 bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700"
+              >
+                <Plus className="size-3.5" />
+                Novo Banimento
+              </Button>
+            }
+          >
+            {loadingBans ? (
+              <div className="flex items-center justify-center py-10 text-xs text-slate-500">
+                <Loader2 className="mr-2 size-4 animate-spin text-blue-600" />
+                Carregando suspensões ativas...
+              </div>
+            ) : activeBans.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 py-10 text-center">
+                <ShieldCheck className="size-8 text-emerald-600" />
+                <p className="mt-2 text-sm font-semibold text-slate-900">
+                  Nenhum banimento temporário ativo
+                </p>
+                <p className="mt-1 max-w-md text-xs text-slate-500">
+                  Use "Aplicar Banimento" acima ou o botão de suspensão direto nos
+                  cards de comentários para restringir contas temporariamente.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200">
+                {activeBans.map((ban) => {
+                  const remainingText = formatBanRemaining(ban.expiresAt, nowMs);
+                  return (
+                    <div
+                      key={ban.banId}
+                      className="flex flex-col gap-4 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-semibold text-slate-900">
+                            {ban.userName}
+                          </span>
+                          {ban.userNick && (
+                            <span className="studio-mono text-xs text-slate-500">
+                              @{ban.userNick}
+                            </span>
+                          )}
+                          <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                            <Clock className="size-3" />
+                            Restante: {remainingText}
+                          </span>
+                        </div>
+
+                        <p className="text-xs leading-relaxed text-slate-700">
+                          <span className="font-semibold text-slate-900">
+                            Motivo:
+                          </span>{" "}
+                          {ban.reason}
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                          <span>
+                            Duração:{" "}
+                            <strong className="text-slate-700">
+                              {ban.durationLabel}
+                            </strong>
+                          </span>
+                          <span>
+                            Expira em:{" "}
+                            <strong className="studio-tabular text-slate-700">
+                              {formatBanDateTime(ban.expiresAt)}
+                            </strong>
+                          </span>
+                          <span>
+                            Aplicado por:{" "}
+                            <strong className="text-slate-700">
+                              {ban.bannedByName || ban.bannedBy}
+                            </strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setRevokeTarget({
+                              userId: ban.userId,
+                              userName: ban.userName,
+                            })
+                          }
+                          className="h-9 gap-1.5 border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                        >
+                          <ShieldCheck className="size-3.5" />
+                          Remover Banimento
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </StudioPanel>
+
+          <StudioPanel
+            title="Histórico Recente de Moderação"
+            description="Registro cronológico de banimentos aplicados, encerramentos antecipados e expirações automáticas."
+            icon={<History className="size-4" />}
+          >
+            {banHistory.length === 0 ? (
+              <p className="py-6 text-center text-xs text-slate-500">
+                Nenhuma ocorrência de banimento registrada até o momento.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
+                    <tr>
+                      <th className="px-4 py-2.5">Evento</th>
+                      <th className="px-4 py-2.5">Usuário</th>
+                      <th className="px-4 py-2.5">Duração / Motivo</th>
+                      <th className="px-4 py-2.5">Moderador</th>
+                      <th className="px-4 py-2.5 text-right">Data</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 bg-white">
+                    {banHistory.map((entry) => (
+                      <tr key={entry.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3">
+                          {entry.action === "ban" ? (
+                            <span className="inline-flex items-center rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                              Banido
+                            </span>
+                          ) : entry.action === "unban" ? (
+                            <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                              Revogado
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                              Expirado
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-slate-900">
+                            {entry.userName || entry.userId}
+                          </div>
+                          {(entry.userNick || entry.userEmail) && (
+                            <div className="studio-mono text-[11px] text-slate-500">
+                              {entry.userNick ? `@${entry.userNick}` : entry.userEmail}
+                            </div>
+                          )}
+                        </td>
+                        <td className="max-w-sm px-4 py-3 text-slate-700">
+                          {entry.durationLabel && (
+                            <span className="mr-1.5 font-semibold text-slate-900">
+                              [{entry.durationLabel}]
+                            </span>
+                          )}
+                          <span>{entry.reason}</span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {entry.actorName || entry.actorId}
+                        </td>
+                        <td className="studio-tabular px-4 py-3 text-right text-slate-500">
+                          {formatBanDateTime(entry.createdAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </StudioPanel>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Ação em Comentário */}
       <Dialog
         open={pendingAction !== null}
         onOpenChange={(open) => {
-          if (!open && !processing) {
+          if (!open && !processingAction) {
             setPendingAction(null);
           }
         }}
       >
-        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-[var(--studio-line-strong)] bg-[var(--studio-panel)] text-[var(--color-fg)] shadow-2xl sm:max-w-md">
-          <DialogTitle className="font-display text-lg font-bold">
+        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-md">
+          <DialogTitle className="font-display text-lg font-bold text-slate-900">
             {pendingAction?.type === "delete"
-              ? "Remover comentário?"
-              : "Resolver denúncia?"}
+              ? "Excluir comentário permanentemente?"
+              : "Marcar denúncias como resolvidas?"}
           </DialogTitle>
-
-          <DialogDescription className="text-sm text-[var(--color-muted)]">
+          <DialogDescription className="text-xs leading-relaxed text-slate-600">
             {pendingAction?.type === "delete"
-              ? "O comentário será removido permanentemente. As respostas, curtidas e denúncias relacionadas também serão removidas."
-              : "A denúncia será marcada como resolvida e deixará de aparecer nesta lista."}
+              ? "Esta ação removerá o comentário do PostgreSQL juntamente com todas as respostas vinculadas, curtidas e denúncias."
+              : "As denúncias pendentes deste comentário serão arquivadas como resolvidas e o comentário permanecerá publicado."}
           </DialogDescription>
 
-          <div className="mt-5 flex flex-col-reverse gap-2 border-t border-[var(--studio-line)] pt-4 sm:flex-row sm:justify-end">
+          {pendingAction && (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+              <p className="font-semibold text-slate-900">
+                {pendingAction.comment.userName}
+              </p>
+              <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-slate-600">
+                {pendingAction.comment.content}
+              </p>
+            </div>
+          )}
+
+          <div className="mt-5 flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
             <Button
               type="button"
-              variant="ghost"
-              disabled={processing}
+              variant="outline"
+              disabled={processingAction}
               onClick={() => setPendingAction(null)}
-              className="h-10 border border-[var(--studio-line)] hover:bg-white/[0.06]"
+              className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
             >
               Cancelar
             </Button>
-
             <Button
               type="button"
-              variant={pendingAction?.type === "delete" ? "danger" : "default"}
-              disabled={processing}
-              onClick={() => void executeAction()}
+              disabled={processingAction}
+              onClick={() => void executeCommentAction()}
               className={
                 pendingAction?.type === "delete"
-                  ? "h-10 bg-rose-600 text-white hover:bg-rose-500"
-                  : "h-10 bg-violet-600 text-white hover:bg-violet-500"
+                  ? "h-9 bg-rose-600 px-4 text-xs font-semibold text-white hover:bg-rose-700"
+                  : "h-9 bg-blue-700 px-4 text-xs font-semibold text-white hover:bg-blue-800"
               }
             >
-              {processing
-                ? "Processando…"
-                : pendingAction?.type === "delete"
-                  ? "Remover"
-                  : "Resolver"}
+              {processingAction ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  Processando…
+                </>
+              ) : pendingAction?.type === "delete" ? (
+                "Excluir Comentário"
+              ) : (
+                "Resolver Denúncias"
+              )}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Confirmação de Remoção de Banimento */}
+      <Dialog
+        open={revokeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !revokingBan) {
+            setRevokeTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="hikari-studio-dialog border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-md">
+          <DialogTitle className="font-display text-lg font-bold text-slate-900">
+            Remover banimento antecipadamente?
+          </DialogTitle>
+          <DialogDescription className="text-xs leading-relaxed text-slate-600">
+            O usuário{" "}
+            <strong className="text-slate-900">
+              {revokeTarget?.userName}
+            </strong>{" "}
+            recuperará imediatamente o acesso para publicar comentários,
+            respostas e anexar imagens.
+          </DialogDescription>
+          <div className="mt-4 flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={revokingBan}
+              onClick={() => setRevokeTarget(null)}
+              className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={revokingBan}
+              onClick={() => void handleConfirmRevokeBan()}
+              className="h-9 bg-emerald-600 px-4 text-xs font-semibold text-white hover:bg-emerald-700"
+            >
+              {revokingBan ? "Removendo…" : "Confirmar Liberação"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Seleção de Usuário para Novo Banimento */}
+      <Dialog
+        open={userLookupOpen}
+        onOpenChange={(open) => setUserLookupOpen(open)}
+      >
+        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-lg">
+          <DialogTitle className="font-display text-lg font-bold text-slate-900">
+            Selecionar Usuário para Banimento
+          </DialogTitle>
+          <DialogDescription className="text-xs text-slate-600">
+            Pesquise por nome, @nick ou e-mail para aplicar uma suspensão
+            temporária de comentários.
+          </DialogDescription>
+
+          <div className="mt-4 space-y-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={userLookupQuery}
+                onChange={(e) => setUserLookupQuery(e.target.value)}
+                placeholder="Digite nome, @nick ou e-mail..."
+                className="studio-input h-9 pl-9 text-xs"
+              />
+            </div>
+
+            <div className="max-h-72 divide-y divide-slate-200 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50">
+              {userLookupLoading ? (
+                <div className="flex items-center justify-center py-8 text-xs text-slate-500">
+                  <Loader2 className="mr-2 size-4 animate-spin text-blue-600" />
+                  Buscando contas...
+                </div>
+              ) : userLookupResults.length === 0 ? (
+                <p className="py-8 text-center text-xs text-slate-500">
+                  Nenhuma conta encontrada.
+                </p>
+              ) : (
+                userLookupResults.map((u) => {
+                  const protectedUser = u.isCurrentAdmin || u.isSystemAdmin;
+                  return (
+                    <div
+                      key={u.id}
+                      className="flex items-center justify-between gap-3 bg-white px-3.5 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-slate-900">
+                          {u.displayName || u.name}
+                          {u.activeBan && (
+                            <span className="ml-2 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                              Já banido
+                            </span>
+                          )}
+                        </p>
+                        <p className="studio-mono truncate text-[11px] text-slate-500">
+                          {u.nick ? `@${u.nick} · ` : ""}
+                          {u.email}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={protectedUser}
+                        onClick={() => {
+                          setUserLookupOpen(false);
+                          setBanTarget({
+                            userId: u.id,
+                            userName: u.displayName || u.name,
+                            userEmail: u.email,
+                            userNick: u.nick,
+                          });
+                        }}
+                        className="h-8 shrink-0 bg-rose-600 px-3 text-[11px] font-semibold text-white hover:bg-rose-700 disabled:bg-slate-200 disabled:text-slate-500"
+                      >
+                        {protectedUser ? "Protegido" : "Selecionar"}
+                      </Button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Reutilizável de Banimento Temporário */}
+      <UserBanModal
+        target={banTarget}
+        onClose={() => setBanTarget(null)}
+        onSuccess={() => {
+          void Promise.all([loadBans(), loadComments()]);
+        }}
+      />
+
+      {/* Lightbox de Imagem Anexada ao Comentário */}
+      <Dialog
+        open={previewImageUrl !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreviewImageUrl(null);
+        }}
+      >
+        <DialogContent className="hikari-studio-dialog border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-2xl">
+          <DialogTitle className="font-display text-base font-bold text-slate-900">
+            Imagem Anexada ao Comentário
+          </DialogTitle>
+          {previewImageUrl && (
+            <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+              <img
+                src={previewImageUrl}
+                alt="Anexo do comentário"
+                className="max-h-[70dvh] w-full object-contain"
+              />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
   );
 }
 
-function ReportCard({
-  report,
-  onResolve,
+function CommentModerationCard({
+  comment,
+  nowMs,
+  onToggleSpoiler,
+  onResolveReports,
   onDelete,
+  onBanAuthor,
+  onRevokeAuthorBan,
+  onPreviewImage,
 }: {
-  report: Report;
-  onResolve: () => void;
+  comment: AdminCommentItem;
+  nowMs: number;
+  onToggleSpoiler: () => void;
+  onResolveReports: () => void;
   onDelete: () => void;
+  onBanAuthor: () => void;
+  onRevokeAuthorBan: () => void;
+  onPreviewImage: (url: string) => void;
 }) {
-  const formattedCommentDate = formatDate(report.createdAt);
-  const formattedReportDate = formatDate(report.firstReportedAt);
+  const authorBanned =
+    comment.authorActiveBan && comment.authorActiveBan.expiresAt > nowMs;
 
   return (
-    <article className="studio-panel overflow-hidden rounded-xl transition-colors hover:border-[var(--studio-line-strong)]">
-      <div className="border-b border-[var(--studio-line)] px-4 py-4 sm:px-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-start gap-3">
-            <Avatar image={report.userImage} name={report.userName} />
+    <article
+      className={cn(
+        "studio-panel overflow-hidden rounded-xl transition-colors",
+        comment.pendingReportCount > 0 && "border-amber-300",
+      )}
+    >
+      {/* Topo do Card: Autor & Contexto */}
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3.5 sm:px-5">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          {comment.userImage ? (
+            <img
+              src={comment.userImage}
+              alt={comment.userName}
+              className="size-10 shrink-0 rounded-lg border border-slate-200 object-cover"
+            />
+          ) : (
+            <div className="grid size-10 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500">
+              <User className="size-5" />
+            </div>
+          )}
 
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <p className="truncate text-sm font-semibold text-[var(--color-fg)]">
-                  {report.userName}
-                </p>
-
-                <span className="studio-mono text-xs text-[var(--color-muted)]">
-                  comentou em {report.episodeId}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="truncate text-sm font-semibold text-slate-900">
+                {comment.userName}
+              </span>
+              {comment.userNick && (
+                <span className="studio-mono text-xs text-slate-500">
+                  @{comment.userNick}
                 </span>
-              </div>
+              )}
+              {comment.userRole === "admin" && (
+                <span className="studio-mono rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 uppercase">
+                  Admin
+                </span>
+              )}
+              {authorBanned && comment.authorActiveBan && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                  <Ban className="size-3" />
+                  Banido ·{" "}
+                  {formatBanRemaining(comment.authorActiveBan.expiresAt, nowMs)}
+                </span>
+              )}
+              {comment.parentId && (
+                <span className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                  Resposta
+                </span>
+              )}
+            </div>
 
-              <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
-                Comentário criado em {formattedCommentDate}
-              </p>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+              <span>{formatDate(comment.createdAt)}</span>
+              {comment.userEmail && (
+                <span className="studio-mono truncate">{comment.userEmail}</span>
+              )}
             </div>
           </div>
+        </div>
 
-          <div className="studio-tabular inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-200">
-            <ShieldAlert className="size-3.5 text-rose-400" />
-            <span>
-              {report.reportCount}{" "}
-              {report.reportCount === 1 ? "denúncia" : "denúncias"}
+        {/* Status badges à direita */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {comment.isSpoiler && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
+              <AlertTriangle className="size-3.5 text-amber-600" />
+              Spoiler
             </span>
-          </div>
+          )}
+          {comment.pendingReportCount > 0 && (
+            <span className="studio-tabular inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
+              <ShieldAlert className="size-3.5 text-rose-600" />
+              {comment.pendingReportCount}{" "}
+              {comment.pendingReportCount === 1 ? "denúncia" : "denúncias"}
+            </span>
+          )}
         </div>
       </div>
 
+      {/* Corpo do Comentário */}
       <div className="space-y-4 p-4 sm:p-5">
-        <div className="studio-panel-alt rounded-lg p-4">
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--color-fg)]">
-            {report.content}
-          </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <div className="studio-panel-alt flex-1 rounded-lg p-3.5">
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800">
+              {comment.content || "(Comentário apenas com imagem anexada)"}
+            </p>
+          </div>
+
+          {comment.imageUrl && (
+            <button
+              type="button"
+              onClick={() => onPreviewImage(comment.imageUrl!)}
+              className="group relative h-24 w-32 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 text-left"
+              title="Ampliar imagem anexada"
+            >
+              <img
+                src={comment.imageUrl}
+                alt="Anexo do comentário"
+                className="size-full object-cover transition-transform group-hover:scale-105"
+              />
+              <span className="absolute right-1.5 bottom-1.5 inline-flex items-center gap-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                <ImageIcon className="size-2.5" />
+                Ver
+              </span>
+            </button>
+          )}
         </div>
 
-        {report.isSpoiler && (
-          <div className="flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-200">
-            <AlertTriangle className="size-4 shrink-0 text-amber-400" />
-            <span>Este comentário está marcado como spoiler.</span>
+        {/* Motivos das Denúncias */}
+        {comment.pendingReportCount > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[11px] font-bold tracking-wide text-amber-800 uppercase">
+                Motivos sinalizados
+              </span>
+              {comment.firstReportedAt && (
+                <span className="studio-tabular text-[11px] text-amber-700">
+                  Primeira denúncia em {formatDate(comment.firstReportedAt)}
+                </span>
+              )}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {comment.reportReasons.length > 0 ? (
+                comment.reportReasons.map((reason) => (
+                  <span
+                    key={reason.value}
+                    className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-white px-2 py-0.5 text-xs font-medium text-amber-900"
+                  >
+                    {reason.label}
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs text-amber-800">
+                  Motivo não detalhado
+                </span>
+              )}
+            </div>
           </div>
         )}
 
-        <div>
-          <p className="studio-label mb-2">Motivos informados</p>
-
-          <div className="flex flex-wrap gap-2">
-            {report.reasons.length > 0 ? (
-              report.reasons.map((reason) => (
-                <span
-                  key={reason.value}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] px-2.5 py-1 text-xs text-[var(--color-fg)]"
-                >
-                  {reason.value === "spoiler" && (
-                    <AlertTriangle className="size-3 text-amber-400" />
-                  )}
-                  <span>{reason.label}</span>
-                </span>
-              ))
-            ) : (
-              <span className="text-xs text-[var(--color-subtle)]">
-                Motivo não informado
+        {/* Metadados de Anime, Episódio e Engajamento */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-600">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Film className="size-3.5 text-slate-400" />
+              <span className="font-medium text-slate-800">
+                {comment.animeTitle || comment.animeId}
               </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <MessageCircle className="size-3.5 text-slate-400" />
+              <span className="studio-mono text-[11px]">
+                Ep: {comment.episodeId}
+              </span>
+            </div>
+            <div className="studio-tabular flex items-center gap-3 text-[11px] text-slate-500">
+              <span className="inline-flex items-center gap-1">
+                <ThumbsUp className="size-3" />
+                {comment.likesCount}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <ThumbsDown className="size-3" />
+                {comment.dislikesCount}
+              </span>
+              <span>{comment.repliesCount} resp.</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Link
+              to="/anime/$id"
+              params={{ id: comment.animeId }}
+              target="_blank"
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:underline"
+            >
+              <ExternalLink className="size-3" />
+              Ver página do anime
+            </Link>
+          </div>
+        </div>
+
+        {/* Barra de Ações */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onToggleSpoiler}
+              className={cn(
+                "h-8 gap-1.5 px-3 text-xs font-medium",
+                comment.isSpoiler
+                  ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+              )}
+            >
+              <Eye className="size-3.5" />
+              {comment.isSpoiler ? "Remover Spoiler" : "Marcar Spoiler"}
+            </Button>
+
+            {comment.pendingReportCount > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onResolveReports}
+                className="h-8 gap-1.5 border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+              >
+                <Check className="size-3.5" />
+                Resolver Denúncias
+              </Button>
             )}
           </div>
-        </div>
 
-        <div className="grid gap-2.5 rounded-lg border border-[var(--studio-line)] bg-white/[0.02] p-3 text-xs text-[var(--color-subtle)] sm:grid-cols-3">
-          <div className="flex items-center gap-1.5 truncate">
-            <Film className="size-3.5 shrink-0 text-[var(--color-muted)]" />
-            <span className="text-[var(--color-muted)]">Anime:</span>
-            <span className="studio-mono truncate text-[var(--color-fg)]">
-              {report.animeId}
-            </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {authorBanned ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onRevokeAuthorBan}
+                className="h-8 gap-1.5 border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+              >
+                <ShieldCheck className="size-3.5" />
+                Remover Ban
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={comment.isSystemAdmin}
+                onClick={onBanAuthor}
+                title={
+                  comment.isSystemAdmin
+                    ? "Administrador de infraestrutura protegido"
+                    : "Suspender usuário temporariamente de comentar"
+                }
+                className="h-8 gap-1.5 border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+              >
+                <Ban className="size-3.5" />
+                {comment.isSystemAdmin ? "Conta Protegida" : "Banir Usuário"}
+              </Button>
+            )}
+
+            <Button
+              type="button"
+              size="sm"
+              onClick={onDelete}
+              className="h-8 gap-1.5 bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700"
+            >
+              <Trash2 className="size-3.5" />
+              Excluir
+            </Button>
           </div>
-
-          <div className="flex items-center gap-1.5 truncate">
-            <MessageCircle className="size-3.5 shrink-0 text-[var(--color-muted)]" />
-            <span className="text-[var(--color-muted)]">Episódio:</span>
-            <span className="studio-mono truncate text-[var(--color-fg)]">
-              {report.episodeId}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5 truncate">
-            <Clock className="size-3.5 shrink-0 text-[var(--color-muted)]" />
-            <span className="text-[var(--color-muted)]">
-              Primeira denúncia:
-            </span>
-            <span className="studio-tabular truncate text-[var(--color-fg)]">
-              {formattedReportDate}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2.5 border-t border-[var(--studio-line)] pt-4 sm:flex-row sm:justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onResolve}
-            className="h-9 gap-2 border-[var(--studio-line-strong)] bg-[var(--studio-panel-alt)] px-4 text-xs font-medium hover:bg-white/[0.06]"
-          >
-            <Check className="size-4 text-emerald-400" />
-            Resolver
-          </Button>
-
-          <Button
-            type="button"
-            variant="danger"
-            onClick={onDelete}
-            className="h-9 gap-2 bg-rose-600 px-4 text-xs font-semibold text-white hover:bg-rose-500"
-          >
-            <Trash2 className="size-4" />
-            Remover comentário
-          </Button>
         </div>
       </div>
     </article>
   );
 }
 
-function Avatar({
-  image,
-  name,
-}: {
-  image: string | null;
-  name: string;
-}) {
-  if (image) {
-    return (
-      <img
-        src={image}
-        alt={name}
-        className="size-10 shrink-0 rounded-lg border border-[var(--studio-line)] object-cover"
-      />
-    );
-  }
-
-  return (
-    <div className="grid size-10 shrink-0 place-items-center rounded-lg border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] text-[var(--color-muted)]">
-      <User className="size-5" />
-    </div>
-  );
-}
-
 function formatDate(value: string) {
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
+  if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
     timeStyle: "short",

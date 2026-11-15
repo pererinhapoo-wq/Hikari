@@ -2,6 +2,9 @@ import { put } from "@vercel/blob";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { auth } from "@/lib/auth/server";
 import { requireAdminUser } from "@/lib/auth/admin-guard";
+import { getSql } from "@/lib/db";
+import { getActiveUserBan } from "@/lib/moderation-bans.server";
+import { formatBanDateTime } from "@/lib/moderation-ban-types";
 
 /**
  * HIKARI — Categorias Oficiais de Armazenamento de Imagens
@@ -348,6 +351,16 @@ export async function handleClientBlobUpload(
 
         if (!userId) {
           throw new StorageValidationError("Não autenticado. Faça login para enviar imagens.", 401);
+        }
+
+        if (allowedCategory === "comment-images") {
+          const activeBan = await getActiveUserBan(await getSql(), userId);
+          if (activeBan) {
+            throw new StorageValidationError(
+              `Sua conta está temporariamente impedida de enviar imagens nos comentários até ${formatBanDateTime(activeBan.expiresAt)}. Motivo: ${activeBan.reason}`,
+              403,
+            );
+          }
         }
 
         if (policy.requiresAdmin) {

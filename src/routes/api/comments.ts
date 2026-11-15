@@ -4,6 +4,10 @@ import { resolveApiUser } from "@/lib/auth/api-session";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { executeCreateNotification } from "@/lib/notifications.functions";
 import { setTypingStatus } from "@/lib/comment-typing.server";
+import {
+  buildBannedCommentResponse,
+  getActiveUserBan,
+} from "@/lib/moderation-bans.server";
 
 export const Route = createFileRoute("/api/comments")({
   server: {
@@ -151,6 +155,9 @@ export const Route = createFileRoute("/api/comments")({
           const apiUser = await resolveApiUser(request, sql);
           const currentUserId = apiUser?.id ?? null;
           const isAdmin = Boolean(apiUser?.email && isHikariAdmin(apiUser.email));
+          const currentUserBan = currentUserId
+            ? await getActiveUserBan(sql, currentUserId).catch(() => null)
+            : null;
 
           // 1. Contagens totais (todos os comentários vs comentários principais)
           const countParams: unknown[] = [animeId];
@@ -347,6 +354,7 @@ export const Route = createFileRoute("/api/comments")({
                 targetFound,
                 currentUserId,
                 isAdmin,
+                currentUserBan,
                 serverTime,
               },
               {
@@ -525,6 +533,7 @@ export const Route = createFileRoute("/api/comments")({
               targetFound,
               currentUserId,
               isAdmin,
+              currentUserBan,
               serverTime,
             },
             {
@@ -580,6 +589,11 @@ export const Route = createFileRoute("/api/comments")({
               { error: "É necessário estar autenticado para comentar." },
               { status: 401 },
             );
+          }
+
+          const activeBan = await getActiveUserBan(sql, apiUser.id);
+          if (activeBan) {
+            return buildBannedCommentResponse(activeBan);
           }
 
           let body: any;

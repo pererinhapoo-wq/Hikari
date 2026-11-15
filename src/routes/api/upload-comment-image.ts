@@ -1,6 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolation.server";
 import { auth } from "@/lib/auth/server";
+import { getSql } from "@/lib/db";
+import {
+  buildBannedCommentResponse,
+  getActiveUserBan,
+} from "@/lib/moderation-bans.server";
 import {
   handleClientBlobUpload,
   uploadImageToStorage,
@@ -32,6 +37,11 @@ export const Route = createFileRoute("/api/upload-comment-image")({
                 { error: "Não autenticado. Faça login para enviar imagens nos comentários." },
                 { status: 401 },
               );
+            }
+
+            const activeBan = await getActiveUserBan(await getSql(), userId);
+            if (activeBan) {
+              return buildBannedCommentResponse(activeBan);
             }
 
             let formData: FormData;

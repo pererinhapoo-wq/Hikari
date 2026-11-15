@@ -1,7 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { resolveApiUser } from "@/lib/auth/api-session";
-import { isHikariAdmin } from "@/lib/auth/admin";
+import { isAuthorizedAdminAccount } from "@/lib/auth/admin-guard";
+import {
+  buildBannedCommentResponse,
+  getActiveUserBan,
+} from "@/lib/moderation-bans.server";
 
 const ALLOWED_REPORT_REASONS = new Set([
   "spam",
@@ -25,6 +29,17 @@ export const Route = createFileRoute("/api/comments/moderation")({
               { error: "É necessário estar autenticado para realizar esta ação." },
               { status: 401 },
             );
+          }
+
+          const isAdmin = await isAuthorizedAdminAccount({
+            userId: apiUser.id,
+            email: apiUser.email,
+          });
+          if (!isAdmin) {
+            const activeBan = await getActiveUserBan(sql, apiUser.id);
+            if (activeBan) {
+              return buildBannedCommentResponse(activeBan);
+            }
           }
 
           let body: any;
@@ -79,7 +94,6 @@ export const Route = createFileRoute("/api/comments/moderation")({
           }
 
           if (action === "spoiler") {
-            const isAdmin = Boolean(apiUser.email && isHikariAdmin(apiUser.email));
             if (!isAdmin) {
               return Response.json(
                 {

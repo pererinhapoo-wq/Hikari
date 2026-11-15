@@ -8,6 +8,8 @@ import {
 } from "@/lib/auth/admin-guard";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { getSql } from "@/lib/db";
+import { listActiveBansMap } from "@/lib/moderation-bans.server";
+import type { ActiveUserBan } from "@/lib/moderation-ban-types";
 
 export interface AdminUserListItem {
   id: string;
@@ -27,6 +29,7 @@ export interface AdminUserListItem {
   isVerified: boolean;
   isSystemAdmin: boolean;
   isCurrentAdmin: boolean;
+  activeBan?: ActiveUserBan | null;
 }
 
 const updateRoleSchema = z.object({
@@ -55,6 +58,7 @@ export const Route = createFileRoute("/api/admin/users")({
           const offset = (page - 1) * limit;
 
           const sql = await getSql();
+          const activeBansMap = await listActiveBansMap(sql);
 
           // Contagens estatísticas globais
           const [statsRow] = await sql.query<{
@@ -174,6 +178,7 @@ export const Route = createFileRoute("/api/admin/users")({
               isVerified: Boolean(r.isVerified),
               isSystemAdmin: isSysAdmin,
               isCurrentAdmin: r.id === callerAdminId,
+              activeBan: activeBansMap.get(r.id) ?? null,
             };
           });
 
@@ -190,6 +195,7 @@ export const Route = createFileRoute("/api/admin/users")({
               totalUsers: parseInt(statsRow?.total_users || "0", 10),
               totalAdmins: parseInt(statsRow?.total_admins || "0", 10),
               totalVerified: parseInt(statsRow?.total_verified || "0", 10),
+              activeBansCount: activeBansMap.size,
             },
             callerAdminId,
           });

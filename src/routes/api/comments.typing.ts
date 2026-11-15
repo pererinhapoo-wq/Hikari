@@ -6,6 +6,10 @@ import {
   normalizeTypingRoom,
   setTypingStatus,
 } from "@/lib/comment-typing.server";
+import {
+  buildBannedCommentResponse,
+  getActiveUserBan,
+} from "@/lib/moderation-bans.server";
 
 const NO_STORE_HEADERS = {
   "Cache-Control": "private, no-cache, no-store, must-revalidate",
@@ -59,6 +63,11 @@ export const Route = createFileRoute("/api/comments/typing")({
               { error: "Autenticação necessária." },
               { status: 401, headers: NO_STORE_HEADERS },
             );
+          }
+
+          const activeBan = await getActiveUserBan(sql, apiUser.id);
+          if (activeBan) {
+            return buildBannedCommentResponse(activeBan);
           }
 
           let body: { animeId?: unknown; episodeId?: unknown; active?: unknown } | null = null;

@@ -17,6 +17,114 @@ import type {
 } from "@/types/profile-tracking";
 import { useScrollLock } from "@/lib/scroll-lock";
 
+interface ScoreDropdownMenuProps {
+  score: number | null;
+  setScore: (score: number | null) => void;
+  SCORE_LABELS: Record<number, string>;
+  ChevronDown: typeof ChevronDown;
+  Check: typeof Check;
+  Star: typeof Star;
+}
+
+function ScoreDropdownMenu({
+  score,
+  setScore,
+  SCORE_LABELS,
+  ChevronDown,
+  Check,
+  Star,
+}: ScoreDropdownMenuProps) {
+  const [scoreOpen, setScoreOpen] = useState(false);
+  const scoreDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        scoreDropdownRef.current &&
+        !scoreDropdownRef.current.contains(e.target as Node)
+      ) {
+        setScoreOpen(false);
+      }
+    };
+    if (scoreOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [scoreOpen]);
+
+  const selectedLabel =
+    score !== null
+      ? SCORE_LABELS[score] || `${score} / 10`
+      : "Sem avaliação (Não avaliado)";
+
+  return (
+    <div ref={scoreDropdownRef} className="relative w-full text-left">
+      <button
+        type="button"
+        onClick={() => setScoreOpen(!scoreOpen)}
+        className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-[#161226] px-3.5 py-2.5 text-xs sm:text-sm font-medium text-white transition-all hover:border-purple-500/40 hover:bg-[#1a172e] focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 cursor-pointer"
+      >
+        <span className="truncate flex items-center gap-2">
+          <Star className="size-3.5 fill-amber-400 text-amber-400 shrink-0" />
+          <span>{selectedLabel}</span>
+        </span>
+        <ChevronDown
+          className={cn(
+            "size-4 text-purple-400 transition-transform duration-200 shrink-0 ml-2",
+            scoreOpen && "rotate-180",
+          )}
+        />
+      </button>
+
+      {scoreOpen && (
+        <div className="absolute left-0 right-0 top-full mt-1.5 z-50 max-h-64 overflow-y-auto rounded-xl border border-purple-500/25 bg-[#0d0b16] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.85)] backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
+          <button
+            type="button"
+            onClick={() => {
+              setScore(null);
+              setScoreOpen(false);
+            }}
+            className={cn(
+              "flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-colors cursor-pointer",
+              score === null
+                ? "bg-purple-600/25 text-purple-200 font-semibold border border-purple-500/30 shadow-inner"
+                : "text-zinc-300 hover:bg-white/[0.06] hover:text-white",
+            )}
+          >
+            <span>Sem avaliação (Não avaliado)</span>
+            {score === null && <Check className="size-3.5 text-purple-400 shrink-0 ml-2" />}
+          </button>
+
+          {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((s) => {
+            const isSelected = score === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => {
+                  setScore(s);
+                  setScoreOpen(false);
+                }}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-colors cursor-pointer",
+                  isSelected
+                    ? "bg-purple-600/25 text-purple-200 font-semibold border border-purple-500/30 shadow-inner"
+                    : "text-zinc-300 hover:bg-white/[0.06] hover:text-white",
+                )}
+              >
+                <span>{SCORE_LABELS[s]}</span>
+                {isSelected && <Check className="size-3.5 text-purple-400 shrink-0 ml-2" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ProfileAnimeEditModalProps {
   isOpen: boolean;
   item: UserAnimeTrackingItem | null;
@@ -391,97 +499,14 @@ export function ProfileAnimeEditModal({
             </div>
 
             <div className="relative">
-              {(() => {
-                const [scoreOpen, setScoreOpen] = useState(false);
-                const scoreDropdownRef = useRef<HTMLDivElement>(null);
-
-                useEffect(() => {
-                  const handleClickOutside = (e: MouseEvent) => {
-                    if (
-                      scoreDropdownRef.current &&
-                      !scoreDropdownRef.current.contains(e.target as Node)
-                    ) {
-                      setScoreOpen(false);
-                    }
-                  };
-                  if (scoreOpen) {
-                    document.addEventListener("mousedown", handleClickOutside);
-                  }
-                  return () => {
-                    document.removeEventListener("mousedown", handleClickOutside);
-                  };
-                }, [scoreOpen]);
-
-                const selectedLabel =
-                  score !== null
-                    ? SCORE_LABELS[score] || `${score} / 10`
-                    : "Sem avaliação (Não avaliado)";
-
-                return (
-                  <div ref={scoreDropdownRef} className="relative w-full text-left">
-                    <button
-                      type="button"
-                      onClick={() => setScoreOpen(!scoreOpen)}
-                      className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-[#161226] px-3.5 py-2.5 text-xs sm:text-sm font-medium text-white transition-all hover:border-purple-500/40 hover:bg-[#1a172e] focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 cursor-pointer"
-                    >
-                      <span className="truncate flex items-center gap-2">
-                        <Star className="size-3.5 fill-amber-400 text-amber-400 shrink-0" />
-                        <span>{selectedLabel}</span>
-                      </span>
-                      <ChevronDown
-                        className={cn(
-                          "size-4 text-purple-400 transition-transform duration-200 shrink-0 ml-2",
-                          scoreOpen && "rotate-180",
-                        )}
-                      />
-                    </button>
-
-                    {scoreOpen && (
-                      <div className="absolute left-0 right-0 top-full mt-1.5 z-50 max-h-64 overflow-y-auto rounded-xl border border-purple-500/25 bg-[#0d0b16] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.85)] backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setScore(null);
-                            setScoreOpen(false);
-                          }}
-                          className={cn(
-                            "flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-colors cursor-pointer",
-                            score === null
-                              ? "bg-purple-600/25 text-purple-200 font-semibold border border-purple-500/30 shadow-inner"
-                              : "text-zinc-300 hover:bg-white/[0.06] hover:text-white",
-                          )}
-                        >
-                          <span>Sem avaliação (Não avaliado)</span>
-                          {score === null && <Check className="size-3.5 text-purple-400 shrink-0 ml-2" />}
-                        </button>
-
-                        {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((s) => {
-                          const isSelected = score === s;
-                          return (
-                            <button
-                              key={s}
-                              type="button"
-                              onClick={() => {
-                                setScore(s);
-                                setScoreOpen(false);
-                              }}
-                              className={cn(
-                                "flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-colors cursor-pointer",
-                                isSelected
-                                  ? "bg-purple-600/25 text-purple-200 font-semibold border border-purple-500/30 shadow-inner"
-                                  : "text-zinc-300 hover:bg-white/[0.06] hover:text-white",
-                              )}
-                            >
-                              <span>{SCORE_LABELS[s]}</span>
-                              {isSelected && <Check className="size-3.5 text-purple-400 shrink-0 ml-2" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+              <ScoreDropdownMenu
+                score={score}
+                setScore={setScore}
+                SCORE_LABELS={SCORE_LABELS}
+                ChevronDown={ChevronDown}
+                Check={Check}
+                Star={Star}
+              />
             </div>
 
             {/* Quick Star Rating preview */}

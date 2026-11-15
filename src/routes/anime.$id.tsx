@@ -2367,61 +2367,7 @@ function AnimePageContent({
     [allEpisodes, watchedEpisodeSet],
   );
 
-  if (studioParam) {
-    return (
-      <Suspense fallback={null}>
-        <StudioProductionsView
-          studioName={studioParam}
-          animeId={id}
-        />
-      </Suspense>
-    );
-  }
 
-  if (dubladorParam) {
-    return (
-      <Suspense fallback={null}>
-        <DubladorWorksView
-          dubladorName={dubladorParam}
-          dubladorId={dubladorIdParam}
-          animeId={id}
-        />
-      </Suspense>
-    );
-  }
-
-  if (staffParam) {
-    return (
-      <Suspense fallback={null}>
-        <StaffWorksView
-          staffName={staffParam}
-          staffId={staffIdParam}
-          animeId={id}
-        />
-      </Suspense>
-    );
-  }
-
-  if (!anime && !hydrated) {
-    return null;
-  }
-
-  if (!anime) {
-    return (
-      <div className="py-24 text-center">
-        <p className="font-display text-2xl">
-          Anime não encontrado
-        </p>
-
-        <Link
-          to="/"
-          className="mt-3 inline-block text-sm text-muted underline"
-        >
-          Voltar ao início
-        </Link>
-      </div>
-    );
-  }
 
   const title = displayTitle(anime);
   const isReleasing = anime.status === "RELEASING";
@@ -2502,6 +2448,62 @@ function AnimePageContent({
       });
     }
   }, [continueEpisode, candidateAnimeIds]);
+
+  if (studioParam) {
+    return (
+      <Suspense fallback={null}>
+        <StudioProductionsView
+          studioName={studioParam}
+          animeId={id}
+        />
+      </Suspense>
+    );
+  }
+
+  if (dubladorParam) {
+    return (
+      <Suspense fallback={null}>
+        <DubladorWorksView
+          dubladorName={dubladorParam}
+          dubladorId={dubladorIdParam}
+          animeId={id}
+        />
+      </Suspense>
+    );
+  }
+
+  if (staffParam) {
+    return (
+      <Suspense fallback={null}>
+        <StaffWorksView
+          staffName={staffParam}
+          staffId={staffIdParam}
+          animeId={id}
+        />
+      </Suspense>
+    );
+  }
+
+  if (!anime && !hydrated) {
+    return null;
+  }
+
+  if (!anime) {
+    return (
+      <div className="py-24 text-center">
+        <p className="font-display text-2xl">
+          Anime não encontrado
+        </p>
+
+        <Link
+          to="/"
+          className="mt-3 inline-block text-sm text-muted underline"
+        >
+          Voltar ao início
+        </Link>
+      </div>
+    );
+  }
 
   const continueTarget =
     continueEpisode ??

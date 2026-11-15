@@ -13,6 +13,8 @@ export interface AdminSystemStatus {
   serverUsersCount?: number;
   serverAdminsCount?: number;
   serverPendingReportsCount?: number;
+  serverCommentsCount?: number;
+  serverActiveBansCount?: number;
   maintenanceMode?: boolean;
   maintenanceAllowAdminBypass?: boolean;
   maintenanceMessage?: string;
@@ -32,6 +34,7 @@ export const getAdminSystemStatus = createServerFn({
     const { loadAllSettingsFromDb } = await import(
       "@/lib/settings/settings.server"
     );
+    const { listActiveBansMap } = await import("@/lib/moderation-bans.server");
 
     try {
       const sql = await getSql();
@@ -55,6 +58,8 @@ export const getAdminSystemStatus = createServerFn({
       let serverUsersCount = 0;
       let serverAdminsCount = 0;
       let serverPendingReportsCount = 0;
+      let serverCommentsCount = 0;
+      let serverActiveBansCount = 0;
       let maintenanceMode = false;
       let maintenanceAllowAdminBypass = true;
       let maintenanceMessage = "";
@@ -65,6 +70,8 @@ export const getAdminSystemStatus = createServerFn({
         seasonsResult,
         usersResult,
         reportsResult,
+        commentsResult,
+        activeBansResult,
         settingsResult,
       ] = await Promise.allSettled([
         sql.query<{ count: number }>(
@@ -89,6 +96,10 @@ export const getAdminSystemStatus = createServerFn({
         sql.query<{ count: number }>(
           `SELECT count(*)::int as count FROM "comment_report" WHERE "status" = 'pending';`,
         ),
+        sql.query<{ count: number }>(
+          `SELECT count(*)::int as count FROM "comment";`,
+        ),
+        listActiveBansMap(sql),
         loadAllSettingsFromDb(),
       ]);
 
@@ -111,6 +122,12 @@ export const getAdminSystemStatus = createServerFn({
       if (reportsResult.status === "fulfilled") {
         serverPendingReportsCount = Number(reportsResult.value[0]?.count || 0);
       }
+      if (commentsResult.status === "fulfilled") {
+        serverCommentsCount = Number(commentsResult.value[0]?.count || 0);
+      }
+      if (activeBansResult.status === "fulfilled") {
+        serverActiveBansCount = activeBansResult.value.size;
+      }
       if (settingsResult.status === "fulfilled") {
         maintenanceMode = Boolean(settingsResult.value.maintenance_mode);
         maintenanceAllowAdminBypass =
@@ -129,6 +146,8 @@ export const getAdminSystemStatus = createServerFn({
         serverUsersCount,
         serverAdminsCount,
         serverPendingReportsCount,
+        serverCommentsCount,
+        serverActiveBansCount,
         maintenanceMode,
         maintenanceAllowAdminBypass,
         maintenanceMessage,

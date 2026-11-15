@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
   AlertCircle,
+  Ban,
   Calendar,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock,
   ExternalLink,
   Filter,
   Loader2,
@@ -13,19 +15,23 @@ import {
   Search,
   Shield,
   ShieldAlert,
+  ShieldCheck,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { getBearerToken } from "@/lib/auth/client";
 import {
+  type BanModalTargetUser,
   StudioEmptyState,
   StudioLoadingState,
   StudioPageHeader,
   StudioStatStrip,
+  UserBanModal,
 } from "@/components/admin/studio-ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { getBearerToken } from "@/lib/auth/client";
+import { formatBanRemaining } from "@/lib/moderation-ban-types";
 import { cn } from "@/lib/utils";
 import type { AdminUserListItem } from "@/routes/api/admin/users";
 
@@ -45,17 +51,30 @@ function AdminUsersPage() {
     totalUsers: 0,
     totalAdmins: 0,
     totalVerified: 0,
+    activeBansCount: 0,
   });
 
-  const [selectedUser, setSelectedUser] = useState<AdminUserListItem | null>(null);
-
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [selectedUser, setSelectedUser] = useState<AdminUserListItem | null>(
+    null,
+  );
   const [roleChangeTarget, setRoleChangeTarget] = useState<{
     user: AdminUserListItem;
     newRole: "admin" | "user";
   } | null>(null);
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
 
-  const fetchUsers = async () => {
+  const [banTarget, setBanTarget] = useState<BanModalTargetUser | null>(null);
+  const [revokingUserId, setRevokingUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
       const token = getBearerToken();
@@ -80,29 +99,31 @@ function AdminUsersPage() {
       setTotalPages(data.pagination?.totalPages || 1);
       setTotalCount(data.pagination?.total || 0);
       if (data.stats) {
-        setStats(data.stats);
+        setStats({
+          totalUsers: Number(data.stats.totalUsers || 0),
+          totalAdmins: Number(data.stats.totalAdmins || 0),
+          totalVerified: Number(data.stats.totalVerified || 0),
+          activeBansCount: Number(data.stats.activeBansCount || 0),
+        });
       }
     } catch (err) {
       console.error("[admin.users] Erro ao carregar:", err);
       toast.error(
-        err instanceof Error ? err.message : "Erro ao carregar lista de usuários.",
+        err instanceof Error
+          ? err.message
+          : "Erro ao carregar lista de usuários.",
       );
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    void fetchUsers();
-  }, [page, roleFilter]);
+  }, [page, roleFilter, search]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setPage(1);
       void fetchUsers();
-    }, 350);
+    }, 250);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [fetchUsers]);
 
   const handleConfirmRoleChange = async () => {
     if (!roleChangeTarget || isUpdatingRole) return;
@@ -155,24 +176,64 @@ function AdminUsersPage() {
     }
   };
 
+  const handleRevokeBan = async (user: AdminUserListItem) => {
+    if (revokingUserId) return;
+    setRevokingUserId(user.id);
+    try {
+      const token = getBearerToken();
+      const res = await fetch(
+        `/api/admin/bans?userId=${encodeURIComponent(user.id)}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        },
+      );
+      const data = (await res.json().catch(() => null)) as {
+        message?: string;
+        error?: string;
+      } | null;
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao remover banimento.");
+      }
+
+      toast.success(data?.message || "Banimento encerrado antecipadamente.");
+      await fetchUsers();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao remover banimento.",
+      );
+    } finally {
+      setRevokingUserId(null);
+    }
+  };
+
   return (
-    <div className="studio-enter space-y-6">
+    <div className="studio-enter space-y-6 pb-8">
       <StudioPageHeader
         kicker="Comunidade & Acessos"
-        title="Gerenciamento de Usuários"
-        description="Consulte contas reais registradas no banco de dados, inspecione detalhes e gerencie privilégios administrativos."
+        title="Usuários, Papéis & Suspensões"
+        description="Consulte contas registradas no PostgreSQL, gerencie privilégios administrativos e aplique ou revogue banimentos temporários de comentários."
         backTo="/admin"
-        backLabel="Voltar à Central"
-        status={<span className="studio-mono font-semibold text-violet-300">PostgreSQL</span>}
+        backLabel="Voltar ao Painel"
+        status={
+          <span className="studio-mono font-semibold text-blue-700">
+            PostgreSQL Ativo
+          </span>
+        }
         actions={
           <Button
+            type="button"
             variant="outline"
             size="sm"
             onClick={() => void fetchUsers()}
             disabled={loading}
-            className="h-9 border-[var(--studio-line)] bg-[var(--studio-panel)] text-xs hover:bg-white/[0.06]"
+            className="h-9 border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
-            <RefreshCw className={cn("mr-1.5 size-3.5", loading && "animate-spin")} />
+            <RefreshCw
+              className={cn("mr-1.5 size-3.5", loading && "animate-spin")}
+            />
             Atualizar Lista
           </Button>
         }
@@ -180,18 +241,19 @@ function AdminUsersPage() {
 
       {/* Faixa de Métricas Reais */}
       <StudioStatStrip
-        columns={3}
+        columns={4}
         items={[
           {
             label: "Total de Contas",
             value: stats.totalUsers.toLocaleString("pt-BR"),
-            detail: "Contas registradas no Neon PostgreSQL",
+            detail: "Contas registradas no banco",
+            accent: "default",
           },
           {
             label: "Administradores",
             value: stats.totalAdmins.toLocaleString("pt-BR"),
-            detail: "Com acesso ao Hikari Studio",
-            accent: "violet",
+            detail: "Com acesso ao Hikari Admin",
+            accent: "cobalt",
           },
           {
             label: "Perfis Verificados",
@@ -199,24 +261,36 @@ function AdminUsersPage() {
             detail: "Selo oficial ativo",
             accent: "emerald",
           },
+          {
+            label: "Banidos Ativos",
+            value: stats.activeBansCount.toLocaleString("pt-BR"),
+            detail: "Suspensos de comentar",
+            accent: stats.activeBansCount > 0 ? "rose" : "default",
+          },
         ]}
       />
 
       {/* Barra de Filtros e Busca */}
       <div className="studio-panel flex flex-col gap-3 rounded-xl p-3.5 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--color-subtle)]" />
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nome, email ou nick..."
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Buscar por nome, e-mail ou @nick..."
             className="studio-input h-9 pl-9 pr-8 text-xs"
           />
           {search && (
             <button
               type="button"
-              onClick={() => setSearch("")}
-              className="absolute top-1/2 right-2.5 -translate-y-1/2 text-[var(--color-subtle)] hover:text-white"
+              onClick={() => {
+                setSearch("");
+                setPage(1);
+              }}
+              className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               aria-label="Limpar busca"
             >
               <X className="size-3.5" />
@@ -225,9 +299,9 @@ function AdminUsersPage() {
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
-          <Filter className="size-3.5 text-[var(--color-subtle)]" />
-          <span className="text-[11px] text-[var(--color-muted)]">Papel:</span>
-          <div className="flex rounded-lg border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-0.5">
+          <Filter className="size-3.5 text-slate-400" />
+          <span className="text-[11px] font-medium text-slate-500">Papel:</span>
+          <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
             {[
               { id: "all" as const, label: "Todos" },
               { id: "admin" as const, label: "Admins" },
@@ -241,10 +315,10 @@ function AdminUsersPage() {
                   setPage(1);
                 }}
                 className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                  "rounded-md px-2.5 py-1 text-xs font-semibold transition-colors",
                   roleFilter === tab.id
-                    ? "border border-[var(--studio-accent-border)] bg-[var(--studio-accent-soft)] text-violet-200"
-                    : "text-[var(--color-muted)] hover:text-white",
+                    ? "bg-blue-700 text-white shadow-sm"
+                    : "text-slate-600 hover:text-slate-900",
                 )}
               >
                 {tab.label}
@@ -270,17 +344,21 @@ function AdminUsersPage() {
       ) : (
         <div className="studio-panel overflow-hidden rounded-xl">
           {/* Cartões responsivos em telas pequenas */}
-          <div className="divide-y divide-[var(--studio-line)] md:hidden">
+          <div className="divide-y divide-slate-200 md:hidden">
             {users.map((u) => {
               const avatarSrc = u.avatarUrl || u.image;
               const displayName = u.displayName || u.name;
               const initial = (displayName || u.email || "?")[0]?.toUpperCase();
+              const activeBan =
+                u.activeBan && u.activeBan.expiresAt > nowMs
+                  ? u.activeBan
+                  : null;
 
               return (
                 <div key={u.id} className="space-y-3 p-4">
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      <div className="relative size-10 shrink-0 overflow-hidden rounded-lg border border-[var(--studio-line)] bg-violet-950/30">
+                      <div className="relative size-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-blue-50">
                         {avatarSrc ? (
                           <img
                             src={avatarSrc}
@@ -291,21 +369,21 @@ function AdminUsersPage() {
                             }}
                           />
                         ) : (
-                          <div className="grid size-full place-items-center text-xs font-bold text-violet-300">
+                          <div className="grid size-full place-items-center text-xs font-bold text-blue-700">
                             {initial}
                           </div>
                         )}
                       </div>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="truncate text-sm font-semibold text-[var(--color-fg)]">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="truncate text-sm font-semibold text-slate-900">
                             {displayName}
                           </span>
                           {u.isVerified && (
-                            <CheckCircle2 className="size-3.5 shrink-0 text-emerald-400" />
+                            <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />
                           )}
                         </div>
-                        <p className="studio-mono truncate text-[11px] text-[var(--color-subtle)]">
+                        <p className="studio-mono truncate text-[11px] text-slate-500">
                           {u.email}
                         </p>
                       </div>
@@ -313,56 +391,108 @@ function AdminUsersPage() {
 
                     <span
                       className={cn(
-                        "studio-mono shrink-0 text-[10px] font-bold uppercase",
-                        u.role === "admin" ? "text-violet-300" : "text-[var(--color-muted)]",
+                        "studio-mono shrink-0 rounded px-2 py-0.5 text-[10px] font-bold uppercase",
+                        u.role === "admin"
+                          ? "border border-blue-200 bg-blue-50 text-blue-700"
+                          : "border border-slate-200 bg-slate-100 text-slate-600",
                       )}
                     >
                       {u.role === "admin" ? "Admin" : "Usuário"}
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 border-t border-[var(--studio-line-soft)] pt-2.5 text-xs">
-                    <span className="studio-tabular text-[11px] text-[var(--color-subtle)]">
+                  {activeBan && (
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-800">
+                      <span className="inline-flex items-center gap-1 font-semibold">
+                        <Ban className="size-3.5 text-rose-600" />
+                        Banido ({formatBanRemaining(activeBan.expiresAt, nowMs)})
+                      </span>
+                      <span className="truncate text-rose-700">
+                        {activeBan.reason}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5 text-xs">
+                    <span className="studio-tabular text-[11px] text-slate-500">
                       {new Date(u.createdAt).toLocaleDateString("pt-BR")}
                       {u.isSystemAdmin ? " · Sistema" : ""}
                       {u.isCurrentAdmin ? " · Você" : ""}
                     </span>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <Button
+                        type="button"
                         variant="outline"
                         size="sm"
                         onClick={() => setSelectedUser(u)}
-                        className="h-8 border-[var(--studio-line)] px-2.5 text-[11px]"
+                        className="h-8 border-slate-300 bg-white px-2.5 text-[11px] text-slate-700"
                       >
                         Detalhes
                       </Button>
 
-                      {!u.isCurrentAdmin &&
-                        !u.isSystemAdmin &&
-                        (u.role === "admin" ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              setRoleChangeTarget({ user: u, newRole: "user" })
-                            }
-                            className="h-8 px-2.5 text-[11px] text-rose-300 hover:bg-rose-500/10"
-                          >
-                            Rebaixar
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              setRoleChangeTarget({ user: u, newRole: "admin" })
-                            }
-                            className="h-8 px-2.5 text-[11px] text-violet-300 hover:bg-violet-500/10"
-                          >
-                            Promover
-                          </Button>
-                        ))}
+                      {!u.isCurrentAdmin && !u.isSystemAdmin && (
+                        <>
+                          {activeBan ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={revokingUserId === u.id}
+                              onClick={() => void handleRevokeBan(u)}
+                              className="h-8 border-emerald-200 bg-emerald-50 px-2.5 text-[11px] font-semibold text-emerald-700"
+                            >
+                              Desbanir
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setBanTarget({
+                                  userId: u.id,
+                                  userName: displayName,
+                                  userEmail: u.email,
+                                  userNick: u.nick,
+                                })
+                              }
+                              className="h-8 border-rose-200 bg-rose-50 px-2.5 text-[11px] font-semibold text-rose-700"
+                            >
+                              Banir
+                            </Button>
+                          )}
+
+                          {u.role === "admin" ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                setRoleChangeTarget({ user: u, newRole: "user" })
+                              }
+                              className="h-8 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
+                            >
+                              Rebaixar
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                setRoleChangeTarget({
+                                  user: u,
+                                  newRole: "admin",
+                                })
+                              }
+                              className="h-8 px-2.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
+                            >
+                              Promover
+                            </Button>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -373,29 +503,38 @@ function AdminUsersPage() {
           {/* Tabela Desktop */}
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-left text-xs">
-              <thead className="border-b border-[var(--studio-line)] bg-white/[0.02] text-[11px] font-semibold tracking-wider text-[var(--color-subtle)] uppercase">
+              <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
                 <tr>
                   <th className="px-4 py-3">Usuário</th>
                   <th className="px-4 py-3">E-mail</th>
                   <th className="px-4 py-3">Papel</th>
+                  <th className="px-4 py-3">Status Comentários</th>
                   <th className="px-4 py-3">Criado em</th>
                   <th className="px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--studio-line)]">
+              <tbody className="divide-y divide-slate-200 bg-white">
                 {users.map((u) => {
                   const avatarSrc = u.avatarUrl || u.image;
                   const displayName = u.displayName || u.name;
-                  const initial = (displayName || u.email || "?")[0]?.toUpperCase();
+                  const initial = (
+                    displayName ||
+                    u.email ||
+                    "?"
+                  )[0]?.toUpperCase();
+                  const activeBan =
+                    u.activeBan && u.activeBan.expiresAt > nowMs
+                      ? u.activeBan
+                      : null;
 
                   return (
                     <tr
                       key={u.id}
-                      className="group transition-colors hover:bg-white/[0.02]"
+                      className="group transition-colors hover:bg-slate-50/80"
                     >
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-3">
-                          <div className="relative size-9 shrink-0 overflow-hidden rounded-lg border border-[var(--studio-line)] bg-violet-950/30">
+                          <div className="relative size-9 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-blue-50">
                             {avatarSrc ? (
                               <img
                                 src={avatarSrc}
@@ -406,7 +545,7 @@ function AdminUsersPage() {
                                 }}
                               />
                             ) : (
-                              <div className="grid size-full place-items-center text-xs font-bold text-violet-300">
+                              <div className="grid size-full place-items-center text-xs font-bold text-blue-700">
                                 {initial}
                               </div>
                             )}
@@ -414,41 +553,43 @@ function AdminUsersPage() {
 
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className="max-w-[200px] truncate font-semibold text-[var(--color-fg)]">
+                              <span className="max-w-[190px] truncate font-semibold text-slate-900">
                                 {displayName}
                               </span>
                               {u.isVerified && (
                                 <span
                                   title="Perfil Verificado Oficial"
-                                  className="inline-flex items-center text-emerald-400"
+                                  className="inline-flex items-center text-emerald-600"
                                 >
-                                  <CheckCircle2 className="size-3" />
+                                  <CheckCircle2 className="size-3.5" />
                                 </span>
                               )}
                             </div>
-                            <div className="studio-mono max-w-[180px] truncate text-[11px] text-[var(--color-subtle)]">
-                              {u.nick ? `@${u.nick}` : `ID: ${u.id.slice(0, 8)}...`}
+                            <div className="studio-mono max-w-[180px] truncate text-[11px] text-slate-500">
+                              {u.nick
+                                ? `@${u.nick}`
+                                : `ID: ${u.id.slice(0, 8)}...`}
                             </div>
                           </div>
                         </div>
                       </td>
 
-                      <td className="px-4 py-3.5 text-[var(--color-muted)]">
-                        <div className="flex max-w-[220px] items-center gap-1.5 truncate">
-                          <Mail className="size-3 shrink-0 text-[var(--color-subtle)]" />
+                      <td className="px-4 py-3.5 text-slate-600">
+                        <div className="flex max-w-[210px] items-center gap-1.5 truncate">
+                          <Mail className="size-3.5 shrink-0 text-slate-400" />
                           <span className="truncate">{u.email}</span>
                         </div>
                       </td>
 
                       <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           {u.role === "admin" ? (
-                            <span className="studio-mono inline-flex items-center gap-1 rounded border border-[var(--studio-accent-border)] bg-[var(--studio-accent-soft)] px-2 py-0.5 text-[10px] font-bold tracking-wider text-violet-200 uppercase">
-                              <Shield className="size-3 text-violet-300" />
+                            <span className="studio-mono inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold tracking-wider text-blue-700 uppercase">
+                              <Shield className="size-3 text-blue-600" />
                               Admin
                             </span>
                           ) : (
-                            <span className="studio-mono inline-flex items-center rounded border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-muted)] uppercase">
+                            <span className="studio-mono inline-flex items-center rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 uppercase">
                               Usuário
                             </span>
                           )}
@@ -456,7 +597,7 @@ function AdminUsersPage() {
                           {u.isSystemAdmin && (
                             <span
                               title="Administrador de infraestrutura protegido (Allowlist)"
-                              className="studio-mono text-[10px] font-medium text-amber-300 uppercase"
+                              className="studio-mono text-[10px] font-semibold text-amber-700 uppercase"
                             >
                               [Sistema]
                             </span>
@@ -465,7 +606,7 @@ function AdminUsersPage() {
                           {u.isCurrentAdmin && (
                             <span
                               title="Sua conta atual em sessão"
-                              className="studio-mono text-[10px] font-medium text-violet-300 uppercase"
+                              className="studio-mono text-[10px] font-semibold text-blue-700 uppercase"
                             >
                               (Você)
                             </span>
@@ -473,9 +614,27 @@ function AdminUsersPage() {
                         </div>
                       </td>
 
-                      <td className="px-4 py-3.5 text-[var(--color-subtle)]">
+                      <td className="px-4 py-3.5">
+                        {activeBan ? (
+                          <span
+                            title={`Motivo: ${activeBan.reason}`}
+                            className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700"
+                          >
+                            <Clock className="size-3" />
+                            Banido ·{" "}
+                            {formatBanRemaining(activeBan.expiresAt, nowMs)}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                            <ShieldCheck className="size-3.5" />
+                            Liberado
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-3.5 text-slate-500">
                         <div className="studio-tabular flex items-center gap-1.5">
-                          <Calendar className="size-3 shrink-0 text-[var(--color-subtle)]" />
+                          <Calendar className="size-3 shrink-0 text-slate-400" />
                           <span>
                             {new Date(u.createdAt).toLocaleDateString("pt-BR", {
                               day: "2-digit",
@@ -487,42 +646,83 @@ function AdminUsersPage() {
                       </td>
 
                       <td className="px-4 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1">
                           <Button
+                            type="button"
                             variant="ghost"
                             size="sm"
                             onClick={() => setSelectedUser(u)}
-                            className="h-8 px-2.5 text-[11px] text-[var(--color-muted)] hover:bg-white/[0.06] hover:text-white"
+                            className="h-8 px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                           >
                             Detalhes
                           </Button>
 
                           {!u.isCurrentAdmin && !u.isSystemAdmin && (
-                            u.role === "admin" ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  setRoleChangeTarget({ user: u, newRole: "user" })
-                                }
-                                className="h-8 px-2.5 text-[11px] text-rose-300 hover:bg-rose-500/10 hover:text-rose-200"
-                                title="Rebaixar para usuário comum"
-                              >
-                                Rebaixar
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  setRoleChangeTarget({ user: u, newRole: "admin" })
-                                }
-                                className="h-8 px-2.5 text-[11px] text-violet-300 hover:bg-violet-500/10 hover:text-violet-200"
-                                title="Promover a administrador do Hikari Studio"
-                              >
-                                Promover
-                              </Button>
-                            )
+                            <>
+                              {activeBan ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={revokingUserId === u.id}
+                                  onClick={() => void handleRevokeBan(u)}
+                                  className="h-8 px-2.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50"
+                                >
+                                  Remover Ban
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    setBanTarget({
+                                      userId: u.id,
+                                      userName: displayName,
+                                      userEmail: u.email,
+                                      userNick: u.nick,
+                                    })
+                                  }
+                                  className="h-8 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
+                                >
+                                  Banir
+                                </Button>
+                              )}
+
+                              {u.role === "admin" ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    setRoleChangeTarget({
+                                      user: u,
+                                      newRole: "user",
+                                    })
+                                  }
+                                  className="h-8 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
+                                  title="Rebaixar para usuário comum"
+                                >
+                                  Rebaixar
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    setRoleChangeTarget({
+                                      user: u,
+                                      newRole: "admin",
+                                    })
+                                  }
+                                  className="h-8 px-2.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
+                                  title="Promover a administrador do Hikari Console"
+                                >
+                                  Promover
+                                </Button>
+                              )}
+                            </>
                           )}
                         </div>
                       </td>
@@ -535,31 +735,34 @@ function AdminUsersPage() {
 
           {/* Paginação */}
           {totalPages > 1 && (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--studio-line)] px-4 py-3 text-xs text-[var(--color-muted)]">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50/70 px-4 py-3 text-xs text-slate-600">
               <span className="studio-tabular">
-                Mostrando <strong className="text-white">{users.length}</strong> de{" "}
-                <strong className="text-white">{totalCount}</strong> usuários
+                Mostrando <strong className="text-slate-900">{users.length}</strong>{" "}
+                de <strong className="text-slate-900">{totalCount}</strong>{" "}
+                usuários
               </span>
 
               <div className="flex items-center gap-1.5">
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1 || loading}
-                  className="size-8 border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-0 text-xs hover:bg-white/[0.08]"
+                  className="size-8 border-slate-300 bg-white p-0 text-slate-700 hover:bg-slate-50"
                 >
                   <ChevronLeft className="size-4" />
                 </Button>
-                <span className="studio-mono px-2 text-xs">
+                <span className="studio-mono px-2 text-xs font-semibold text-slate-700">
                   {page} / {totalPages}
                 </span>
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages || loading}
-                  className="size-8 border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-0 text-xs hover:bg-white/[0.08]"
+                  className="size-8 border-slate-300 bg-white p-0 text-slate-700 hover:bg-slate-50"
                 >
                   <ChevronRight className="size-4" />
                 </Button>
@@ -572,14 +775,14 @@ function AdminUsersPage() {
       {/* Modal de Detalhes do Usuário */}
       {selectedUser && (
         <div
-          className="hikari-studio-dialog fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          className="hikari-studio-dialog fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs"
           role="dialog"
           aria-modal="true"
         >
-          <div className="studio-scroll max-h-[88dvh] w-full max-w-lg space-y-5 overflow-y-auto rounded-2xl border border-[var(--studio-line-strong)] bg-[var(--studio-panel)] p-6 shadow-2xl">
-            <div className="flex items-start justify-between border-b border-[var(--studio-line)] pb-4">
+          <div className="studio-scroll max-h-[88dvh] w-full max-w-lg space-y-5 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-200 pb-4">
               <div className="flex items-center gap-3">
-                <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-[var(--studio-accent-border)] bg-violet-950/30">
+                <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-blue-200 bg-blue-50">
                   {selectedUser.avatarUrl || selectedUser.image ? (
                     <img
                       src={selectedUser.avatarUrl || selectedUser.image || ""}
@@ -587,20 +790,23 @@ function AdminUsersPage() {
                       className="size-full object-cover"
                     />
                   ) : (
-                    <div className="grid size-full place-items-center text-sm font-bold text-violet-200">
-                      {(selectedUser.displayName || selectedUser.name)[0]?.toUpperCase()}
+                    <div className="grid size-full place-items-center text-sm font-bold text-blue-700">
+                      {(selectedUser.displayName ||
+                        selectedUser.name)[0]?.toUpperCase()}
                     </div>
                   )}
                 </div>
                 <div>
-                  <h3 className="flex items-center gap-1.5 text-base font-semibold text-white">
+                  <h3 className="flex items-center gap-1.5 text-base font-bold text-slate-900">
                     {selectedUser.displayName || selectedUser.name}
                     {selectedUser.isVerified && (
-                      <CheckCircle2 className="size-3.5 text-emerald-400" />
+                      <CheckCircle2 className="size-4 text-emerald-600" />
                     )}
                   </h3>
-                  <p className="studio-mono text-xs text-[var(--color-subtle)]">
-                    {selectedUser.nick ? `@${selectedUser.nick}` : "Sem nick público"}
+                  <p className="studio-mono text-xs text-slate-500">
+                    {selectedUser.nick
+                      ? `@${selectedUser.nick}`
+                      : "Sem nick público"}
                   </p>
                 </div>
               </div>
@@ -608,7 +814,7 @@ function AdminUsersPage() {
               <button
                 type="button"
                 onClick={() => setSelectedUser(null)}
-                className="rounded-lg p-1.5 text-[var(--color-subtle)] hover:bg-white/10 hover:text-white"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                 aria-label="Fechar detalhes"
               >
                 <X className="size-4" />
@@ -616,7 +822,7 @@ function AdminUsersPage() {
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-1 gap-3 rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-3.5 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 sm:grid-cols-2">
                 <div>
                   <span className="studio-label">Papel Administrativo</span>
                   <div className="mt-1">
@@ -624,8 +830,8 @@ function AdminUsersPage() {
                       className={cn(
                         "studio-mono inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold uppercase",
                         selectedUser.role === "admin"
-                          ? "border border-[var(--studio-accent-border)] bg-[var(--studio-accent-soft)] text-violet-200"
-                          : "border border-[var(--studio-line)] bg-white/[0.04] text-[var(--color-muted)]",
+                          ? "border border-blue-200 bg-blue-50 text-blue-700"
+                          : "border border-slate-200 bg-white text-slate-600",
                       )}
                     >
                       {selectedUser.role}
@@ -635,61 +841,86 @@ function AdminUsersPage() {
 
                 <div>
                   <span className="studio-label">Tipo de Conta</span>
-                  <div className="studio-mono mt-1 text-white capitalize">
+                  <div className="studio-mono mt-1 font-medium text-slate-900 capitalize">
                     {selectedUser.accountType}
                   </div>
                 </div>
 
                 <div>
                   <span className="studio-label">E-mail</span>
-                  <div className="mt-1 truncate text-white" title={selectedUser.email}>
+                  <div
+                    className="mt-1 truncate font-medium text-slate-900"
+                    title={selectedUser.email}
+                  >
                     {selectedUser.email}
                   </div>
                 </div>
 
                 <div>
                   <span className="studio-label">Cadastro</span>
-                  <div className="studio-tabular mt-1 text-white">
+                  <div className="studio-tabular mt-1 font-medium text-slate-900">
                     {new Date(selectedUser.createdAt).toLocaleString("pt-BR")}
                   </div>
                 </div>
               </div>
 
+              {selectedUser.activeBan &&
+                selectedUser.activeBan.expiresAt > nowMs && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-rose-800">
+                        Suspensão Temporária Ativa
+                      </span>
+                      <span className="studio-tabular text-[11px] font-semibold text-rose-700">
+                        Restante:{" "}
+                        {formatBanRemaining(
+                          selectedUser.activeBan.expiresAt,
+                          nowMs,
+                        )}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-rose-700">
+                      Motivo: {selectedUser.activeBan.reason}
+                    </p>
+                  </div>
+                )}
+
               {selectedUser.bio && (
-                <div className="rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-3.5">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
                   <span className="studio-label">Biografia</span>
-                  <p className="mt-1 text-xs leading-relaxed text-[var(--color-muted)]">
+                  <p className="mt-1 text-xs leading-relaxed text-slate-700">
                     {selectedUser.bio}
                   </p>
                 </div>
               )}
 
-              <div className="rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-3.5">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
                 <span className="studio-label">Identificador Único (ID)</span>
-                <p className="studio-mono mt-1 break-all text-[11px] text-[var(--color-subtle)] select-all">
+                <p className="studio-mono mt-1 break-all text-[11px] text-slate-600 select-all">
                   {selectedUser.id}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center justify-between border-t border-[var(--studio-line)] pt-4">
+            <div className="flex items-center justify-between border-t border-slate-200 pt-4">
               {selectedUser.nick && (
                 <a
                   href={`/profile/${selectedUser.nick}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-violet-300 hover:text-violet-200 hover:underline"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:underline"
                 >
-                  <ExternalLink className="size-3" />
+                  <ExternalLink className="size-3.5" />
                   Abrir perfil público
                 </a>
               )}
 
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setSelectedUser(null)}
-                className="ml-auto border-[var(--studio-line)] text-xs"
+                className="ml-auto border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
               >
                 Fechar
               </Button>
@@ -701,68 +932,84 @@ function AdminUsersPage() {
       {/* Modal de Confirmação de Alteração de Papel */}
       {roleChangeTarget && (
         <div
-          className="hikari-studio-dialog fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          className="hikari-studio-dialog fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs"
           role="dialog"
           aria-modal="true"
         >
-          <div className="studio-scroll max-h-[88dvh] w-full max-w-md space-y-4 overflow-y-auto rounded-2xl border border-[var(--studio-line-strong)] bg-[var(--studio-panel)] p-6 shadow-2xl">
-            <div className="flex items-center gap-3 text-violet-300">
-              <div className="grid size-9 place-items-center rounded-lg border border-[var(--studio-accent-border)] bg-[var(--studio-accent-soft)]">
+          <div className="studio-scroll max-h-[88dvh] w-full max-w-md space-y-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl">
+            <div className="flex items-center gap-3 text-blue-700">
+              <div className="grid size-9 place-items-center rounded-lg border border-blue-200 bg-blue-50">
                 <ShieldAlert className="size-5" />
               </div>
-              <h3 className="text-base font-semibold text-white">
+              <h3 className="font-display text-base font-bold text-slate-900">
                 {roleChangeTarget.newRole === "admin"
                   ? "Promover a Administrador"
                   : "Rebaixar para Usuário Comum"}
               </h3>
             </div>
 
-            <p className="text-xs leading-relaxed text-[var(--color-muted)]">
+            <p className="text-xs leading-relaxed text-slate-600">
               Você tem certeza de que deseja alterar o papel da conta{" "}
-              <strong className="text-white">
-                {roleChangeTarget.user.displayName || roleChangeTarget.user.name}
+              <strong className="text-slate-900">
+                {roleChangeTarget.user.displayName ||
+                  roleChangeTarget.user.name}
               </strong>{" "}
               ({roleChangeTarget.user.email}) para{" "}
-              <strong className="text-violet-300 uppercase">
+              <strong className="text-blue-700 uppercase">
                 {roleChangeTarget.newRole}
               </strong>
               ?
             </p>
 
             {roleChangeTarget.newRole === "admin" && (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] text-amber-200">
-                Atenção: conceder papel de administrador dá acesso total ao Hikari Studio, edição de catálogo e configurações do sistema.
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800">
+                Atenção: conceder papel de administrador dá acesso total ao
+                Hikari Admin, edição de catálogo, moderação e configurações do
+                sistema.
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2.5 pt-2">
+            <div className="flex items-center justify-end gap-2.5 border-t border-slate-200 pt-4">
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 disabled={isUpdatingRole}
                 onClick={() => setRoleChangeTarget(null)}
-                className="border-[var(--studio-line)] text-xs"
+                className="border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
               >
                 Cancelar
               </Button>
               <Button
+                type="button"
                 size="sm"
                 disabled={isUpdatingRole}
                 onClick={() => void handleConfirmRoleChange()}
                 className={cn(
-                  "text-xs font-semibold",
+                  "text-xs font-semibold text-white",
                   roleChangeTarget.newRole === "admin"
-                    ? "bg-violet-600 text-white hover:bg-violet-500"
-                    : "bg-rose-600 text-white hover:bg-rose-500",
+                    ? "bg-blue-700 hover:bg-blue-800"
+                    : "bg-rose-600 hover:bg-rose-700",
                 )}
               >
-                {isUpdatingRole && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+                {isUpdatingRole && (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                )}
                 Confirmar Alteração
               </Button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Modal Reutilizável de Banimento Temporário */}
+      <UserBanModal
+        target={banTarget}
+        onClose={() => setBanTarget(null)}
+        onSuccess={() => {
+          void fetchUsers();
+        }}
+      />
     </div>
   );
 }

@@ -54,6 +54,82 @@ interface AnimeTrackingCardProps {
   onEdit: (item: UserAnimeTrackingItem) => void;
 }
 
+interface SortDropdownMenuProps {
+  sortBy: SortOption;
+  setSortBy: (s: SortOption) => void;
+}
+
+function SortDropdownMenu({ sortBy, setSortBy }: SortDropdownMenuProps) {
+  const sortLabels: Record<SortOption, string> = {
+    updatedAt: "Atualizados",
+    score: "Melhor Nota",
+    title: "Título A-Z",
+    episodes: "Episódios",
+  };
+  const [sortOpen, setSortOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setSortOpen(false);
+      }
+    };
+    if (sortOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [sortOpen]);
+
+  return (
+    <div ref={dropdownRef} className="relative inline-block text-left">
+      <button
+        type="button"
+        onClick={() => setSortOpen(!sortOpen)}
+        className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#12101e] px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-all hover:border-purple-500/40 hover:bg-[#1a172e] focus:outline-none focus:ring-1 focus:ring-purple-400 cursor-pointer shadow-sm"
+      >
+        <span className="text-zinc-400 font-normal">Ordenar:</span>
+        <span className="text-white font-medium">{sortLabels[sortBy]}</span>
+        <ChevronDown
+          className={cn(
+            "size-3.5 text-purple-400 transition-transform duration-200",
+            sortOpen && "rotate-180",
+          )}
+        />
+      </button>
+
+      {sortOpen && (
+        <div className="absolute right-0 top-full mt-1.5 z-50 w-44 origin-top-right overflow-hidden rounded-xl border border-purple-500/25 bg-[#0d0b16] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.85)] backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
+          {(Object.keys(sortLabels) as SortOption[]).map((optionKey) => {
+            const isSelected = sortBy === optionKey;
+            return (
+              <button
+                key={optionKey}
+                type="button"
+                onClick={() => {
+                  setSortBy(optionKey);
+                  setSortOpen(false);
+                }}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-colors cursor-pointer",
+                  isSelected
+                    ? "bg-purple-600/25 text-purple-200 font-semibold border border-purple-500/30 shadow-inner"
+                    : "text-zinc-300 hover:bg-white/[0.06] hover:text-white",
+                )}
+              >
+                <span>{sortLabels[optionKey]}</span>
+                {isSelected && <Check className="size-3.5 text-purple-400 shrink-0 ml-2" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Card individual de anime memoizado com React.memo.
  * Impede que a alteração de um único card (ex: +1 ep ou edição) provoque
@@ -846,76 +922,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
             {/* Seletor de Ordenação Personalizado Hikari */}
             <div className="relative">
-              {(() => {
-                const sortLabels: Record<SortOption, string> = {
-                  updatedAt: "Atualizados",
-                  score: "Melhor Nota",
-                  title: "Título A-Z",
-                  episodes: "Episódios",
-                };
-                const [sortOpen, setSortOpen] = useState(false);
-                const dropdownRef = useRef<HTMLDivElement>(null);
-
-                useEffect(() => {
-                  const handleClickOutside = (e: MouseEvent) => {
-                    if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-                      setSortOpen(false);
-                    }
-                  };
-                  if (sortOpen) {
-                    document.addEventListener("mousedown", handleClickOutside);
-                  }
-                  return () => {
-                    document.removeEventListener("mousedown", handleClickOutside);
-                  };
-                }, [sortOpen]);
-
-                return (
-                  <div ref={dropdownRef} className="relative inline-block text-left">
-                    <button
-                      type="button"
-                      onClick={() => setSortOpen(!sortOpen)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#12101e] px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-all hover:border-purple-500/40 hover:bg-[#1a172e] focus:outline-none focus:ring-1 focus:ring-purple-400 cursor-pointer shadow-sm"
-                    >
-                      <span className="text-zinc-400 font-normal">Ordenar:</span>
-                      <span className="text-white font-medium">{sortLabels[sortBy]}</span>
-                      <ChevronDown
-                        className={cn(
-                          "size-3.5 text-purple-400 transition-transform duration-200",
-                          sortOpen && "rotate-180",
-                        )}
-                      />
-                    </button>
-
-                    {sortOpen && (
-                      <div className="absolute right-0 top-full mt-1.5 z-50 w-44 origin-top-right overflow-hidden rounded-xl border border-purple-500/25 bg-[#0d0b16] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.85)] backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
-                        {(Object.keys(sortLabels) as SortOption[]).map((optionKey) => {
-                          const isSelected = sortBy === optionKey;
-                          return (
-                            <button
-                              key={optionKey}
-                              type="button"
-                              onClick={() => {
-                                setSortBy(optionKey);
-                                setSortOpen(false);
-                              }}
-                              className={cn(
-                                "flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-colors cursor-pointer",
-                                isSelected
-                                  ? "bg-purple-600/25 text-purple-200 font-semibold border border-purple-500/30 shadow-inner"
-                                  : "text-zinc-300 hover:bg-white/[0.06] hover:text-white",
-                              )}
-                            >
-                              <span>{sortLabels[optionKey]}</span>
-                              {isSelected && <Check className="size-3.5 text-purple-400 shrink-0 ml-2" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+              <SortDropdownMenu sortBy={sortBy} setSortBy={setSortBy} />
             </div>
           </div>
 
