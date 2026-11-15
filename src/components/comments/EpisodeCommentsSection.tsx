@@ -2622,10 +2622,8 @@ export function EpisodeCommentsSection({
                 </span>
               </div>
 
-            </div>
-
             {/* Lado direito: Login OU Menu da pessoa autenticada (Foto e Nome) */}
-            <div className="flex items-center shrink-0 relative">
+            <div className="flex items-center min-w-0 relative">
 
               {!effectiveUserId ? (
                 /* Visitante: Opção ENTRAR com Popover estilo Disqus */
@@ -2898,6 +2896,8 @@ export function EpisodeCommentsSection({
                   )}
                 </div>
               )}
+
+            </div>
 
             </div>
 
