@@ -190,19 +190,62 @@ export function hasEpisodePlayableSource(ep: {
   ].some(isPersistablePlayableVideoUrl);
 }
 
+export interface VideoThumbnailCandidate {
+  id: string;
+  previewUrl: string;
+  remoteUrl?: string;
+  blob?: Blob;
+  source: "cloudinary" | "youtube" | "video-frame";
+  label: string;
+  timeSeconds?: number;
+}
+
 /**
  * Deriva uma miniatura gerada automaticamente pelo Cloudinary quando o vídeo está hospedado lá.
  */
-export function getCloudinaryThumbnail(url?: string | null): string | null {
+export function getCloudinaryThumbnail(url?: string | null, offsetSeconds = 15): string | null {
   if (!url || typeof url !== "string") return null;
   if (!url.includes("cloudinary.com") || !url.includes("/upload/")) return null;
   try {
     return url
-      .replace(/\/upload\/(?:so_[^,]+,?)?/, "/upload/so_15,w_640,c_scale/")
-      .replace(/\.[a-zA-Z0-9]+$/i, ".jpg");
+      .replace(/\/upload\/(?:so_[^,]+,?)?/, `/upload/so_${offsetSeconds},w_640,c_scale/`)
+      .replace(/\.[a-zA-Z0-9]+(\?.*)?$/i, ".jpg$1");
   } catch {
     return null;
   }
+}
+
+/**
+ * Deriva múltiplas miniaturas em instantes distintos quando o vídeo está hospedado no Cloudinary.
+ */
+export function getCloudinaryThumbnailCandidates(url?: string | null): VideoThumbnailCandidate[] {
+  if (!url || typeof url !== "string") return [];
+  const offsets = [
+    { sec: 5, label: "00:05" },
+    { sec: 15, label: "00:15" },
+    { sec: 35, label: "00:35" },
+    { sec: 60, label: "01:00" },
+    { sec: 90, label: "01:30" },
+  ];
+  const seen = new Set<string>();
+  const results: VideoThumbnailCandidate[] = [];
+
+  for (const item of offsets) {
+    const thumb = getCloudinaryThumbnail(url, item.sec);
+    if (thumb && !seen.has(thumb)) {
+      seen.add(thumb);
+      results.push({
+        id: `cloudinary-${item.sec}`,
+        previewUrl: thumb,
+        remoteUrl: thumb,
+        source: "cloudinary",
+        label: item.label,
+        timeSeconds: item.sec,
+      });
+    }
+  }
+
+  return results;
 }
 
 /**
@@ -215,6 +258,35 @@ export function getYouTubeThumbnail(url?: string | null): string | null {
     return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`;
   }
   return null;
+}
+
+/**
+ * Deriva múltiplas miniaturas reais do YouTube para escolha manual.
+ */
+export function getYouTubeThumbnailCandidates(url?: string | null): VideoThumbnailCandidate[] {
+  if (!url || typeof url !== "string") return [];
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+  if (!match?.[1]) return [];
+  const videoId = match[1];
+
+  const variants = [
+    { file: "hqdefault.jpg", label: "Capa" },
+    { file: "1.jpg", label: "Cena 1" },
+    { file: "2.jpg", label: "Cena 2" },
+    { file: "3.jpg", label: "Cena 3" },
+    { file: "mqdefault.jpg", label: "Média" },
+  ];
+
+  return variants.map((v) => {
+    const thumbUrl = `https://img.youtube.com/vi/${videoId}/${v.file}`;
+    return {
+      id: `youtube-${v.file}`,
+      previewUrl: thumbUrl,
+      remoteUrl: thumbUrl,
+      source: "youtube",
+      label: v.label,
+    };
+  });
 }
 
 const SAFE_DATA_IMAGE_THUMB_REGEX =
@@ -1174,6 +1246,480 @@ export function cleanEpisodeDisplay(
   return `Episódio ${episodeNumber} — ${title}`;
 }
 
+
+function formatTimestampLabel(seconds: number): string {
+  const safe = Math.max(0, Math.floor(seconds));
+  const hrs = Math.floor(safe / 3600);
+  const mins = Math.floor((safe % 3600) / 60);
+  const secs = safe % 60;
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function isHlsStreamUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url, typeof window !== "undefined" ? window.location.origin : "https://hikari.local");
+    return (
+      parsed.pathname.toLowerCase().endsWith(".m3u8") ||
+      parsed.search.toLowerCase().includes(".m3u8")
+    );
+  } catch {
+    return /\.m3u8(\?|$)/i.test(url);
+  }
+}
+
+async function probeImageCandidateUrl(
+  url: string,
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; width: number; height: number }> {
+  if (typeof window === "undefined") {
+    return { ok: true, width: 640, height: 360 };
+  }
+  if (signal?.aborted) {
+    return { ok: false, width: 0, height: 0 };
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    let settled = false;
+
+    const finish = (ok: boolean, width = 0, height = 0) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      img.onload = null;
+      img.onerror = null;
+      resolve({ ok, width, height });
+    };
+
+    const onAbort = () => finish(false);
+    const timer = window.setTimeout(() => finish(false), 7000);
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+    img.onload = () => {
+      // YouTube retorna placeholder 120x90 quando não há miniatura para aquele slot
+      const valid = img.naturalWidth > 120 && img.naturalHeight > 90;
+      finish(valid, img.naturalWidth, img.naturalHeight);
+    };
+    img.onerror = () => finish(false);
+    img.src = url;
+  });
+}
+
+function computeFrameSignature(
+  video: HTMLVideoElement,
+  sampleCanvas: HTMLCanvasElement,
+): { signature: Uint8Array; isBlank: boolean } {
+  const sw = 16;
+  const sh = 9;
+  sampleCanvas.width = sw;
+  sampleCanvas.height = sh;
+  const sCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
+  if (!sCtx) {
+    return { signature: new Uint8Array(sw * sh), isBlank: false };
+  }
+  sCtx.drawImage(video, 0, 0, sw, sh);
+  const data = sCtx.getImageData(0, 0, sw, sh).data;
+  const signature = new Uint8Array(sw * sh);
+  let sum = 0;
+  for (let i = 0; i < sw * sh; i++) {
+    const r = data[i * 4];
+    const g = data[i * 4 + 1];
+    const b = data[i * 4 + 2];
+    const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    signature[i] = lum;
+    sum += lum;
+  }
+  const mean = sum / signature.length;
+  let varianceSum = 0;
+  for (let i = 0; i < signature.length; i++) {
+    const diff = signature[i] - mean;
+    varianceSum += diff * diff;
+  }
+  const stdDev = Math.sqrt(varianceSum / signature.length);
+  const isBlank = (mean < 12 && stdDev < 6) || stdDev < 3.5;
+  return { signature, isBlank };
+}
+
+function isDuplicateSignature(candidate: Uint8Array, existing: Uint8Array[]): boolean {
+  for (const prev of existing) {
+    let totalDiff = 0;
+    for (let i = 0; i < candidate.length; i++) {
+      totalDiff += Math.abs(candidate[i] - prev[i]);
+    }
+    const meanAbsDiff = totalDiff / candidate.length;
+    if (meanAbsDiff < 6.5) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function buildSampleTimestamps(duration: number): number[] {
+  if (!duration || !Number.isFinite(duration) || duration <= 0) {
+    return [2, 8, 18, 35];
+  }
+  if (duration < 6) {
+    return [0.25, 0.5, 0.75]
+      .map((p) => Number((duration * p).toFixed(2)))
+      .filter((t, i, arr) => t > 0 && t < duration && arr.indexOf(t) === i);
+  }
+  const minT = Math.min(4, duration * 0.08);
+  const maxT = Math.max(minT + 1, duration - Math.min(4, duration * 0.06));
+  const fractions = duration >= 90
+    ? [0.08, 0.2, 0.36, 0.52, 0.68, 0.84]
+    : [0.1, 0.25, 0.44, 0.64, 0.82];
+  const seen = new Set<number>();
+  const times: number[] = [];
+  for (const f of fractions) {
+    const t = Math.round(Math.min(Math.max(duration * f, minT), maxT) * 10) / 10;
+    if (!seen.has(t)) {
+      seen.add(t);
+      times.push(t);
+    }
+  }
+  return times;
+}
+
+async function seekAndCaptureMultipleFrames(
+  sourceUrl: string,
+  options?: {
+    isHls?: boolean;
+    maxCandidates?: number;
+    signal?: AbortSignal;
+  },
+): Promise<VideoThumbnailCandidate[]> {
+  const maxCandidates = options?.maxCandidates ?? 6;
+  const signal = options?.signal;
+  if (signal?.aborted) {
+    throw new DOMException("Operação cancelada", "AbortError");
+  }
+
+  const video = document.createElement("video");
+  video.crossOrigin = "anonymous";
+  video.preload = "metadata";
+  video.muted = true;
+  video.playsInline = true;
+
+  let hlsInstance: { destroy: () => void } | null = null;
+  let cleaned = false;
+
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    if (hlsInstance) {
+      try {
+        hlsInstance.destroy();
+      } catch {
+        // ignore
+      }
+      hlsInstance = null;
+    }
+    video.onloadedmetadata = null;
+    video.onseeked = null;
+    video.onerror = null;
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    video.remove();
+  };
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timer = window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error("Tempo limite ao carregar metadados do vídeo."));
+      }, 15000);
+
+      const onAbort = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        reject(new DOMException("Operação cancelada", "AbortError"));
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+
+      const finishReady = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      };
+
+      const finishErr = (msg: string) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        reject(new Error(msg));
+      };
+
+      video.onloadedmetadata = () => finishReady();
+      video.onerror = () =>
+        finishErr("Erro de conexão, formato ou política de CORS ao carregar o vídeo.");
+
+      if (
+        options?.isHls &&
+        !video.canPlayType("application/vnd.apple.mpegurl")
+      ) {
+        void import("hls.js")
+          .then(({ default: Hls }) => {
+            if (cleaned || signal?.aborted) return;
+            if (!Hls.isSupported()) {
+              finishErr("Stream HLS (.m3u8) não suportado neste navegador.");
+              return;
+            }
+            const hls = new Hls({
+              enableWorker: false,
+              xhrSetup: (xhr) => {
+                xhr.withCredentials = sourceUrl.startsWith("/");
+              },
+            });
+            hlsInstance = hls;
+            hls.on(Hls.Events.ERROR, (_event, data) => {
+              if (data.fatal) {
+                finishErr("Erro ao carregar fluxo HLS (.m3u8) para captura de quadros.");
+              }
+            });
+            hls.loadSource(sourceUrl);
+            hls.attachMedia(video);
+          })
+          .catch(() => {
+            finishErr("Falha ao inicializar decodificador HLS (.m3u8).");
+          });
+      } else {
+        video.src = sourceUrl;
+      }
+    });
+
+    const timestamps = buildSampleTimestamps(video.duration);
+    const canvas = document.createElement("canvas");
+    const sampleCanvas = document.createElement("canvas");
+    const width = 640;
+    const aspect =
+      video.videoHeight && video.videoWidth
+        ? video.videoHeight / video.videoWidth
+        : 9 / 16;
+    const height = Math.max(180, Math.round(width * aspect));
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Não foi possível inicializar o contexto 2D do Canvas.");
+    }
+
+    const candidates: VideoThumbnailCandidate[] = [];
+    const fallbackBlobs: Array<{ time: number; blob: Blob }> = [];
+    const signatures: Uint8Array[] = [];
+
+    for (const targetTime of timestamps) {
+      if (signal?.aborted) break;
+      if (candidates.length >= maxCandidates) break;
+
+      const seekOk = await new Promise<boolean>((resolve) => {
+        let done = false;
+        const seekTimer = window.setTimeout(() => {
+          if (done) return;
+          done = true;
+          resolve(false);
+        }, 6000);
+
+        const onSeeked = () => {
+          if (done) return;
+          done = true;
+          window.clearTimeout(seekTimer);
+          resolve(true);
+        };
+
+        const onError = () => {
+          if (done) return;
+          done = true;
+          window.clearTimeout(seekTimer);
+          resolve(false);
+        };
+
+        video.addEventListener("seeked", onSeeked, { once: true });
+        video.addEventListener("error", onError, { once: true });
+        try {
+          video.currentTime = targetTime;
+        } catch {
+          if (!done) {
+            done = true;
+            window.clearTimeout(seekTimer);
+            resolve(false);
+          }
+        }
+      });
+
+      if (!seekOk || signal?.aborted) continue;
+
+      // Garante que o frame esteja decodificado
+      if (video.readyState < 2) {
+        await new Promise((r) => window.setTimeout(r, 120));
+      }
+
+      const frameMeta = computeFrameSignature(video, sampleCanvas);
+
+      ctx.drawImage(video, 0, 0, width, height);
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85),
+      );
+      if (!blob) continue;
+
+      if (frameMeta.isBlank) {
+        fallbackBlobs.push({ time: targetTime, blob });
+        continue;
+      }
+
+      if (isDuplicateSignature(frameMeta.signature, signatures)) {
+        continue;
+      }
+
+      signatures.push(frameMeta.signature);
+      const previewUrl = URL.createObjectURL(blob);
+      candidates.push({
+        id: `frame-${Math.round(targetTime * 10)}-${candidates.length}`,
+        previewUrl,
+        blob,
+        source: "video-frame",
+        label: formatTimestampLabel(targetTime),
+        timeSeconds: targetTime,
+      });
+    }
+
+    if (candidates.length === 0 && fallbackBlobs.length > 0) {
+      const first = fallbackBlobs[0];
+      candidates.push({
+        id: `frame-fallback-${Math.round(first.time * 10)}`,
+        previewUrl: URL.createObjectURL(first.blob),
+        blob: first.blob,
+        source: "video-frame",
+        label: formatTimestampLabel(first.time),
+        timeSeconds: first.time,
+      });
+    }
+
+    return candidates;
+  } finally {
+    cleanup();
+  }
+}
+
+/**
+ * Extrai múltiplas opções reais e distintas de thumbnail a partir de uma URL de vídeo
+ * (Cloudinary, YouTube, MP4/WebM direto ou HLS .m3u8 com fallback via `/api/video-proxy`).
+ * Nunca retorna imagens duplicadas ou fictícias e nunca altera o estado salvo sem escolha do admin.
+ */
+export async function extractVideoThumbnailCandidates(
+  videoUrl: string,
+  options?: {
+    maxCandidates?: number;
+    signal?: AbortSignal;
+  },
+): Promise<{ candidates: VideoThumbnailCandidate[]; warning?: string }> {
+  if (!videoUrl || typeof window === "undefined") {
+    return {
+      candidates: [],
+      warning: "Ambiente sem DOM ou URL inválida para extração de quadros.",
+    };
+  }
+
+  const trimmed = videoUrl.trim();
+  if (!trimmed) {
+    return { candidates: [] };
+  }
+
+  // 1. Cloudinary: múltiplas miniaturas reais em instantes distintos
+  const cloudinaryRaw = getCloudinaryThumbnailCandidates(trimmed);
+  if (cloudinaryRaw.length > 0) {
+    const probed = await Promise.all(
+      cloudinaryRaw.map(async (item) => ({
+        item,
+        probe: await probeImageCandidateUrl(item.previewUrl, options?.signal),
+      })),
+    );
+    const valid = probed.filter((entry) => entry.probe.ok).map((entry) => entry.item);
+    return {
+      candidates: valid,
+      warning:
+        valid.length === 0
+          ? "Nenhuma miniatura do Cloudinary respondeu para este vídeo."
+          : undefined,
+    };
+  }
+
+  // 2. YouTube: múltiplas miniaturas reais disponíveis para o vídeo
+  const youtubeRaw = getYouTubeThumbnailCandidates(trimmed);
+  if (youtubeRaw.length > 0) {
+    const probed = await Promise.all(
+      youtubeRaw.map(async (item) => ({
+        item,
+        probe: await probeImageCandidateUrl(item.previewUrl, options?.signal),
+      })),
+    );
+    const valid = probed.filter((entry) => entry.probe.ok).map((entry) => entry.item);
+    return {
+      candidates: valid,
+      warning:
+        valid.length === 0
+          ? "Nenhuma miniatura do YouTube pôde ser carregada para este link."
+          : undefined,
+    };
+  }
+
+  // 3. Vídeo direto (MP4/WebM/R2) ou HLS (.m3u8)
+  const isHls = isHlsStreamUrl(trimmed);
+  try {
+    const directCandidates = await seekAndCaptureMultipleFrames(trimmed, {
+      isHls,
+      maxCandidates: options?.maxCandidates ?? 6,
+      signal: options?.signal,
+    });
+    if (directCandidates.length > 0) {
+      return { candidates: directCandidates };
+    }
+  } catch (directErr) {
+    if (options?.signal?.aborted) {
+      return { candidates: [] };
+    }
+    console.warn("[extractVideoThumbnailCandidates] Extração direta falhou, tentando via proxy interno:", directErr);
+  }
+
+  // Fallback via proxy interno autenticado (para CORS estrito)
+  try {
+    const proxyUrl = `/api/video-proxy?url=${encodeURIComponent(trimmed)}`;
+    const proxyCandidates = await seekAndCaptureMultipleFrames(proxyUrl, {
+      isHls,
+      maxCandidates: options?.maxCandidates ?? 6,
+      signal: options?.signal,
+    });
+    if (proxyCandidates.length > 0) {
+      return { candidates: proxyCandidates };
+    }
+    return {
+      candidates: [],
+      warning:
+        "Não foi possível extrair quadros deste vídeo. Você pode informar uma URL de imagem manualmente.",
+    };
+  } catch (proxyErr) {
+    if (options?.signal?.aborted) {
+      return { candidates: [] };
+    }
+    return {
+      candidates: [],
+      warning:
+        proxyErr instanceof Error
+          ? proxyErr.message
+          : "Captura automática indisponível por CORS, conexão ou formato do vídeo.",
+    };
+  }
+}
 
 /**
  * Captura um quadro (frame) representativo de um vídeo via HTML5 Video e Canvas,

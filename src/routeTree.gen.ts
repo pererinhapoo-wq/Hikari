@@ -55,6 +55,7 @@ import { Route as ApiCommentsRouteImport } from './routes/api/comments'
 import { Route as ApiNotificationsRouteImport } from './routes/api/notifications'
 import { Route as ApiUploadCommentImageRouteImport } from './routes/api/upload-comment-image'
 import { Route as ApiUploadImageRouteImport } from './routes/api/upload-image'
+import { Route as ApiVideoProxyRouteImport } from './routes/api/video-proxy'
 import { Route as BrowseSectionRouteImport } from './routes/browse.$section'
 import { Route as NewsIdRouteImport } from './routes/news_.$id'
 import { Route as NewsSearchRouteImport } from './routes/news_.search'
@@ -311,6 +312,11 @@ const ApiUploadImageRoute = ApiUploadImageRouteImport.update({
   path: '/api/upload-image',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVideoProxyRoute = ApiVideoProxyRouteImport.update({
+  id: '/api/video-proxy',
+  path: '/api/video-proxy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BrowseSectionRoute = BrowseSectionRouteImport.update({
   id: '/browse/$section',
   path: '/browse/$section',
@@ -482,6 +488,7 @@ export interface FileRoutesByFullPath {
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-image': typeof ApiUploadImageRoute
+  '/api/video-proxy': typeof ApiVideoProxyRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/news/$id': typeof NewsIdRoute
   '/news/search': typeof NewsSearchRoute
@@ -553,6 +560,7 @@ export interface FileRoutesByTo {
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-image': typeof ApiUploadImageRoute
+  '/api/video-proxy': typeof ApiVideoProxyRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/news/$id': typeof NewsIdRoute
   '/news/search': typeof NewsSearchRoute
@@ -627,6 +635,7 @@ export interface FileRoutesById {
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-image': typeof ApiUploadImageRoute
+  '/api/video-proxy': typeof ApiVideoProxyRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/news_/$id': typeof NewsIdRoute
   '/news_/search': typeof NewsSearchRoute
@@ -702,6 +711,7 @@ export interface FileRouteTypes {
     | '/api/notifications'
     | '/api/upload-comment-image'
     | '/api/upload-image'
+    | '/api/video-proxy'
     | '/browse/$section'
     | '/news/$id'
     | '/news/search'
@@ -773,6 +783,7 @@ export interface FileRouteTypes {
     | '/api/notifications'
     | '/api/upload-comment-image'
     | '/api/upload-image'
+    | '/api/video-proxy'
     | '/browse/$section'
     | '/news/$id'
     | '/news/search'
@@ -846,6 +857,7 @@ export interface FileRouteTypes {
     | '/api/notifications'
     | '/api/upload-comment-image'
     | '/api/upload-image'
+    | '/api/video-proxy'
     | '/browse/$section'
     | '/news_/$id'
     | '/news_/search'
@@ -907,6 +919,7 @@ export interface RootRouteChildren {
   ApiNotificationsRoute: typeof ApiNotificationsRoute
   ApiUploadCommentImageRoute: typeof ApiUploadCommentImageRoute
   ApiUploadImageRoute: typeof ApiUploadImageRoute
+  ApiVideoProxyRoute: typeof ApiVideoProxyRoute
   BrowseSectionRoute: typeof BrowseSectionRoute
   NewsIdRoute: typeof NewsIdRoute
   NewsSearchRoute: typeof NewsSearchRoute
@@ -1253,6 +1266,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUploadImageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/video-proxy': {
+      id: '/api/video-proxy'
+      path: '/api/video-proxy'
+      fullPath: '/api/video-proxy'
+      preLoaderRoute: typeof ApiVideoProxyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/browse/$section': {
       id: '/browse/$section'
       path: '/browse/$section'
@@ -1529,6 +1549,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiNotificationsRoute: ApiNotificationsRoute,
   ApiUploadCommentImageRoute: ApiUploadCommentImageRoute,
   ApiUploadImageRoute: ApiUploadImageRoute,
+  ApiVideoProxyRoute: ApiVideoProxyRoute,
   BrowseSectionRoute: BrowseSectionRoute,
   NewsIdRoute: NewsIdRoute,
   NewsSearchRoute: NewsSearchRoute,

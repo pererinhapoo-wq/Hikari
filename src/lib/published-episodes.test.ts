@@ -10,10 +10,17 @@ import {
   hasEpisodePlayableSource,
   sanitizeEpisodeThumbnailUrl,
   resolveEpisodeThumbnailUrl,
+  getCloudinaryThumbnailCandidates,
+  getYouTubeThumbnailCandidates,
 } from "./published-episodes";
 import { persistEpisode } from "./episode-writer";
 import { mergeAdminEpisodesWithServer } from "./catalog-episodes";
-import type { LocalAnime } from "./types";
+import {
+  mergeDetail,
+  mergeSeasonsWithRemote,
+  resolveAdminAnimeWithRemote,
+} from "./overlay";
+import type { Anime, LocalAnime } from "./types";
 
 function createMockAnime(overrides: Partial<LocalAnime> = {}): LocalAnime {
   return {
@@ -679,7 +686,7 @@ describe("Imagem manual do episódio (Episode.thumbnail) e prioridade", () => {
     const withPendingUntouched = resolvePublicEpisodes(serverResult, [], {
       outbox: [
         {
-          opId: "op-untouched-2",
+          id: "op-untouched-2",
           type: "upsert",
           animeId: "a1",
           seasonNumber: 1,
@@ -688,7 +695,6 @@ describe("Imagem manual do episódio (Episode.thumbnail) e prioridade", () => {
           status: "pending",
           attempts: 0,
           createdAt: Date.now(),
-          updatedAt: Date.now(),
           payload: {
             id: "ep-2",
             animeId: "a1",
@@ -708,7 +714,7 @@ describe("Imagem manual do episódio (Episode.thumbnail) e prioridade", () => {
     const withPendingClear = resolvePublicEpisodes(serverResult, [], {
       outbox: [
         {
-          opId: "op-clear-2",
+          id: "op-clear-2",
           type: "upsert",
           animeId: "a1",
           seasonNumber: 1,
@@ -717,7 +723,6 @@ describe("Imagem manual do episódio (Episode.thumbnail) e prioridade", () => {
           status: "pending",
           attempts: 0,
           createdAt: Date.now(),
-          updatedAt: Date.now(),
           payload: {
             id: "ep-2",
             animeId: "a1",
@@ -764,7 +769,6 @@ describe("Imagem manual do episódio (Episode.thumbnail) e prioridade", () => {
         },
       ],
       serverResult: {
-        status: "success",
         animeId: "a1",
         seasons: [],
         episodes: [
@@ -812,3 +816,235 @@ describe("Imagem manual do episódio (Episode.thumbnail) e prioridade", () => {
     assert.equal(eps[1]?.thumbnail, "https://cdn.example.com/ep2-server.jpg");
   });
 });
+
+describe("Escolha de múltiplas thumbnails do vídeo, preservação de episódios e sincronização Admin/Site", () => {
+  it("Extrai múltiplas opções reais e distintas para Cloudinary e YouTube sem duplicatas", () => {
+    const cloudinary = getCloudinaryThumbnailCandidates(
+      "https://res.cloudinary.com/demo/video/upload/v123/episode-2.mp4",
+    );
+    assert.ok(cloudinary.length >= 3);
+    assert.equal(
+      new Set(cloudinary.map((c) => c.previewUrl)).size,
+      cloudinary.length,
+      "Opções do Cloudinary devem ser todas distintas",
+    );
+
+    const youtube = getYouTubeThumbnailCandidates(
+      "https://www.youtube.com/embed/dQw4w9WgXcQ",
+    );
+    assert.ok(youtube.length >= 4);
+    assert.equal(
+      new Set(youtube.map((c) => c.previewUrl)).size,
+      youtube.length,
+      "Opções do YouTube devem ser todas distintas",
+    );
+  });
+
+  it("Salvar/publicar 1 episódio no Bakemonogatari preserva os outros 14 episódios e suas thumbnails no site e no Admin", () => {
+    const remoteBakemonogatari: Anime = {
+      id: "5081",
+      anilistId: 5081,
+      malId: 5081,
+      titles: {
+        romaji: "Bakemonogatari",
+        english: "Bakemonogatari",
+        native: "化物語",
+      },
+      cover: "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx5081.jpg",
+      banner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/5081.jpg",
+      synopsis: "Sinopse",
+      score: 83,
+      genres: ["Mystery", "Supernatural"],
+      format: "TV",
+      status: "FINISHED",
+      episodesCount: 15,
+      season: "SUMMER",
+      year: 2009,
+      trailerId: null,
+      source: "anilist",
+      studios: ["Shaft"],
+      streamingEpisodes: [],
+      seasons: [
+        {
+          id: "s1-5081",
+          number: 1,
+          title: "Temporada 1",
+          episodes: Array.from({ length: 15 }, (_, idx) => ({
+            id: `kitsu-5081-${idx + 1}`,
+            number: idx + 1,
+            title: `Episódio ${idx + 1}`,
+            thumbnail: `https://media.kitsu.app/episodes/thumbnails/bakemonogatari-${idx + 1}.jpg`,
+            videoUrl: `https://www.crunchyroll.com/watch/bake-${idx + 1}`,
+          })),
+        },
+      ],
+      recommendations: [],
+      characters: [],
+      staff: [],
+    };
+
+    // Caso 1: Admin salvou apenas o Episódio 1 localmente/no banco
+    const localOnlyEp1 = createMockAnime({
+      id: "5081",
+      anilistId: 5081,
+      titleRomaji: "Bakemonogatari",
+      titleEnglish: "Bakemonogatari",
+      seasons: [
+        {
+          id: "s1-5081",
+          number: 1,
+          title: "Temporada 1",
+          episodes: [
+            {
+              id: "ep-1-saved",
+              number: 1,
+              title: "Hitagi Crab Parte 1",
+              thumbnail: "https://cdn.example.com/custom-bake-ep1.jpg",
+              videoUrl: "https://cdn.example.com/bake-ep1.mp4",
+              published: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    const detail = mergeDetail(remoteBakemonogatari, "5081", [localOnlyEp1]);
+    assert.ok(detail);
+    assert.equal(detail.seasons[0]?.episodes.length, 15, "Todos os 15 episódios devem permanecer no detalhe");
+    assert.equal(
+      detail.seasons[0]?.episodes[0]?.thumbnail,
+      "https://cdn.example.com/custom-bake-ep1.jpg",
+    );
+    assert.equal(detail.seasons[0]?.episodes[0]?.videoUrl, "https://cdn.example.com/bake-ep1.mp4");
+    for (let i = 1; i < 15; i++) {
+      assert.equal(
+        detail.seasons[0]?.episodes[i]?.thumbnail,
+        `https://media.kitsu.app/episodes/thumbnails/bakemonogatari-${i + 1}.jpg`,
+        `Episódio ${i + 1} deve preservar sua thumbnail original`,
+      );
+    }
+
+    // Caso 2: No Admin, resolveAdminAnimeWithRemote traz todos os 15 episódios sem auto-publicar os demais
+    const adminAnime = resolveAdminAnimeWithRemote(localOnlyEp1, remoteBakemonogatari);
+    assert.ok(adminAnime);
+    assert.equal(adminAnime.seasons[0]?.episodes.length, 15);
+    assert.equal(adminAnime.seasons[0]?.episodes[0]?.published, true);
+    assert.equal(adminAnime.seasons[0]?.episodes[1]?.published, false);
+    assert.equal(
+      adminAnime.seasons[0]?.episodes[1]?.videoUrl,
+      undefined,
+      "Links externos como Crunchyroll não devem vazar como URL inválida no Admin",
+    );
+    assert.equal(
+      adminAnime.seasons[0]?.episodes[13]?.thumbnail,
+      "https://media.kitsu.app/episodes/thumbnails/bakemonogatari-14.jpg",
+    );
+
+    // Caso 3: Vitrine pública só lista o Episódio 1 efetivamente publicado
+    const publishedList = getAllPublishedEpisodes([adminAnime]);
+    assert.equal(publishedList.length, 1);
+    assert.equal(publishedList[0]?.episodeNumber, 1);
+
+    // Caso 4: Limpeza intencional da thumbnail do Episódio 1 permanece respeitada sem apagar os demais
+    const clearedEp1Merged = mergeSeasonsWithRemote(
+      [
+        {
+          id: "s1-5081",
+          number: 1,
+          title: "Temporada 1",
+          episodes: [
+            {
+              id: "ep-1-saved",
+              number: 1,
+              title: "Hitagi Crab Parte 1",
+              thumbnail: undefined,
+              videoUrl: "https://cdn.example.com/bake-ep1.mp4",
+              published: true,
+            },
+          ],
+        },
+      ],
+      remoteBakemonogatari.seasons,
+    );
+    assert.equal(clearedEp1Merged[0]?.episodes[0]?.thumbnail, undefined);
+    assert.equal(
+      clearedEp1Merged[0]?.episodes[4]?.thumbnail,
+      "https://media.kitsu.app/episodes/thumbnails/bakemonogatari-5.jpg",
+    );
+  });
+
+  it("resolveAdminAnimeWithRemote sincroniza capa/banner do Admin com o site (ex.: Black Clover) sem apagar edições locais não sincronizadas", () => {
+    const publicRemote: Anime = {
+      id: "97940",
+      anilistId: 97940,
+      titles: {
+        romaji: "Black Clover",
+        english: "Black Clover",
+        native: "ブラッククローバー",
+      },
+      cover: "https://cdn.hikari.app/black-clover-canonical.jpg",
+      banner: "https://cdn.hikari.app/black-clover-banner-canonical.jpg",
+      synopsis: "Asta e Yuno",
+      score: 81,
+      genres: ["Action", "Fantasy"],
+      format: "TV",
+      status: "FINISHED",
+      episodesCount: 170,
+      season: "FALL",
+      year: 2017,
+      trailerId: null,
+      source: "anilist",
+      studios: ["Pierrot"],
+      streamingEpisodes: [],
+      seasons: [],
+      recommendations: [],
+      characters: [],
+      staff: [],
+      catalogUpdatedAt: 1700000100000,
+      serverCatalogId: "97940",
+    };
+
+    // Registro em IndexedDB com imagem antiga do CDN padrão (divergente da usada no site)
+    const staleStored = createMockAnime({
+      id: "97940",
+      anilistId: 97940,
+      titleRomaji: "Black Clover",
+      titleEnglish: "Black Clover",
+      cover: "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/old-black-clover.jpg",
+      banner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/old-black-clover.jpg",
+      updatedAt: 1700000200000,
+      syncedAt: undefined,
+    });
+
+    const syncedAdmin = resolveAdminAnimeWithRemote(staleStored, publicRemote);
+    assert.equal(
+      syncedAdmin?.cover,
+      "https://cdn.hikari.app/black-clover-canonical.jpg",
+      "Admin deve exibir a mesma capa canônica exibida no site público",
+    );
+    assert.equal(
+      syncedAdmin?.banner,
+      "https://cdn.hikari.app/black-clover-banner-canonical.jpg",
+    );
+
+    // Registro com edição personalizada intencional feita localmente após o último sync
+    const customUnsynced = createMockAnime({
+      id: "97940",
+      anilistId: 97940,
+      titleRomaji: "Black Clover",
+      titleEnglish: "Black Clover",
+      cover: "https://cdn.hikari.app/nova-capa-manual.jpg",
+      banner: "https://cdn.hikari.app/black-clover-banner-canonical.jpg",
+      updatedAt: 1700000500000,
+      syncedAt: 1700000200000,
+    });
+
+    const preservedCustom = resolveAdminAnimeWithRemote(customUnsynced, publicRemote);
+    assert.equal(
+      preservedCustom?.cover,
+      "https://cdn.hikari.app/nova-capa-manual.jpg",
+      "Edição manual não sincronizada feita pelo admin deve ser preservada",
+    );
+  });
+});
+

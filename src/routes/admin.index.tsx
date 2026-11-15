@@ -36,6 +36,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -49,6 +50,7 @@ import {
   type SlimAnime,
 } from "@/lib/types";
 import { ensureCatalogLoaded, useHikariStore } from "@/lib/store";
+import { shouldPreferRemoteMedia } from "@/lib/overlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -71,6 +73,7 @@ import {
   type FailedBatchItem,
 } from "@/lib/catalog-import-client";
 import {
+  getAdminCatalogSyncMeta,
   getAdminSystemStatus,
   type AdminSystemStatus,
 } from "@/lib/admin-dashboard.functions";
@@ -214,6 +217,8 @@ function AdminIndex() {
     }
   }, []);
 
+  const hasSyncedServerMetaRef = useRef(false);
+
   useEffect(() => {
     refreshOutbox();
     void checkSystem();
@@ -229,6 +234,68 @@ function AdminIndex() {
       window.clearInterval(timer);
     };
   }, [refreshOutbox, checkSystem]);
+
+  useEffect(() => {
+    if (!hydrated || hasSyncedServerMetaRef.current) return;
+    hasSyncedServerMetaRef.current = true;
+
+    const isDubbedTitle = (text: string) => /\b(dub|dublado|dublada)\b/i.test(text);
+
+    void getAdminCatalogSyncMeta().then((rows) => {
+      if (!rows || rows.length === 0) return;
+
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const byAni = new Map<number, (typeof rows)[number]>();
+      const byMal = new Map<number, (typeof rows)[number]>();
+      const byKitsu = new Map<number, (typeof rows)[number]>();
+
+      for (const row of rows) {
+        if (isDubbedTitle(`${row.title} ${row.titleRomaji ?? ""} ${row.titleEnglish ?? ""}`)) {
+          continue;
+        }
+        if (row.anilistId && !byAni.has(row.anilistId)) byAni.set(row.anilistId, row);
+        if (row.malId && !byMal.has(row.malId)) byMal.set(row.malId, row);
+        if (row.kitsuId && !byKitsu.has(row.kitsuId)) byKitsu.set(row.kitsuId, row);
+      }
+
+      const currentAnimes = useHikariStore.getState().animes;
+      for (const local of currentAnimes) {
+        const localIsDub = isDubbedTitle(
+          `${local.titleRomaji} ${local.titleEnglish} ${local.titleNative}`,
+        );
+        const match =
+          byId.get(local.id) ??
+          (!localIsDub && local.anilistId ? byAni.get(local.anilistId) : undefined) ??
+          (!localIsDub && local.malId ? byMal.get(local.malId) : undefined) ??
+          (!localIsDub && local.kitsuId ? byKitsu.get(local.kitsuId) : undefined);
+
+        if (!match) continue;
+
+        const useServerCover = shouldPreferRemoteMedia(
+          local.cover,
+          match.cover ?? undefined,
+          local,
+          match.updatedAt,
+        );
+        const useServerBanner = shouldPreferRemoteMedia(
+          local.banner,
+          match.banner ?? undefined,
+          local,
+          match.updatedAt,
+        );
+
+        if (useServerCover || useServerBanner) {
+          upsertAnime({
+            ...local,
+            cover: useServerCover && match.cover ? match.cover : local.cover,
+            banner: useServerBanner && match.banner ? match.banner : local.banner,
+            updatedAt: match.updatedAt || local.updatedAt,
+            syncedAt: match.updatedAt || local.syncedAt,
+          });
+        }
+      }
+    });
+  }, [hydrated, upsertAnime]);
 
   const handleManualSync = async () => {
     if (isSyncingOutbox) return;
@@ -1732,7 +1799,19 @@ function AdminIndex() {
                       size="sm"
                       className="h-9 flex-1 border border-[var(--studio-accent-border)] bg-[var(--studio-accent-soft)] text-xs font-medium text-violet-200 hover:bg-violet-600/30 hover:text-white"
                     >
-                      <Link to="/admin/$id" params={{ id: a.id }}>
+                      <Link
+                        to="/admin/$id"
+                        params={{ id: a.id }}
+                        search={{
+                          importId: a.anilistId
+                            ? String(a.anilistId)
+                            : a.malId
+                              ? `mal-${a.malId}`
+                              : a.kitsuId
+                                ? `kitsu-${a.kitsuId}`
+                                : undefined,
+                        }}
+                      >
                         Editar
                       </Link>
                     </Button>
@@ -1886,7 +1965,19 @@ function AdminIndex() {
                             size="sm"
                             className="h-8 border border-[var(--studio-accent-border)] bg-[var(--studio-accent-soft)] px-3 text-xs text-violet-200 hover:bg-violet-600/35"
                           >
-                            <Link to="/admin/$id" params={{ id: a.id }}>
+                            <Link
+                              to="/admin/$id"
+                              params={{ id: a.id }}
+                              search={{
+                                importId: a.anilistId
+                                  ? String(a.anilistId)
+                                  : a.malId
+                                    ? `mal-${a.malId}`
+                                    : a.kitsuId
+                                      ? `kitsu-${a.kitsuId}`
+                                      : undefined,
+                              }}
+                            >
                               Editar
                             </Link>
                           </Button>

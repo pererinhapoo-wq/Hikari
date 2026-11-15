@@ -142,3 +142,78 @@ export const getAdminSystemStatus = createServerFn({
       };
     }
   });
+
+export interface AdminCatalogSyncMetaItem {
+  id: string;
+  anilistId: number | null;
+  malId: number | null;
+  kitsuId: number | null;
+  cover: string | null;
+  banner: string | null;
+  title: string;
+  titleRomaji: string | null;
+  titleEnglish: string | null;
+  titleNative: string | null;
+  hidden: boolean;
+  updatedAt: number;
+}
+
+/**
+ * Retorna metadados essenciais de capa/banner/título salvos no PostgreSQL
+ * para manter a listagem do Painel Administrativo alinhada ao site público.
+ */
+export const getAdminCatalogSyncMeta = createServerFn({
+  method: "GET",
+})
+  .middleware([adminMiddleware])
+  .handler(async (): Promise<AdminCatalogSyncMetaItem[]> => {
+    const { getSql } = await import("@/lib/db");
+    const { stripCatalogImageVersion } = await import("@/lib/image-utils");
+    const { toTimestampMs } = await import(
+      "@/lib/catalog-server-overlay.server"
+    );
+
+    try {
+      const sql = await getSql();
+      const rows = await sql.query<{
+        id: string;
+        anilistId: number | null;
+        malId: number | null;
+        kitsuId: number | null;
+        cover: string | null;
+        banner: string | null;
+        title: string;
+        titleRomaji: string | null;
+        titleEnglish: string | null;
+        titleNative: string | null;
+        hidden: boolean;
+        updatedAt: string | Date | null;
+      }>(
+        `SELECT
+           "id", "anilistId", "malId", "kitsuId",
+           "cover", "banner", "title", "titleRomaji",
+           "titleEnglish", "titleNative", "hidden", "updatedAt"
+         FROM "catalog_anime"
+         ORDER BY "updatedAt" DESC;`,
+      );
+
+      return (rows ?? []).map((row) => ({
+        id: row.id,
+        anilistId: row.anilistId ?? null,
+        malId: row.malId ?? null,
+        kitsuId: row.kitsuId ?? null,
+        cover: row.cover ? stripCatalogImageVersion(row.cover) : null,
+        banner: row.banner ? stripCatalogImageVersion(row.banner) : null,
+        title: row.title,
+        titleRomaji: row.titleRomaji ?? null,
+        titleEnglish: row.titleEnglish ?? null,
+        titleNative: row.titleNative ?? null,
+        hidden: Boolean(row.hidden),
+        updatedAt: toTimestampMs(row.updatedAt),
+      }));
+    } catch (err) {
+      console.warn("[admin-dashboard] Falha ao carregar metadados do catálogo:", err);
+      return [];
+    }
+  });
+

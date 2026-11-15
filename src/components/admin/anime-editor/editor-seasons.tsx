@@ -29,10 +29,21 @@ import {
   hasEpisodePlayableSource,
   isPersistablePlayableVideoUrl,
   resolveEpisodeThumbnailUrl,
+  type VideoThumbnailCandidate,
 } from "@/lib/published-episodes";
 import type { Episode, Season } from "@/lib/types";
 import type { OutboxOperation } from "@/lib/episode-writer";
 import { cn } from "@/lib/utils";
+
+export interface EpisodeCandidateState {
+  loading: boolean;
+  error?: string;
+  warning?: string;
+  candidates: VideoThumbnailCandidate[];
+  selectingCandidateId?: string | null;
+  selectedCandidateId?: string | null;
+  sourceUrl?: string;
+}
 
 interface EditorSeasonsProps {
   animeId: string;
@@ -49,6 +60,17 @@ interface EditorSeasonsProps {
     forcedUrl?: string,
     options?: { isAuto?: boolean },
   ) => Promise<void>;
+  onDiscoverCandidates?: (
+    sid: string,
+    ep: Episode,
+    forcedUrl?: string,
+  ) => Promise<void>;
+  onSelectCandidate?: (
+    sid: string,
+    ep: Episode,
+    candidate: VideoThumbnailCandidate,
+  ) => Promise<void>;
+  episodeCandidates?: Record<string, EpisodeCandidateState>;
   onUploadVideoToB2: (
     sid: string,
     ep: Episode,
@@ -92,6 +114,9 @@ export function EditorSeasons({
   onPatchEpisode,
   onRemoveEpisode,
   onCaptureFrame,
+  onDiscoverCandidates,
+  onSelectCandidate,
+  episodeCandidates,
   onUploadVideoToB2,
   uploadingEpisode,
   captureStatus,
@@ -401,6 +426,8 @@ export function EditorSeasons({
                             ? ""
                             : (ep.thumbnail ?? inheritedThumb ?? "");
                         const hasExistingThumbnail = Boolean(displayThumbnail.trim());
+                        const candidateState = episodeCandidates?.[ep.id];
+                        const isDiscovering = Boolean(candidateState?.loading);
 
                         return (
                           <li
@@ -595,29 +622,19 @@ export function EditorSeasons({
                                         }
                                         onBlur={(e) => {
                                           const val = e.target.value.trim();
-                                          if (
-                                            val &&
-                                            !hasExistingThumbnail &&
-                                            thumbMode !== "cleared" &&
-                                            isPersistablePlayableVideoUrl(val)
-                                          ) {
-                                            void onCaptureFrame(season.id, ep, val, {
-                                              isAuto: true,
-                                            });
+                                          if (val && isPersistablePlayableVideoUrl(val)) {
+                                            if (onDiscoverCandidates) {
+                                              void onDiscoverCandidates(season.id, ep, val);
+                                            }
                                           }
                                         }}
                                         onPaste={(e) => {
                                           const val = e.clipboardData.getData("text").trim();
-                                          if (
-                                            val &&
-                                            !hasExistingThumbnail &&
-                                            thumbMode !== "cleared" &&
-                                            isPersistablePlayableVideoUrl(val)
-                                          ) {
+                                          if (val && isPersistablePlayableVideoUrl(val)) {
                                             setTimeout(() => {
-                                              void onCaptureFrame(season.id, ep, val, {
-                                                isAuto: true,
-                                              });
+                                              if (onDiscoverCandidates) {
+                                                void onDiscoverCandidates(season.id, ep, val);
+                                              }
                                             }, 100);
                                           }
                                         }}
@@ -664,29 +681,19 @@ export function EditorSeasons({
                                     }
                                     onBlur={(e) => {
                                       const val = e.target.value.trim();
-                                      if (
-                                        val &&
-                                        !hasExistingThumbnail &&
-                                        thumbMode !== "cleared" &&
-                                        isPersistablePlayableVideoUrl(val)
-                                      ) {
-                                        void onCaptureFrame(season.id, ep, val, {
-                                          isAuto: true,
-                                        });
+                                      if (val && isPersistablePlayableVideoUrl(val)) {
+                                        if (onDiscoverCandidates) {
+                                          void onDiscoverCandidates(season.id, ep, val);
+                                        }
                                       }
                                     }}
                                     onPaste={(e) => {
                                       const val = e.clipboardData.getData("text").trim();
-                                      if (
-                                        val &&
-                                        !hasExistingThumbnail &&
-                                        thumbMode !== "cleared" &&
-                                        isPersistablePlayableVideoUrl(val)
-                                      ) {
+                                      if (val && isPersistablePlayableVideoUrl(val)) {
                                         setTimeout(() => {
-                                          void onCaptureFrame(season.id, ep, val, {
-                                            isAuto: true,
-                                          });
+                                          if (onDiscoverCandidates) {
+                                            void onDiscoverCandidates(season.id, ep, val);
+                                          }
                                         }, 100);
                                       }
                                     }}
@@ -727,29 +734,19 @@ export function EditorSeasons({
                                   }
                                   onBlur={(e) => {
                                     const val = e.target.value.trim();
-                                    if (
-                                      val &&
-                                      !hasExistingThumbnail &&
-                                      thumbMode !== "cleared" &&
-                                      isPersistablePlayableVideoUrl(val)
-                                    ) {
-                                      void onCaptureFrame(season.id, ep, val, {
-                                        isAuto: true,
-                                      });
+                                    if (val && isPersistablePlayableVideoUrl(val)) {
+                                      if (onDiscoverCandidates) {
+                                        void onDiscoverCandidates(season.id, ep, val);
+                                      }
                                     }
                                   }}
                                   onPaste={(e) => {
                                     const val = e.clipboardData.getData("text").trim();
-                                    if (
-                                      val &&
-                                      !hasExistingThumbnail &&
-                                      thumbMode !== "cleared" &&
-                                      isPersistablePlayableVideoUrl(val)
-                                    ) {
+                                    if (val && isPersistablePlayableVideoUrl(val)) {
                                       setTimeout(() => {
-                                        void onCaptureFrame(season.id, ep, val, {
-                                          isAuto: true,
-                                        });
+                                        if (onDiscoverCandidates) {
+                                          void onDiscoverCandidates(season.id, ep, val);
+                                        }
                                       }, 100);
                                     }
                                   }}
@@ -776,6 +773,7 @@ export function EditorSeasons({
                                 <div className="space-y-2.5">
                                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                                     <EpisodeThumbnailPreview
+                                      key={`${ep.id}:${displayThumbnail}`}
                                       src={displayThumbnail}
                                       episodeNumber={ep.number}
                                       onClear={() => {
@@ -835,21 +833,33 @@ export function EditorSeasons({
                                         <Button
                                           type="button"
                                           variant="outline"
-                                          disabled={captureStatus[ep.id]?.status === "loading"}
-                                          onClick={() => onCaptureFrame(season.id, ep)}
+                                          disabled={
+                                            isDiscovering ||
+                                            captureStatus[ep.id]?.status === "loading"
+                                          }
+                                          onClick={() => {
+                                            if (onDiscoverCandidates) {
+                                              void onDiscoverCandidates(season.id, ep);
+                                            } else {
+                                              void onCaptureFrame(season.id, ep);
+                                            }
+                                          }}
                                           className="h-10 shrink-0 gap-1.5 border-white/10 bg-[var(--studio-panel)] text-xs text-violet-300 hover:text-white"
-                                          title="Capturar quadro do vídeo agora (opcional)"
+                                          title="Extrair opções de imagem do vídeo sem apagar a thumbnail atual"
                                         >
-                                          {captureStatus[ep.id]?.status === "loading" ? (
+                                          {isDiscovering ||
+                                          captureStatus[ep.id]?.status === "loading" ? (
                                             <>
                                               <Loader2 className="size-3.5 animate-spin" />
-                                              <span>Capturando…</span>
+                                              <span>Buscando…</span>
                                             </>
                                           ) : (
                                             <>
                                               <Camera className="size-3.5" />
                                               <span>
-                                                {hasExistingThumbnail ? "Recapturar" : "Capturar"}
+                                                {hasExistingThumbnail
+                                                  ? "Ver imagens do vídeo"
+                                                  : "Capturar imagens"}
                                               </span>
                                             </>
                                           )}
@@ -857,16 +867,102 @@ export function EditorSeasons({
                                       </div>
 
                                       <p className="text-[11px] text-[var(--color-subtle)]">
-                                        Opcional. A URL informada aqui tem prioridade sobre a imagem automática ou padrão do Hikari.
+                                        Opcional. A URL informada ou escolhida aqui tem prioridade sobre a imagem automática ou padrão do Hikari, e nunca é apagada ao colar um link de vídeo.
                                       </p>
                                     </div>
                                   </div>
+
+                                  {candidateState &&
+                                    (candidateState.loading ||
+                                      candidateState.candidates.length > 0 ||
+                                      candidateState.warning ||
+                                      candidateState.error) && (
+                                      <div className="space-y-2 rounded-lg border border-white/10 bg-black/25 p-3">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                          <span className="text-[11px] font-semibold text-violet-200">
+                                            {candidateState.loading
+                                              ? "Extraindo imagens disponíveis do vídeo…"
+                                              : candidateState.candidates.length > 0
+                                                ? `Imagens encontradas no vídeo (${candidateState.candidates.length}) — clique para escolher`
+                                                : "Extração automática de imagens do vídeo"}
+                                          </span>
+                                          {candidateState.loading && (
+                                            <Loader2 className="size-3.5 animate-spin text-violet-300" />
+                                          )}
+                                        </div>
+
+                                        {candidateState.candidates.length > 0 && (
+                                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6">
+                                            {candidateState.candidates.map((cand) => {
+                                              const isSelected =
+                                                candidateState.selectedCandidateId === cand.id ||
+                                                (Boolean(cand.remoteUrl) &&
+                                                  displayThumbnail.trim() === cand.remoteUrl);
+                                              const isApplying =
+                                                candidateState.selectingCandidateId === cand.id;
+
+                                              return (
+                                                <button
+                                                  key={cand.id}
+                                                  type="button"
+                                                  disabled={Boolean(
+                                                    candidateState.selectingCandidateId,
+                                                  )}
+                                                  onClick={() => {
+                                                    if (onSelectCandidate) {
+                                                      void onSelectCandidate(
+                                                        season.id,
+                                                        ep,
+                                                        cand,
+                                                      );
+                                                    }
+                                                  }}
+                                                  className={cn(
+                                                    "group relative aspect-video overflow-hidden rounded-md border bg-black/60 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
+                                                    isSelected
+                                                      ? "border-violet-400 ring-2 ring-violet-500/70"
+                                                      : "border-white/10 hover:border-violet-400/70",
+                                                  )}
+                                                  title={`Usar imagem (${cand.label}) no Episódio ${ep.number}`}
+                                                >
+                                                  <img
+                                                    src={cand.previewUrl}
+                                                    alt={`Opção ${cand.label} do Episódio ${ep.number}`}
+                                                    className="size-full object-cover transition-transform group-hover:scale-105"
+                                                  />
+                                                  <span className="studio-mono absolute bottom-1 left-1 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                                                    {cand.label}
+                                                  </span>
+                                                  {isSelected && (
+                                                    <span className="absolute top-1 right-1 rounded bg-violet-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                                                      Em uso
+                                                    </span>
+                                                  )}
+                                                  {isApplying && (
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/65">
+                                                      <Loader2 className="size-4 animate-spin text-white" />
+                                                    </div>
+                                                  )}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+
+                                        {(candidateState.warning || candidateState.error) && (
+                                          <p className="text-[11px] text-amber-200/90">
+                                            {candidateState.warning || candidateState.error}
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
 
                                   {captureStatus[ep.id]?.status === "loading" && (
                                     <div className="flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-200">
                                       <Loader2 className="size-3.5 shrink-0 animate-spin text-violet-300" />
                                       <span>
-                                        Capturando quadro real e salvando miniatura persistente…
+                                        {captureStatus[ep.id]?.message ||
+                                          "Salvando miniatura persistente do episódio…"}
                                       </span>
                                     </div>
                                   )}
@@ -888,7 +984,10 @@ export function EditorSeasons({
                                   {captureStatus[ep.id]?.status === "success" && (
                                     <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
                                       <CheckCircle2 className="size-3.5 shrink-0" />
-                                      <span>Miniatura própria capturada e salva com sucesso!</span>
+                                      <span>
+                                        {captureStatus[ep.id]?.message ||
+                                          "Miniatura aplicada ao episódio com sucesso!"}
+                                      </span>
                                     </div>
                                   )}
                                 </div>
