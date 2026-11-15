@@ -1,4 +1,4 @@
-import type { LocalAnime } from "@/lib/types";
+import type { Episode, LocalAnime } from "@/lib/types";
 import { getBearerToken } from "@/lib/auth/client";
 import { readOutbox, type OutboxOperation } from "@/lib/episode-writer";
 import {
@@ -98,6 +98,8 @@ const BLOCKED_STREAMING_HOSTS = [
   "myanimelist.net",
   "kitsu.io",
   "youtu.be",
+  "youtube.com",
+  "youtube-nocookie.com",
   "vimeo.com",
 ] as const;
 
@@ -106,8 +108,31 @@ function matchesHostDomain(hostname: string, domain: string): boolean {
 }
 
 /**
+ * Identifica se uma URL pertence ao YouTube (trailer, referência ou embed),
+ * usada para impedir que trailers do YouTube sejam tratados como fonte de episódio
+ * sem afetar a extração independente de miniaturas do YouTube.
+ */
+export function isYouTubeMediaUrl(url?: string | null): boolean {
+  if (!url || typeof url !== "string") return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      matchesHostDomain(host, "youtube.com") ||
+      matchesHostDomain(host, "youtu.be") ||
+      matchesHostDomain(host, "youtube-nocookie.com")
+    );
+  } catch {
+    return /(?:youtube\.com|youtu\.be|youtube-nocookie\.com)/i.test(trimmed);
+  }
+}
+
+/**
  * Verifica se uma URL é um arquivo ou stream de mídia reproduzível no Hikari,
- * descartando páginas web externas de catálogo de terceiros (Crunchyroll, Funimation, etc.).
+ * descartando páginas web externas de catálogo de terceiros (Crunchyroll, Funimation, YouTube, etc.).
  */
 export function isHikariPlayableUrl(url?: string | null): boolean {
   if (!url || typeof url !== "string") return false;
@@ -141,14 +166,173 @@ export function isHikariPlayableUrl(url?: string | null): boolean {
     return false;
   }
 
+  return true;
+}
+
+const MUX_PLAYBACK_ID_REGEX = /^[a-zA-Z0-9_-]{20,50}$/;
+
+/**
+ * Normaliza URLs de stream suportadas pelo player nativo/HLS (Mux, Bunny MediaDelivery)
+ * mantendo URLs diretas inalteradas. Nunca substitui por trailer.
+ */
+export function resolvePlayableStreamUrl(url: string | null | undefined): string | null {
+  if (!url || typeof url !== "string") return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.includes("player.mux.com/")) {
+    const muxMatch = trimmed.match(/player\.mux\.com\/([a-zA-Z0-9_-]+)/);
+    if (muxMatch?.[1]) {
+      return `https://stream.mux.com/${muxMatch[1]}.m3u8`;
+    }
+  }
   if (
-    matchesHostDomain(host, "youtube.com") &&
-    parsed.pathname.toLowerCase().startsWith("/watch")
+    MUX_PLAYBACK_ID_REGEX.test(trimmed) &&
+    !trimmed.includes("/") &&
+    !trimmed.includes(".")
+  ) {
+    return `https://stream.mux.com/${trimmed}.m3u8`;
+  }
+
+  if (trimmed.includes("player.mediadelivery.net/embed/")) {
+    const bunnyMatch = trimmed.match(
+      /mediadelivery\.net\/embed\/(\d+)\/([0-9a-f-]{36})/i,
+    );
+    if (bunnyMatch) {
+      const [, libraryId, videoId] = bunnyMatch;
+      return `https://vz-${libraryId}.b-cdn.net/${videoId}/playlist.m3u8`;
+    }
+  }
+
+  return trimmed;
+}
+
+/**
+ * Verifica se uma URL cadastrada no episódio é reproduzível no player do Hikari (/watch/$id/$ep).
+ * Aceita URLs HTTP/HTTPS válidas (compatíveis com `isHikariPlayableUrl`), Mux, Bunny, `blob:` e
+ * caminhos internos relativos seguros (`/api/...`), rejeitando rigorosamente YouTube e sites externos.
+ */
+export function isWatchPlayableMediaUrl(url: string | null | undefined): boolean {
+  if (!url || typeof url !== "string") return false;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === "#") return false;
+
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith("javascript:") ||
+    lower.startsWith("data:") ||
+    lower.startsWith("vbscript:")
   ) {
     return false;
   }
 
-  return true;
+  if (isYouTubeMediaUrl(trimmed)) {
+    return false;
+  }
+
+  if (
+    lower.includes("player.mux.com/") ||
+    (MUX_PLAYBACK_ID_REGEX.test(trimmed) &&
+      !trimmed.includes("/") &&
+      !trimmed.includes("."))
+  ) {
+    return true;
+  }
+
+  if (lower.includes("player.mediadelivery.net/embed/")) {
+    return true;
+  }
+
+  if (lower.startsWith("blob:")) {
+    return true;
+  }
+
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+    return true;
+  }
+
+  return isHikariPlayableUrl(trimmed);
+}
+
+export type EpisodePlayerSourceEntry = {
+  id: "player-1" | "player-2" | "player-3" | "player-4" | "player-5";
+  url: string;
+  name: string;
+};
+
+/**
+ * Resolve exclusivamente as fontes de vídeo reais cadastradas nos slots Player 1 a Player 5
+ * do episódio selecionado, preservando a ordem e os identificadores dos servidores.
+ */
+export function resolveEpisodePlayerSources(
+  episode?: {
+    videoUrl?: string | null;
+    videoUrl2?: string | null;
+    videoUrl3?: string | null;
+    videoUrl4?: string | null;
+    videoUrl5?: string | null;
+  } | null,
+): EpisodePlayerSourceEntry[] {
+  if (!episode) return [];
+
+  const list: EpisodePlayerSourceEntry[] = [];
+  const candidates = [
+    { id: "player-1" as const, raw: episode.videoUrl, defaultName: "Player 1" },
+    { id: "player-2" as const, raw: episode.videoUrl2, defaultName: "Player 2" },
+    { id: "player-3" as const, raw: episode.videoUrl3, defaultName: "Player 3" },
+    { id: "player-4" as const, raw: episode.videoUrl4, defaultName: "Player 4" },
+    { id: "player-5" as const, raw: episode.videoUrl5, defaultName: "Player 5" },
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate.raw || !isWatchPlayableMediaUrl(candidate.raw)) {
+      continue;
+    }
+    const resolved = resolvePlayableStreamUrl(candidate.raw);
+    if (resolved) {
+      list.push({
+        id: candidate.id,
+        url: resolved,
+        name: candidate.defaultName,
+      });
+    }
+  }
+
+  return list;
+}
+
+/**
+ * Seleciona exclusivamente o episódio correspondente ao parâmetro da rota (`ep` ou `targetEpNum`),
+ * priorizando ocorrências com fonte reproduzível em caso de múltiplas temporadas e nunca substituindo
+ * por outro episódio (`episodes[0]`) quando o episódio solicitado não existir.
+ */
+export function selectEpisodeForWatch(
+  episodes: Episode[],
+  epParam: string | undefined,
+  targetEpNum: number,
+): Episode | null {
+  if (!Array.isArray(episodes) || episodes.length === 0) {
+    return null;
+  }
+
+  const byId = epParam
+    ? episodes.filter((e) => e.id === epParam || String(e.id) === String(epParam))
+    : [];
+  if (byId.length > 0) {
+    return byId.find((e) => resolveEpisodePlayerSources(e).length > 0) ?? byId[0];
+  }
+
+  const byNumber = episodes.filter(
+    (e) => e.number === targetEpNum || String(e.number) === String(targetEpNum),
+  );
+  if (byNumber.length > 0) {
+    return (
+      byNumber.find((e) => resolveEpisodePlayerSources(e).length > 0) ??
+      byNumber[0]
+    );
+  }
+
+  return null;
 }
 
 /**

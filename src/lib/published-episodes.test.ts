@@ -12,15 +12,23 @@ import {
   resolveEpisodeThumbnailUrl,
   getCloudinaryThumbnailCandidates,
   getYouTubeThumbnailCandidates,
+  isYouTubeMediaUrl,
+  isWatchPlayableMediaUrl,
+  resolvePlayableStreamUrl,
+  resolveEpisodePlayerSources,
+  selectEpisodeForWatch,
 } from "./published-episodes";
 import { persistEpisode } from "./episode-writer";
-import { mergeAdminEpisodesWithServer } from "./catalog-episodes";
+import {
+  buildResolvedSeasons,
+  mergeAdminEpisodesWithServer,
+} from "./catalog-episodes";
 import {
   mergeDetail,
   mergeSeasonsWithRemote,
   resolveAdminAnimeWithRemote,
 } from "./overlay";
-import type { Anime, LocalAnime } from "./types";
+import type { Anime, Episode, LocalAnime } from "./types";
 
 function createMockAnime(overrides: Partial<LocalAnime> = {}): LocalAnime {
   return {
@@ -1047,4 +1055,298 @@ describe("Escolha de múltiplas thumbnails do vídeo, preservação de episódio
     );
   });
 });
+
+describe("Regressão de reprodução: Assistir episódio real vs trailer do YouTube", () => {
+  it("1) Seleciona exclusivamente o episódio solicitado e reproduz sua fonte cadastrada sem fallback para outro episódio", () => {
+    const episodes: Episode[] = [
+      {
+        id: "ep-1",
+        number: 1,
+        title: "Episódio 1",
+        videoUrl: "https://pub-123456.r2.dev/stream/ep1",
+        published: true,
+      },
+      {
+        id: "ep-2",
+        number: 2,
+        title: "Episódio 2",
+        videoUrl: "https://cdn.custom-anime.net/hls/ep2/master.m3u8",
+        published: true,
+      },
+      {
+        id: "ep-3",
+        number: 3,
+        title: "Episódio 3",
+        videoUrl: "https://player.mux.com/AbCdEfGhIjKlMnOpQrStUvWx01",
+        published: true,
+      },
+      {
+        id: "ep-4",
+        number: 4,
+        title: "Episódio 4",
+        videoUrl:
+          "https://iframe.mediadelivery.net/embed/12345/12345678-1234-1234-1234-1234567890ab",
+        published: true,
+      },
+    ];
+
+    // Episódio 2 deve reproduzir o vídeo do Episódio 2 (não do Episódio 1)
+    const selected2 = selectEpisodeForWatch(episodes, "ep-2", 2);
+    assert.equal(selected2?.id, "ep-2");
+    assert.deepEqual(resolveEpisodePlayerSources(selected2), [
+      {
+        id: "player-1",
+        name: "Player 1",
+        url: "https://cdn.custom-anime.net/hls/ep2/master.m3u8",
+      },
+    ]);
+
+    // URL sem extensão (.r2.dev) e normalização de Mux / Bunny continuam funcionando
+    const selected1 = selectEpisodeForWatch(episodes, "ep-1", 1);
+    assert.equal(
+      resolveEpisodePlayerSources(selected1)[0]?.url,
+      "https://pub-123456.r2.dev/stream/ep1",
+    );
+
+    const selected3 = selectEpisodeForWatch(episodes, "ep-3", 3);
+    assert.equal(
+      resolveEpisodePlayerSources(selected3)[0]?.url,
+      "https://stream.mux.com/AbCdEfGhIjKlMnOpQrStUvWx01.m3u8",
+    );
+
+    assert.equal(
+      resolvePlayableStreamUrl(
+        "https://player.mediadelivery.net/embed/12345/12345678-1234-1234-1234-1234567890ab",
+      ),
+      "https://vz-12345.b-cdn.net/12345678-1234-1234-1234-1234567890ab/playlist.m3u8",
+    );
+    assert.equal(isWatchPlayableMediaUrl("/api/video-proxy?url=https%3A%2F%2Fcdn.example.com%2Fep1.mp4"), true);
+
+    // Episódio inexistente NÃO deve cair no Episódio 1
+    assert.equal(selectEpisodeForWatch(episodes, "ep-99", 99), null);
+  });
+
+  it("2) Nunca utiliza trailer ou URLs do YouTube / catálogos externos como fonte de reprodução do episódio", () => {
+    const youtubeUrls = [
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "https://youtu.be/dQw4w9WgXcQ",
+      "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+      "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
+    ];
+
+    for (const ytUrl of youtubeUrls) {
+      assert.equal(isYouTubeMediaUrl(ytUrl), true);
+      assert.equal(isWatchPlayableMediaUrl(ytUrl), false);
+    }
+
+    // Episódio sem vídeo real (mesmo que o anime possua trailerId) resulta em 0 fontes (exibe indisponibilidade)
+    const noSourceEp: Episode = {
+      id: "ep-sem-video",
+      number: 5,
+      title: "Episódio 5",
+      videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      videoUrl2: "https://www.crunchyroll.com/watch/G12345",
+      published: false,
+    };
+    assert.deepEqual(resolveEpisodePlayerSources(noSourceEp), []);
+
+    // Se Player 1 tiver URL do YouTube (referência) e Player 2 tiver stream válido, ignora Player 1 e usa Player 2
+    const mixedEp: Episode = {
+      id: "ep-misto",
+      number: 6,
+      title: "Episódio 6",
+      videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      videoUrl2: "https://cdn.hikari.app/streams/ep6.mp4",
+      published: true,
+    };
+    assert.deepEqual(resolveEpisodePlayerSources(mixedEp), [
+      {
+        id: "player-2",
+        name: "Player 2",
+        url: "https://cdn.hikari.app/streams/ep6.mp4",
+      },
+    ]);
+  });
+
+  it("3) Mantém extração de thumbnails totalmente independente da resolução de reprodução", () => {
+    const ytRef = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+    // Não é reproduzível como episódio
+    assert.equal(isWatchPlayableMediaUrl(ytRef), false);
+    // Mas continua gerando opções reais de thumbnail e respeitando imagem manual com prioridade 1
+    assert.ok(getYouTubeThumbnailCandidates(ytRef).length >= 4);
+    assert.equal(
+      resolveEpisodeThumbnailUrl({
+        thumbnail: "https://cdn.hikari.app/thumbs/ep7-manual.jpg",
+        videoUrl: ytRef,
+        videoUrl2: "https://cdn.hikari.app/videos/ep7.mp4",
+      }),
+      "https://cdn.hikari.app/thumbs/ep7-manual.jpg",
+    );
+  });
+
+  it("4) Preserva outros episódios e impede que links externos remotos ou locais obsoletos poluam fontes canônicas", () => {
+    const remoteEp1WithCrunchyroll: Episode = {
+      id: "remote-1",
+      number: 1,
+      title: "Episódio 1",
+      thumbnail: "https://media.kitsu.app/ep1.jpg",
+      videoUrl: "https://www.crunchyroll.com/watch/ep1",
+    };
+    const remoteEp2WithCrunchyroll: Episode = {
+      id: "remote-2",
+      number: 2,
+      title: "Episódio 2",
+      thumbnail: "https://media.kitsu.app/ep2.jpg",
+      videoUrl: "https://www.crunchyroll.com/watch/ep2",
+    };
+
+    const merged = mergeSeasonsWithRemote(
+      [
+        {
+          id: "s1",
+          number: 1,
+          title: "Temporada 1",
+          episodes: [
+            {
+              id: "ep-1",
+              number: 1,
+              title: "Episódio 1",
+              videoUrl: "https://cdn.hikari.app/ep1.mp4",
+              published: true,
+            },
+          ],
+        },
+      ],
+      [
+        {
+          id: "s1",
+          number: 1,
+          title: "Temporada 1",
+          episodes: [remoteEp1WithCrunchyroll, remoteEp2WithCrunchyroll],
+        },
+      ],
+    );
+
+    // Ep 1 preserva sua fonte real; Ep 2 não vaza Crunchyroll como fonte reproduzível mas preserva thumbnail
+    assert.equal(merged[0]?.episodes[0]?.videoUrl, "https://cdn.hikari.app/ep1.mp4");
+    assert.equal(merged[0]?.episodes[1]?.videoUrl, undefined);
+    assert.equal(merged[0]?.episodes[1]?.thumbnail, "https://media.kitsu.app/ep2.jpg");
+    assert.deepEqual(resolveEpisodePlayerSources(merged[0]?.episodes[1]), []);
+
+    // buildResolvedSeasons: quando o PostgreSQL confirma Player 2 sem Player 1, não ressuscita YouTube/antigo local no Player 1
+    const resolved = buildResolvedSeasons(
+      "anime-sync",
+      {
+        animeId: "anime-sync",
+        seasons: [{ animeId: "anime-sync", number: 1, title: "Temporada 1", position: 1 }],
+        episodes: [
+          {
+            id: "db-ep-1",
+            animeId: "anime-sync",
+            seasonNumber: 1,
+            number: 1,
+            title: "Ep 1 Confirmado",
+            thumbnail: "https://cdn.hikari.app/db-ep1.jpg",
+            duration: "24:00",
+            synopsis: null,
+            videoUrl: null,
+            videoUrl2: "https://cdn.hikari.app/db-ep1-p2.mp4",
+            videoUrl3: null,
+            videoUrl4: null,
+            videoUrl5: null,
+            published: true,
+            publishedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      },
+      [
+        {
+          id: "s1",
+          number: 1,
+          title: "Temporada 1",
+          episodes: [
+            {
+              id: "db-ep-1",
+              number: 1,
+              title: "Ep 1 Local Antigo",
+              videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+              published: true,
+            },
+          ],
+        },
+      ],
+      { outbox: [], tombstones: [] },
+    );
+
+    const resolvedEp1 = resolved[0]?.episodes[0];
+    assert.equal(resolvedEp1?.videoUrl, undefined);
+    assert.equal(resolvedEp1?.videoUrl2, "https://cdn.hikari.app/db-ep1-p2.mp4");
+    assert.deepEqual(resolveEpisodePlayerSources(resolvedEp1), [
+      {
+        id: "player-2",
+        name: "Player 2",
+        url: "https://cdn.hikari.app/db-ep1-p2.mp4",
+      },
+    ]);
+  });
+
+  it("5) Preserva seleção de servidores (Player 1 a Player 5) em ordem e com múltiplos links válidos", () => {
+    const multiServerEp: Episode = {
+      id: "ep-multi",
+      number: 10,
+      title: "Batalha Decisiva",
+      videoUrl: "https://cdn1.example.com/ep10-1080p.mp4",
+      videoUrl2: "https://cdn2.example.com/ep10/master.m3u8",
+      videoUrl3: "https://player.mux.com/ZxYvWuTsRqPoNmLkJiHgFe01",
+      videoUrl4:
+        "https://player.mediadelivery.net/embed/999/abcdefab-cdef-4123-8123-abcdefabcdef",
+      videoUrl5: "https://cdn5.example.com/ep10-backup.mp4",
+      published: true,
+    };
+
+    assert.deepEqual(resolveEpisodePlayerSources(multiServerEp), [
+      {
+        id: "player-1",
+        name: "Player 1",
+        url: "https://cdn1.example.com/ep10-1080p.mp4",
+      },
+      {
+        id: "player-2",
+        name: "Player 2",
+        url: "https://cdn2.example.com/ep10/master.m3u8",
+      },
+      {
+        id: "player-3",
+        name: "Player 3",
+        url: "https://stream.mux.com/ZxYvWuTsRqPoNmLkJiHgFe01.m3u8",
+      },
+      {
+        id: "player-4",
+        name: "Player 4",
+        url: "https://vz-999.b-cdn.net/abcdefab-cdef-4123-8123-abcdefabcdef/playlist.m3u8",
+      },
+      {
+        id: "player-5",
+        name: "Player 5",
+        url: "https://cdn5.example.com/ep10-backup.mp4",
+      },
+    ]);
+
+    // Em caso de episódios duplicados entre temporadas, prioriza a ocorrência que possui fonte reproduzível
+    const duplicateAcrossSeasons: Episode[] = [
+      { id: "ep-1-s1", number: 1, title: "Ep 1 S1", published: false },
+      {
+        id: "ep-1-s2",
+        number: 1,
+        title: "Ep 1 S2",
+        videoUrl: "https://cdn.example.com/ep1-playable.mp4",
+        published: true,
+      },
+    ];
+    const picked = selectEpisodeForWatch(duplicateAcrossSeasons, "ep-1", 1);
+    assert.equal(picked?.id, "ep-1-s2");
+  });
+});
+
 

@@ -330,7 +330,7 @@ export const Route = createFileRoute("/anime/$id")({
 
     const titles = remote
       ? [
-          remote.title,
+          (remote as unknown as { title?: string }).title,
           remote.titles?.romaji,
           remote.titles?.english,
           remote.titles?.native,
@@ -859,6 +859,10 @@ function AnimePageContent({
                   ep.thumbnail === nextEp.thumbnail &&
                   ep.duration === nextEp.duration &&
                   ep.videoUrl === nextEp.videoUrl &&
+                  ep.videoUrl2 === nextEp.videoUrl2 &&
+                  ep.videoUrl3 === nextEp.videoUrl3 &&
+                  ep.videoUrl4 === nextEp.videoUrl4 &&
+                  ep.videoUrl5 === nextEp.videoUrl5 &&
                   ep.published === nextEp.published
                 );
               });

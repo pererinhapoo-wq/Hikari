@@ -10,6 +10,10 @@ import {
   type TombstoneRecord,
 } from "@/lib/catalog-storage";
 import { readOutbox, type OutboxOperation } from "@/lib/episode-writer";
+import {
+  hasEpisodePlayableSource,
+  sanitizePlayableVideoUrl,
+} from "@/lib/published-episodes";
 
 export const getCatalogEpisodesSchema = z.object({
   animeId: z.string().min(1, "animeId é obrigatório"),
@@ -546,7 +550,8 @@ export function buildResolvedSeasons(
           // Preserva a versão local pendente (trabalho não salvo pelo usuário)
           resolvedEpisodes.push(lep);
         } else {
-          // Confirmado / sincronizado: utiliza dados canônicos do PostgreSQL com fallback local
+          // Confirmado / sincronizado: utiliza dados canônicos do PostgreSQL com fallback seguro
+          const repHasCanonicalSources = hasEpisodePlayableSource(rep);
           resolvedEpisodes.push({
             id: rep.id,
             number: rep.number,
@@ -554,11 +559,21 @@ export function buildResolvedSeasons(
             thumbnail: rep.thumbnail?.trim() || lep.thumbnail?.trim() || undefined,
             duration: rep.duration?.trim() || lep.duration?.trim() || undefined,
             synopsis: rep.synopsis?.trim() || lep.synopsis?.trim() || undefined,
-            videoUrl: rep.videoUrl?.trim() || lep.videoUrl?.trim() || undefined,
-            videoUrl2: rep.videoUrl2?.trim() || lep.videoUrl2?.trim() || undefined,
-            videoUrl3: rep.videoUrl3?.trim() || lep.videoUrl3?.trim() || undefined,
-            videoUrl4: rep.videoUrl4?.trim() || lep.videoUrl4?.trim() || undefined,
-            videoUrl5: rep.videoUrl5?.trim() || lep.videoUrl5?.trim() || undefined,
+            videoUrl: repHasCanonicalSources
+              ? rep.videoUrl?.trim() || undefined
+              : rep.videoUrl?.trim() || sanitizePlayableVideoUrl(lep.videoUrl) || undefined,
+            videoUrl2: repHasCanonicalSources
+              ? rep.videoUrl2?.trim() || undefined
+              : rep.videoUrl2?.trim() || sanitizePlayableVideoUrl(lep.videoUrl2) || undefined,
+            videoUrl3: repHasCanonicalSources
+              ? rep.videoUrl3?.trim() || undefined
+              : rep.videoUrl3?.trim() || sanitizePlayableVideoUrl(lep.videoUrl3) || undefined,
+            videoUrl4: repHasCanonicalSources
+              ? rep.videoUrl4?.trim() || undefined
+              : rep.videoUrl4?.trim() || sanitizePlayableVideoUrl(lep.videoUrl4) || undefined,
+            videoUrl5: repHasCanonicalSources
+              ? rep.videoUrl5?.trim() || undefined
+              : rep.videoUrl5?.trim() || sanitizePlayableVideoUrl(lep.videoUrl5) || undefined,
             aired:
               lep.aired ||
               (rep.publishedAt ? new Date(rep.publishedAt).toLocaleDateString("pt-BR") : undefined),

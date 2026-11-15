@@ -60,7 +60,7 @@ const backupPackageSchema = z.object({
   exportedAt: z.string().optional(),
   catalog: z.array(animeSchema).optional(),
   animes: z.array(animeSchema).optional(),
-  settings: z.record(z.unknown()).optional(),
+  settings: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const Route = createFileRoute("/api/admin/backup")({

@@ -163,11 +163,23 @@ export function mergeSeasonsWithRemote(
           duration: lep.duration?.trim() || rep.duration?.trim() || undefined,
           synopsis: lep.synopsis?.trim() || rep.synopsis?.trim() || undefined,
           aired: lep.aired || rep.aired,
+          videoUrl: lep.videoUrl,
+          videoUrl2: lep.videoUrl2,
+          videoUrl3: lep.videoUrl3,
+          videoUrl4: lep.videoUrl4,
+          videoUrl5: lep.videoUrl5,
         });
       } else if (lep) {
         mergedEpisodes.push(lep);
       } else if (rep) {
-        mergedEpisodes.push(rep);
+        mergedEpisodes.push({
+          ...rep,
+          videoUrl: isHikariPlayableUrl(rep.videoUrl) ? rep.videoUrl?.trim() : undefined,
+          videoUrl2: isHikariPlayableUrl(rep.videoUrl2) ? rep.videoUrl2?.trim() : undefined,
+          videoUrl3: isHikariPlayableUrl(rep.videoUrl3) ? rep.videoUrl3?.trim() : undefined,
+          videoUrl4: isHikariPlayableUrl(rep.videoUrl4) ? rep.videoUrl4?.trim() : undefined,
+          videoUrl5: isHikariPlayableUrl(rep.videoUrl5) ? rep.videoUrl5?.trim() : undefined,
+        });
       }
     }
 

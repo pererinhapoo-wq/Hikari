@@ -32,7 +32,7 @@ export interface AdminUserListItem {
 const updateRoleSchema = z.object({
   userId: z.string().trim().min(1, "ID do usuário é obrigatório"),
   role: z.enum(["admin", "user"], {
-    errorMap: () => ({ message: "O papel deve ser 'admin' ou 'user'" }),
+    message: "O papel deve ser 'admin' ou 'user'",
   }),
 });
 
