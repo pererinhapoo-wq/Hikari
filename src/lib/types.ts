@@ -302,6 +302,24 @@ export function isValidImageUrl(url?: string | null): boolean {
 }
 
 /**
+ * Identifica se uma URL pertence ao CDN de imagens do Kitsu.
+ */
+export function isKitsuImageUrl(url?: string | null): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return (
+      host === "media.kitsu.app" ||
+      host.endsWith(".kitsu.app") ||
+      host === "media.kitsu.io" ||
+      host.endsWith(".kitsu.io")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Identifica se uma URL pertence aos CDNs remotos padrão (AniList, MyAnimeList, Kitsu).
  */
 export function isRemoteDefaultCdn(url?: string | null): boolean {
@@ -313,12 +331,57 @@ export function isRemoteDefaultCdn(url?: string | null): boolean {
       host.endsWith(".anilist.co") ||
       host === "cdn.myanimelist.net" ||
       host.endsWith(".myanimelist.net") ||
-      host === "media.kitsu.app" ||
-      host.endsWith(".kitsu.app")
+      isKitsuImageUrl(url)
     );
   } catch {
     return false;
   }
+}
+
+export interface CatalogAnimeMediaWriteInput {
+  cover?: string | null;
+  banner?: string | null;
+  coverExplicitlyEdited?: boolean;
+  bannerExplicitlyEdited?: boolean;
+  targetExists: boolean;
+  cleanCover: string | null;
+  cleanBanner: string | null;
+}
+
+export interface CatalogAnimeMediaWriteDecision {
+  shouldWriteCover: boolean;
+  shouldWriteBanner: boolean;
+  insertCover: string | null;
+  insertBanner: string | null;
+}
+
+/**
+ * Decide de forma estrita quando o endpoint administrativo pode gravar ou atualizar
+ * `cover` e `banner` no PostgreSQL, impedindo sobrescritas implícitas em registros existentes
+ * e garantindo que campos omitidos ou não editados nunca sejam persistidos automaticamente.
+ */
+export function resolveCatalogAnimeMediaWrite(
+  input: CatalogAnimeMediaWriteInput,
+): CatalogAnimeMediaWriteDecision {
+  const coverProvided = input.cover !== undefined;
+  const bannerProvided = input.banner !== undefined;
+
+  const shouldWriteCover =
+    coverProvided &&
+    (input.coverExplicitlyEdited === true ||
+      (!input.targetExists && input.coverExplicitlyEdited !== false));
+
+  const shouldWriteBanner =
+    bannerProvided &&
+    (input.bannerExplicitlyEdited === true ||
+      (!input.targetExists && input.bannerExplicitlyEdited !== false));
+
+  return {
+    shouldWriteCover,
+    shouldWriteBanner,
+    insertCover: shouldWriteCover ? input.cleanCover : null,
+    insertBanner: shouldWriteBanner ? input.cleanBanner : null,
+  };
 }
 
 /**

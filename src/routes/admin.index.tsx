@@ -285,12 +285,16 @@ function AdminIndex() {
         );
 
         if (useServerCover || useServerBanner) {
+          const nextUpdatedAt =
+            Math.max(local.updatedAt ?? 0, match.updatedAt || 0) || local.updatedAt;
+          const nextSyncedAt =
+            Math.max(local.syncedAt ?? 0, match.updatedAt || 0) || local.syncedAt;
           upsertAnime({
             ...local,
             cover: useServerCover && match.cover ? match.cover : local.cover,
             banner: useServerBanner && match.banner ? match.banner : local.banner,
-            updatedAt: match.updatedAt || local.updatedAt,
-            syncedAt: match.updatedAt || local.syncedAt,
+            updatedAt: nextUpdatedAt,
+            syncedAt: nextSyncedAt,
           });
         }
       }
@@ -649,6 +653,8 @@ function AdminIndex() {
           titleNative: duplicated.titleNative,
           cover: duplicated.cover,
           banner: duplicated.banner,
+          coverExplicitlyEdited: Boolean(duplicated.cover),
+          bannerExplicitlyEdited: Boolean(duplicated.banner),
           synopsis: duplicated.synopsis,
           score: duplicated.score,
           genres: duplicated.genres,

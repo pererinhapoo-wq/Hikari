@@ -26,11 +26,22 @@ import {
   primeCatalogEpisodesCache,
 } from "./catalog-episodes";
 import {
+  buildAdminCatalogAnimeSavePayload,
   mergeDetail,
   mergeSeasonsWithRemote,
   resolveAdminAnimeWithRemote,
+  resolveAdminDisplayMedia,
+  resolveSavedMediaFromServer,
+  shouldPreferRemoteMedia,
 } from "./overlay";
-import type { Anime, Episode, LocalAnime } from "./types";
+import {
+  isKitsuImageUrl,
+  resolveCatalogAnimeMediaWrite,
+  type Anime,
+  type Episode,
+  type LocalAnime,
+} from "./types";
+import { hasAdminCustomBanner, selectViewportBanner } from "./season-banner";
 
 function createMockAnime(overrides: Partial<LocalAnime> = {}): LocalAnime {
   return {
@@ -1469,6 +1480,341 @@ describe("Auditoria de Publicação, Cache e Navegação de Episódios", () => {
     assert.equal(sources[0]?.url, "https://cdn.example.com/2.mp4");
   });
 });
+
+describe("Preservação de imagens Kitsu/AniList e salvamento explícito no Admin", () => {
+  it("1 & 9. Black Clover (195604): Admin exibe capa/banner corretos e resolvedMobileBanner Kitsu sem converter arte sazonal em banner permanente", () => {
+    const kitsuMobileUrl =
+      "https://media.kitsu.app/anime/50024/cover_image/c344242518d97e6a4dd5fb0a79c8ca43.jpg";
+    const aniCover =
+      "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx195604-cover.jpg";
+    const aniBanner =
+      "https://s4.anilist.co/file/anilistcdn/media/anime/banner/195604-lQpCzTziSA17.jpg";
+
+    const blackCloverRemote: Anime = {
+      id: "195604",
+      anilistId: 195604,
+      malId: 60462,
+      kitsuId: 50024,
+      titles: {
+        romaji: "Black Clover 2nd Season",
+        english: "Black Clover Season 2",
+        native: "ブラッククローバー 第2期",
+      },
+      cover: aniCover,
+      banner: aniBanner,
+      synopsis: "Black Clover S2",
+      score: 82,
+      genres: ["Action", "Fantasy"],
+      format: "TV",
+      status: "NOT_YET_RELEASED",
+      episodesCount: 12,
+      season: "FALL",
+      year: 2026,
+      trailerId: null,
+      source: "anilist",
+      studios: ["Pierrot"],
+      streamingEpisodes: [],
+      seasons: [],
+      recommendations: [],
+      characters: [],
+      staff: [],
+      resolvedMobileBanner: {
+        url: kitsuMobileUrl,
+        isAlternative: true,
+        source: "kitsu-season",
+        initialObjectPosition: "50% 24%",
+      },
+    };
+
+    const form = resolveAdminAnimeWithRemote(undefined, blackCloverRemote);
+    assert.ok(form);
+    assert.equal(form.cover, aniCover);
+    assert.equal(form.banner, aniBanner, "Banner desktop não pode ser sobrescrito por banner mobile sazonal");
+
+    const preview = resolveAdminDisplayMedia(form, blackCloverRemote);
+    assert.equal(preview.cover, aniCover);
+    assert.equal(preview.desktopBanner, aniBanner);
+    assert.equal(preview.hasCustomDesktopBanner, false);
+    assert.equal(preview.mobileBanner?.url, kitsuMobileUrl);
+    assert.equal(preview.mobileBanner?.source, "kitsu-season");
+
+    // Na página pública, não foi criado banner customizado de admin -> mobile continua Kitsu e desktop continua AniList
+    assert.equal(hasAdminCustomBanner(form, blackCloverRemote), false);
+    const mobileViewport = selectViewportBanner({
+      animeId: "195604",
+      isMobileViewport: true,
+      isAdminBanner: false,
+      baseSeasonBanner: form.banner,
+      mobileBannerState: {
+        forId: "195604",
+        url: kitsuMobileUrl,
+        isAlternative: true,
+        initialObjectPosition: "50% 24%",
+      },
+      failedBannerUrls: {},
+    });
+    const desktopViewport = selectViewportBanner({
+      animeId: "195604",
+      isMobileViewport: false,
+      isAdminBanner: false,
+      baseSeasonBanner: form.banner,
+      mobileBannerState: {
+        forId: "195604",
+        url: kitsuMobileUrl,
+        isAlternative: true,
+        initialObjectPosition: "50% 24%",
+      },
+      failedBannerUrls: {},
+    });
+    assert.equal(mobileViewport.effectiveBannerUrl, kitsuMobileUrl);
+    assert.equal(desktopViewport.effectiveBannerUrl, aniBanner);
+  });
+
+  it("2 & 8. Adicionar episódio sem editar mídia omite cover/banner do payload mesmo sem serverCatalogId e impede gravação no PostgreSQL", () => {
+    const animeWithoutServerId = createMockAnime({
+      id: "local-bc-1",
+      anilistId: 195604,
+      kitsuId: 50024,
+      cover: "https://media.kitsu.app/anime/poster_images/50024/large.jpg",
+      banner: "https://media.kitsu.app/anime/50024/cover_image/c344242518d97e6a4dd5fb0a79c8ca43.jpg",
+      seasons: [
+        {
+          id: "s-1",
+          number: 1,
+          title: "Temporada 1",
+          episodes: [
+            {
+              id: "ep-new-1",
+              number: 1,
+              title: "Episódio 1",
+              videoUrl: "https://cdn.example.com/bc-ep1.mp4",
+              published: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    const payload = buildAdminCatalogAnimeSavePayload(animeWithoutServerId, {
+      cover: false,
+      banner: false,
+    });
+
+    assert.equal("cover" in payload, false, "cover deve ser omitido quando não editado");
+    assert.equal("banner" in payload, false, "banner deve ser omitido quando não editado");
+    assert.equal(payload.coverExplicitlyEdited, false);
+    assert.equal(payload.bannerExplicitlyEdited, false);
+
+    // No backend (novo registro ou registro já existente), campos omitidos nunca gravam nem sobrescrevem imagens
+    const newRowDecision = resolveCatalogAnimeMediaWrite({
+      cover: payload.cover,
+      banner: payload.banner,
+      coverExplicitlyEdited: payload.coverExplicitlyEdited,
+      bannerExplicitlyEdited: payload.bannerExplicitlyEdited,
+      targetExists: false,
+      cleanCover: null,
+      cleanBanner: null,
+    });
+    assert.equal(newRowDecision.shouldWriteCover, false);
+    assert.equal(newRowDecision.shouldWriteBanner, false);
+    assert.equal(newRowDecision.insertCover, null);
+    assert.equal(newRowDecision.insertBanner, null);
+
+    // Mesmo se uma chamada externa enviar URLs antigas sem flag explícita em registro existente, o backend bloqueia sobrescrita
+    const implicitUpdateBlocked = resolveCatalogAnimeMediaWrite({
+      cover: "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx195604.jpg",
+      banner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/195604.jpg",
+      coverExplicitlyEdited: undefined,
+      bannerExplicitlyEdited: false,
+      targetExists: true,
+      cleanCover: "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx195604.jpg",
+      cleanBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/195604.jpg",
+    });
+    assert.equal(implicitUpdateBlocked.shouldWriteCover, false);
+    assert.equal(implicitUpdateBlocked.shouldWriteBanner, false);
+  });
+
+  it("3 & 4. Imagens Kitsu válidas armazenadas localmente são preservadas contra AniList na sincronização inicial e na reconciliação do editor", () => {
+    const kitsuCover = "https://media.kitsu.app/anime/poster_images/13209/large.jpg";
+    const kitsuBanner = "https://media.kitsu.app/anime/cover_images/13209/original.jpg";
+    const anilistCover = "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx97940.jpg";
+    const anilistBanner = "https://s4.anilist.co/file/anilistcdn/media/anime/banner/97940.jpg";
+
+    assert.equal(isKitsuImageUrl(kitsuCover), true);
+    assert.equal(isKitsuImageUrl(anilistCover), false);
+
+    const localKitsuAnime = createMockAnime({
+      id: "97940",
+      anilistId: 97940,
+      kitsuId: 13209,
+      cover: kitsuCover,
+      banner: kitsuBanner,
+      updatedAt: 1700000000000,
+      syncedAt: undefined,
+    });
+
+    // Sincronização inicial da listagem (admin.index.tsx) não pode substituir Kitsu por AniList
+    assert.equal(
+      shouldPreferRemoteMedia(localKitsuAnime.cover, anilistCover, localKitsuAnime, 1700000900000),
+      false,
+    );
+    assert.equal(
+      shouldPreferRemoteMedia(localKitsuAnime.banner, anilistBanner, localKitsuAnime, 1700000900000),
+      false,
+    );
+
+    // Abertura no editor (resolveAdminAnimeWithRemote) preserva Kitsu mesmo com catalogUpdatedAt mais recente
+    const remoteWithAniFallback: Anime = {
+      id: "97940",
+      anilistId: 97940,
+      kitsuId: 13209,
+      titles: { romaji: "Black Clover", english: "Black Clover", native: "ブラッククローバー" },
+      cover: anilistCover,
+      banner: anilistBanner,
+      synopsis: "Asta",
+      score: 82,
+      genres: ["Action"],
+      format: "TV",
+      status: "FINISHED",
+      episodesCount: 170,
+      season: "FALL",
+      year: 2017,
+      trailerId: null,
+      source: "anilist",
+      studios: [],
+      streamingEpisodes: [],
+      seasons: [],
+      recommendations: [],
+      characters: [],
+      staff: [],
+      catalogUpdatedAt: 1700000900000,
+      serverCatalogId: "97940",
+    };
+
+    const resolvedAdmin = resolveAdminAnimeWithRemote(localKitsuAnime, remoteWithAniFallback);
+    assert.equal(resolvedAdmin?.cover, kitsuCover);
+    assert.equal(resolvedAdmin?.banner, kitsuBanner);
+
+    // Resposta do servidor com fallback legado AniList não sobrescreve Kitsu local quando mídia não foi editada
+    assert.equal(resolveSavedMediaFromServer(kitsuCover, anilistCover, false), kitsuCover);
+    assert.equal(resolveSavedMediaFromServer(kitsuBanner, anilistBanner, false), kitsuBanner);
+
+    // Rota pública kitsu-* também preserva arte Kitsu se o registro local contiver apenas CDN AniList padrão
+    const remoteKitsuRoute: Anime = {
+      ...remoteWithAniFallback,
+      id: "kitsu-13209",
+      cover: kitsuCover,
+      banner: kitsuBanner,
+      source: "kitsu",
+    };
+    const localWithDefaultAni = createMockAnime({
+      id: "local-kitsu-check",
+      anilistId: 97940,
+      kitsuId: 13209,
+      cover: anilistCover,
+      banner: anilistBanner,
+    });
+    const publicDetail = mergeDetail(remoteKitsuRoute, "kitsu-13209", [localWithDefaultAni]);
+    assert.equal(publicDetail?.cover, kitsuCover);
+    assert.equal(publicDetail?.banner, kitsuBanner);
+  });
+
+  it("5 & 6 & 7. Edição manual envia somente o campo alterado e criação de novo anime persiste imagens iniciais", () => {
+    const baseAnime = createMockAnime({
+      id: "97940",
+      anilistId: 97940,
+      cover: "https://cdn.hikari.app/new-cover.jpg",
+      banner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/97940.jpg",
+    });
+
+    // 5. Editar apenas capa
+    const coverOnlyPayload = buildAdminCatalogAnimeSavePayload(baseAnime, {
+      cover: true,
+      banner: false,
+    });
+    assert.equal(coverOnlyPayload.cover, "https://cdn.hikari.app/new-cover.jpg");
+    assert.equal("banner" in coverOnlyPayload, false);
+    assert.equal(coverOnlyPayload.coverExplicitlyEdited, true);
+    assert.equal(coverOnlyPayload.bannerExplicitlyEdited, false);
+
+    const coverOnlyDb = resolveCatalogAnimeMediaWrite({
+      cover: coverOnlyPayload.cover,
+      banner: coverOnlyPayload.banner,
+      coverExplicitlyEdited: coverOnlyPayload.coverExplicitlyEdited,
+      bannerExplicitlyEdited: coverOnlyPayload.bannerExplicitlyEdited,
+      targetExists: true,
+      cleanCover: "https://cdn.hikari.app/new-cover.jpg",
+      cleanBanner: null,
+    });
+    assert.equal(coverOnlyDb.shouldWriteCover, true);
+    assert.equal(coverOnlyDb.shouldWriteBanner, false);
+
+    // 6. Editar apenas banner
+    const customBanner = "https://cdn.hikari.app/new-banner.jpg";
+    const bannerOnlyPayload = buildAdminCatalogAnimeSavePayload(
+      { ...baseAnime, banner: customBanner },
+      { cover: false, banner: true },
+    );
+    assert.equal("cover" in bannerOnlyPayload, false);
+    assert.equal(bannerOnlyPayload.banner, customBanner);
+    assert.equal(bannerOnlyPayload.coverExplicitlyEdited, false);
+    assert.equal(bannerOnlyPayload.bannerExplicitlyEdited, true);
+
+    const bannerOnlyDb = resolveCatalogAnimeMediaWrite({
+      cover: bannerOnlyPayload.cover,
+      banner: bannerOnlyPayload.banner,
+      coverExplicitlyEdited: bannerOnlyPayload.coverExplicitlyEdited,
+      bannerExplicitlyEdited: bannerOnlyPayload.bannerExplicitlyEdited,
+      targetExists: true,
+      cleanCover: null,
+      cleanBanner: customBanner,
+    });
+    assert.equal(bannerOnlyDb.shouldWriteCover, false);
+    assert.equal(bannerOnlyDb.shouldWriteBanner, true);
+
+    const customPreview = resolveAdminDisplayMedia(
+      { cover: baseAnime.cover, banner: customBanner },
+      {
+        cover: "https://s4.anilist.co/cover.jpg",
+        banner: "https://s4.anilist.co/banner.jpg",
+        resolvedMobileBanner: {
+          url: "https://media.kitsu.app/anime/50024/cover_image/x.jpg",
+          isAlternative: true,
+          source: "kitsu-season",
+          initialObjectPosition: "50% 24%",
+        },
+      },
+    );
+    assert.equal(customPreview.hasCustomDesktopBanner, true);
+    assert.equal(customPreview.mobileBanner?.source, "admin");
+    assert.equal(customPreview.mobileBanner?.url, customBanner);
+
+    // 7. Criação de anime novo com imagens informadas
+    const brandNew = createMockAnime({
+      id: "local-brand-new",
+      cover: "https://cdn.hikari.app/brand-new-cover.jpg",
+      banner: "https://cdn.hikari.app/brand-new-banner.jpg",
+    });
+    const newAnimePayload = buildAdminCatalogAnimeSavePayload(brandNew, {
+      cover: true,
+      banner: true,
+    });
+    const newAnimeDb = resolveCatalogAnimeMediaWrite({
+      cover: newAnimePayload.cover,
+      banner: newAnimePayload.banner,
+      coverExplicitlyEdited: newAnimePayload.coverExplicitlyEdited,
+      bannerExplicitlyEdited: newAnimePayload.bannerExplicitlyEdited,
+      targetExists: false,
+      cleanCover: "https://cdn.hikari.app/brand-new-cover.jpg",
+      cleanBanner: "https://cdn.hikari.app/brand-new-banner.jpg",
+    });
+    assert.equal(newAnimeDb.shouldWriteCover, true);
+    assert.equal(newAnimeDb.shouldWriteBanner, true);
+    assert.equal(newAnimeDb.insertCover, "https://cdn.hikari.app/brand-new-cover.jpg");
+    assert.equal(newAnimeDb.insertBanner, "https://cdn.hikari.app/brand-new-banner.jpg");
+  });
+});
+
 
 
 

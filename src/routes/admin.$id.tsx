@@ -11,14 +11,30 @@ import {
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import { fetchAnimeDetail } from "@/lib/api";
-import { type Episode, type LocalAnime, type Season } from "@/lib/types";
+import {
+  isCustomImageUrl,
+  type Episode,
+  type LocalAnime,
+  type ResolvedMobileBannerInfo,
+  type Season,
+} from "@/lib/types";
 import { useHikariStore } from "@/lib/store";
 import { youtubeIdFrom } from "@/lib/utils";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { uploadVideoToB2 } from "@/lib/b2";
 import { getBearerToken } from "@/lib/auth/client";
 import { flushAnimes } from "@/lib/catalog-storage";
-import { resolveAdminAnimeWithRemote } from "@/lib/overlay";
+import {
+  buildAdminCatalogAnimeSavePayload,
+  resolveAdminAnimeWithRemote,
+  resolveAdminDisplayMedia,
+  resolveSavedMediaFromServer,
+} from "@/lib/overlay";
+import {
+  hasAdminCustomBanner,
+  resolveSeasonMobileBanner,
+  resolveSeasonMobileBannerSync,
+} from "@/lib/season-banner";
 import {
   captureAndUploadThumbnail,
   extractVideoThumbnailCandidates,
@@ -103,11 +119,24 @@ export const Route = createFileRoute("/admin/$id")({
           data: { id: externalFallbackId },
         });
         if (canonicalRemote) {
+          const mergedBanner = primary.banner || canonicalRemote.banner;
+          const primaryHasCustomBanner = Boolean(
+            primary.banner?.trim() &&
+              isCustomImageUrl(primary.banner, canonicalRemote.banner),
+          );
           remote = {
             ...canonicalRemote,
             ...primary,
             cover: primary.cover || canonicalRemote.cover,
-            banner: primary.banner || canonicalRemote.banner,
+            banner: mergedBanner,
+            resolvedMobileBanner: primaryHasCustomBanner
+              ? {
+                  url: primary.banner.trim(),
+                  isAlternative: false,
+                  source: "admin" as const,
+                  initialObjectPosition: "50% 24%",
+                }
+              : primary.resolvedMobileBanner ?? canonicalRemote.resolvedMobileBanner,
             seasons:
               canonicalRemote.seasons?.length > 0
                 ? canonicalRemote.seasons
@@ -220,6 +249,8 @@ function AdminEditor() {
     cover: false,
     banner: false,
   });
+  const [clientMobileBanner, setClientMobileBanner] =
+    useState<ResolvedMobileBannerInfo | null>(null);
   const [episodeCandidates, setEpisodeCandidates] = useState<
     Record<string, EpisodeCandidateState>
   >({});
@@ -755,19 +786,30 @@ function AdminEditor() {
         `${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`,
       );
 
+    const findByExternalIds = () =>
+      (remote?.anilistId
+        ? stored.find((a) => a.anilistId === remote.anilistId && !isDubbedTitle(a)) ||
+          stored.find((a) => a.anilistId === remote.anilistId)
+        : undefined) ||
+      (remote?.kitsuId
+        ? stored.find((a) => a.kitsuId === remote.kitsuId && !isDubbedTitle(a)) ||
+          stored.find((a) => a.kitsuId === remote.kitsuId)
+        : undefined) ||
+      (remote?.malId
+        ? stored.find((a) => a.malId === remote.malId && !isDubbedTitle(a)) ||
+          stored.find((a) => a.malId === remote.malId)
+        : undefined);
+
     const storedMatch =
       id === "new"
-        ? remote?.serverCatalogId
-          ? stored.find((a) => a.id === remote.serverCatalogId)
-          : undefined
+        ? (remote?.serverCatalogId
+            ? stored.find((a) => a.id === remote.serverCatalogId)
+            : undefined) || findByExternalIds()
         : stored.find((a) => a.id === id) ||
           (remote?.serverCatalogId
             ? stored.find((a) => a.id === remote.serverCatalogId)
             : undefined) ||
-          (remote?.anilistId
-            ? stored.find((a) => a.anilistId === remote.anilistId && !isDubbedTitle(a)) ||
-              stored.find((a) => a.anilistId === remote.anilistId)
-            : undefined);
+          findByExternalIds();
 
     const resolvedFromRemote = resolveAdminAnimeWithRemote(storedMatch, remote);
     const base =
@@ -831,6 +873,104 @@ function AdminEditor() {
     recoverEpisodesFromServer,
     revokeAllCandidatePreviewUrls,
   ]);
+
+  const formLoaded = Boolean(form);
+  const formBannerValue = form?.banner;
+  const formCoverValue = form?.cover;
+  const formAnilistId = form?.anilistId;
+  const formMalId = form?.malId;
+  const formKitsuId = form?.kitsuId;
+  const formYear = form?.year;
+  const formFormat = form?.format;
+  const formStatus = form?.status;
+
+  useEffect(() => {
+    if (!remote && !formBannerValue && !formAnilistId && !formKitsuId && !formMalId) {
+      setClientMobileBanner(null);
+      return;
+    }
+
+    const activeLocal = formLoaded
+      ? ({
+          banner: formBannerValue ?? "",
+        } as LocalAnime)
+      : null;
+    const isCustomAdmin = hasAdminCustomBanner(activeLocal, remote);
+    if (isCustomAdmin) {
+      setClientMobileBanner(null);
+      return;
+    }
+
+    if (remote?.resolvedMobileBanner?.url && remote.resolvedMobileBanner.source !== "none") {
+      setClientMobileBanner(remote.resolvedMobileBanner);
+      return;
+    }
+
+    const targetAnimeId =
+      remote?.id ||
+      (formAnilistId ? String(formAnilistId) : undefined) ||
+      (formKitsuId ? `kitsu-${formKitsuId}` : undefined) ||
+      (formMalId ? `mal-${formMalId}` : undefined) ||
+      id;
+
+    if (!targetAnimeId || targetAnimeId === "new" || targetAnimeId.startsWith("local-")) {
+      setClientMobileBanner(null);
+      return;
+    }
+
+    const bannerInput = {
+      animeId: targetAnimeId,
+      anilistId: remote?.anilistId ?? formAnilistId,
+      malId: remote?.malId ?? formMalId,
+      kitsuId: remote?.kitsuId ?? formKitsuId,
+      year: remote?.year ?? formYear ?? null,
+      startYear: remote?.startDate?.year ?? remote?.year ?? formYear ?? null,
+      format: remote?.format ?? formFormat ?? null,
+      status: remote?.status ?? formStatus ?? null,
+      currentBanner: remote?.banner ?? formBannerValue ?? null,
+      currentCover: remote?.cover ?? formCoverValue ?? null,
+      isAdminCustomBanner: false,
+      preloadedMalPictures: remote?.images,
+    };
+
+    const syncResolved = resolveSeasonMobileBannerSync(bannerInput);
+    if (syncResolved?.url) {
+      setClientMobileBanner(syncResolved);
+      return;
+    }
+
+    const controller = new AbortController();
+    void resolveSeasonMobileBanner(bannerInput, controller.signal).then((resolved) => {
+      if (controller.signal.aborted) return;
+      if (resolved?.url && resolved.source !== "none") {
+        setClientMobileBanner(resolved);
+      }
+    });
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    id,
+    remote,
+    formLoaded,
+    formBannerValue,
+    formCoverValue,
+    formAnilistId,
+    formMalId,
+    formKitsuId,
+    formYear,
+    formFormat,
+    formStatus,
+  ]);
+
+  const displayMedia = useMemo(
+    () =>
+      form
+        ? resolveAdminDisplayMedia(form, remote, clientMobileBanner)
+        : null,
+    [form, remote, clientMobileBanner],
+  );
 
   if (!form) {
     return (
@@ -1041,39 +1181,18 @@ function AdminEditor() {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
-      const shouldSendCover = dirtyMediaRef.current.cover || !remote?.serverCatalogId;
-      const shouldSendBanner = dirtyMediaRef.current.banner || !remote?.serverCatalogId;
+      const savePayload = buildAdminCatalogAnimeSavePayload(
+        effectiveAnime,
+        dirtyMediaRef.current,
+      );
+      const shouldSendCover = savePayload.coverExplicitlyEdited;
+      const shouldSendBanner = savePayload.bannerExplicitlyEdited;
 
       const res = await fetch("/api/admin/catalog-anime", {
         method: "POST",
         headers,
         credentials: "include",
-        body: JSON.stringify({
-          id: effectiveAnime.id,
-          titleRomaji: effectiveAnime.titleRomaji,
-          titleEnglish: effectiveAnime.titleEnglish,
-          titleNative: effectiveAnime.titleNative,
-          ...(shouldSendCover ? { cover: effectiveAnime.cover } : {}),
-          ...(shouldSendBanner ? { banner: effectiveAnime.banner } : {}),
-          synopsis: effectiveAnime.synopsis,
-          score: effectiveAnime.score,
-          genres: effectiveAnime.genres,
-          format: effectiveAnime.format,
-          status: effectiveAnime.status,
-          episodesCount: effectiveAnime.episodesCount,
-          season: effectiveAnime.season,
-          year: effectiveAnime.year,
-          trailerId: effectiveAnime.trailerId,
-          hidden: effectiveAnime.hidden,
-          anilistId: effectiveAnime.anilistId,
-          malId: effectiveAnime.malId,
-          kitsuId: effectiveAnime.kitsuId,
-          seasons: effectiveAnime.seasons.map((s) => ({
-            id: s.id,
-            number: s.number,
-            title: s.title,
-          })),
-        }),
+        body: JSON.stringify(savePayload),
       });
 
       if (res.ok) {
@@ -1094,14 +1213,16 @@ function AdminEditor() {
             typeof json.updatedAt === "number" && Number.isFinite(json.updatedAt) && json.updatedAt > 0
               ? json.updatedAt
               : effectiveAnime.updatedAt;
-          const canonicalCover =
-            typeof json.cover === "string" && json.cover.trim()
-              ? stripCatalogImageVersion(json.cover)
-              : effectiveAnime.cover;
-          const canonicalBanner =
-            typeof json.banner === "string" && json.banner.trim()
-              ? stripCatalogImageVersion(json.banner)
-              : effectiveAnime.banner;
+          const canonicalCover = resolveSavedMediaFromServer(
+            effectiveAnime.cover,
+            typeof json.cover === "string" ? stripCatalogImageVersion(json.cover) : json.cover,
+            shouldSendCover,
+          );
+          const canonicalBanner = resolveSavedMediaFromServer(
+            effectiveAnime.banner,
+            typeof json.banner === "string" ? stripCatalogImageVersion(json.banner) : json.banner,
+            shouldSendBanner,
+          );
 
           if (canonicalId !== effectiveAnime.id) {
             removeAnime(effectiveAnime.id);
@@ -1742,6 +1863,8 @@ function AdminEditor() {
           setGenreText(val);
           setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
         }}
+        resolvedMobileBanner={displayMedia?.mobileBanner ?? null}
+        hasCustomDesktopBanner={displayMedia?.hasCustomDesktopBanner ?? false}
       />
 
       {/* Gerenciamento Modernizado de Temporadas e Episódios */}

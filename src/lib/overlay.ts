@@ -1,11 +1,13 @@
 import {
   animeToLocal,
+  isKitsuImageUrl,
   isRemoteDefaultCdn,
   localToAnime,
   normalizeImageUrl,
   type Anime,
   type Episode,
   type LocalAnime,
+  type ResolvedMobileBannerInfo,
   type SlimAnime,
   type Season,
 } from "@/lib/types";
@@ -343,6 +345,17 @@ export function shouldPreferRemoteMedia(
     return false;
   }
 
+  // Preservar imagens válidas do Kitsu diante de URLs padrão de outras CDNs (ex.: AniList/MAL),
+  // evitando que o fallback do AniList ou um registro de episódio sem mídia customizada
+  // substitua arte Kitsu já armazenada no cliente.
+  if (
+    isKitsuImageUrl(cleanLocal) &&
+    isRemoteDefaultCdn(cleanRemote) &&
+    !isKitsuImageUrl(cleanRemote)
+  ) {
+    return false;
+  }
+
   const localUpdatedAt = storedMatch.updatedAt ?? 0;
   const localSyncedAt = storedMatch.syncedAt ?? 0;
   const remoteUpdatedAt = remoteCatalogUpdatedAt ?? 0;
@@ -354,9 +367,170 @@ export function shouldPreferRemoteMedia(
   const hasUnsyncedLocalEdit =
     localSyncedAt > 0
       ? localUpdatedAt > localSyncedAt
-      : !isRemoteDefaultCdn(cleanLocal);
+      : !isRemoteDefaultCdn(cleanLocal) || isKitsuImageUrl(cleanLocal);
 
   return !hasUnsyncedLocalEdit;
+}
+
+export interface AdminDisplayMedia {
+  cover: string;
+  desktopBanner: string;
+  mobileBanner: ResolvedMobileBannerInfo | null;
+  hasCustomDesktopBanner: boolean;
+}
+
+/**
+ * Resolve as imagens efetivamente exibidas pelo Hikari para um anime no editor do Admin,
+ * separando capa, banner desktop e banner mobile/temporada (resolvedMobileBanner)
+ * sem converter uma imagem sazonal/mobile em banner permanente no formulário.
+ */
+export function resolveAdminDisplayMedia(
+  form: Pick<LocalAnime, "cover" | "banner">,
+  remote: Pick<Anime, "cover" | "banner" | "resolvedMobileBanner"> | null | undefined,
+  clientMobileBanner?: ResolvedMobileBannerInfo | null,
+): AdminDisplayMedia {
+  const cleanFormCover = form.cover?.trim() || "";
+  const cleanFormBanner = form.banner?.trim() || "";
+  const cleanRemoteCover = remote?.cover?.trim() || "";
+  const cleanRemoteBanner = remote?.banner?.trim() || "";
+
+  const cover = cleanFormCover || cleanRemoteCover;
+  const desktopBanner = cleanFormBanner || cleanRemoteBanner;
+
+  const differsFromRemoteBanner = Boolean(
+    cleanFormBanner &&
+      (!remote ||
+        !cleanRemoteBanner ||
+        normalizeImageUrl(cleanFormBanner) !== normalizeImageUrl(cleanRemoteBanner)),
+  );
+
+  const serverMarkedAdminBanner = Boolean(
+    cleanFormBanner &&
+      remote?.resolvedMobileBanner?.source === "admin" &&
+      normalizeImageUrl(cleanFormBanner) === normalizeImageUrl(cleanRemoteBanner),
+  );
+
+  const hasCustomDesktopBanner = differsFromRemoteBanner || serverMarkedAdminBanner;
+
+  let mobileBanner: ResolvedMobileBannerInfo | null = null;
+  if (hasCustomDesktopBanner) {
+    mobileBanner = {
+      url: desktopBanner,
+      isAlternative: false,
+      source: "admin",
+      initialObjectPosition: "50% 24%",
+    };
+  } else {
+    const candidate =
+      (clientMobileBanner?.url ? clientMobileBanner : null) ??
+      (remote?.resolvedMobileBanner?.url ? remote.resolvedMobileBanner : null);
+
+    if (candidate && candidate.url && candidate.source !== "none") {
+      mobileBanner = candidate;
+    } else if (desktopBanner) {
+      mobileBanner = {
+        url: desktopBanner,
+        isAlternative: false,
+        source: "season-default",
+        initialObjectPosition: "50% 24%",
+      };
+    }
+  }
+
+  return {
+    cover,
+    desktopBanner,
+    mobileBanner,
+    hasCustomDesktopBanner,
+  };
+}
+
+export interface CatalogAnimeSavePayload {
+  id: string;
+  titleRomaji: string;
+  titleEnglish: string;
+  titleNative: string;
+  cover?: string;
+  banner?: string;
+  coverExplicitlyEdited: boolean;
+  bannerExplicitlyEdited: boolean;
+  synopsis: string;
+  score: number | null;
+  genres: string[];
+  format: string;
+  status: string;
+  episodesCount: number | null;
+  season: string | null;
+  year: number | null;
+  trailerId: string | null;
+  hidden: boolean;
+  anilistId?: number;
+  malId?: number;
+  kitsuId?: number;
+  seasons: Array<{ id: string; number: number; title: string }>;
+}
+
+/**
+ * Monta o payload de metadados enviado a `/api/admin/catalog-anime`, omitindo
+ * estritamente `cover` e `banner` quando não houve alteração manual explícita pelo admin.
+ */
+export function buildAdminCatalogAnimeSavePayload(
+  effectiveAnime: LocalAnime,
+  dirtyMedia: { cover: boolean; banner: boolean },
+): CatalogAnimeSavePayload {
+  const shouldSendCover = Boolean(dirtyMedia.cover);
+  const shouldSendBanner = Boolean(dirtyMedia.banner);
+
+  return {
+    id: effectiveAnime.id,
+    titleRomaji: effectiveAnime.titleRomaji,
+    titleEnglish: effectiveAnime.titleEnglish,
+    titleNative: effectiveAnime.titleNative,
+    ...(shouldSendCover ? { cover: effectiveAnime.cover } : {}),
+    ...(shouldSendBanner ? { banner: effectiveAnime.banner } : {}),
+    coverExplicitlyEdited: shouldSendCover,
+    bannerExplicitlyEdited: shouldSendBanner,
+    synopsis: effectiveAnime.synopsis,
+    score: effectiveAnime.score,
+    genres: effectiveAnime.genres,
+    format: effectiveAnime.format,
+    status: effectiveAnime.status,
+    episodesCount: effectiveAnime.episodesCount,
+    season: effectiveAnime.season,
+    year: effectiveAnime.year,
+    trailerId: effectiveAnime.trailerId,
+    hidden: effectiveAnime.hidden,
+    anilistId: effectiveAnime.anilistId,
+    malId: effectiveAnime.malId,
+    kitsuId: effectiveAnime.kitsuId,
+    seasons: effectiveAnime.seasons.map((s) => ({
+      id: s.id,
+      number: s.number,
+      title: s.title,
+    })),
+  };
+}
+
+export function resolveSavedMediaFromServer(
+  localUrl: string,
+  serverUrl: string | null | undefined,
+  wasExplicitlySent: boolean,
+): string {
+  const cleanServer = typeof serverUrl === "string" ? serverUrl.trim() : "";
+  if (wasExplicitlySent) {
+    return cleanServer || localUrl;
+  }
+  if (!cleanServer) {
+    return localUrl;
+  }
+  if (
+    isKitsuImageUrl(localUrl) &&
+    isRemoteDefaultCdn(cleanServer) &&
+    !isKitsuImageUrl(cleanServer)
+  ) {
+    return localUrl;
+  }
+  return cleanServer;
 }
 
 /**
@@ -499,13 +673,22 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
         ? local.studios
         : (remote.studios ?? []);
 
+    const preferRemoteKitsuCover =
+      isKitsuImageUrl(remote.cover) &&
+      isRemoteDefaultCdn(local.cover) &&
+      !isKitsuImageUrl(local.cover);
+    const preferRemoteKitsuBanner =
+      isKitsuImageUrl(remote.banner) &&
+      isRemoteDefaultCdn(local.banner) &&
+      !isKitsuImageUrl(local.banner);
+
     return {
       ...remote,
       ...local,
       serverCatalogId: remote.serverCatalogId || byId.serverCatalogId || undefined,
       titles: local.titles,
-      cover: local.cover || remote.cover,
-      banner: local.banner || remote.banner,
+      cover: preferRemoteKitsuCover ? remote.cover : local.cover || remote.cover,
+      banner: preferRemoteKitsuBanner ? remote.banner : local.banner || remote.banner,
       synopsis: local.synopsis || remote.synopsis,
       seasons: resolvedSeasons,
       trailerId: local.trailerId || remote.trailerId,
@@ -545,12 +728,21 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
         ? local.studios
         : (remote.studios ?? []);
 
+    const preferRemoteKitsuCover =
+      isKitsuImageUrl(remote.cover) &&
+      isRemoteDefaultCdn(local.cover) &&
+      !isKitsuImageUrl(local.cover);
+    const preferRemoteKitsuBanner =
+      isKitsuImageUrl(remote.banner) &&
+      isRemoteDefaultCdn(local.banner) &&
+      !isKitsuImageUrl(local.banner);
+
     return {
       ...remote,
       ...local,
       id: remote.id,
-      cover: local.cover || remote.cover,
-      banner: local.banner || remote.banner,
+      cover: preferRemoteKitsuCover ? remote.cover : local.cover || remote.cover,
+      banner: preferRemoteKitsuBanner ? remote.banner : local.banner || remote.banner,
       seasons: resolvedSeasons,
       trailerId: local.trailerId || remote.trailerId,
       recommendations: remote.recommendations,

@@ -21,13 +21,15 @@ import {
   uploadImageFile,
   isPersistentStorageUrl,
 } from "@/lib/storage/image-storage-client";
-import type { LocalAnime } from "@/lib/types";
+import type { LocalAnime, ResolvedMobileBannerInfo } from "@/lib/types";
 
 interface EditorMetadataProps {
   form: LocalAnime;
   onChange: <K extends keyof LocalAnime>(key: K, value: LocalAnime[K]) => void;
   genreText: string;
   onGenreTextChange: (text: string) => void;
+  resolvedMobileBanner?: ResolvedMobileBannerInfo | null;
+  hasCustomDesktopBanner?: boolean;
 }
 
 export function EditorMetadata({
@@ -35,6 +37,8 @@ export function EditorMetadata({
   onChange,
   genreText,
   onGenreTextChange,
+  resolvedMobileBanner,
+  hasCustomDesktopBanner = false,
 }: EditorMetadataProps) {
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
@@ -563,6 +567,49 @@ export function EditorMetadata({
                   )}
                 </Button>
               </div>
+
+              {!hasCustomDesktopBanner &&
+                resolvedMobileBanner?.url &&
+                (resolvedMobileBanner.isAlternative ||
+                  resolvedMobileBanner.source === "kitsu-season" ||
+                  resolvedMobileBanner.source === "jikan-season" ||
+                  resolvedMobileBanner.source === "livechart-season") && (
+                  <div className="mt-3 space-y-2 rounded-xl border border-violet-500/20 bg-black/30 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold text-[var(--color-fg)]">
+                        Banner Mobile / Temporada (Hikari)
+                      </span>
+                      <span className="studio-mono rounded bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-200">
+                        {resolvedMobileBanner.source === "kitsu-season"
+                          ? "Kitsu · Temporada"
+                          : resolvedMobileBanner.source === "jikan-season"
+                            ? "Jikan · Temporada"
+                            : resolvedMobileBanner.source === "livechart-season"
+                              ? "LiveChart · Temporada"
+                              : "Resolução Automática"}{" "}
+                        · Somente visualização
+                      </span>
+                    </div>
+
+                    <div className="relative flex aspect-21/9 w-full items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black/50">
+                      <img
+                        src={resolvedMobileBanner.url}
+                        alt="Banner mobile resolvido pelo Hikari"
+                        style={{
+                          objectPosition:
+                            resolvedMobileBanner.initialObjectPosition || "50% 24%",
+                        }}
+                        className="size-full object-cover"
+                      />
+                    </div>
+
+                    <p className="text-[11px] leading-relaxed text-[var(--color-subtle)]">
+                      Imagem exibida automaticamente pelo Hikari na versão mobile/temporada.
+                      Não sobrescreve o banner desktop e não é salva como banner permanente a menos
+                      que você altere o campo acima manualmente.
+                    </p>
+                  </div>
+                )}
             </div>
           </div>
         </section>

@@ -6,6 +6,7 @@ import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 import { invalidateServerCatalogCaches } from "@/lib/api";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
+import { resolveCatalogAnimeMediaWrite } from "@/lib/types";
 
 const seasonItemSchema = z.object({
   number: z.number().int().min(1, "number da temporada deve ser >= 1"),
@@ -21,6 +22,8 @@ const animeAdminPostSchema = z.object({
   titleNative: z.string().max(255).optional().nullable(),
   cover: z.string().max(2048).optional().nullable(),
   banner: z.string().max(2048).optional().nullable(),
+  coverExplicitlyEdited: z.boolean().optional(),
+  bannerExplicitlyEdited: z.boolean().optional(),
   synopsis: z.string().max(10000).optional().nullable(),
   format: z.string().max(32).optional().nullable(),
   status: z.string().max(32).optional().nullable(),
@@ -161,8 +164,16 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             }
           }
 
-          const coverProvided = data.cover !== undefined;
-          const bannerProvided = data.banner !== undefined;
+          const targetExists = existingRows.some((r) => r.id === targetId);
+          const mediaWrite = resolveCatalogAnimeMediaWrite({
+            cover: data.cover,
+            banner: data.banner,
+            coverExplicitlyEdited: data.coverExplicitlyEdited,
+            bannerExplicitlyEdited: data.bannerExplicitlyEdited,
+            targetExists,
+            cleanCover,
+            cleanBanner,
+          });
           const hiddenProvided = data.hidden !== undefined && data.hidden !== null;
           const scoreProvided = data.score !== undefined && data.score !== null;
 
@@ -244,8 +255,8 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
               data.titleRomaji?.trim() ?? null,
               data.titleEnglish?.trim() ?? null,
               data.titleNative?.trim() ?? null,
-              cleanCover,
-              cleanBanner,
+              mediaWrite.insertCover,
+              mediaWrite.insertBanner,
               data.synopsis?.trim() ?? null,
               data.format?.trim() ?? null,
               data.status?.trim() ?? null,
@@ -254,8 +265,8 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
               data.season?.trim() ?? null,
               genresArray,
               data.trailerId?.trim() ?? null,
-              coverProvided,
-              bannerProvided,
+              mediaWrite.shouldWriteCover,
+              mediaWrite.shouldWriteBanner,
               data.hidden ?? false,
               data.score ?? null,
               hiddenProvided,
