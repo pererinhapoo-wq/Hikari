@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Film,
   Heart,
-  Loader2,
   LogIn,
   Play,
   X,
@@ -2489,17 +2488,15 @@ function AnimePageContent({
                   }}
                   disabled={isCollectionBusy}
                   aria-label={
-                    isCollectionBusy
-                      ? "Carregando status da coleção"
-                      : trackingStatus
-                        ? `Gerenciar Coleção: ${COLLECTION_STATUS_CONFIG[trackingStatus].label}`
-                        : "Adicionar à Minha Coleção"
+                    trackingStatus
+                      ? `Gerenciar Coleção: ${COLLECTION_STATUS_CONFIG[trackingStatus].label}`
+                      : "Adicionar à Minha Coleção"
                   }
                   className={cn(
                     "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-2xl px-4 sm:px-5 text-sm sm:text-base font-semibold select-none cursor-pointer overflow-hidden bg-black/75 md:bg-black/60 md:backdrop-blur-md transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
                     "before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:transition-opacity before:duration-300",
                     "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.97]",
-                    trackingStatus && !isCollectionBusy
+                    trackingStatus
                       ? cn(
                           "border bg-gradient-to-r",
                           COLLECTION_STATUS_CONFIG[trackingStatus].border,
@@ -2521,9 +2518,7 @@ function AnimePageContent({
                     aria-hidden="true"
                   />
 
-                  {isCollectionBusy ? (
-                    <Loader2 className="relative z-10 size-4 animate-spin text-violet-300" />
-                  ) : trackingStatus ? (
+                  {trackingStatus ? (
                     <div className="relative z-10 flex items-center gap-2">
                       <span className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 shadow-[0_0_8px_rgba(255,255,255,0.1)]">
                         <span
@@ -2573,17 +2568,15 @@ function AnimePageContent({
                   onClick={() => void handleToggleFavorite()}
                   disabled={isFavoriteBusy}
                   aria-label={
-                    isFavoriteBusy
-                      ? "Carregando status de favorito"
-                      : isFavorite
-                        ? "Remover dos favoritos"
-                        : "Adicionar aos favoritos"
+                    isFavorite
+                      ? "Remover dos favoritos"
+                      : "Adicionar aos favoritos"
                   }
                   className={cn(
                     "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-2xl px-4 sm:px-5 text-sm sm:text-base font-semibold select-none cursor-pointer overflow-hidden bg-black/75 md:bg-black/60 md:backdrop-blur-md transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400",
                     "before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:transition-opacity before:duration-300",
                     "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.97]",
-                    isFavorite && !isFavoriteBusy
+                    isFavorite
                       ? cn(
                           "border border-rose-400/80 bg-gradient-to-r from-[#5a0828] via-[#40071c] to-[#250410] text-white",
                           "shadow-[0_4px_22px_rgba(0,0,0,0.6),0_0_28px_rgba(244,63,94,0.45),inset_0_1px_2px_rgba(255,255,255,0.25)]",
@@ -2602,46 +2595,42 @@ function AnimePageContent({
                   <span
                     className={cn(
                       "pointer-events-none absolute inset-0 transition-opacity duration-300",
-                      isFavorite && !isFavoriteBusy
+                      isFavorite
                         ? "bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.2),transparent_70%)] opacity-100"
                         : "bg-[radial-gradient(ellipse_at_top,rgba(244,63,94,0.18),transparent_70%)] opacity-80 group-hover:opacity-100",
                     )}
                     aria-hidden="true"
                   />
 
-                  {isFavoriteBusy ? (
-                    <Loader2 className="relative z-10 size-4 animate-spin text-rose-400" />
-                  ) : (
-                    <div className="relative z-10 flex items-center gap-2">
-                      <span
+                  <div className="relative z-10 flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "flex size-6 shrink-0 items-center justify-center rounded-lg transition-all duration-300",
+                        isFavorite
+                          ? "border border-rose-300/70 bg-rose-500/35 shadow-[0_0_14px_rgba(244,63,94,0.7)]"
+                          : "border border-rose-400/30 bg-rose-500/15 shadow-[0_0_10px_rgba(244,63,94,0.25)] group-hover:scale-110 group-hover:border-rose-400/60 group-hover:bg-rose-500/25",
+                      )}
+                    >
+                      <Heart
                         className={cn(
-                          "flex size-6 shrink-0 items-center justify-center rounded-lg transition-all duration-300",
+                          "size-3.5 transition-all duration-300 ease-out",
                           isFavorite
-                            ? "border border-rose-300/70 bg-rose-500/35 shadow-[0_0_14px_rgba(244,63,94,0.7)]"
-                            : "border border-rose-400/30 bg-rose-500/15 shadow-[0_0_10px_rgba(244,63,94,0.25)] group-hover:scale-110 group-hover:border-rose-400/60 group-hover:bg-rose-500/25",
+                            ? "fill-rose-500 text-rose-200 scale-110 drop-shadow-[0_0_8px_rgba(244,63,94,0.9)] motion-safe:animate-[bookmarkPop_350ms_cubic-bezier(0.34,1.56,0.64,1)]"
+                            : "text-rose-300 group-hover:text-rose-100",
                         )}
-                      >
-                        <Heart
-                          className={cn(
-                            "size-3.5 transition-all duration-300 ease-out",
-                            isFavorite
-                              ? "fill-rose-500 text-rose-200 scale-110 drop-shadow-[0_0_8px_rgba(244,63,94,0.9)] motion-safe:animate-[bookmarkPop_350ms_cubic-bezier(0.34,1.56,0.64,1)]"
-                              : "text-rose-300 group-hover:text-rose-100",
-                          )}
-                        />
-                      </span>
-                      <span
-                        className={cn(
-                          "tracking-tight transition-colors",
-                          isFavorite
-                            ? "font-bold text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]"
-                            : "font-semibold text-rose-100/90 group-hover:text-white",
-                        )}
-                      >
-                        {isFavorite ? "Favoritado" : "Favoritar"}
-                      </span>
-                    </div>
-                  )}
+                      />
+                    </span>
+                    <span
+                      className={cn(
+                        "tracking-tight transition-colors",
+                        isFavorite
+                          ? "font-bold text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]"
+                          : "font-semibold text-rose-100/90 group-hover:text-white",
+                      )}
+                    >
+                      {isFavorite ? "Favoritado" : "Favoritar"}
+                    </span>
+                  </div>
                 </button>
 
                 {canEdit && (
