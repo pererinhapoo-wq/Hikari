@@ -50,7 +50,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { signOut, signIn, getBearerToken } from "@/lib/auth/client";
+import { signOut, getBearerToken } from "@/lib/auth/client";
 
 const LazyLoginMenu = lazy(() =>
   import("@/components/LoginMenu").then((mod) => ({
@@ -439,10 +439,6 @@ export function CommentsSection({
   const requestIdRef = useRef(0);
 
   const [loginOpen, setLoginOpen] = useState(false);
-  const [commentsLoginOpen, setCommentsLoginOpen] = useState(false);
-  const [commentsLoginWarning, setCommentsLoginWarning] = useState<string | null>(
-    null,
-  );
   const [sessionLoadingState, setSessionLoadingState] = useState(false);
   const [newCommentId, setNewCommentId] = useState<string | null>(null);
   const newCommentTimeoutRef = useRef<number | null>(null);
@@ -681,7 +677,6 @@ export function CommentsSection({
   );
 
   const sortMenu = usePresence(sortDropdownOpen, 135);
-  const commentsLoginMenu = usePresence(commentsLoginOpen, 135);
   const userDropdownMenu = usePresence(userMenuOpen, 135);
   const gifModal = usePresence(gifOpen, 150);
   const editModal = useModalPresence(editingComment, 150);
@@ -742,7 +737,6 @@ export function CommentsSection({
         setMenuOpenId(null);
         setUserMenuOpen(false);
         setLoginOpen(false);
-        setCommentsLoginOpen(false);
         setSortDropdownOpen(false);
       }
     };
@@ -751,7 +745,6 @@ export function CommentsSection({
   }, [
     userMenuOpen,
     loginOpen,
-    commentsLoginOpen,
     sortDropdownOpen,
     menuOpenId,
     editingComment,
@@ -1160,11 +1153,13 @@ export function CommentsSection({
       }
     }
 
-    void loadSession();
+    if (!loginOpen) {
+      void loadSession();
+    }
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loginOpen]);
 
   /* ====================================================== */
   /* CARREGAR COMENTÁRIOS COM PAGINAÇÃO PROGRESSIVA         */
@@ -1257,7 +1252,10 @@ export function CommentsSection({
         if (newTotalCount !== null) setTotalCount(newTotalCount);
         if (newTotalRoots !== null) setTotalRoots(newTotalRoots);
 
-        if (typeof data?.currentUserId === "string") {
+        if (
+          typeof data?.currentUserId === "string" &&
+          data.currentUserId !== "dev-user"
+        ) {
           setCurrentUserId(data.currentUserId);
         } else if (isInitial) {
           setCurrentUserId(null);
@@ -1620,7 +1618,7 @@ export function CommentsSection({
     reaction: "like" | "dislike",
   ) => {
     if (!effectiveUserId) {
-      setCommentsLoginOpen(true);
+      setLoginOpen(true);
       return;
     }
 
@@ -1700,7 +1698,7 @@ export function CommentsSection({
       if (!response.ok) {
         setComments(previousComments);
         if (response.status === 401) {
-          setCommentsLoginOpen(true);
+          setLoginOpen(true);
         }
         throw new Error(
           data?.error || "Não foi possível registrar a reação.",
@@ -1745,7 +1743,7 @@ export function CommentsSection({
 
   const openEdit = (comment: Comment) => {
     if (!effectiveUserId) {
-      setCommentsLoginOpen(true);
+      setLoginOpen(true);
       return;
     }
     if (comment.userId !== effectiveUserId && !isAdmin) {
@@ -1834,7 +1832,7 @@ export function CommentsSection({
 
   const openDelete = (comment: Comment) => {
     if (!effectiveUserId) {
-      setCommentsLoginOpen(true);
+      setLoginOpen(true);
       return;
     }
     if (comment.userId !== effectiveUserId && !isAdmin) {
@@ -2020,7 +2018,7 @@ export function CommentsSection({
 
   const openReport = (comment: Comment) => {
     if (!effectiveUserId) {
-      setCommentsLoginOpen(true);
+      setLoginOpen(true);
       return;
     }
     if (comment.userId === effectiveUserId) {
@@ -2157,118 +2155,15 @@ export function CommentsSection({
                       <button
                         type="button"
                         onClick={() => {
-                          setCommentsLoginOpen((prev) => !prev);
-                          setCommentsLoginWarning(null);
+                          setLoginOpen(true);
                         }}
                         className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-purple-500/35 bg-purple-950/40 px-3 py-1 text-xs sm:text-sm font-semibold text-purple-300 hover:bg-purple-950/70 hover:text-white hover:border-purple-500/55 active:[transform:scale(0.96)] touch-manipulation transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none shadow-sm cursor-pointer"
-                        aria-expanded={commentsLoginOpen}
+                        aria-expanded={loginOpen}
                         aria-haspopup="dialog"
                       >
                         <LogIn className="size-3.5" />
                         <span>Entrar</span>
                       </button>
-
-                      {commentsLoginMenu.mounted && (
-                        <>
-                          {commentsLoginOpen && (
-                            <div
-                              className="fixed inset-0 z-40"
-                              onClick={() => {
-                                setCommentsLoginOpen(false);
-                                setCommentsLoginWarning(null);
-                              }}
-                            />
-                          )}
-                          <div
-                            role="dialog"
-                            aria-label="Opções de login"
-                            className={cn(
-                              "absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-purple-500/30 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
-                              commentsLoginMenu.visible
-                                ? "opacity-100 [transform:translateY(0)_scale(1)]"
-                                : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
-                              commentsLoginMenu.closing && "pointer-events-none",
-                            )}
-                          >
-                            <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
-                              <span className="text-xs font-bold text-white tracking-tight">
-                                Entrar para comentar
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCommentsLoginOpen(false);
-                                  setCommentsLoginWarning(null);
-                                }}
-                                className="rounded-md text-white/40 hover:text-white hover:bg-white/10 active:[transform:scale(0.94)] text-xs transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none p-1 cursor-pointer"
-                                aria-label="Fechar"
-                              >
-                                <X className="size-3.5" />
-                              </button>
-                            </div>
-
-                            <p className="text-[11px] text-white/60 mb-3">
-                              Conecte-se com sua rede favorita ou conta Hikari para participar da conversa.
-                            </p>
-
-                            <div className="space-y-1.5">
-                              {/* Google */}
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  try {
-                                    await signIn("google", {
-                                      callbackURL: window.location.href,
-                                    });
-                                  } catch {
-                                    setCommentsLoginWarning(
-                                      "Erro ao iniciar login com Google.",
-                                    );
-                                  }
-                                }}
-                                className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-all cursor-pointer"
-                              >
-                                <svg className="size-3.5" viewBox="0 0 24 24">
-                                  <path
-                                    fill="currentColor"
-                                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                                  />
-                                  <path
-                                    fill="currentColor"
-                                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                                  />
-                                  <path
-                                    fill="currentColor"
-                                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                                  />
-                                  <path
-                                    fill="currentColor"
-                                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                                  />
-                                </svg>
-                                <span>Entrar com Google</span>
-                              </button>
-
-                              {/* Email / Conta Hikari */}
-                              <Link
-                                to="/login"
-                                search={{ redirect: typeof window !== "undefined" ? window.location.pathname + window.location.search : "/" }}
-                                onClick={() => setCommentsLoginOpen(false)}
-                                className="w-full flex items-center justify-center gap-2 rounded-xl border border-purple-500/30 bg-purple-950/40 hover:bg-purple-950/70 px-3 py-2 text-xs font-semibold text-purple-200 transition-all text-center"
-                              >
-                                <LogIn className="size-3.5" />
-                                <span>Entrar com Email / Hikari</span>
-                              </Link>
-                            </div>
-
-                            {commentsLoginWarning && (
-                              <div className="mt-2.5 rounded-lg bg-red-950/50 border border-red-500/30 p-2 text-[10px] text-red-200">
-                                {commentsLoginWarning}
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )}
                     </div>
                   ) : (
                     <div className="relative">
@@ -2552,118 +2447,15 @@ export function CommentsSection({
                       <button
                         type="button"
                         onClick={() => {
-                          setCommentsLoginOpen((prev) => !prev);
-                          setCommentsLoginWarning(null);
+                          setLoginOpen(true);
                         }}
                         className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-purple-500/35 bg-purple-950/40 px-3 py-1 text-xs sm:text-sm font-semibold text-purple-300 hover:bg-purple-950/70 hover:text-white hover:border-purple-500/55 active:[transform:scale(0.96)] touch-manipulation transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none shadow-sm cursor-pointer"
-                        aria-expanded={commentsLoginOpen}
+                        aria-expanded={loginOpen}
                         aria-haspopup="dialog"
                       >
                         <LogIn className="size-3.5" />
                         <span>Entrar</span>
                       </button>
-
-                      {commentsLoginMenu.mounted && (
-                        <>
-                          {commentsLoginOpen && (
-                            <div
-                              className="fixed inset-0 z-40"
-                              onClick={() => {
-                                setCommentsLoginOpen(false);
-                                setCommentsLoginWarning(null);
-                              }}
-                            />
-                          )}
-                          <div
-                            role="dialog"
-                            aria-label="Opções de login"
-                            className={cn(
-                              "absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-purple-500/30 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
-                              commentsLoginMenu.visible
-                                ? "opacity-100 [transform:translateY(0)_scale(1)]"
-                                : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
-                              commentsLoginMenu.closing && "pointer-events-none",
-                            )}
-                          >
-                            <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
-                              <span className="text-xs font-bold text-white tracking-tight">
-                                Entrar para comentar
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCommentsLoginOpen(false);
-                                  setCommentsLoginWarning(null);
-                                }}
-                                className="rounded-md text-white/40 hover:text-white hover:bg-white/10 active:[transform:scale(0.94)] text-xs transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none p-1 cursor-pointer"
-                                aria-label="Fechar"
-                              >
-                                <X className="size-3.5" />
-                              </button>
-                            </div>
-
-                            <p className="text-[11px] text-white/60 mb-3">
-                              Conecte-se com sua rede favorita ou conta Hikari para participar da conversa.
-                            </p>
-
-                            <div className="space-y-1.5">
-                              {/* Google */}
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  try {
-                                    await signIn("google", {
-                                      callbackURL: window.location.href,
-                                    });
-                                  } catch {
-                                    setCommentsLoginWarning(
-                                      "Erro ao iniciar login com Google.",
-                                    );
-                                  }
-                                }}
-                                className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-all cursor-pointer"
-                              >
-                                <svg className="size-3.5" viewBox="0 0 24 24">
-                                  <path
-                                    fill="currentColor"
-                                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                                  />
-                                  <path
-                                    fill="currentColor"
-                                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                                  />
-                                  <path
-                                    fill="currentColor"
-                                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                                  />
-                                  <path
-                                    fill="currentColor"
-                                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                                  />
-                                </svg>
-                                <span>Entrar com Google</span>
-                              </button>
-
-                              {/* Email / Conta Hikari */}
-                              <Link
-                                to="/login"
-                                search={{ redirect: typeof window !== "undefined" ? window.location.pathname + window.location.search : "/" }}
-                                onClick={() => setCommentsLoginOpen(false)}
-                                className="w-full flex items-center justify-center gap-2 rounded-xl border border-purple-500/30 bg-purple-950/40 hover:bg-purple-950/70 px-3 py-2 text-xs font-semibold text-purple-200 transition-all text-center"
-                              >
-                                <LogIn className="size-3.5" />
-                                <span>Entrar com Email / Hikari</span>
-                              </Link>
-                            </div>
-
-                            {commentsLoginWarning && (
-                              <div className="mt-2.5 rounded-lg bg-red-950/50 border border-red-500/30 p-2 text-[10px] text-red-200">
-                                {commentsLoginWarning}
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )}
                     </div>
                   ) : (
                     <div className="relative">

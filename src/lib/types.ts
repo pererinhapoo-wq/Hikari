@@ -40,6 +40,7 @@ export type SlimAnime = {
   banner: string;
   synopsis: string;
   score: number | null;
+  popularity?: number | null;
   genres: string[];
   format: string;
   status: string;

@@ -455,7 +455,11 @@ function HomeFooterLazy() {
   );
 }
 
-function VisitorDropdownMenu({ onOpenLogin }: { onOpenLogin: () => void }) {
+function VisitorDropdownMenu({
+  onOpenLogin,
+}: {
+  onOpenLogin: (mode?: "login" | "register") => void;
+}) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -518,7 +522,7 @@ function VisitorDropdownMenu({ onOpenLogin }: { onOpenLogin: () => void }) {
               role="menuitem"
               onClick={() => {
                 setOpen(false);
-                onOpenLogin();
+                onOpenLogin("login");
               }}
               className={cn(
                 "group flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-[13px] font-medium text-zinc-200",
@@ -536,7 +540,7 @@ function VisitorDropdownMenu({ onOpenLogin }: { onOpenLogin: () => void }) {
               role="menuitem"
               onClick={() => {
                 setOpen(false);
-                onOpenLogin();
+                onOpenLogin("register");
               }}
               className={cn(
                 "group flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-[13px] font-medium text-purple-200",
@@ -584,6 +588,9 @@ export function Shell() {
 
   const [loginModalOpen, setLoginModalOpen] =
     useState(false);
+
+  const [loginModalMode, setLoginModalMode] =
+    useState<"login" | "register">("login");
 
   const [
     notificationsOpen,
@@ -1550,7 +1557,12 @@ export function Shell() {
             {user ? (
               <ProfileDropdownMenu user={user} />
             ) : (
-              <VisitorDropdownMenu onOpenLogin={() => setLoginModalOpen(true)} />
+              <VisitorDropdownMenu
+                onOpenLogin={(mode = "login") => {
+                  setLoginModalMode(mode);
+                  setLoginModalOpen(true);
+                }}
+              />
             )}
           </div>
         </div>
@@ -1791,6 +1803,7 @@ export function Shell() {
                       type="button"
                       onClick={() => {
                         setMenuOpen(false);
+                        setLoginModalMode("login");
                         setLoginModalOpen(true);
                       }}
                       onMouseEnter={() => void prefetchLoginMenu()}
@@ -1900,6 +1913,7 @@ export function Shell() {
             isOpen={loginModalOpen}
             onClose={() => setLoginModalOpen(false)}
             isModal={true}
+            initialMode={loginModalMode}
           />
         </Suspense>
       )}

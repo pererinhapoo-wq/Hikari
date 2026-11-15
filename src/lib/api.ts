@@ -35,6 +35,13 @@ import {
   FALLBACK_ANIMES,
 } from "@/lib/fallback-catalog";
 
+import {
+  CURATED_ALIASES,
+  normalizeSearchText,
+  rankSearchResults,
+  searchScore,
+} from "@/lib/anime-search-ranking";
+
 const ANILIST = "https://graphql.anilist.co";
 const JIKAN = "https://api.jikan.moe/v4";
 const KITSU = "https://kitsu.io/api/edge";
@@ -61,6 +68,8 @@ const CARD_FIELDS = `
   }
   bannerImage
   averageScore
+  popularity
+  favourites
   genres
   format
   status
@@ -174,6 +183,8 @@ type AniMedia = {
   bannerImage?: string | null;
 
   averageScore?: number | null;
+  popularity?: number | null;
+  favourites?: number | null;
 
   genres?: string[] | null;
 
@@ -1103,6 +1114,10 @@ function mapAniSlim(
       media.averageScore ??
       null,
 
+    popularity:
+      media.popularity ??
+      null,
+
     genres:
       media.genres ?? [],
 
@@ -1153,6 +1168,10 @@ type JikanAnime = {
     | null;
 
   score?:
+    | number
+    | null;
+
+  members?:
     | number
     | null;
 
@@ -1341,6 +1360,9 @@ function mapJikanSlim(
             anime.score * 10,
           )
         : null,
+
+    popularity:
+      anime.members ?? null,
 
     genres:
       (
@@ -4404,6 +4426,7 @@ type KitsuAnimeItem = {
     };
     canonicalTitle?: string;
     averageRating?: string | null;
+    userCount?: number | null;
     startDate?: string | null;
     endDate?: string | null;
     subtype?: string | null;
@@ -4483,6 +4506,7 @@ function mapKitsuSlim(item: KitsuAnimeItem): SlimAnime {
     banner,
     synopsis: stripHtml(attr.synopsis || attr.description || ""),
     score: rating,
+    popularity: attr.userCount ?? null,
     genres: [],
     format: (attr.subtype || "TV").toUpperCase(),
     status,
@@ -4802,206 +4826,6 @@ const searchSchema =
       z.boolean().optional(),
   });
 
-function normalizeSearchText(
-  value: string,
-): string {
-  return value
-    .normalize("NFD")
-    .replace(
-      /[\u0300-\u036f]/g,
-      "",
-    )
-    .toLowerCase()
-    .replace(
-      /[^\p{L}\p{N}]+/gu,
-      " ",
-    )
-    .replace(
-      /\s+/g,
-      " ",
-    )
-    .trim();
-}
-
-function searchDistance(
-  a: string,
-  b: string,
-): number {
-  if (a === b) {
-    return 0;
-  }
-
-  if (!a) {
-    return b.length;
-  }
-
-  if (!b) {
-    return a.length;
-  }
-
-  const previous = Array.from(
-    { length: b.length + 1 },
-    (_, i) => i,
-  );
-
-  for (let i = 1; i <= a.length; i += 1) {
-    let diagonal = previous[0];
-    previous[0] = i;
-
-    for (let j = 1; j <= b.length; j += 1) {
-      const above = previous[j];
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-
-      previous[j] = Math.min(
-        previous[j] + 1,
-        previous[j - 1] + 1,
-        diagonal + cost,
-      );
-
-      diagonal = above;
-    }
-  }
-
-  return previous[b.length];
-}
-
-const CURATED_ALIASES: Record<string, string[]> = {
-  "bnha": ["boku no hero academia", "my hero academia"],
-  "op": ["one piece"],
-  "onepiece": ["one piece"],
-  "onepice": ["one piece"],
-  "snk": ["shingeki no kyojin", "attack on titan"],
-  "aot": ["shingeki no kyojin", "attack on titan"],
-  "jjk": ["jujutsu kaisen"],
-  "kimetsu": ["kimetsu no yaiba", "demon slayer"],
-  "narto": ["naruto"],
-};
-
-function searchScore(
-  anime: SlimAnime,
-  query: string,
-): number {
-  const q = normalizeSearchText(query);
-
-  if (!q) {
-    return 0;
-  }
-
-  const titles = [
-    anime.titles.romaji,
-    anime.titles.english,
-    anime.titles.native,
-  ]
-    .filter(Boolean)
-    .map(normalizeSearchText);
-
-  const compactQuery = q.replace(/\s/g, "");
-  const queryWords = q.split(" ").filter(Boolean);
-  const aliasTargets = CURATED_ALIASES[compactQuery] || [];
-  let score = 0;
-
-  for (const title of titles) {
-    const compactTitle = title.replace(/\s/g, "");
-    const titleWords = title.split(" ").filter(Boolean);
-
-    const isAliasMatch = aliasTargets.some(target => title.includes(target) || target.includes(title));
-    if (isAliasMatch) {
-      score = Math.max(score, 1800);
-    }
-
-    if (title === q) {
-      score = Math.max(score, 2000);
-      continue;
-    }
-
-    if (title.startsWith(q)) {
-      score = Math.max(score, 1600 - Math.min(title.length, 100));
-    }
-
-    if (compactTitle.startsWith(compactQuery)) {
-      score = Math.max(score, 1500 - Math.min(compactTitle.length, 100));
-    }
-
-    const wordStartRegex = new RegExp(`\\b${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
-    if (wordStartRegex.test(title)) {
-      score = Math.max(score, 1300);
-    }
-
-    const allWordsMatch = queryWords.every((queryWord) =>
-      titleWords.some((titleWord) => titleWord.startsWith(queryWord) || titleWord.includes(queryWord)),
-    );
-
-    if (allWordsMatch) {
-      score = Math.max(score, 1200);
-    }
-
-    if (title.includes(q)) {
-      const idx = title.indexOf(q);
-      score = Math.max(score, 800 - Math.min(idx * 2, 200));
-    }
-
-    if (compactTitle.includes(compactQuery)) {
-      score = Math.max(score, 700);
-    }
-
-    if (compactQuery.length >= 3) {
-      const closeWord = titleWords.some((titleWord) => {
-        if (Math.abs(titleWord.length - compactQuery.length) > 3) {
-          return false;
-        }
-        const sample = titleWord.slice(0, compactQuery.length);
-        const distance = searchDistance(compactQuery, sample);
-        return distance <= (compactQuery.length >= 6 ? 2 : 1);
-      });
-
-      if (closeWord) {
-        score = Math.max(score, 650);
-      }
-    }
-  }
-
-  return score;
-}
-
-function rankSearchResults(
-  items: SlimAnime[],
-  query?: string,
-): SlimAnime[] {
-  if (!query?.trim()) {
-    return items;
-  }
-
-  return [...items]
-    .map(
-      (anime, index) => ({
-        anime,
-
-        relevance:
-          searchScore(
-            anime,
-            query,
-          ),
-
-        rating:
-          anime.score ??
-          -1,
-
-        index,
-      }),
-    )
-    .sort(
-      (a, b) =>
-        b.relevance -
-          a.relevance ||
-        b.rating - a.rating ||
-        a.index - b.index,
-    )
-    .map(
-      (item) =>
-        item.anime,
-    );
-}
-
 function mergeSearchItems(
   first: SlimAnime[],
   second: SlimAnime[],
@@ -5140,27 +4964,20 @@ async function searchAni(
       },
     );
 
+  const mappedItems = (data.Page.media ?? [])
+    .filter((anime) =>
+      params.adult ? isHentaiAnime(anime) : !isAdultAnime(anime),
+    )
+    .map(mapAniSlim);
+
+  const shouldRankByRelevance =
+    !params.sort || params.sort === "SEARCH_MATCH";
+
   return {
-    items: rankSearchResults(
-      (
-        data.Page.media ??
-        []
-      )
-        .filter(
-          (anime) =>
-            params.adult
-              ? isHentaiAnime(
-                  anime,
-                )
-              : !isAdultAnime(
-                  anime,
-                ),
-        )
-        .map(
-          mapAniSlim,
-        ),
-      params.q,
-    ),
+    items:
+      params.q && shouldRankByRelevance
+        ? rankSearchResults(mappedItems, params.q)
+        : mappedItems,
 
     page,
 
@@ -5310,10 +5127,17 @@ async function searchRelaxed(
   const compact = normalized.replace(/\s/g, "");
   const candidates: string[] = [];
 
+  // 0. Alias curado (ex.: "narto" -> "naruto", "bnha" -> "boku no hero academia")
+  const aliasTarget = CURATED_ALIASES[compact]?.[0];
+  if (aliasTarget && aliasTarget !== lowerOriginal) {
+    candidates.push(aliasTarget);
+  }
+
   // 1. Variante sem acentos/pontuação (quando difere do texto original)
   if (
     normalized.length >= 3 &&
-    normalized !== lowerOriginal
+    normalized !== lowerOriginal &&
+    !candidates.includes(normalized)
   ) {
     candidates.push(normalized);
   }
@@ -5398,6 +5222,165 @@ function isStrongSearchResult(
   );
 }
 
+type MalPrefixItem = {
+  id: number;
+  name?: string;
+  image_url?: string;
+  payload?: {
+    media_type?: string;
+    start_year?: number | string;
+    score?: string | number;
+    status?: string;
+  };
+};
+
+async function fetchMalPrefixItems(query: string): Promise<MalPrefixItem[]> {
+  const clean = query.trim();
+  if (clean.length < 2) return [];
+
+  try {
+    const res = await fetch(
+      `https://myanimelist.net/search/prefix.json?type=anime&keyword=${encodeURIComponent(clean)}`,
+      {
+        headers: {
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(3500),
+      },
+    );
+    if (!res.ok) return [];
+    const json = (await res.json()) as {
+      categories?: Array<{ type?: string; items?: MalPrefixItem[] }>;
+    };
+    const animeCat = json?.categories?.find((c) => c.type === "anime");
+    return (animeCat?.items ?? [])
+      .filter((item) => typeof item?.id === "number" && item.id > 0)
+      .slice(0, 14);
+  } catch {
+    return [];
+  }
+}
+
+async function resolveMalIdsViaAniList(
+  malIds: number[],
+  params: SearchRequestParams,
+): Promise<SlimAnime[]> {
+  if (malIds.length === 0) return [];
+
+  const year = params.year ? Number(params.year) : undefined;
+  try {
+    const data = await anilistGraphQL<{
+      Page: {
+        media: AniMedia[];
+      };
+    }>(
+      `
+      query SearchByMalIds(
+        $idMalIn: [Int],
+        $genre: String,
+        $year: Int,
+        $format: MediaFormat,
+        $status: MediaStatus,
+        $isAdult: Boolean
+      ) {
+        Page(page: 1, perPage: 24) {
+          media(
+            type: ANIME,
+            idMal_in: $idMalIn,
+            genre: $genre,
+            seasonYear: $year,
+            format: $format,
+            status: $status,
+            isAdult: $isAdult
+          ) {
+            ${CARD_FIELDS}
+          }
+        }
+      }
+      `,
+      {
+        idMalIn: malIds,
+        genre: params.adult ? "Hentai" : params.genre || undefined,
+        year: year && Number.isFinite(year) ? year : undefined,
+        format: params.format || undefined,
+        status: params.status || undefined,
+        isAdult: Boolean(params.adult),
+      },
+    );
+
+    return (data.Page.media ?? [])
+      .filter((anime) =>
+        params.adult ? isHentaiAnime(anime) : !isAdultAnime(anime),
+      )
+      .map(mapAniSlim);
+  } catch {
+    return [];
+  }
+}
+
+function mapMalPrefixFallback(item: MalPrefixItem): SlimAnime {
+  const parsedScore = item.payload?.score
+    ? Number(item.payload.score)
+    : Number.NaN;
+  const parsedYear = item.payload?.start_year
+    ? Number(item.payload.start_year)
+    : Number.NaN;
+  const rawStatus = (item.payload?.status ?? "").toLowerCase();
+  const status = rawStatus.includes("currently")
+    ? "RELEASING"
+    : rawStatus.includes("not yet")
+      ? "NOT_YET_RELEASED"
+      : "FINISHED";
+
+  return {
+    id: `mal-${item.id}`,
+    malId: item.id,
+    titles: {
+      romaji: item.name ?? "",
+      english: item.name ?? "",
+      native: "",
+    },
+    cover: item.image_url ?? "",
+    banner: "",
+    synopsis: "",
+    score: Number.isFinite(parsedScore) ? Math.round(parsedScore * 10) : null,
+    popularity: null,
+    genres: [],
+    format: jikanFormat(item.payload?.media_type),
+    status,
+    episodesCount: null,
+    season: null,
+    year: Number.isFinite(parsedYear) ? parsedYear : null,
+    trailerId: null,
+    source: "jikan",
+  };
+}
+
+function sortByExplicitSearchOption(
+  items: SlimAnime[],
+  sort: string,
+): SlimAnime[] {
+  if (sort === "POPULARITY_DESC") {
+    return [...items].sort(
+      (a, b) => (b.popularity ?? -1) - (a.popularity ?? -1),
+    );
+  }
+  if (sort === "SCORE_DESC") {
+    return [...items].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  }
+  if (sort === "START_DATE_DESC") {
+    return [...items].sort((a, b) => (b.year ?? -1) - (a.year ?? -1));
+  }
+  if (sort === "TITLE_ROMAJI") {
+    return [...items].sort((a, b) =>
+      (a.titles.romaji || a.titles.english).localeCompare(
+        b.titles.romaji || b.titles.english,
+      ),
+    );
+  }
+  return items;
+}
+
 async function searchDirectFast(
   params: SearchRequestParams,
 ): Promise<{
@@ -5406,35 +5389,86 @@ async function searchDirectFast(
   source: "anilist" | "jikan" | "kitsu";
   aniCount: number;
 }> {
-  // 1. Consulta prioritariamente o AniList
-  let aniResult: SearchResult | null = null;
-  try {
-    aniResult = await searchAni(params);
-  } catch {
-    aniResult = null;
+  const isFirstPageTextSearch =
+    Boolean(params.q?.trim()) && (params.page ?? 1) === 1 && !params.adult;
+  const shouldRankByRelevance =
+    !params.sort || params.sort === "SEARCH_MATCH";
+
+  // 1. Consulta prioritariamente o AniList em paralelo com busca de prefixo MAL na página 1
+  const [aniSettled, malPrefixItems] = await Promise.all([
+    searchAni(params).then(
+      (value) => ({ ok: true as const, value }),
+      () => ({ ok: false as const, value: null }),
+    ),
+    isFirstPageTextSearch
+      ? fetchMalPrefixItems(params.q!)
+      : Promise.resolve([] as MalPrefixItem[]),
+  ]);
+
+  const aniResult = aniSettled.ok ? aniSettled.value : null;
+  const existingAniItems = aniResult?.items ?? [];
+
+  // 2. Se o prefixo encontrou títulos ausentes no AniList (ex.: busca parcial "naru" -> "Naruto"),
+  // resolve seus metadados completos e popularidade no AniList via idMal_in
+  let prefixResolvedItems: SlimAnime[] = [];
+  if (malPrefixItems.length > 0) {
+    const existingMalIds = new Set(
+      existingAniItems
+        .map((item) => item.malId)
+        .filter((id): id is number => typeof id === "number" && id > 0),
+    );
+    const missingMalIds = malPrefixItems
+      .map((item) => item.id)
+      .filter((id) => !existingMalIds.has(id));
+
+    if (missingMalIds.length > 0) {
+      prefixResolvedItems = await resolveMalIdsViaAniList(missingMalIds, params);
+
+      // Se o AniList não resolveu os itens e não há filtros estruturais incompatíveis,
+      // usa os próprios itens do prefixo MAL para nunca perder a correspondência parcial.
+      if (
+        prefixResolvedItems.length === 0 &&
+        !params.genre &&
+        !params.year &&
+        !params.format &&
+        !params.status
+      ) {
+        prefixResolvedItems = malPrefixItems
+          .filter((item) => missingMalIds.includes(item.id))
+          .map(mapMalPrefixFallback);
+      }
+    }
   }
 
-  // Se o AniList retornar 3 ou mais resultados válidos, não consulta Jikan nem Kitsu
-  if (aniResult && aniResult.items.length >= 3) {
+  const combinedAni = mergeSearchItems(existingAniItems, prefixResolvedItems);
+
+  // Se já há resultados suficientes do AniList/prefixo, ordena por relevância + popularidade
+  if (combinedAni.length >= 3) {
     return {
-      items: rankSearchResults(
-        aniResult.items,
-        params.q,
-      ),
-      hasNext: aniResult.hasNext,
+      items: shouldRankByRelevance
+        ? rankSearchResults(combinedAni, params.q)
+        : sortByExplicitSearchOption(combinedAni, params.sort!),
+      hasNext: aniResult?.hasNext ?? false,
       source: "anilist",
-      aniCount: aniResult.items.length,
+      aniCount: combinedAni.length,
     };
   }
 
-  // 2. Se o AniList retornou menos de 3 resultados ou falhou, aciona fallbacks Jikan e Kitsu
+  // 3. Fallback Jikan + Kitsu apenas quando AniList + prefixo retornaram menos de 3 resultados
   const fallbackSettled = await Promise.allSettled([
     searchJikan(params),
     searchKitsu(params),
   ]);
 
   const results: SearchResult[] = [];
-  if (aniResult) {
+  if (combinedAni.length > 0) {
+    results.push({
+      items: combinedAni,
+      page: params.page ?? 1,
+      hasNext: aniResult?.hasNext ?? false,
+      source: "anilist",
+    });
+  } else if (aniResult) {
     results.push(aniResult);
   }
   if (fallbackSettled[0].status === "fulfilled") {
@@ -5450,30 +5484,22 @@ async function searchDirectFast(
 
   const merged = results.reduce(
     (accumulated, current) =>
-      mergeSearchItems(
-        accumulated,
-        current.items,
-      ),
+      mergeSearchItems(accumulated, current.items),
     [] as SlimAnime[],
   );
 
-  const primaryWithItems = results.find(
-    (r) => r.items.length > 0,
-  );
+  const primaryWithItems = results.find((r) => r.items.length > 0);
 
   return {
-    items: rankSearchResults(
-      merged,
-      params.q,
-    ),
-    hasNext: results.some(
-      (result) => result.hasNext,
-    ),
+    items: shouldRankByRelevance
+      ? rankSearchResults(merged, params.q)
+      : sortByExplicitSearchOption(merged, params.sort!),
+    hasNext: results.some((result) => result.hasNext),
     source:
       primaryWithItems?.source ??
       results[0]?.source ??
       "anilist",
-    aniCount: aniResult?.items.length ?? 0,
+    aniCount: combinedAni.length,
   };
 }
 
@@ -5499,7 +5525,7 @@ export const searchCatalog =
           adult: data.adult ? true : undefined,
         };
 
-        const key = `search:v4:${JSON.stringify({
+        const key = `search:v5:${JSON.stringify({
           ...normalizedData,
           q: normalizedData.q?.toLowerCase(),
         })}`;

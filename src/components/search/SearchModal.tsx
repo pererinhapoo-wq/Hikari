@@ -17,6 +17,11 @@ import {
 } from "@/lib/search-entities";
 import { displayTitle, type SlimAnime } from "@/lib/types";
 import { overlayList } from "@/lib/overlay";
+import {
+  getCanonicalAnimeSearchKeys,
+  mergeLocalAndRemoteSearchResults,
+  searchScore,
+} from "@/lib/anime-search-ranking";
 import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { useHikariStore } from "@/lib/store";
 import {
@@ -313,11 +318,6 @@ export function SearchModal({
 
         if (reqId !== animeReqIdRef.current) return;
 
-        const normalized = trimmed
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase();
-
         const localHits = overlayList([], localAnimes).filter((anime) => {
           const isHentai =
             anime.genres?.some(
@@ -328,27 +328,23 @@ export function SearchModal({
             return false;
           }
 
-          const title =
-            `${anime.titles?.romaji || ""} ${anime.titles?.english || ""} ${anime.titles?.native || ""}`
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase();
-
-          return (
-            title.includes(normalized) ||
-            normalized.split(/\s+/).every((w) => title.includes(w))
-          );
+          return searchScore(anime, trimmed) > 0;
         });
 
-        const remote = overlayList(result.items ?? [], localAnimes);
-        const seen = new Set<string>();
-        const merged: SlimAnime[] = [];
+        const remote = overlayList(result.items ?? [], localAnimes, {
+          includeExtras: false,
+          mapMatched: (mapped, remoteItem) => ({
+            ...mapped,
+            popularity: mapped.popularity ?? remoteItem.popularity ?? null,
+            score: mapped.score ?? remoteItem.score ?? null,
+          }),
+        });
 
-        for (const anime of [...localHits, ...remote]) {
-          if (seen.has(anime.id)) continue;
-          seen.add(anime.id);
-          merged.push(anime);
-        }
+        const merged = mergeLocalAndRemoteSearchResults(
+          remote,
+          localHits,
+          trimmed,
+        );
 
         if (reqId === animeReqIdRef.current) {
           setAnimeResults(merged);
@@ -639,15 +635,31 @@ export function SearchModal({
 
       if (reqId !== animeReqIdRef.current) return;
 
-      const remote = overlayList(result.items ?? [], localAnimes);
+      const remote = overlayList(result.items ?? [], localAnimes, {
+        includeExtras: false,
+        mapMatched: (mapped, remoteItem) => ({
+          ...mapped,
+          popularity: mapped.popularity ?? remoteItem.popularity ?? null,
+          score: mapped.score ?? remoteItem.score ?? null,
+        }),
+      });
       setAnimeResults((prev) => {
-        const seen = new Set(prev.map((a) => a.id));
+        const seenKeys = new Set<string>();
+        for (const existing of prev) {
+          for (const key of getCanonicalAnimeSearchKeys(existing)) {
+            seenKeys.add(key);
+          }
+        }
         const additions: SlimAnime[] = [];
         for (const item of remote) {
-          if (!seen.has(item.id)) {
-            seen.add(item.id);
-            additions.push(item);
+          const keys = getCanonicalAnimeSearchKeys(item);
+          if (keys.some((key) => seenKeys.has(key))) {
+            continue;
           }
+          for (const key of keys) {
+            seenKeys.add(key);
+          }
+          additions.push(item);
         }
         return [...prev, ...additions];
       });

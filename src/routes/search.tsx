@@ -42,6 +42,10 @@ import {
 } from "@/lib/labels";
 
 import { overlayList } from "@/lib/overlay";
+import {
+  mergeLocalAndRemoteSearchResults,
+  searchScore,
+} from "@/lib/anime-search-ranking";
 import { searchUsers, type SearchUserItem } from "@/lib/profile.functions";
 import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { useHikariStore } from "@/lib/store";
@@ -861,7 +865,7 @@ function SearchPage() {
       return [];
     }
 
-    const q = (search.q ?? "").trim().toLowerCase();
+    const rawQuery = (search.q ?? "").trim();
 
     const localHits =
       currentPage === 1
@@ -877,28 +881,23 @@ function SearchPage() {
               return false;
             }
 
-            if (q) {
-              const titleStr =
-                `${anime.titles?.romaji || ""} ${anime.titles?.english || ""} ${anime.titles?.native || ""}`
-                  .normalize("NFD")
-                  .replace(/[\u0300-\u036f]/g, "")
-                  .toLowerCase();
-              const normalizedQ = q
-                .normalize("NFD")
-                .replace(/[\u0300-\u036f]/g, "")
-                .toLowerCase();
-
-              const matchesDirect = titleStr.includes(normalizedQ);
-              const matchesWords = normalizedQ
-                .split(/\s+/)
-                .every((word) => titleStr.includes(word));
-
-              if (!matchesDirect && !matchesWords) {
-                return false;
-              }
+            if (rawQuery && searchScore(anime, rawQuery) <= 0) {
+              return false;
             }
 
             if (search.genre && !anime.genres.includes(search.genre)) {
+              return false;
+            }
+
+            if (search.year && String(anime.year ?? "") !== search.year) {
+              return false;
+            }
+
+            if (search.format && anime.format !== search.format) {
+              return false;
+            }
+
+            if (search.status && anime.status !== search.status) {
               return false;
             }
 
@@ -906,7 +905,14 @@ function SearchPage() {
           })
         : [];
 
-    const remote = overlayList(remoteAnimeItems, locals).filter((anime) => {
+    const remote = overlayList(remoteAnimeItems, locals, {
+      includeExtras: false,
+      mapMatched: (mapped, remoteItem) => ({
+        ...mapped,
+        popularity: mapped.popularity ?? remoteItem.popularity ?? null,
+        score: mapped.score ?? remoteItem.score ?? null,
+      }),
+    }).filter((anime) => {
       const isHentai =
         anime.genres?.some(
           (genre) => genre.trim().toLowerCase() === "hentai",
@@ -915,12 +921,18 @@ function SearchPage() {
       return search.adult ? isHentai : !isHentai;
     });
 
-    const seen = new Set(localHits.map((anime) => anime.id));
+    if (currentPage === 1 && rawQuery) {
+      return mergeLocalAndRemoteSearchResults(
+        remote,
+        localHits,
+        rawQuery,
+        search.sort,
+      );
+    }
 
-    return [
-      ...localHits,
-      ...remote.filter((anime) => !seen.has(anime.id)),
-    ];
+    // Sem consulta ou páginas seguintes: preserva a ordenação natural do catálogo remoto
+    // e inclui eventuais itens exclusivamente locais apenas ao final, sem promovê-los.
+    return mergeLocalAndRemoteSearchResults(remote, localHits);
   }, [
     activeTab,
     currentPage,
@@ -928,6 +940,10 @@ function SearchPage() {
     remoteAnimeItems,
     search.q,
     search.genre,
+    search.year,
+    search.format,
+    search.status,
+    search.sort,
     search.adult,
   ]);
 

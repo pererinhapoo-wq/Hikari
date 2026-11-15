@@ -37,7 +37,7 @@ import {
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { Button } from "@/components/ui/button";
-import { signOut, signIn, getBearerToken } from "@/lib/auth/client";
+import { signOut, getBearerToken } from "@/lib/auth/client";
 
 const LazyLoginMenu = lazy(() =>
   import("@/components/LoginMenu").then((mod) => ({
@@ -475,12 +475,6 @@ export function EpisodeCommentsSection({
 
   const [loginOpen, setLoginOpen] =
     useState(false);
-
-  const [commentsLoginOpen, setCommentsLoginOpen] =
-    useState(false);
-
-  const [commentsLoginWarning, setCommentsLoginWarning] =
-    useState<string | null>(null);
 
   const [sessionLoadingState, setSessionLoadingState] =
     useState(true);
@@ -943,7 +937,6 @@ export function EpisodeCommentsSection({
     spamComment,
   );
 
-  const commentsLoginMenu = usePresence(commentsLoginOpen, 135);
   const userDropdownMenu = usePresence(userMenuOpen, 135);
   const gifModal = usePresence(gifOpen, 150);
   const editModal = useModalPresence(editingComment, 150);
@@ -1021,7 +1014,6 @@ export function EpisodeCommentsSection({
         setMenuOpenId(null);
         setUserMenuOpen(false);
         setLoginOpen(false);
-        setCommentsLoginOpen(false);
         setSortDropdownOpen(false);
       }
     };
@@ -1031,7 +1023,6 @@ export function EpisodeCommentsSection({
   }, [
     userMenuOpen,
     loginOpen,
-    commentsLoginOpen,
     sortDropdownOpen,
     menuOpenId,
     editingComment,
@@ -1556,12 +1547,14 @@ export function EpisodeCommentsSection({
       }
     }
 
-    void loadSession();
+    if (!loginOpen) {
+      void loadSession();
+    }
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loginOpen]);
 
   /* ====================================================== */
   /* CARREGAR COMENTÁRIOS COM PAGINAÇÃO PROGRESSIVA         */
@@ -1667,7 +1660,10 @@ export function EpisodeCommentsSection({
         if (newTotalCount !== null) setTotalCount(newTotalCount);
         if (newTotalRoots !== null) setTotalRoots(newTotalRoots);
 
-        if (typeof data?.currentUserId === "string") {
+        if (
+          typeof data?.currentUserId === "string" &&
+          data.currentUserId !== "dev-user"
+        ) {
           setCurrentUserId(data.currentUserId);
         } else if (isInitial) {
           setCurrentUserId(null);
@@ -2081,7 +2077,7 @@ export function EpisodeCommentsSection({
       reaction: "like" | "dislike",
     ) => {
       if (!effectiveUserId) {
-        setCommentsLoginOpen(true);
+        setLoginOpen(true);
         return;
       }
 
@@ -2169,7 +2165,7 @@ export function EpisodeCommentsSection({
           // Reverte o estado otimista
           setComments(previousComments);
           if (response.status === 401) {
-            setCommentsLoginOpen(true);
+            setLoginOpen(true);
           }
           throw new Error(
             data?.error ||
@@ -2234,7 +2230,7 @@ export function EpisodeCommentsSection({
 
   const openEdit = (comment: Comment) => {
     if (!effectiveUserId) {
-      setCommentsLoginOpen(true);
+      setLoginOpen(true);
       return;
     }
     if (comment.userId !== effectiveUserId && !isAdmin) {
@@ -2354,7 +2350,7 @@ export function EpisodeCommentsSection({
 
   const openDelete = (comment: Comment) => {
     if (!effectiveUserId) {
-      setCommentsLoginOpen(true);
+      setLoginOpen(true);
       return;
     }
     if (comment.userId !== effectiveUserId && !isAdmin) {
@@ -2604,7 +2600,7 @@ export function EpisodeCommentsSection({
 
   const openReport = (comment: Comment) => {
     if (!effectiveUserId) {
-      setCommentsLoginOpen(true);
+      setLoginOpen(true);
       return;
     }
     if (comment.userId === effectiveUserId) {
@@ -2773,151 +2769,19 @@ export function EpisodeCommentsSection({
             <div className="flex items-center min-w-0 relative">
 
               {!effectiveUserId ? (
-                /* Visitante: Opção ENTRAR com Popover estilo Disqus */
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => {
-                      setCommentsLoginOpen((prev) => !prev);
-                      setCommentsLoginWarning(null);
+                      setLoginOpen(true);
                     }}
                     className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 rounded-xl border border-[#a855f7]/35 bg-[#a855f7]/10 px-3 py-1 text-xs sm:text-sm font-semibold text-[#c084fc] hover:bg-[#a855f7]/20 hover:text-white hover:border-[#a855f7]/55 active:bg-[#a855f7]/25 active:[transform:scale(0.97)] transition-[color,background-color,border-color,transform] duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none touch-manipulation shadow-sm cursor-pointer"
-                    aria-expanded={commentsLoginOpen}
+                    aria-expanded={loginOpen}
                     aria-haspopup="dialog"
                   >
                     <LogIn className="size-3.5" />
                     <span>Entrar</span>
                   </button>
-
-                  {commentsLoginMenu.mounted && (
-                    <>
-                      <div
-                        className={cn(
-                          "fixed inset-0 z-40",
-                          commentsLoginMenu.closing && "pointer-events-none",
-                        )}
-                        onClick={() => {
-                          setCommentsLoginOpen(false);
-                          setCommentsLoginWarning(null);
-                        }}
-                      />
-                      <div
-                        role="dialog"
-                        aria-label="Opções de login"
-                        className={cn(
-                          "absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-white/10 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
-                          commentsLoginMenu.visible
-                            ? "opacity-100 [transform:translateY(0)_scale(1)]"
-                            : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
-                          commentsLoginMenu.closing && "pointer-events-none",
-                        )}
-                      >
-                        <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
-                          <span className="text-xs font-bold text-white tracking-tight">
-                            Entrar para comentar
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCommentsLoginOpen(false);
-                              setCommentsLoginWarning(null);
-                            }}
-                            className="text-white/40 hover:text-white text-xs transition-colors p-1"
-                            aria-label="Fechar"
-                          >
-                            <X className="size-3.5" />
-                          </button>
-                        </div>
-
-                        <p className="text-[11px] text-white/60 mb-3">
-                          Conecte-se com sua rede favorita ou conta Hikari para participar da conversa.
-                        </p>
-
-                        <div className="space-y-1.5">
-                          {/* Google */}
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await signIn("google", {
-                                  callbackURL: window.location.href,
-                                });
-                              } catch (err) {
-                                console.error(err);
-                                setCommentsLoginWarning("Não foi possível iniciar login com Google.");
-                              }
-                            }}
-                            className="flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-white/90 hover:bg-white/[0.08] hover:text-white transition-all cursor-pointer"
-                          >
-                            <svg className="size-4 shrink-0" viewBox="0 0 24 24">
-                              <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z" />
-                              <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z" />
-                              <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.8s.2-2.1.4-2.8L1.9 6.3C.7 8.7 0 10.3 0 12s.7 3.3 1.9 5.7l3.7-2.9z" />
-                              <path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16C3.7 19.7 7.5 23 12 23z" />
-                            </svg>
-                            <span>Continuar com Google</span>
-                          </button>
-
-                          {/* X (Twitter) */}
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await signIn("x", {
-                                  callbackURL: window.location.href,
-                                });
-                              } catch (err) {
-                                console.error(err);
-                                setCommentsLoginWarning("Não foi possível iniciar login com X.");
-                              }
-                            }}
-                            className="flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-white/90 hover:bg-white/[0.08] hover:text-white transition-all cursor-pointer"
-                          >
-                            <svg className="size-4 shrink-0 fill-current" viewBox="0 0 24 24">
-                              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                            </svg>
-                            <span>Continuar com X (Twitter)</span>
-                          </button>
-
-                          {/* Facebook (Com aviso informativo de configuração) */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCommentsLoginWarning("Login com Facebook temporariamente indisponível no ambiente de desenvolvimento.");
-                            }}
-                            className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-white/60 hover:bg-white/[0.06] hover:text-white/80 transition-all cursor-pointer"
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <svg className="size-4 shrink-0 fill-[#1877F2]" viewBox="0 0 24 24">
-                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                              </svg>
-                              <span>Continuar com Facebook</span>
-                            </div>
-                            <span className="text-[10px] text-amber-400/80 font-normal">Não config.</span>
-                          </button>
-                        </div>
-
-                        {commentsLoginWarning && (
-                          <div className="mt-2.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300">
-                            {commentsLoginWarning}
-                          </div>
-                        )}
-
-                        <div className="h-px bg-white/[0.08] my-2.5" />
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCommentsLoginOpen(false);
-                            setLoginOpen(true);
-                          }}
-                          className="w-full text-center text-xs text-[#c084fc] hover:underline font-medium py-1"
-                        >
-                          Entrar com email ou criar conta Hikari
-                        </button>
-                      </div>
-                    </>
-                  )}
                 </div>
               ) : (
                 /* Usuário autenticado: Avatar real + Nome + Menu com 5 opções */
