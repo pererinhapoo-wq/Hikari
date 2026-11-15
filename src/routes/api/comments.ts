@@ -3,6 +3,7 @@ import { getSql } from "@/lib/db";
 import { resolveApiUser } from "@/lib/auth/api-session";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { executeCreateNotification } from "@/lib/notifications.functions";
+import { setTypingStatus } from "@/lib/comment-typing.server";
 
 export const Route = createFileRoute("/api/comments")({
   server: {
@@ -730,6 +731,13 @@ export const Route = createFileRoute("/api/comments")({
               isSpoiler,
             ],
           );
+
+          await setTypingStatus(sql, {
+            animeId,
+            episodeId,
+            userId: apiUser.id,
+            active: false,
+          }).catch(() => {});
 
           // Busca perfil para obter o nick
           const profileCheck = await sql.query(

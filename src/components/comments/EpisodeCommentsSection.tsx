@@ -51,6 +51,8 @@ import { getProfile } from "@/lib/profile.functions";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { cn } from "@/lib/utils";
 import { useScrollLock } from "@/lib/scroll-lock";
+import { TypingIndicator } from "@/components/comments/TypingIndicator";
+import { useCommentTyping } from "@/components/comments/useCommentTyping";
 
 /* ========================================================= */
 /* TIPO DO COMENTÁRIO                                        */
@@ -661,6 +663,17 @@ export function EpisodeCommentsSection({
     isHikariAdmin(
       effectiveUserEmail,
     );
+
+  const {
+    remoteTyping,
+    remoteTypingCount,
+    notifyTypingInput,
+    stopTypingNow,
+  } = useCommentTyping({
+    animeId,
+    episodeId,
+    viewerUserId: effectiveUserId ?? null,
+  });
 
   /* ====================================================== */
   /* DESTAQUE DA NOTIFICAÇÃO                                */
@@ -1735,6 +1748,7 @@ export function EpisodeCommentsSection({
       try {
         setSending(true);
         setError("");
+        stopTypingNow();
 
         let imageUrl:
           | string
@@ -1853,6 +1867,7 @@ export function EpisodeCommentsSection({
       try {
         setReplySending(true);
         setError("");
+        stopTypingNow();
 
         const bearer = getBearerToken();
         const headers: Record<string, string> = {
@@ -2602,9 +2617,17 @@ export function EpisodeCommentsSection({
                   {totalCount ?? comments.length}
                 </span>
               </div>
-              <p className="text-xs text-zinc-400 mt-0.5 truncate">
-                Clique para expandir e participar da discussão
-              </p>
+              {remoteTyping ? (
+                <TypingIndicator
+                  active={remoteTyping}
+                  typingCount={remoteTypingCount}
+                  className="mt-1"
+                />
+              ) : (
+                <p className="text-xs text-zinc-400 mt-0.5 truncate">
+                  Clique para expandir e participar da discussão
+                </p>
+              )}
             </div>
           </div>
           <button
@@ -3026,9 +3049,9 @@ export function EpisodeCommentsSection({
               onChange={(
                 event,
               ) => {
-                setText(
-                  event.target.value,
-                );
+                const next = event.target.value;
+                setText(next);
+                notifyTypingInput(next.trim().length > 0);
               }}
               onKeyDown={(
                 event,
@@ -3048,12 +3071,6 @@ export function EpisodeCommentsSection({
               maxLength={2000}
               className="w-full resize-none rounded-xl border border-white/10 bg-[#0c0c10] px-4 py-3 text-sm text-fg outline-none placeholder:text-white/35 focus:border-[#a855f7]/40 transition-colors"
             />
-            {text.trim().length > 0 && (
-              <div className="flex items-center gap-1.5 text-[11px] text-purple-300/80 italic mt-1.5 animate-pulse">
-                <span className="size-1.5 rounded-full bg-purple-400 inline-block" />
-                <span>Alguém está escrevendo...</span>
-              </div>
-            )}
 
 
 
@@ -3414,6 +3431,19 @@ export function EpisodeCommentsSection({
           )}
 
           {/* =============================================== */}
+          {/* INDICADOR EM TEMPO REAL DE DIGITAÇÃO REMOTA     */}
+          {/* =============================================== */}
+
+          {remoteTyping && (
+            <div className="mt-3 px-1">
+              <TypingIndicator
+                active={remoteTyping}
+                typingCount={remoteTypingCount}
+              />
+            </div>
+          )}
+
+          {/* =============================================== */}
           {/* LISTA DE COMENTÁRIOS REDESENHADA (SEM CARTÕES PESADOS) */}
           {/* =============================================== */}
 
@@ -3496,18 +3526,23 @@ export function EpisodeCommentsSection({
                                 formatDate={formatCommentDate}
                                 nowMs={relativeNowMs}
                                 onReaction={handleReaction}
-                                onReplyChange={setReplyText}
+                                onReplyChange={(next) => {
+                                  setReplyText(next);
+                                  notifyTypingInput(next.trim().length > 0);
+                                }}
                                 onReplySpoilerChange={setReplyIsSpoiler}
                                 onStartReply={() => {
                                   if (!effectiveUserId) {
                                     setLoginOpen(true);
                                     return;
                                   }
+                                  stopTypingNow();
                                   setReplyingId(reply.id);
                                   setReplyText("");
                                   setReplyIsSpoiler(false);
                                 }}
                                 onCancelReply={() => {
+                                  stopTypingNow();
                                   setReplyingId(null);
                                   setReplyText("");
                                   setReplyIsSpoiler(false);
@@ -3586,9 +3621,10 @@ export function EpisodeCommentsSection({
                         onReaction={
                           handleReaction
                         }
-                        onReplyChange={
-                          setReplyText
-                        }
+                        onReplyChange={(next) => {
+                          setReplyText(next);
+                          notifyTypingInput(next.trim().length > 0);
+                        }}
                         onReplySpoilerChange={
                           setReplyIsSpoiler
                         }
@@ -3597,11 +3633,13 @@ export function EpisodeCommentsSection({
                             setLoginOpen(true);
                             return;
                           }
+                          stopTypingNow();
                           setReplyingId(comment.id);
                           setReplyText("");
                           setReplyIsSpoiler(false);
                         }}
                         onCancelReply={() => {
+                          stopTypingNow();
                           setReplyingId(null);
                           setReplyText("");
                           setReplyIsSpoiler(false);
@@ -4947,12 +4985,6 @@ function CommentCard({
                 placeholder={`Responder para @${authorName}...`}
                 className="w-full resize-none rounded-lg border border-white/10 bg-[#0b0914] px-3 py-2 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-[#a855f7]/45 transition-colors"
               />
-              {replyText.trim().length > 0 && (
-                <div className="flex items-center gap-1.5 text-[11px] text-purple-300/80 italic mt-1.5 animate-pulse">
-                  <span className="size-1.5 rounded-full bg-purple-400 inline-block" />
-                  <span>Alguém está escrevendo...</span>
-                </div>
-              )}
 
               <div className="mt-2 flex items-center justify-between gap-2">
                 <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/60 hover:text-white select-none">

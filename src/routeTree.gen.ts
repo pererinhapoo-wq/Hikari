@@ -76,6 +76,7 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCommentsEditRouteImport } from './routes/api/comments.edit'
 import { Route as ApiCommentsLikeRouteImport } from './routes/api/comments.like'
 import { Route as ApiCommentsModerationRouteImport } from './routes/api/comments.moderation'
+import { Route as ApiCommentsTypingRouteImport } from './routes/api/comments.typing'
 import { Route as ApiProfileFollowRouteImport } from './routes/api/profile.follow'
 import { Route as WatchIdEpRouteImport } from './routes/watch_.$id.$ep'
 
@@ -414,6 +415,11 @@ const ApiCommentsModerationRoute = ApiCommentsModerationRouteImport.update({
   path: '/moderation',
   getParentRoute: () => ApiCommentsRoute,
 } as any)
+const ApiCommentsTypingRoute = ApiCommentsTypingRouteImport.update({
+  id: '/typing',
+  path: '/typing',
+  getParentRoute: () => ApiCommentsRoute,
+} as any)
 const ApiProfileFollowRoute = ApiProfileFollowRouteImport.update({
   id: '/api/profile/follow',
   path: '/api/profile/follow',
@@ -493,6 +499,7 @@ export interface FileRoutesByFullPath {
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
+  '/api/comments/typing': typeof ApiCommentsTypingRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
 }
@@ -562,6 +569,7 @@ export interface FileRoutesByTo {
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
+  '/api/comments/typing': typeof ApiCommentsTypingRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
 }
@@ -634,6 +642,7 @@ export interface FileRoutesById {
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
+  '/api/comments/typing': typeof ApiCommentsTypingRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/watch_/$id/$ep': typeof WatchIdEpRoute
 }
@@ -707,6 +716,7 @@ export interface FileRouteTypes {
     | '/api/comments/edit'
     | '/api/comments/like'
     | '/api/comments/moderation'
+    | '/api/comments/typing'
     | '/api/profile/follow'
     | '/watch/$id/$ep'
   fileRoutesByTo: FileRoutesByTo
@@ -776,6 +786,7 @@ export interface FileRouteTypes {
     | '/api/comments/edit'
     | '/api/comments/like'
     | '/api/comments/moderation'
+    | '/api/comments/typing'
     | '/api/profile/follow'
     | '/watch/$id/$ep'
   id:
@@ -847,6 +858,7 @@ export interface FileRouteTypes {
     | '/api/comments/edit'
     | '/api/comments/like'
     | '/api/comments/moderation'
+    | '/api/comments/typing'
     | '/api/profile/follow'
     | '/watch_/$id/$ep'
   fileRoutesById: FileRoutesById
@@ -1376,6 +1388,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCommentsModerationRouteImport
       parentRoute: typeof ApiCommentsRoute
     }
+    '/api/comments/typing': {
+      id: '/api/comments/typing'
+      path: '/typing'
+      fullPath: '/api/comments/typing'
+      preLoaderRoute: typeof ApiCommentsTypingRouteImport
+      parentRoute: typeof ApiCommentsRoute
+    }
     '/api/profile/follow': {
       id: '/api/profile/follow'
       path: '/api/profile/follow'
@@ -1443,12 +1462,14 @@ interface ApiCommentsRouteChildren {
   ApiCommentsEditRoute: typeof ApiCommentsEditRoute
   ApiCommentsLikeRoute: typeof ApiCommentsLikeRoute
   ApiCommentsModerationRoute: typeof ApiCommentsModerationRoute
+  ApiCommentsTypingRoute: typeof ApiCommentsTypingRoute
 }
 
 const ApiCommentsRouteChildren: ApiCommentsRouteChildren = {
   ApiCommentsEditRoute: ApiCommentsEditRoute,
   ApiCommentsLikeRoute: ApiCommentsLikeRoute,
   ApiCommentsModerationRoute: ApiCommentsModerationRoute,
+  ApiCommentsTypingRoute: ApiCommentsTypingRoute,
 }
 
 const ApiCommentsRouteWithChildren = ApiCommentsRoute._addFileChildren(

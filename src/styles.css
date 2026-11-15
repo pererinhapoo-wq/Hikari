@@ -967,4 +967,45 @@ button, a, [role="button"] {
   -webkit-text-size-adjust: 100%;
 }
 
+/* =========================================================
+   HIKARI — INDICADOR DISCRETO DE DIGITAÇÃO NOS COMENTÁRIOS
+   ========================================================= */
+
+@keyframes hikariTypingDot {
+  0%, 80%, 100% {
+    opacity: 0.35;
+    transform: translateY(0) scale(0.85);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.1);
+  }
+}
+
+.hikari-typing-dot {
+  animation: hikariTypingDot 1.2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.hikari-typing-dot-1 {
+  animation-delay: 0ms;
+}
+
+.hikari-typing-dot-2 {
+  animation-delay: 160ms;
+}
+
+.hikari-typing-dot-3 {
+  animation-delay: 320ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hikari-typing-dot {
+    animation: none !important;
+    opacity: 0.85 !important;
+    transform: none !important;
+  }
+}
+
+
 

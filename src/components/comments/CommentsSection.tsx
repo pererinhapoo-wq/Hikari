@@ -62,6 +62,8 @@ import { getProfile } from "@/lib/profile.functions";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { cn } from "@/lib/utils";
 import { useScrollLock } from "@/lib/scroll-lock";
+import { TypingIndicator } from "@/components/comments/TypingIndicator";
+import { useCommentTyping } from "@/components/comments/useCommentTyping";
 
 /* ========================================================= */
 /* TIPO DO COMENTÁRIO                                        */
@@ -568,6 +570,17 @@ export function CommentsSection({
   const sessionLoading =
     (authUserPending || sessionLoadingState) && !effectiveUserId;
   const isAdmin = isHikariAdmin(effectiveUserEmail);
+
+  const {
+    remoteTyping,
+    remoteTypingCount,
+    notifyTypingInput,
+    stopTypingNow,
+  } = useCommentTyping({
+    animeId,
+    episodeId,
+    viewerUserId: effectiveUserId ?? null,
+  });
 
   /* ====================================================== */
   /* DESTAQUE DA NOTIFICAÇÃO                                */
@@ -1453,6 +1466,7 @@ export function CommentsSection({
     try {
       setSending(true);
       setError("");
+      stopTypingNow();
 
       let imageUrl: string | null = null;
 
@@ -1547,6 +1561,7 @@ export function CommentsSection({
     try {
       setReplySending(true);
       setError("");
+      stopTypingNow();
 
       const bearer = getBearerToken();
       const headers: Record<string, string> = {
@@ -2129,9 +2144,17 @@ export function CommentsSection({
                   {totalCount ?? comments.length}
                 </span>
               </div>
-              <p className="text-xs text-zinc-400 mt-0.5 truncate">
-                Clique para expandir e participar da discussão
-              </p>
+              {remoteTyping ? (
+                <TypingIndicator
+                  active={remoteTyping}
+                  typingCount={remoteTypingCount}
+                  className="mt-1"
+                />
+              ) : (
+                <p className="text-xs text-zinc-400 mt-0.5 truncate">
+                  Clique para expandir e participar da discussão
+                </p>
+              )}
             </div>
           </div>
           <button
@@ -2815,7 +2838,11 @@ export function CommentsSection({
               <div className="min-w-0 flex-1">
                 <textarea
                   value={text}
-                  onChange={(e) => setText(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setText(next);
+                    notifyTypingInput(next.trim().length > 0);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
@@ -2831,12 +2858,6 @@ export function CommentsSection({
                   }
                   className="w-full resize-none rounded-xl border border-white/10 bg-[#0c0c10] px-3 py-2.5 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-purple-500/40 transition-colors"
                 />
-                {text.trim().length > 0 && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-purple-300/80 italic mt-1.5 animate-pulse">
-                    <span className="size-1.5 rounded-full bg-purple-400 inline-block" />
-                    <span>Alguém está escrevendo...</span>
-                  </div>
-                )}
 
                 {/* Previews de imagem/GIF anexados */}
                 {(commentImagePreview || selectedGifUrl) && (
@@ -2986,12 +3007,18 @@ export function CommentsSection({
             </div>
           )}
 
-          {/* Toggle de Ocultar/Mostrar Imagens */}
-          <div className="mt-4 flex items-center justify-end">
+          {/* Indicador remoto de digitação + Toggle de Ocultar/Mostrar Imagens */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <TypingIndicator
+                active={remoteTyping}
+                typingCount={remoteTypingCount}
+              />
+            </div>
             <button
               type="button"
               onClick={handleToggleShowMedia}
-              className="inline-flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors cursor-pointer ml-auto"
             >
               {showMedia ? (
                 <>
@@ -3074,18 +3101,25 @@ export function CommentsSection({
                               formatDate={formatCommentDate}
                               nowMs={relativeNowMs}
                               onReaction={handleReaction}
-                              onReplyChange={setReplyText}
+                              onReplyChange={(next) => {
+                                setReplyText(next);
+                                notifyTypingInput(next.trim().length > 0);
+                              }}
                               onReplySpoilerChange={setReplyIsSpoiler}
                               onStartReply={() => {
                                 if (!effectiveUserId) {
                                   setLoginOpen(true);
                                   return;
                                 }
+                                stopTypingNow();
                                 setReplyingId(reply.id);
                                 setReplyText("");
                                 setReplyIsSpoiler(false);
                               }}
-                              onCancelReply={() => setReplyingId(null)}
+                              onCancelReply={() => {
+                                stopTypingNow();
+                                setReplyingId(null);
+                              }}
                               onSendReply={() => void handleReply(reply.id)}
                               isReply
                               menuOpen={menuOpenId === reply.id}
@@ -3141,18 +3175,25 @@ export function CommentsSection({
                       formatDate={formatCommentDate}
                       nowMs={relativeNowMs}
                       onReaction={handleReaction}
-                      onReplyChange={setReplyText}
+                      onReplyChange={(next) => {
+                        setReplyText(next);
+                        notifyTypingInput(next.trim().length > 0);
+                      }}
                       onReplySpoilerChange={setReplyIsSpoiler}
                       onStartReply={() => {
                         if (!effectiveUserId) {
                           setLoginOpen(true);
                           return;
                         }
+                        stopTypingNow();
                         setReplyingId(root.id);
                         setReplyText("");
                         setReplyIsSpoiler(false);
                       }}
-                      onCancelReply={() => setReplyingId(null)}
+                      onCancelReply={() => {
+                        stopTypingNow();
+                        setReplyingId(null);
+                      }}
                       onSendReply={() => void handleReply(root.id)}
                       menuOpen={menuOpenId === root.id}
                       onToggleMenu={() =>
@@ -4381,12 +4422,6 @@ export function CommentCard({
                 placeholder={`Responder para @${authorName}...`}
                 className="w-full resize-none rounded-lg border border-white/10 bg-[#0b0914] px-3 py-2 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-[#a855f7]/45 transition-colors"
               />
-              {replyText.trim().length > 0 && (
-                <div className="flex items-center gap-1.5 text-[11px] text-purple-300/80 italic mt-1.5 animate-pulse">
-                  <span className="size-1.5 rounded-full bg-purple-400 inline-block" />
-                  <span>Alguém está escrevendo...</span>
-                </div>
-              )}
 
               <div className="mt-2 flex items-center justify-between gap-2">
                 <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/60 hover:text-white select-none">
