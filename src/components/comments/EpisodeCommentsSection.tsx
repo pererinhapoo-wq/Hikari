@@ -488,13 +488,7 @@ export function EpisodeCommentsSection({
   const newCommentTimeoutRef =
     useRef<number | null>(null);
 
-  const [isExpanded, setIsExpanded] = useState(false);
 
-  useEffect(() => {
-    if (targetCommentId) {
-      setIsExpanded(true);
-    }
-  }, [targetCommentId]);
 
   /* ====================================================== */
   /* IMAGEM DO COMENTÁRIO                                   */
@@ -2598,51 +2592,7 @@ export function EpisodeCommentsSection({
 
   return (
     <section className="mt-10 border-t border-[#a855f7]/20 pt-8 sm:pt-10">
-      {!isExpanded ? (
-        <div
-          onClick={() => setIsExpanded(true)}
-          role="button"
-          tabIndex={0}
-          aria-expanded={false}
-          className="rounded-xl border border-purple-500/20 bg-surface/60 hover:bg-surface/90 p-4 sm:p-5 flex items-center justify-between gap-4 cursor-pointer transition-all duration-150 shadow-sm"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex size-9 sm:size-10 items-center justify-center rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-300 shrink-0">
-              <MessageCircle className="size-4 sm:size-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="font-display text-base font-bold text-white tracking-tight">Comentários</h3>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 tabular-nums">
-                  {totalCount ?? comments.length}
-                </span>
-              </div>
-              {remoteTyping ? (
-                <TypingIndicator
-                  active={remoteTyping}
-                  typingCount={remoteTypingCount}
-                  className="mt-1"
-                />
-              ) : (
-                <p className="text-xs text-zinc-400 mt-0.5 truncate">
-                  Clique para expandir e participar da discussão
-                </p>
-              )}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-600/20 border border-purple-500/30 text-purple-200 hover:bg-purple-600/35 shrink-0 transition-all cursor-pointer"
-          >
-            <span>Ver comentários</span>
-            <ChevronDown className="size-3.5" />
-          </button>
-        </div>
-      ) : (
-        loading ? (
-          <ElizabethCommentsLoading />
-        ) : (
-          <div className="grid gap-6 sm:gap-8">
+      <div className="grid gap-6 sm:gap-8">
 
           <div className="min-w-0">
 
@@ -3734,8 +3684,6 @@ export function EpisodeCommentsSection({
         </div>
 
       </div>
-        )
-      )}
 
       {/* ================================================== */}
       {/* MODAL DE EDIÇÃO                                    */}
