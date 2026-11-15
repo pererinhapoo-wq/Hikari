@@ -27,13 +27,11 @@ import {
   MoreVertical,
   Search,
   Send,
-  Settings2,
   ThumbsDown,
   ThumbsUp,
   Trash2,
   UserCircle,
   UserPlus,
-  Users,
   X,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
@@ -2600,10 +2598,10 @@ export function EpisodeCommentsSection({
           {/* CABEÇALHO DOS COMENTÁRIOS ESTILO DISQUS/HIKARI  */}
           {/* =============================================== */}
 
-          <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-2 border-b border-white/[0.08] pb-3">
+          <div className="border-b border-white/[0.08] pb-3 space-y-3">
 
-            {/* Lado esquerdo: Título com contagem e as 3 abas de ordenação */}
-            <div className="flex flex-wrap items-center gap-3 sm:gap-6 min-w-0">
+            {/* Primeira linha: Título com contagem à esquerda e Foto/Nome (ou Entrar) à direita */}
+            <div className="flex items-center justify-between gap-3">
 
               <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
                 <div className="flex size-7 sm:size-8 items-center justify-center rounded-lg bg-[#a855f7]/15 border border-[#a855f7]/30 text-[#c084fc] shrink-0">
@@ -2624,52 +2622,10 @@ export function EpisodeCommentsSection({
                 </span>
               </div>
 
-              {/* Três opções compactas alinhadas horizontalmente: Destaque, Recentes, Antigos */}
-              <div className="flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm">
-                <button
-                  type="button"
-                  onClick={() => setSortBy("highlight")}
-                  className={cn(
-                    "px-2.5 sm:px-3 py-1 font-medium transition-all relative border-b-2 -mb-[13px] sm:-mb-[13px]",
-                    sortBy === "highlight"
-                      ? "border-[#a855f7] text-[#c084fc] font-semibold"
-                      : "border-transparent text-white/50 hover:text-white/80"
-                  )}
-                >
-                  Destaque
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSortBy("recent")}
-                  className={cn(
-                    "px-2.5 sm:px-3 py-1 font-medium transition-all relative border-b-2 -mb-[13px] sm:-mb-[13px]",
-                    sortBy === "recent"
-                      ? "border-[#a855f7] text-[#c084fc] font-semibold"
-                      : "border-transparent text-white/50 hover:text-white/80"
-                  )}
-                >
-                  Recentes
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSortBy("oldest")}
-                  className={cn(
-                    "px-2.5 sm:px-3 py-1 font-medium transition-all relative border-b-2 -mb-[13px] sm:-mb-[13px]",
-                    sortBy === "oldest"
-                      ? "border-[#a855f7] text-[#c084fc] font-semibold"
-                      : "border-transparent text-white/50 hover:text-white/80"
-                  )}
-                >
-                  Antigos
-                </button>
-              </div>
-
             </div>
 
-            {/* Lado direito: Login OU Menu da pessoa autenticada */}
-            <div className="flex items-center shrink-0 relative ml-auto">
+            {/* Lado direito: Login OU Menu da pessoa autenticada (Foto e Nome) */}
+            <div className="flex items-center shrink-0 relative">
 
               {!effectiveUserId ? (
                 /* Visitante: Opção ENTRAR com Popover estilo Disqus */
@@ -2894,19 +2850,7 @@ export function EpisodeCommentsSection({
                           <span>Seu perfil</span>
                         </Link>
 
-                        {/* 2. Comunidade */}
-                        {!hideCommunityAndSettings && (
-                          <Link
-                            to="/news"
-                            onClick={() => setUserMenuOpen(false)}
-                            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors"
-                          >
-                            <Users className="size-4 text-[#c084fc] shrink-0" />
-                            <span>Comunidade</span>
-                          </Link>
-                        )}
-
-                        {/* 3. Exibir mídia */}
+                        {/* 2. Exibir mídia */}
                         <button
                           type="button"
                           onClick={() => {
@@ -2929,18 +2873,6 @@ export function EpisodeCommentsSection({
                             {showMedia ? "Ativo" : "Oculto"}
                           </span>
                         </button>
-
-                        {/* 4. Editar configurações */}
-                        {!hideCommunityAndSettings && (
-                          <Link
-                            to="/settings-profile"
-                            onClick={() => setUserMenuOpen(false)}
-                            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors"
-                          >
-                            <Settings2 className="size-4 text-[#c084fc] shrink-0" />
-                            <span>Editar configurações</span>
-                          </Link>
-                        )}
 
                         {/* Divisor */}
                         <div className="h-px bg-white/[0.08] my-1" />
@@ -2967,6 +2899,48 @@ export function EpisodeCommentsSection({
                 </div>
               )}
 
+            </div>
+
+            {/* Segunda linha: Três opções compactas alinhadas horizontalmente: Destaque, Recentes, Antigos */}
+            <div className="flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm pt-1">
+              <button
+                type="button"
+                onClick={() => setSortBy("highlight")}
+                className={cn(
+                  "px-2.5 sm:px-3 py-1 font-medium transition-all relative border-b-2",
+                  sortBy === "highlight"
+                    ? "border-[#a855f7] text-[#c084fc] font-semibold"
+                    : "border-transparent text-white/50 hover:text-white/80"
+                )}
+              >
+                Destaque
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSortBy("recent")}
+                className={cn(
+                  "px-2.5 sm:px-3 py-1 font-medium transition-all relative border-b-2",
+                  sortBy === "recent"
+                    ? "border-[#a855f7] text-[#c084fc] font-semibold"
+                    : "border-transparent text-white/50 hover:text-white/80"
+                )}
+              >
+                Recentes
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSortBy("oldest")}
+                className={cn(
+                  "px-2.5 sm:px-3 py-1 font-medium transition-all relative border-b-2",
+                  sortBy === "oldest"
+                    ? "border-[#a855f7] text-[#c084fc] font-semibold"
+                    : "border-transparent text-white/50 hover:text-white/80"
+                )}
+              >
+                Antigos
+              </button>
             </div>
 
           </div>

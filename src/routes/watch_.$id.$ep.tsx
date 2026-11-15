@@ -1482,44 +1482,21 @@ function CommentsLoadingFallback() {
       <div
         role="status"
         aria-live="polite"
-        className="elizabeth-loading-container relative overflow-hidden rounded-2xl sm:rounded-3xl border border-[#a855f7]/25 bg-gradient-to-b from-[#130f24]/90 via-[#0c0a15]/95 to-[#08070d] p-8 sm:p-14 text-center shadow-[0_8px_32px_rgba(0,0,0,0.65),0_0_35px_rgba(168,85,247,0.12)] backdrop-blur-md"
+        className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-[#a855f7]/25 bg-gradient-to-b from-[#130f24]/90 via-[#0c0a15]/95 to-[#08070d] p-6 sm:p-8 text-center shadow-[0_8px_32px_rgba(0,0,0,0.65),0_0_35px_rgba(168,85,247,0.12)] backdrop-blur-md"
       >
         <div
-          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-44 bg-[#a855f7]/15 rounded-full blur-3xl"
+          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-24 bg-[#a855f7]/15 rounded-full blur-3xl"
           aria-hidden="true"
         />
 
-        <div className="relative z-10 flex flex-col items-center justify-center">
-          <div className="elizabeth-sway-anim inline-flex items-center justify-center select-none drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)]">
-            <picture className="contents">
-              <source
-                type="image/webp"
-                srcSet="/assets/hikari-elizabeth-character-sm.webp 186w, /assets/hikari-elizabeth-character.webp 290w"
-                sizes="(min-width: 768px) 224px, (min-width: 640px) 208px, 176px"
-              />
-              <img
-                src="/assets/hikari-elizabeth-character.webp"
-                alt="Elizabeth"
-                width={290}
-                height={140}
-                className="w-44 sm:w-52 md:w-56 h-auto object-contain pointer-events-none"
-                loading="lazy"
-                fetchPriority="low"
-                decoding="async"
-                draggable={false}
-              />
-            </picture>
-          </div>
-
-          <div className="mt-5 flex items-center justify-center gap-2.5">
-            <div
-              className="elizabeth-spinner size-5 rounded-full border-2 border-[#a855f7]/25 border-t-[#c084fc] animate-spin shadow-[0_0_12px_rgba(168,85,247,0.45)] shrink-0"
-              aria-hidden="true"
-            />
-            <p className="text-sm font-medium tracking-wide text-white/85 select-none">
-              Carregando os comentários...
-            </p>
-          </div>
+        <div className="relative z-10 flex items-center justify-center gap-2.5 py-4">
+          <div
+            className="size-5 rounded-full border-2 border-[#a855f7]/25 border-t-[#c084fc] animate-spin shadow-[0_0_12px_rgba(168,85,247,0.45)] shrink-0"
+            aria-hidden="true"
+          />
+          <p className="text-sm font-medium tracking-wide text-white/85 select-none">
+            Carregando os comentários...
+          </p>
         </div>
       </div>
     </section>

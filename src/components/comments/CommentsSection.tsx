@@ -2126,8 +2126,8 @@ export function CommentsSection({
 
           {isAnimeGeneral ? (
             /* Contexto 1: Página de detalhes do anime (estilo nativo Hikari) */
-            <div className="border-b border-purple-500/20 pb-4">
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3.5">
+            <div className="border-b border-purple-500/20 pb-4 space-y-3.5">
+              <div className="flex items-center justify-between gap-3.5">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2.5">
                     <span className="h-6 w-1 rounded-full bg-purple-500 shrink-0" />
@@ -2150,77 +2150,7 @@ export function CommentsSection({
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto">
-                  {/* Seletor compacto de ordenação: "Mais recentes ˅" */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setSortDropdownOpen((prev) => !prev)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-purple-500/25 bg-purple-950/30 text-purple-200 hover:bg-purple-950/60 hover:border-purple-500/40 active:[transform:scale(0.96)] touch-manipulation transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
-                      aria-expanded={sortDropdownOpen}
-                      aria-haspopup="menu"
-                    >
-                      <span>
-                        {sortBy === "recent"
-                          ? "Mais recentes"
-                          : sortBy === "highlight"
-                            ? "Em destaque"
-                            : "Mais antigos"}
-                      </span>
-                      <ChevronDown
-                        className={cn(
-                          "size-3.5 text-purple-400 transition-transform duration-150 motion-reduce:transition-none motion-reduce:transform-none",
-                          sortDropdownOpen && "[transform:rotate(180deg)]",
-                        )}
-                      />
-                    </button>
-
-                    {sortMenu.mounted && (
-                      <>
-                        {sortDropdownOpen && (
-                          <div
-                            className="fixed inset-0 z-40"
-                            onClick={() => setSortDropdownOpen(false)}
-                          />
-                        )}
-                        <div
-                          role="menu"
-                          className={cn(
-                            "absolute left-0 sm:left-auto sm:right-0 top-[calc(100%+6px)] z-50 min-w-[140px] overflow-hidden rounded-xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-1 shadow-2xl origin-top-left sm:origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
-                            sortMenu.visible
-                              ? "opacity-100 [transform:translateY(0)_scale(1)]"
-                              : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
-                            sortMenu.closing && "pointer-events-none",
-                          )}
-                        >
-                          {[
-                            { value: "recent" as const, label: "Mais recentes" },
-                            { value: "highlight" as const, label: "Em destaque" },
-                            { value: "oldest" as const, label: "Mais antigos" },
-                          ].map((opt) => (
-                            <button
-                              key={opt.value}
-                              type="button"
-                              role="menuitem"
-                              onClick={() => {
-                                setSortBy(opt.value);
-                                setSortDropdownOpen(false);
-                              }}
-                              className={cn(
-                                "flex w-full items-center justify-between px-3 py-1.5 text-xs rounded-lg text-left active:[transform:scale(0.985)] touch-manipulation transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer",
-                                sortBy === opt.value
-                                  ? "bg-purple-600/30 font-semibold text-purple-200"
-                                  : "text-zinc-300 hover:bg-white/5 hover:text-white active:bg-white/10",
-                              )}
-                            >
-                              <span>{opt.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-
+                <div className="flex items-center shrink-0">
                   {/* Lado direito: Login OU Menu da pessoa autenticada */}
                   {!effectiveUserId ? (
                     <div className="relative">
@@ -2437,6 +2367,78 @@ export function CommentsSection({
                         </>
                       )}
                     </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Segunda linha: Seletor compacto de ordenação */}
+              <div className="flex items-center pt-1">
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setSortDropdownOpen((prev) => !prev)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-purple-500/25 bg-purple-950/30 text-purple-200 hover:bg-purple-950/60 hover:border-purple-500/40 active:[transform:scale(0.96)] touch-manipulation transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
+                    aria-expanded={sortDropdownOpen}
+                    aria-haspopup="menu"
+                  >
+                    <span>
+                      {sortBy === "recent"
+                        ? "Mais recentes"
+                        : sortBy === "highlight"
+                          ? "Em destaque"
+                          : "Mais antigos"}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "size-3.5 text-purple-400 transition-transform duration-150 motion-reduce:transition-none motion-reduce:transform-none",
+                        sortDropdownOpen && "[transform:rotate(180deg)]",
+                      )}
+                    />
+                  </button>
+
+                  {sortMenu.mounted && (
+                    <>
+                      {sortDropdownOpen && (
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => setSortDropdownOpen(false)}
+                        />
+                      )}
+                      <div
+                        role="menu"
+                        className={cn(
+                          "absolute left-0 sm:left-auto sm:right-0 top-[calc(100%+6px)] z-50 min-w-[140px] overflow-hidden rounded-xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-1 shadow-2xl origin-top-left sm:origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                          sortMenu.visible
+                            ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                            : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
+                          sortMenu.closing && "pointer-events-none",
+                        )}
+                      >
+                        {[
+                          { value: "recent" as const, label: "Mais recentes" },
+                          { value: "highlight" as const, label: "Em destaque" },
+                          { value: "oldest" as const, label: "Mais antigos" },
+                        ].map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setSortBy(opt.value);
+                              setSortDropdownOpen(false);
+                            }}
+                            className={cn(
+                              "flex w-full items-center justify-between px-3 py-1.5 text-xs rounded-lg text-left active:[transform:scale(0.985)] touch-manipulation transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer",
+                              sortBy === opt.value
+                                ? "bg-purple-600/30 font-semibold text-purple-200"
+                                : "text-zinc-300 hover:bg-white/5 hover:text-white active:bg-white/10",
+                            )}
+                          >
+                            <span>{opt.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
