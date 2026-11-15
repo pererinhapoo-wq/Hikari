@@ -34,6 +34,7 @@ export interface EpisodePayload {
   videoUrl5?: string | null;
   published?: boolean;
   replaceSources?: boolean;
+  replaceThumbnail?: boolean;
   animeTitle?: string | null;
 }
 
@@ -452,6 +453,7 @@ export async function persistEpisode(
   seasonNumber: number,
   episode: Episode,
   animeTitle?: string,
+  options?: { replaceThumbnail?: boolean },
 ): Promise<PersistEpisodeResult> {
   // Limpa tombstone do episódio na republicação ou salvamento
   clearTombstone(episode.id, {
@@ -492,6 +494,7 @@ export async function persistEpisode(
     videoUrl5: episode.videoUrl5 || null,
     published: isPublished,
     replaceSources: true,
+    replaceThumbnail: Boolean(options?.replaceThumbnail),
     animeTitle: animeTitle || null,
   };
 

@@ -25,6 +25,7 @@ const episodePostSchema = z.object({
   videoUrl5: z.string().max(2048).optional().nullable(),
   published: z.boolean().default(false),
   replaceSources: z.boolean().optional().default(false),
+  replaceThumbnail: z.boolean().optional().default(false),
   animeTitle: z.string().max(255).optional().nullable(),
 });
 
@@ -196,12 +197,11 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             (data.title && data.title.trim()) ||
             existingRow?.title ||
             `Episódio ${data.number}`;
+          const shouldReplaceThumbnail = Boolean(data.replaceThumbnail);
           const cleanIncomingThumbnail = sanitizeEpisodeThumbnailUrl(data.thumbnail);
-          const thumbnail = data.replaceSources
+          const thumbnail = shouldReplaceThumbnail
             ? cleanIncomingThumbnail
-            : data.thumbnail !== undefined
-              ? cleanIncomingThumbnail ?? existingRow?.thumbnail ?? null
-              : existingRow?.thumbnail ?? null;
+            : cleanIncomingThumbnail ?? existingRow?.thumbnail ?? null;
           const duration =
             (data.duration && data.duration.trim()) ||
             existingRow?.duration ||
@@ -256,7 +256,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
              SET
                "title" = EXCLUDED."title",
                "thumbnail" = CASE
-                 WHEN $15 = true THEN EXCLUDED."thumbnail"
+                 WHEN $16 = true THEN EXCLUDED."thumbnail"
                  ELSE COALESCE(NULLIF(EXCLUDED."thumbnail", ''), "catalog_episode"."thumbnail")
                END,
                "duration" = COALESCE(NULLIF(EXCLUDED."duration", ''), "catalog_episode"."duration"),
@@ -305,6 +305,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
               v5,
               published,
               Boolean(data.replaceSources),
+              shouldReplaceThumbnail,
             ],
           );
 

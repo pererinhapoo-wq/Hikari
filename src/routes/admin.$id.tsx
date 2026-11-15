@@ -8,7 +8,7 @@ import {
   Info,
   Layers,
 } from "lucide-react";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import { fetchAnimeDetail } from "@/lib/api";
 import { animeToLocal, type Episode, type LocalAnime, type Season } from "@/lib/types";
@@ -21,6 +21,8 @@ import { flushAnimes } from "@/lib/catalog-storage";
 import {
   captureAndUploadThumbnail,
   hasEpisodePlayableSource,
+  resolveEpisodeThumbnailUrl,
+  sanitizeEpisodeThumbnailUrl,
 } from "@/lib/published-episodes";
 import { Button } from "@/components/ui/button";
 import {
@@ -152,6 +154,55 @@ function AdminEditor() {
   const isSavingRef = useRef(false);
   const formRef = useRef<LocalAnime | null>(null);
   formRef.current = form;
+  const [thumbnailEditModes, setThumbnailEditModes] = useState<
+    Record<string, "modified" | "cleared">
+  >({});
+  const thumbnailEditModesRef = useRef<Record<string, "modified" | "cleared">>({});
+  thumbnailEditModesRef.current = thumbnailEditModes;
+
+  const setEpisodeThumbnailEditMode = useCallback(
+    (epId: string, mode?: "modified" | "cleared") => {
+      setThumbnailEditModes((prev) => {
+        const next = { ...prev };
+        if (mode) {
+          next[epId] = mode;
+        } else {
+          delete next[epId];
+        }
+        thumbnailEditModesRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+
+  const remoteEpisodeThumbMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const season of remote?.seasons ?? []) {
+      for (const ep of season.episodes ?? []) {
+        const clean = sanitizeEpisodeThumbnailUrl(ep.thumbnail);
+        if (clean) {
+          map.set(`${season.number}:${ep.number}`, clean);
+        }
+      }
+    }
+    return map;
+  }, [remote?.seasons]);
+
+  const getInheritedEpisodeThumbnail = useCallback(
+    (seasonNumber: number, ep: Episode): string | undefined => {
+      const fromRemote = remoteEpisodeThumbMap.get(`${seasonNumber}:${ep.number}`);
+      if (fromRemote) return fromRemote;
+      return resolveEpisodeThumbnailUrl({
+        videoUrl: ep.videoUrl,
+        videoUrl2: ep.videoUrl2,
+        videoUrl3: ep.videoUrl3,
+        videoUrl4: ep.videoUrl4,
+        videoUrl5: ep.videoUrl5,
+      });
+    },
+    [remoteEpisodeThumbMap],
+  );
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -172,7 +223,22 @@ function AdminEditor() {
       try {
         let result = forcedResult;
         if (!result) {
-          result = await getAdminCatalogEpisodes({ data: { animeId: effectiveId } });
+          const candidateIds = Array.from(
+            new Set(
+              [effectiveId, formRef.current?.id, remote?.serverCatalogId].filter(
+                (cid): cid is string => Boolean(cid && cid !== "new"),
+              ),
+            ),
+          );
+          for (const candidateId of candidateIds) {
+            const fetched = await getAdminCatalogEpisodes({
+              data: { animeId: candidateId },
+            });
+            result = fetched;
+            if (fetched && fetched.episodes.length > 0) {
+              break;
+            }
+          }
         }
 
         if (!result || !result.episodes || result.episodes.length === 0) {
@@ -184,11 +250,12 @@ function AdminEditor() {
           return;
         }
 
+        const mergeAnimeId = result.animeId || formRef.current?.id || effectiveId;
         setForm((currentForm) => {
           if (!currentForm) return currentForm;
           const currentOps = typeof window !== "undefined" ? readOutbox() : [];
           const mergeResult = mergeAdminEpisodesWithServer({
-            animeId: effectiveId,
+            animeId: mergeAnimeId,
             localSeasons: currentForm.seasons,
             serverResult: result!,
             outboxOps: currentOps,
@@ -213,7 +280,7 @@ function AdminEditor() {
         });
       }
     },
-    [id],
+    [id, remote?.serverCatalogId],
   );
 
   async function handleCaptureEpisodeFrame(
@@ -223,12 +290,17 @@ function AdminEditor() {
     options?: { isAuto?: boolean },
   ) {
     const isAuto = Boolean(options?.isAuto);
-    const liveEp =
-      formRef.current?.seasons
-        .find((s) => s.id === sid)
-        ?.episodes.find((e) => e.id === ep.id) ?? ep;
+    const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
+    const liveEp = liveSeason?.episodes.find((e) => e.id === ep.id) ?? ep;
+    const liveThumbMode = thumbnailEditModesRef.current[ep.id];
+    const liveInherited = liveSeason
+      ? getInheritedEpisodeThumbnail(liveSeason.number, liveEp)
+      : undefined;
 
-    if (isAuto && liveEp.thumbnail?.trim()) {
+    if (
+      isAuto &&
+      (liveEp.thumbnail?.trim() || liveThumbMode === "cleared" || liveInherited)
+    ) {
       return;
     }
 
@@ -266,9 +338,13 @@ function AdminEditor() {
         .find((s) => s.id === sid)
         ?.episodes.find((e) => e.id === ep.id);
       const latestThumb = latestEp?.thumbnail?.trim() ?? "";
+      const latestMode = thumbnailEditModesRef.current[ep.id];
 
-      // Nunca sobrescrever uma imagem manual informada antes ou durante a captura
-      if ((isAuto && latestThumb) || (!isAuto && latestThumb && latestThumb !== thumbAtStart)) {
+      // Nunca sobrescrever uma imagem manual ou limpeza intencional feita antes/durante a captura
+      if (
+        (isAuto && (latestThumb || latestMode === "cleared")) ||
+        (!isAuto && latestThumb && latestThumb !== thumbAtStart)
+      ) {
         setCaptureStatus((prev) => {
           const next = { ...prev };
           delete next[ep.id];
@@ -278,6 +354,7 @@ function AdminEditor() {
       }
 
       patchEpisode(sid, ep.id, { thumbnail: res.url });
+      setEpisodeThumbnailEditMode(ep.id, "modified");
       setCaptureStatus((prev) => ({
         ...prev,
         [ep.id]: {
@@ -314,12 +391,14 @@ function AdminEditor() {
         patchEpisode(sid, ep.id, { [key]: url });
         toast.success(`Vídeo enviado com sucesso para ${key}!`);
 
-        const liveEp =
-          formRef.current?.seasons
-            .find((s) => s.id === sid)
-            ?.episodes.find((e) => e.id === ep.id) ?? ep;
+        const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
+        const liveEp = liveSeason?.episodes.find((e) => e.id === ep.id) ?? ep;
+        const liveThumbMode = thumbnailEditModesRef.current[ep.id];
+        const liveInherited = liveSeason
+          ? getInheritedEpisodeThumbnail(liveSeason.number, liveEp)
+          : undefined;
 
-        if (!liveEp.thumbnail?.trim()) {
+        if (!liveEp.thumbnail?.trim() && liveThumbMode !== "cleared" && !liveInherited) {
           const frameSource = file ? URL.createObjectURL(file) : url;
           captureAndUploadThumbnail(frameSource, {
             episodeTitle: liveEp.title || `Episódio ${liveEp.number}`,
@@ -328,10 +407,14 @@ function AdminEditor() {
               const latestEp = formRef.current?.seasons
                 .find((s) => s.id === sid)
                 ?.episodes.find((e) => e.id === ep.id);
-              if (latestEp?.thumbnail?.trim()) {
+              if (
+                latestEp?.thumbnail?.trim() ||
+                thumbnailEditModesRef.current[ep.id] === "cleared"
+              ) {
                 return;
               }
               patchEpisode(sid, ep.id, { thumbnail: res.url });
+              setEpisodeThumbnailEditMode(ep.id, "modified");
               toast.success("Miniatura capturada e salva automaticamente!");
             })
             .catch((err) => {
@@ -372,7 +455,7 @@ function AdminEditor() {
           setForm((currentForm) => {
             if (!currentForm) return currentForm;
             const mergeResult = mergeAdminEpisodesWithServer({
-              animeId: id,
+              animeId: serverEpisodes.animeId || currentForm.id || id,
               localSeasons: currentForm.seasons,
               serverResult: serverEpisodes,
               outboxOps: currentOps,
@@ -399,6 +482,8 @@ function AdminEditor() {
     }
 
     initializedRouteKeyRef.current = routeKey;
+    thumbnailEditModesRef.current = {};
+    setThumbnailEditModes({});
 
     const storedMatch =
       id === "new"
@@ -815,10 +900,19 @@ function AdminEditor() {
       }> = [];
       for (const season of effectiveAnime.seasons) {
         for (const ep of season.episodes) {
+          const thumbMode = thumbnailEditModesRef.current[ep.id];
+          const shouldReplaceThumb =
+            thumbMode === "modified" || thumbMode === "cleared";
           episodeTasks.push({
             seasonId: season.id,
             episodeId: ep.id,
-            promise: persistEpisode(effectiveAnime.id, season.number, ep, animeTitle),
+            promise: persistEpisode(
+              effectiveAnime.id,
+              season.number,
+              ep,
+              animeTitle,
+              { replaceThumbnail: shouldReplaceThumb },
+            ),
           });
         }
       }
@@ -831,6 +925,25 @@ function AdminEditor() {
           if (result) {
             resultByPair.set(`${task.seasonId}:${task.episodeId}`, result);
           }
+        });
+
+        setThumbnailEditModes((prev) => {
+          const next = { ...prev };
+          for (const task of episodeTasks) {
+            const match = resultByPair.get(`${task.seasonId}:${task.episodeId}`);
+            if (!match) continue;
+            if (match.confirmed) {
+              delete next[task.episodeId];
+              if (match.canonicalId) {
+                delete next[match.canonicalId];
+              }
+            } else if (match.canonicalId && match.canonicalId !== task.episodeId && next[task.episodeId]) {
+              next[match.canonicalId] = next[task.episodeId];
+              delete next[task.episodeId];
+            }
+          }
+          thumbnailEditModesRef.current = next;
+          return next;
         });
 
         let anyEpisodeChanged = false;
@@ -1131,6 +1244,17 @@ function AdminEditor() {
     if (season) {
       void persistEpisodeDelete(current.id, season.number, eid, targetEp?.number);
     }
+    setEpisodeThumbnailEditMode(eid, undefined);
+  }
+
+  function handleEpisodeThumbnailChange(sid: string, ep: Episode, value: string) {
+    patchEpisode(sid, ep.id, { thumbnail: value });
+    setEpisodeThumbnailEditMode(ep.id, value.trim() ? "modified" : "cleared");
+  }
+
+  function handleEpisodeThumbnailClear(sid: string, ep: Episode) {
+    patchEpisode(sid, ep.id, { thumbnail: "" });
+    setEpisodeThumbnailEditMode(ep.id, "cleared");
   }
 
   const animeTitle =
@@ -1302,6 +1426,10 @@ function AdminEditor() {
         uploadingEpisode={uploadingEpisode}
         captureStatus={captureStatus}
         outboxOps={outboxOps}
+        getInheritedThumbnail={getInheritedEpisodeThumbnail}
+        thumbnailEditModes={thumbnailEditModes}
+        onThumbnailChange={handleEpisodeThumbnailChange}
+        onThumbnailClear={handleEpisodeThumbnailClear}
       />
 
       {/* Barra de Ação Mobile Fixa */}

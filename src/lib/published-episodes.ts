@@ -246,7 +246,18 @@ export function sanitizeEpisodeThumbnailUrl(url?: string | null): string | null 
     return null;
   }
 
-  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+  if (trimmed.startsWith("//")) {
+    try {
+      const parsed = new URL(`https:${trimmed}`);
+      if (parsed.protocol === "https:") {
+        return parsed.toString();
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  if (trimmed.startsWith("/")) {
     return trimmed;
   }
 
@@ -821,11 +832,14 @@ export function resolvePublicEpisodes(
 
     const cloudinaryThumb = getCloudinaryThumbnail(validVideo);
     const youtubeThumb = getYouTubeThumbnail(validVideo);
+    const pendingThumb = pendingUpsert?.payload?.thumbnail;
     const hasPendingThumbOverride =
       pendingUpsert?.payload !== undefined &&
-      pendingUpsert.payload.thumbnail !== undefined;
+      (pendingUpsert.payload.replaceThumbnail === true
+        ? pendingThumb !== undefined
+        : Boolean(typeof pendingThumb === "string" && pendingThumb.trim()));
     const manualThumb = hasPendingThumbOverride
-      ? sanitizeEpisodeThumbnailUrl(pendingUpsert.payload?.thumbnail as string | null)
+      ? sanitizeEpisodeThumbnailUrl(pendingThumb as string | null)
       : sanitizeEpisodeThumbnailUrl(row.thumbnail);
     const resolvedThumb =
       manualThumb ||

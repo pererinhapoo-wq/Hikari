@@ -3,8 +3,6 @@ import { describe, it } from "node:test";
 import {
   getRecentEpisodesSection,
   getAllPublishedEpisodes,
-  isConfirmedFinalEpisode,
-  isAnimeConfirmedFinished,
   isPersistablePlayableVideoUrl,
   sanitizePlayableVideoUrl,
   isEpisodePublished,
@@ -14,6 +12,7 @@ import {
   resolveEpisodeThumbnailUrl,
 } from "./published-episodes";
 import { persistEpisode } from "./episode-writer";
+import { mergeAdminEpisodesWithServer } from "./catalog-episodes";
 import type { LocalAnime } from "./types";
 
 function createMockAnime(overrides: Partial<LocalAnime> = {}): LocalAnime {
@@ -472,6 +471,10 @@ describe("Imagem manual do episódio (Episode.thumbnail) e prioridade", () => {
       "http://media.example.com/ep2.webp",
     );
     assert.equal(
+      sanitizeEpisodeThumbnailUrl("//media.kitsu.app/ep1.jpg"),
+      "https://media.kitsu.app/ep1.jpg",
+    );
+    assert.equal(
       sanitizeEpisodeThumbnailUrl("/images/ep3.png"),
       "/images/ep3.png",
     );
@@ -531,9 +534,13 @@ describe("Imagem manual do episódio (Episode.thumbnail) e prioridade", () => {
     );
   });
 
-  it("persistEpisode envia thumbnail manual normalizada ou null quando vazia", async () => {
+  it("persistEpisode envia thumbnail manual e só envia replaceThumbnail=true quando explicitamente alterado ou limpo", async () => {
     const originalFetch = globalThis.fetch;
-    const sentPayloads: Array<{ thumbnail?: string | null; replaceSources?: boolean }> = [];
+    const sentPayloads: Array<{
+      thumbnail?: string | null;
+      replaceSources?: boolean;
+      replaceThumbnail?: boolean;
+    }> = [];
     globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body || "{}"));
       sentPayloads.push(body);
@@ -557,21 +564,37 @@ describe("Imagem manual do episódio (Episode.thumbnail) e prioridade", () => {
         thumbnail: "  https://cdn.example.com/thumb-1.jpg  ",
         videoUrl: "https://cdn.example.com/ep1.mp4",
         published: true,
-      });
+      }, undefined, { replaceThumbnail: true });
 
       await persistEpisode("anime-test", 1, {
-        id: "ep-thumb-clear",
+        id: "ep-thumb-untouched",
         number: 2,
         title: "Ep 2",
-        thumbnail: "   ",
+        thumbnail: undefined,
         videoUrl: "https://cdn.example.com/ep2.mp4",
         published: true,
       });
 
+      await persistEpisode("anime-test", 1, {
+        id: "ep-thumb-clear",
+        number: 3,
+        title: "Ep 3",
+        thumbnail: "   ",
+        videoUrl: "https://cdn.example.com/ep3.mp4",
+        published: true,
+      }, undefined, { replaceThumbnail: true });
+
       assert.equal(sentPayloads[0]?.thumbnail, "https://cdn.example.com/thumb-1.jpg");
       assert.equal(sentPayloads[0]?.replaceSources, true);
+      assert.equal(sentPayloads[0]?.replaceThumbnail, true);
+
       assert.equal(sentPayloads[1]?.thumbnail, null);
       assert.equal(sentPayloads[1]?.replaceSources, true);
+      assert.equal(sentPayloads[1]?.replaceThumbnail, false);
+
+      assert.equal(sentPayloads[2]?.thumbnail, null);
+      assert.equal(sentPayloads[2]?.replaceSources, true);
+      assert.equal(sentPayloads[2]?.replaceThumbnail, true);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -652,7 +675,36 @@ describe("Imagem manual do episódio (Episode.thumbnail) e prioridade", () => {
     assert.equal(nEp1?.thumbnail, "https://cdn.example.com/ep1-manual.jpg");
     assert.equal(nEp2?.thumbnail, "https://cdn.example.com/ep2-antiga.jpg");
 
-    // Com limpeza pendente no outbox para ep-2 (thumbnail: null), não volta à thumbnail antiga do servidor
+    // Com upsert pendente no outbox sem replaceThumbnail=true, preserva a thumbnail existente no servidor
+    const withPendingUntouched = resolvePublicEpisodes(serverResult, [], {
+      outbox: [
+        {
+          opId: "op-untouched-2",
+          type: "upsert",
+          animeId: "a1",
+          seasonNumber: 1,
+          episodeNumber: 2,
+          episodeId: "ep-2",
+          status: "pending",
+          attempts: 0,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          payload: {
+            id: "ep-2",
+            animeId: "a1",
+            seasonNumber: 1,
+            number: 2,
+            thumbnail: null,
+            replaceThumbnail: false,
+          },
+        },
+      ],
+      tombstones: [],
+    });
+    const uEp2 = withPendingUntouched.find((e) => e.episodeId === "ep-2");
+    assert.equal(uEp2?.thumbnail, "https://cdn.example.com/ep2-antiga.jpg");
+
+    // Com limpeza pendente explícita (replaceThumbnail: true, thumbnail: null), não volta à thumbnail antiga do servidor
     const withPendingClear = resolvePublicEpisodes(serverResult, [], {
       outbox: [
         {
@@ -672,6 +724,7 @@ describe("Imagem manual do episódio (Episode.thumbnail) e prioridade", () => {
             seasonNumber: 1,
             number: 2,
             thumbnail: null,
+            replaceThumbnail: true,
           },
         },
       ],
@@ -681,5 +734,81 @@ describe("Imagem manual do episódio (Episode.thumbnail) e prioridade", () => {
     const cEp2 = withPendingClear.find((e) => e.episodeId === "ep-2");
     assert.equal(cEp1?.thumbnail, "https://cdn.example.com/ep1-manual.jpg");
     assert.equal(cEp2?.thumbnail, undefined);
+  });
+
+  it("mergeAdminEpisodesWithServer preserva thumbnail existente no servidor ou no local quando sincronizado", () => {
+    const merged = mergeAdminEpisodesWithServer({
+      animeId: "a1",
+      localSeasons: [
+        {
+          id: "s-1",
+          number: 1,
+          title: "Temporada 1",
+          episodes: [
+            {
+              id: "ep-1",
+              number: 1,
+              title: "Ep 1 Local",
+              thumbnail: "https://cdn.example.com/ep1-local.jpg",
+              videoUrl: "https://cdn.example.com/ep1.mp4",
+              published: true,
+            },
+            {
+              id: "ep-2",
+              number: 2,
+              title: "Ep 2 Local",
+              videoUrl: "https://cdn.example.com/ep2.mp4",
+              published: true,
+            },
+          ],
+        },
+      ],
+      serverResult: {
+        status: "success",
+        animeId: "a1",
+        seasons: [],
+        episodes: [
+          {
+            id: "ep-1",
+            animeId: "a1",
+            seasonNumber: 1,
+            number: 1,
+            title: "Ep 1 Servidor",
+            thumbnail: null,
+            duration: null,
+            synopsis: null,
+            videoUrl: "https://cdn.example.com/ep1.mp4",
+            videoUrl2: null,
+            videoUrl3: null,
+            videoUrl4: null,
+            videoUrl5: null,
+            published: true,
+            publishedAt: "2026-01-01T00:00:00.000Z",
+          },
+          {
+            id: "ep-2",
+            animeId: "a1",
+            seasonNumber: 1,
+            number: 2,
+            title: "Ep 2 Servidor",
+            thumbnail: "https://cdn.example.com/ep2-server.jpg",
+            duration: null,
+            synopsis: null,
+            videoUrl: "https://cdn.example.com/ep2.mp4",
+            videoUrl2: null,
+            videoUrl3: null,
+            videoUrl4: null,
+            videoUrl5: null,
+            published: true,
+            publishedAt: "2026-01-02T00:00:00.000Z",
+          },
+        ],
+      },
+      outboxOps: [],
+    });
+
+    const eps = merged.seasons[0]?.episodes || [];
+    assert.equal(eps[0]?.thumbnail, "https://cdn.example.com/ep1-local.jpg");
+    assert.equal(eps[1]?.thumbnail, "https://cdn.example.com/ep2-server.jpg");
   });
 });

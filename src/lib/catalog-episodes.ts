@@ -880,8 +880,12 @@ export function mergeAdminEpisodesWithServer(
           mergedEpisodes.push(lep);
           preservedPendingCount++;
         } else {
-          // Confirmado / sincronizado: atualiza com os dados canônicos do PostgreSQL
-          mergedEpisodes.push(catalogItemToEpisode(sep));
+          // Confirmado / sincronizado: atualiza com os dados canônicos do PostgreSQL preservando thumbnail local se servidor estiver vazio
+          const serverEp = catalogItemToEpisode(sep);
+          mergedEpisodes.push({
+            ...serverEp,
+            thumbnail: serverEp.thumbnail || lep.thumbnail?.trim() || undefined,
+          });
           recoveredCount++;
         }
       } else if (lep && !sep) {

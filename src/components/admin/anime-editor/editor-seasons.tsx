@@ -28,6 +28,7 @@ import {
 import {
   hasEpisodePlayableSource,
   isPersistablePlayableVideoUrl,
+  resolveEpisodeThumbnailUrl,
 } from "@/lib/published-episodes";
 import type { Episode, Season } from "@/lib/types";
 import type { OutboxOperation } from "@/lib/episode-writer";
@@ -59,6 +60,10 @@ interface EditorSeasonsProps {
     { status: "loading" | "error" | "success"; message?: string }
   >;
   outboxOps: OutboxOperation[];
+  getInheritedThumbnail?: (seasonNumber: number, ep: Episode) => string | undefined;
+  thumbnailEditModes?: Record<string, "modified" | "cleared">;
+  onThumbnailChange?: (sid: string, ep: Episode, value: string) => void;
+  onThumbnailClear?: (sid: string, ep: Episode) => void;
 }
 
 function getPublishSourceError(ep: Episode): string {
@@ -91,6 +96,10 @@ export function EditorSeasons({
   uploadingEpisode,
   captureStatus,
   outboxOps,
+  getInheritedThumbnail,
+  thumbnailEditModes,
+  onThumbnailChange,
+  onThumbnailClear,
 }: EditorSeasonsProps) {
   const [activeSeasonTab, setActiveSeasonTab] = useState<string>("all");
   const [collapsedSeasons, setCollapsedSeasons] = useState<Record<string, boolean>>({});
@@ -374,6 +383,24 @@ export function EditorSeasons({
                           (isMarkedPublished && !hasValidSource
                             ? getPublishSourceError(ep)
                             : undefined);
+                        const thumbMode = thumbnailEditModes?.[ep.id];
+                        const savedThumb = ep.thumbnail?.trim() ?? "";
+                        const inheritedThumb =
+                          !savedThumb && thumbMode !== "cleared"
+                            ? getInheritedThumbnail?.(season.number, ep) ??
+                              resolveEpisodeThumbnailUrl({
+                                videoUrl: ep.videoUrl,
+                                videoUrl2: ep.videoUrl2,
+                                videoUrl3: ep.videoUrl3,
+                                videoUrl4: ep.videoUrl4,
+                                videoUrl5: ep.videoUrl5,
+                              })
+                            : undefined;
+                        const displayThumbnail =
+                          thumbMode === "cleared"
+                            ? ""
+                            : (ep.thumbnail ?? inheritedThumb ?? "");
+                        const hasExistingThumbnail = Boolean(displayThumbnail.trim());
 
                         return (
                           <li
@@ -570,7 +597,8 @@ export function EditorSeasons({
                                           const val = e.target.value.trim();
                                           if (
                                             val &&
-                                            !ep.thumbnail?.trim() &&
+                                            !hasExistingThumbnail &&
+                                            thumbMode !== "cleared" &&
                                             isPersistablePlayableVideoUrl(val)
                                           ) {
                                             void onCaptureFrame(season.id, ep, val, {
@@ -582,7 +610,8 @@ export function EditorSeasons({
                                           const val = e.clipboardData.getData("text").trim();
                                           if (
                                             val &&
-                                            !ep.thumbnail?.trim() &&
+                                            !hasExistingThumbnail &&
+                                            thumbMode !== "cleared" &&
                                             isPersistablePlayableVideoUrl(val)
                                           ) {
                                             setTimeout(() => {
@@ -637,7 +666,8 @@ export function EditorSeasons({
                                       const val = e.target.value.trim();
                                       if (
                                         val &&
-                                        !ep.thumbnail?.trim() &&
+                                        !hasExistingThumbnail &&
+                                        thumbMode !== "cleared" &&
                                         isPersistablePlayableVideoUrl(val)
                                       ) {
                                         void onCaptureFrame(season.id, ep, val, {
@@ -649,7 +679,8 @@ export function EditorSeasons({
                                       const val = e.clipboardData.getData("text").trim();
                                       if (
                                         val &&
-                                        !ep.thumbnail?.trim() &&
+                                        !hasExistingThumbnail &&
+                                        thumbMode !== "cleared" &&
                                         isPersistablePlayableVideoUrl(val)
                                       ) {
                                         setTimeout(() => {
@@ -698,7 +729,8 @@ export function EditorSeasons({
                                     const val = e.target.value.trim();
                                     if (
                                       val &&
-                                      !ep.thumbnail?.trim() &&
+                                      !hasExistingThumbnail &&
+                                      thumbMode !== "cleared" &&
                                       isPersistablePlayableVideoUrl(val)
                                     ) {
                                       void onCaptureFrame(season.id, ep, val, {
@@ -710,7 +742,8 @@ export function EditorSeasons({
                                     const val = e.clipboardData.getData("text").trim();
                                     if (
                                       val &&
-                                      !ep.thumbnail?.trim() &&
+                                      !hasExistingThumbnail &&
+                                      thumbMode !== "cleared" &&
                                       isPersistablePlayableVideoUrl(val)
                                     ) {
                                       setTimeout(() => {
@@ -743,13 +776,17 @@ export function EditorSeasons({
                                 <div className="space-y-2.5">
                                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                                     <EpisodeThumbnailPreview
-                                      src={ep.thumbnail}
+                                      src={displayThumbnail}
                                       episodeNumber={ep.number}
-                                      onClear={() =>
-                                        onPatchEpisode(season.id, ep.id, {
-                                          thumbnail: "",
-                                        })
-                                      }
+                                      onClear={() => {
+                                        if (onThumbnailClear) {
+                                          onThumbnailClear(season.id, ep);
+                                        } else {
+                                          onPatchEpisode(season.id, ep.id, {
+                                            thumbnail: "",
+                                          });
+                                        }
+                                      }}
                                     />
 
                                     <div className="min-w-0 flex-1 space-y-2">
@@ -757,23 +794,35 @@ export function EditorSeasons({
                                         <div className="relative min-w-0 flex-1">
                                           <Input
                                             id={`ep-thumb-${ep.id}`}
-                                            value={ep.thumbnail ?? ""}
-                                            onChange={(e) =>
-                                              onPatchEpisode(season.id, ep.id, {
-                                                thumbnail: e.target.value,
-                                              })
-                                            }
+                                            value={displayThumbnail}
+                                            onChange={(e) => {
+                                              if (onThumbnailChange) {
+                                                onThumbnailChange(
+                                                  season.id,
+                                                  ep,
+                                                  e.target.value,
+                                                );
+                                              } else {
+                                                onPatchEpisode(season.id, ep.id, {
+                                                  thumbnail: e.target.value,
+                                                });
+                                              }
+                                            }}
                                             placeholder="Cole a URL da imagem do episódio (opcional)"
                                             className="h-10 w-full border-white/10 bg-[var(--studio-panel)] pr-8 text-xs"
                                           />
-                                          {Boolean(ep.thumbnail) && (
+                                          {Boolean(displayThumbnail) && (
                                             <button
                                               type="button"
-                                              onClick={() =>
-                                                onPatchEpisode(season.id, ep.id, {
-                                                  thumbnail: "",
-                                                })
-                                              }
+                                              onClick={() => {
+                                                if (onThumbnailClear) {
+                                                  onThumbnailClear(season.id, ep);
+                                                } else {
+                                                  onPatchEpisode(season.id, ep.id, {
+                                                    thumbnail: "",
+                                                  });
+                                                }
+                                              }}
                                               aria-label={`Limpar imagem do Episódio ${ep.number}`}
                                               title="Limpar URL da imagem"
                                               className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-[var(--color-subtle)] hover:bg-white/[0.08] hover:text-rose-400"
@@ -800,7 +849,7 @@ export function EditorSeasons({
                                             <>
                                               <Camera className="size-3.5" />
                                               <span>
-                                                {ep.thumbnail?.trim() ? "Recapturar" : "Capturar"}
+                                                {hasExistingThumbnail ? "Recapturar" : "Capturar"}
                                               </span>
                                             </>
                                           )}
