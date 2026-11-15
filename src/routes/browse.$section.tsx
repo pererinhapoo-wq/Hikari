@@ -1038,11 +1038,16 @@ function BrowsePage() {
                   </div>
                 </div>
 
-                {/* Seletor de ano integrado */}
-                <div className="flex items-center justify-between gap-3 sm:justify-end sm:shrink-0">
-                  <span className="text-xs font-semibold tracking-[0.16em] text-subtle uppercase">
-                    Ano
-                  </span>
+                {/* Seletor de ano integrado com rótulo claro */}
+                <div className="flex items-center gap-3 sm:justify-end sm:shrink-0">
+                  <div className="flex flex-col items-start sm:items-end">
+                    <span className="text-[10px] font-bold tracking-[0.16em] text-purple-300 uppercase">
+                      Filtrar por Ano
+                    </span>
+                    <span className="text-[11px] text-muted tabular-nums">
+                      Ano selecionado: {uiYear}
+                    </span>
+                  </div>
 
                   <div className="w-36 sm:w-32">
                     <NativeSelect

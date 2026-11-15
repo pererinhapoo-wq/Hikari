@@ -264,17 +264,23 @@ export const NativeSelect = forwardRef<
             }
             className="
               absolute
-              inset-x-0
-              top-[calc(100%+0.5rem)]
-              z-[100]
-              max-h-72
+              right-0
+              top-[calc(100%+0.35rem)]
+              z-[150]
+              w-44
+              max-h-64
               overflow-y-auto
               rounded-2xl
               border
-              border-border
-              bg-elevated
+              border-purple-500/30
+              bg-[#0d0b16]
               p-1.5
-              shadow-2xl
+              shadow-[0_20px_50px_rgba(0,0,0,0.85)]
+              backdrop-blur-xl
+              animate-in
+              fade-in
+              zoom-in-95
+              duration-150
             "
           >
             {options.map(
@@ -303,10 +309,10 @@ export const NativeSelect = forwardRef<
                       )
                     }
                     className={cn(
-                      "flex min-h-11 w-full items-center justify-between rounded-xl px-4 text-left text-sm text-fg transition-colors",
+                      "flex min-h-10 w-full items-center justify-between rounded-xl px-3.5 py-2 text-left text-xs font-medium text-fg transition-colors cursor-pointer",
                       active
-                        ? "bg-bg font-semibold"
-                        : "hover:bg-bg/60",
+                        ? "bg-purple-600/30 text-purple-200 font-semibold border border-purple-500/40"
+                        : "hover:bg-white/[0.06] hover:text-white",
                       option.disabled &&
                         "cursor-not-allowed opacity-40",
                     )}
@@ -316,8 +322,8 @@ export const NativeSelect = forwardRef<
                     </span>
 
                     {active && (
-                      <span className="text-xs text-muted">
-                        Selecionado
+                      <span className="text-[10px] text-purple-400 font-bold uppercase tracking-wider">
+                        Atual
                       </span>
                     )}
                   </button>
