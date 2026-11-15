@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolation.server";
-import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 
 const MAX_REDIRECTS = 3;
 const UPSTREAM_TIMEOUT_MS = 15000;
@@ -169,7 +168,6 @@ export const Route = createFileRoute("/api/video-proxy")({
       GET: async ({ request }) => {
         try {
           assertSameSiteRequest();
-          await requireAdminUser(request);
 
           const reqUrl = new URL(request.url);
           const rawTarget = reqUrl.searchParams.get("url") || "";
@@ -254,9 +252,6 @@ export const Route = createFileRoute("/api/video-proxy")({
         } catch (err) {
           if (err instanceof CrossSiteRequestError) {
             return Response.json({ error: "Origem cruzada não permitida." }, { status: 403 });
-          }
-          if (err instanceof AdminGuardError) {
-            return Response.json({ error: err.message }, { status: err.status });
           }
           const isAbort = err instanceof Error && err.name === "AbortError";
           return Response.json(
