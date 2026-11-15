@@ -217,6 +217,93 @@ export function getYouTubeThumbnail(url?: string | null): string | null {
   return null;
 }
 
+const SAFE_DATA_IMAGE_THUMB_REGEX =
+  /^data:image\/(?:png|jpeg|jpg|webp|gif|avif);base64,[a-z0-9+/=]+$/i;
+
+/**
+ * Sanitiza e valida uma URL de thumbnail de episódio informada manualmente ou capturada.
+ * Permite HTTP/HTTPS, caminhos relativos internos (`/`) e data URLs seguras de imagem raster.
+ * Rejeita esquemas perigosos ou temporários (`javascript:`, `vbscript:`, `blob:`, `data:text/html`, SVG).
+ */
+export function sanitizeEpisodeThumbnailUrl(url?: string | null): string | null {
+  if (!url || typeof url !== "string") return null;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === "#") return null;
+
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith("javascript:") ||
+    lower.startsWith("vbscript:") ||
+    lower.startsWith("blob:")
+  ) {
+    return null;
+  }
+
+  if (lower.startsWith("data:")) {
+    if (trimmed.length <= 4096 && SAFE_DATA_IMAGE_THUMB_REGEX.test(trimmed)) {
+      return trimmed;
+    }
+    return null;
+  }
+
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+    return trimmed;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+      return trimmed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+/**
+ * Resolve a imagem do episódio seguindo a prioridade do Hikari:
+ * 1. Imagem definida manualmente / salva no registro do episódio (`Episode.thumbnail`).
+ * 2. Imagem obtida automaticamente a partir da fonte de vídeo (Cloudinary / YouTube).
+ * 3. `undefined` quando nenhuma estiver disponível (permitindo o fallback padrão do Hikari).
+ */
+export function resolveEpisodeThumbnailUrl(ep?: {
+  thumbnail?: string | null;
+  videoUrl?: string | null;
+  videoUrl2?: string | null;
+  videoUrl3?: string | null;
+  videoUrl4?: string | null;
+  videoUrl5?: string | null;
+} | null): string | undefined {
+  if (!ep) return undefined;
+
+  const manualOrExisting = sanitizeEpisodeThumbnailUrl(ep.thumbnail);
+  if (manualOrExisting) {
+    return manualOrExisting;
+  }
+
+  const videoCandidates = [
+    ep.videoUrl,
+    ep.videoUrl2,
+    ep.videoUrl3,
+    ep.videoUrl4,
+    ep.videoUrl5,
+  ];
+
+  for (const candidate of videoCandidates) {
+    if (!candidate || typeof candidate !== "string") continue;
+    const trimmed = candidate.trim();
+    if (!trimmed) continue;
+    const cloudinaryThumb = getCloudinaryThumbnail(trimmed);
+    if (cloudinaryThumb) return cloudinaryThumb;
+    const youtubeThumb = getYouTubeThumbnail(trimmed);
+    if (youtubeThumb) return youtubeThumb;
+  }
+
+  return undefined;
+}
+
 /**
  * Determina se um episódio foi efetivamente publicado e cadastrado no sistema
  * de publicação do Hikari pelo administrador.
@@ -360,9 +447,7 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
 
         if (!validVideo) continue;
 
-        const cloudinaryThumb = getCloudinaryThumbnail(validVideo);
-        const youtubeThumb = getYouTubeThumbnail(validVideo);
-        const resolvedThumb = ep.thumbnail?.trim() || cloudinaryThumb || youtubeThumb || undefined;
+        const resolvedThumb = resolveEpisodeThumbnailUrl(ep);
 
         publishedList.push({
           season,
@@ -540,9 +625,7 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
         // O peso de ordenação prioriza a atualização do anime + temporada + número
         const epTime = baseTime + (season.number * 1000) + ep.number;
 
-        const cloudinaryThumb = validVideo ? getCloudinaryThumbnail(validVideo) : null;
-        const youtubeThumb = validVideo ? getYouTubeThumbnail(validVideo) : null;
-        const resolvedThumb = ep.thumbnail?.trim() || cloudinaryThumb || youtubeThumb || undefined;
+        const resolvedThumb = resolveEpisodeThumbnailUrl(ep);
 
         let badge: PublishedEpisodeBadge = null;
         if (ep.id === firstEpId) {
@@ -738,9 +821,14 @@ export function resolvePublicEpisodes(
 
     const cloudinaryThumb = getCloudinaryThumbnail(validVideo);
     const youtubeThumb = getYouTubeThumbnail(validVideo);
+    const hasPendingThumbOverride =
+      pendingUpsert?.payload !== undefined &&
+      pendingUpsert.payload.thumbnail !== undefined;
+    const manualThumb = hasPendingThumbOverride
+      ? sanitizeEpisodeThumbnailUrl(pendingUpsert.payload?.thumbnail as string | null)
+      : sanitizeEpisodeThumbnailUrl(row.thumbnail);
     const resolvedThumb =
-      (pendingUpsert?.payload?.thumbnail as string)?.trim() ||
-      row.thumbnail?.trim() ||
+      manualThumb ||
       cloudinaryThumb ||
       youtubeThumb ||
       undefined;
@@ -840,10 +928,7 @@ export function resolvePublicEpisodes(
 
         if (!validVideo) continue;
 
-        const cloudinaryThumb = getCloudinaryThumbnail(validVideo);
-        const youtubeThumb = getYouTubeThumbnail(validVideo);
-        const resolvedThumb =
-          ep.thumbnail?.trim() || cloudinaryThumb || youtubeThumb || undefined;
+        const resolvedThumb = resolveEpisodeThumbnailUrl(ep);
 
         const epTime = baseTime + season.number * 1000 + ep.number;
 

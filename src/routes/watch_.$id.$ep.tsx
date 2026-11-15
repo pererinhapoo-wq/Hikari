@@ -48,6 +48,7 @@ import {
   primeCatalogEpisodesCache,
   resolveEpisodes,
 } from "@/lib/catalog-episodes";
+import { resolveEpisodeThumbnailUrl } from "@/lib/published-episodes";
 import {
   startEpisodeSession,
   heartbeatEpisodeProgress,
@@ -189,7 +190,7 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
       return { remote: null, catalogEpisodes: null };
     }
 
-    const [remote, catalogEpisodes] = await Promise.all([
+    const [remote, initialCatalogEpisodes] = await Promise.all([
       fetchAnimeDetail({
         data: { id: params.id },
       }),
@@ -198,6 +199,18 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
         : getCatalogEpisodes({ data: { animeId: params.id } })
       ).catch(() => null),
     ]);
+
+    let catalogEpisodes = initialCatalogEpisodes;
+    if (
+      remote?.serverCatalogId &&
+      remote.serverCatalogId !== params.id &&
+      (!catalogEpisodes || catalogEpisodes.episodes.length === 0)
+    ) {
+      catalogEpisodes = await (typeof window === "undefined"
+        ? executeGetCatalogEpisodes(remote.serverCatalogId)
+        : getCatalogEpisodes({ data: { animeId: remote.serverCatalogId } })
+      ).catch(() => catalogEpisodes);
+    }
 
     return { remote, catalogEpisodes };
   },
@@ -402,23 +415,24 @@ function WatchPage() {
     [remote, id, locals],
   );
 
+  const episodeCatalogId = baseAnime?.serverCatalogId || baseAnime?.id || id;
+
   const [resolvedSeasons, setResolvedSeasons] = useState<Season[] | null>(() => {
-    const targetId = baseAnime?.id || id;
     if (catalogEpisodes) {
+      const cacheKey = catalogEpisodes.animeId || episodeCatalogId;
       if (typeof window !== "undefined") {
-        primeCatalogEpisodesCache(targetId, catalogEpisodes);
+        primeCatalogEpisodesCache(cacheKey, catalogEpisodes);
       }
-      return buildResolvedSeasons(targetId, catalogEpisodes, baseAnime?.seasons ?? []);
+      return buildResolvedSeasons(cacheKey, catalogEpisodes, baseAnime?.seasons ?? []);
     }
-    return getCachedResolvedSeasons(targetId, baseAnime?.seasons);
+    return getCachedResolvedSeasons(episodeCatalogId, baseAnime?.seasons);
   });
 
   useEffect(() => {
-    const targetId = baseAnime?.id || id;
-    if (!targetId) return;
+    if (!episodeCatalogId) return;
 
     let cancelled = false;
-    void resolveEpisodes(targetId, baseAnime?.seasons).then((seasons) => {
+    void resolveEpisodes(episodeCatalogId, baseAnime?.seasons).then((seasons) => {
       if (cancelled) return;
       setResolvedSeasons(seasons);
     });
@@ -426,7 +440,7 @@ function WatchPage() {
     return () => {
       cancelled = true;
     };
-  }, [baseAnime?.id, baseAnime?.seasons, id]);
+  }, [episodeCatalogId, baseAnime?.seasons]);
 
   const anime = useMemo(() => {
     if (!baseAnime) return null;
@@ -498,7 +512,7 @@ function WatchPage() {
       episodeNumber: current.number,
       episodeTitle: current.title,
       cover:
-        current.thumbnail ||
+        resolveEpisodeThumbnailUrl(current) ||
         anime.cover,
       title: displayTitle(anime),
       updatedAt: Date.now(),
@@ -964,9 +978,13 @@ function WatchPage() {
   }
 
   const playerPoster = useMemo(() => {
-    const rawPoster = current?.thumbnail || anime?.banner || anime?.cover || null;
+    const rawPoster =
+      resolveEpisodeThumbnailUrl(current) ||
+      anime?.banner ||
+      anime?.cover ||
+      null;
     return rawPoster ? anilistImage(rawPoster, 1280) : null;
-  }, [current?.thumbnail, anime?.banner, anime?.cover]);
+  }, [current, anime?.banner, anime?.cover]);
 
   const _currentVideoItem = useMemo((): VideoItem | undefined => {
     if (!current || !file) return undefined;

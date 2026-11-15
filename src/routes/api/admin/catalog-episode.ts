@@ -2,7 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolation.server";
 import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
-import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
+import {
+  sanitizeEpisodeThumbnailUrl,
+  sanitizePlayableVideoUrl,
+} from "@/lib/published-episodes";
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 
@@ -12,7 +15,7 @@ const episodePostSchema = z.object({
   seasonNumber: z.number().int().min(1, "seasonNumber deve ser >= 1").default(1),
   number: z.number().int().min(0, "number deve ser >= 0"),
   title: z.string().max(255).optional().nullable(),
-  thumbnail: z.string().max(2048).optional().nullable(),
+  thumbnail: z.string().max(4096).optional().nullable(),
   duration: z.string().max(64).optional().nullable(),
   synopsis: z.string().max(10000).optional().nullable(),
   videoUrl: z.string().max(2048).optional().nullable(),
@@ -193,10 +196,12 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             (data.title && data.title.trim()) ||
             existingRow?.title ||
             `Episódio ${data.number}`;
-          const thumbnail =
-            (data.thumbnail && data.thumbnail.trim()) ||
-            existingRow?.thumbnail ||
-            null;
+          const cleanIncomingThumbnail = sanitizeEpisodeThumbnailUrl(data.thumbnail);
+          const thumbnail = data.replaceSources
+            ? cleanIncomingThumbnail
+            : data.thumbnail !== undefined
+              ? cleanIncomingThumbnail ?? existingRow?.thumbnail ?? null
+              : existingRow?.thumbnail ?? null;
           const duration =
             (data.duration && data.duration.trim()) ||
             existingRow?.duration ||
@@ -250,7 +255,10 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
              ON CONFLICT ("animeId", "seasonNumber", "number") DO UPDATE
              SET
                "title" = EXCLUDED."title",
-               "thumbnail" = COALESCE(NULLIF(EXCLUDED."thumbnail", ''), "catalog_episode"."thumbnail"),
+               "thumbnail" = CASE
+                 WHEN $15 = true THEN EXCLUDED."thumbnail"
+                 ELSE COALESCE(NULLIF(EXCLUDED."thumbnail", ''), "catalog_episode"."thumbnail")
+               END,
                "duration" = COALESCE(NULLIF(EXCLUDED."duration", ''), "catalog_episode"."duration"),
                "synopsis" = COALESCE(NULLIF(EXCLUDED."synopsis", ''), "catalog_episode"."synopsis"),
                "videoUrl" = CASE

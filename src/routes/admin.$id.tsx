@@ -68,6 +68,15 @@ export const Route = createFileRoute("/admin/$id")({
     if (params.id && params.id !== "new") {
       try {
         serverEpisodes = await getAdminCatalogEpisodes({ data: { animeId: params.id } });
+        if (
+          (!serverEpisodes || serverEpisodes.episodes.length === 0) &&
+          remote?.serverCatalogId &&
+          remote.serverCatalogId !== params.id
+        ) {
+          serverEpisodes = await getAdminCatalogEpisodes({
+            data: { animeId: remote.serverCatalogId },
+          });
+        }
       } catch (err) {
         console.warn("[admin loader] Erro ao carregar episódios do servidor:", err);
       }
@@ -141,6 +150,8 @@ function AdminEditor() {
   const initializedRouteKeyRef = useRef<string | null>(null);
   const lastServerEpisodesRef = useRef<CatalogEpisodesResult | null | undefined>(undefined);
   const isSavingRef = useRef(false);
+  const formRef = useRef<LocalAnime | null>(null);
+  formRef.current = form;
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -209,19 +220,34 @@ function AdminEditor() {
     sid: string,
     ep: Episode,
     forcedUrl?: string,
+    options?: { isAuto?: boolean },
   ) {
-    const videoUrl =
-      forcedUrl ||
-      ep.videoUrl ||
-      ep.videoUrl2 ||
-      ep.videoUrl3 ||
-      ep.videoUrl4 ||
-      ep.videoUrl5;
+    const isAuto = Boolean(options?.isAuto);
+    const liveEp =
+      formRef.current?.seasons
+        .find((s) => s.id === sid)
+        ?.episodes.find((e) => e.id === ep.id) ?? ep;
 
-    if (!videoUrl || !hasEpisodePlayableSource({ videoUrl })) {
-      toast.error("Insira uma URL de vídeo válida antes de capturar a miniatura.");
+    if (isAuto && liveEp.thumbnail?.trim()) {
       return;
     }
+
+    const videoUrl =
+      forcedUrl ||
+      liveEp.videoUrl ||
+      liveEp.videoUrl2 ||
+      liveEp.videoUrl3 ||
+      liveEp.videoUrl4 ||
+      liveEp.videoUrl5;
+
+    if (!videoUrl || !hasEpisodePlayableSource({ videoUrl })) {
+      if (!isAuto) {
+        toast.error("Insira uma URL de vídeo válida antes de capturar a miniatura.");
+      }
+      return;
+    }
+
+    const thumbAtStart = liveEp.thumbnail?.trim() ?? "";
 
     setCaptureStatus((prev) => ({
       ...prev,
@@ -233,8 +259,23 @@ function AdminEditor() {
 
     try {
       const res = await captureAndUploadThumbnail(videoUrl, {
-        episodeTitle: ep.title || `Episódio ${ep.number}`,
+        episodeTitle: liveEp.title || `Episódio ${liveEp.number}`,
       });
+
+      const latestEp = formRef.current?.seasons
+        .find((s) => s.id === sid)
+        ?.episodes.find((e) => e.id === ep.id);
+      const latestThumb = latestEp?.thumbnail?.trim() ?? "";
+
+      // Nunca sobrescrever uma imagem manual informada antes ou durante a captura
+      if ((isAuto && latestThumb) || (!isAuto && latestThumb && latestThumb !== thumbAtStart)) {
+        setCaptureStatus((prev) => {
+          const next = { ...prev };
+          delete next[ep.id];
+          return next;
+        });
+        return;
+      }
 
       patchEpisode(sid, ep.id, { thumbnail: res.url });
       setCaptureStatus((prev) => ({
@@ -244,7 +285,7 @@ function AdminEditor() {
           message: "Miniatura capturada e salva com sucesso!",
         },
       }));
-      toast.success(`Miniatura do Episódio ${ep.number} salva!`);
+      toast.success(`Miniatura do Episódio ${liveEp.number} salva!`);
     } catch (err) {
       const errMsg =
         err instanceof Error ? err.message : "Falha na captura do quadro do vídeo.";
@@ -255,7 +296,9 @@ function AdminEditor() {
           message: errMsg,
         },
       }));
-      toast.error(`Falha na captura (Ep. ${ep.number}): ${errMsg}`);
+      if (!isAuto) {
+        toast.error(`Falha na captura (Ep. ${liveEp.number}): ${errMsg}`);
+      }
     }
   }
 
@@ -271,12 +314,23 @@ function AdminEditor() {
         patchEpisode(sid, ep.id, { [key]: url });
         toast.success(`Vídeo enviado com sucesso para ${key}!`);
 
-        if (!ep.thumbnail) {
+        const liveEp =
+          formRef.current?.seasons
+            .find((s) => s.id === sid)
+            ?.episodes.find((e) => e.id === ep.id) ?? ep;
+
+        if (!liveEp.thumbnail?.trim()) {
           const frameSource = file ? URL.createObjectURL(file) : url;
           captureAndUploadThumbnail(frameSource, {
-            episodeTitle: ep.title || `Episódio ${ep.number}`,
+            episodeTitle: liveEp.title || `Episódio ${liveEp.number}`,
           })
             .then((res) => {
+              const latestEp = formRef.current?.seasons
+                .find((s) => s.id === sid)
+                ?.episodes.find((e) => e.id === ep.id);
+              if (latestEp?.thumbnail?.trim()) {
+                return;
+              }
               patchEpisode(sid, ep.id, { thumbnail: res.url });
               toast.success("Miniatura capturada e salva automaticamente!");
             })
@@ -397,8 +451,10 @@ function AdminEditor() {
 
     if (id !== "new" && serverEpisodes && serverEpisodes.episodes.length > 0) {
       const currentOps = typeof window !== "undefined" ? readOutbox() : [];
+      const mergeAnimeId =
+        serverEpisodes.animeId || (base.id !== "new" ? base.id : id);
       const mergeResult = mergeAdminEpisodesWithServer({
-        animeId: id,
+        animeId: mergeAnimeId,
         localSeasons: base.seasons,
         serverResult: serverEpisodes,
         outboxOps: currentOps,
@@ -618,6 +674,13 @@ function AdminEditor() {
       ...next,
       cover: stripCatalogImageVersion(next.cover),
       banner: stripCatalogImageVersion(next.banner),
+      seasons: next.seasons.map((season) => ({
+        ...season,
+        episodes: season.episodes.map((ep) => ({
+          ...ep,
+          thumbnail: ep.thumbnail?.trim() || undefined,
+        })),
+      })),
     };
 
     // 1. Persistência local imediata (IndexedDB via Zustand)

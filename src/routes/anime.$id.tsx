@@ -117,6 +117,7 @@ import {
 } from "@/lib/season-banner";
 import { useHikariStore } from "@/lib/store";
 import { resolveEpisodes, getCachedResolvedSeasons } from "@/lib/catalog-episodes";
+import { resolveEpisodeThumbnailUrl } from "@/lib/published-episodes";
 import {
   displayTitle,
   type Anime,
@@ -825,16 +826,17 @@ function AnimePageContent({
         : (s.anonymousWatchedEpisodes?.[id] ?? s.watchedEpisodes[id] ?? EMPTY_WATCHED_EPISODES),
   );
 
+  const episodeCatalogId = baseAnime?.serverCatalogId || baseAnime?.id || id;
+
   const [resolvedSeasons, setResolvedSeasons] = useState<Season[] | null>(() => {
-    return getCachedResolvedSeasons(baseAnime?.id || id, baseAnime?.seasons);
+    return getCachedResolvedSeasons(episodeCatalogId, baseAnime?.seasons);
   });
 
   useEffect(() => {
-    const targetId = baseAnime?.id || id;
-    if (!targetId) return;
+    if (!episodeCatalogId) return;
 
     let cancelled = false;
-    void resolveEpisodes(targetId, baseAnime?.seasons).then((seasons) => {
+    void resolveEpisodes(episodeCatalogId, baseAnime?.seasons).then((seasons) => {
       if (cancelled) return;
       startTransition(() => {
         setResolvedSeasons((prev) => {
@@ -844,13 +846,22 @@ function AnimePageContent({
             baseline.length === seasons.length &&
             baseline.every((s, idx) => {
               const next = seasons[idx];
-              return (
-                next &&
-                s.id === next.id &&
-                s.episodes.length === next.episodes.length &&
-                s.episodes[0]?.title === next.episodes[0]?.title &&
-                s.episodes[0]?.thumbnail === next.episodes[0]?.thumbnail
-              );
+              if (!next || s.id !== next.id || s.episodes.length !== next.episodes.length) {
+                return false;
+              }
+              return s.episodes.every((ep, epIdx) => {
+                const nextEp = next.episodes[epIdx];
+                return (
+                  Boolean(nextEp) &&
+                  ep.id === nextEp.id &&
+                  ep.number === nextEp.number &&
+                  ep.title === nextEp.title &&
+                  ep.thumbnail === nextEp.thumbnail &&
+                  ep.duration === nextEp.duration &&
+                  ep.videoUrl === nextEp.videoUrl &&
+                  ep.published === nextEp.published
+                );
+              });
             })
           ) {
             return prev;
@@ -863,7 +874,7 @@ function AnimePageContent({
     return () => {
       cancelled = true;
     };
-  }, [baseAnime?.id, baseAnime?.seasons, id]);
+  }, [episodeCatalogId, baseAnime?.seasons]);
 
   const anime = useMemo(() => {
     if (!baseAnime) return null;
@@ -2236,9 +2247,24 @@ function AnimePageContent({
     if (
       extraEpisodes &&
       extraEpisodes.forId === (anime?.id ?? id) &&
-      extraEpisodes.episodes.length > 0
+      extraEpisodes.episodes.length > 0 &&
+      currentEpisodes
     ) {
-      return extraEpisodes.episodes;
+      const enrichedByNum = new Map(
+        extraEpisodes.episodes.map((ep) => [ep.number, ep]),
+      );
+      return currentEpisodes.map((ep) => {
+        const enriched = enrichedByNum.get(ep.number);
+        if (!enriched) return ep;
+        const hasOwnTitle = Boolean(
+          ep.title && ep.title !== `Episódio ${ep.number}`,
+        );
+        return {
+          ...ep,
+          title: hasOwnTitle ? ep.title : enriched.title || ep.title,
+          aired: ep.aired ?? enriched.aired,
+        };
+      });
     }
     return currentEpisodes;
   }, [extraEpisodes, anime?.id, id, currentEpisodes]);
@@ -3915,6 +3941,11 @@ type EpisodeItemData = {
   title: string;
   thumbnail?: string;
   duration?: string;
+  videoUrl?: string;
+  videoUrl2?: string;
+  videoUrl3?: string;
+  videoUrl4?: string;
+  videoUrl5?: string;
 };
 
 const EPISODES_PAGE_SIZE = 60;
@@ -3936,7 +3967,10 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
   loadImage: boolean;
   onSelect: (epId: string) => void;
 }) {
-  const imgSrc = ep.thumbnail ? anilistImage(ep.thumbnail, 320) : null;
+  const rawThumb = resolveEpisodeThumbnailUrl(ep);
+  const imgSrc = rawThumb ? anilistImage(rawThumb, 320) : null;
+  const fallbackSrc =
+    rawThumb && imgSrc && imgSrc !== rawThumb ? rawThumb : undefined;
   const isFirstSix = index < 6;
 
   return (
@@ -3976,6 +4010,7 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
           <HikariImage
             key={imgSrc ?? `ep-thumb-${animeId}-${ep.id}`}
             src={imgSrc}
+            fallbackSrc={fallbackSrc}
             loading={isFirstSix ? "eager" : "lazy"}
             decoding="async"
             fetchPriority={isFirstSix ? "auto" : "low"}

@@ -3,7 +3,10 @@ import { Link } from "@tanstack/react-router";
 import { Film } from "lucide-react";
 import { HikariImage } from "@/components/ui/hikari-image";
 import { anilistImage } from "@/lib/image-utils";
-import type { PublishedEpisode } from "@/lib/published-episodes";
+import {
+  resolveEpisodeThumbnailUrl,
+  type PublishedEpisode,
+} from "@/lib/published-episodes";
 import { cn } from "@/lib/utils";
 
 export const EpisodeCard = memo(function EpisodeCard({
@@ -35,7 +38,12 @@ export const EpisodeCard = memo(function EpisodeCard({
     return dubRegex.test(combined);
   }, [episode]);
 
-  const hasValidThumbnail = Boolean(episode.thumbnail?.trim());
+  const rawThumb = resolveEpisodeThumbnailUrl({
+    thumbnail: episode.thumbnail,
+    videoUrl: episode.videoUrl,
+  });
+  const optimizedThumb = rawThumb ? anilistImage(rawThumb, 320) : "";
+  const hasValidThumbnail = Boolean(optimizedThumb);
 
   return (
     <article className="group relative w-full episode-card-cv">
@@ -59,7 +67,10 @@ export const EpisodeCard = memo(function EpisodeCard({
         >
           {hasValidThumbnail ? (
             <HikariImage
-              src={anilistImage(episode.thumbnail, 320)}
+              src={optimizedThumb}
+              fallbackSrc={
+                rawThumb && optimizedThumb !== rawThumb ? rawThumb : undefined
+              }
               alt={episode.animeTitle}
               width={320}
               height={180}
@@ -68,6 +79,11 @@ export const EpisodeCard = memo(function EpisodeCard({
               decoding="async"
               fetchPriority="low"
               defer={!first && !priority && (defer ?? true)}
+              fallback={
+                <div className="flex size-full items-center justify-center bg-[#131022] text-purple-400/40">
+                  <Film className="size-8" />
+                </div>
+              }
               fallbackClassName="bg-[#0f0d1a]"
               className="size-full object-cover"
             />

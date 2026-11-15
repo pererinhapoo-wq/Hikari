@@ -482,7 +482,7 @@ export async function persistEpisode(
     seasonNumber,
     number: episode.number,
     title: episode.title,
-    thumbnail: episode.thumbnail || null,
+    thumbnail: episode.thumbnail?.trim() || null,
     duration: episode.duration || null,
     synopsis: episode.synopsis || null,
     videoUrl: episode.videoUrl || null,

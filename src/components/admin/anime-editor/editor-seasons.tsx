@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Globe,
   EyeOff,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -41,7 +42,12 @@ interface EditorSeasonsProps {
   onAddEpisode: (sid: string) => void;
   onPatchEpisode: (sid: string, eid: string, patch: Partial<Episode>) => void;
   onRemoveEpisode: (sid: string, eid: string) => void;
-  onCaptureFrame: (sid: string, ep: Episode, forcedUrl?: string) => Promise<void>;
+  onCaptureFrame: (
+    sid: string,
+    ep: Episode,
+    forcedUrl?: string,
+    options?: { isAuto?: boolean },
+  ) => Promise<void>;
   onUploadVideoToB2: (
     sid: string,
     ep: Episode,
@@ -564,21 +570,25 @@ export function EditorSeasons({
                                           const val = e.target.value.trim();
                                           if (
                                             val &&
-                                            !ep.thumbnail &&
+                                            !ep.thumbnail?.trim() &&
                                             isPersistablePlayableVideoUrl(val)
                                           ) {
-                                            void onCaptureFrame(season.id, ep, val);
+                                            void onCaptureFrame(season.id, ep, val, {
+                                              isAuto: true,
+                                            });
                                           }
                                         }}
                                         onPaste={(e) => {
                                           const val = e.clipboardData.getData("text").trim();
                                           if (
                                             val &&
-                                            !ep.thumbnail &&
+                                            !ep.thumbnail?.trim() &&
                                             isPersistablePlayableVideoUrl(val)
                                           ) {
                                             setTimeout(() => {
-                                              void onCaptureFrame(season.id, ep, val);
+                                              void onCaptureFrame(season.id, ep, val, {
+                                                isAuto: true,
+                                              });
                                             }, 100);
                                           }
                                         }}
@@ -627,21 +637,25 @@ export function EditorSeasons({
                                       const val = e.target.value.trim();
                                       if (
                                         val &&
-                                        !ep.thumbnail &&
+                                        !ep.thumbnail?.trim() &&
                                         isPersistablePlayableVideoUrl(val)
                                       ) {
-                                        void onCaptureFrame(season.id, ep, val);
+                                        void onCaptureFrame(season.id, ep, val, {
+                                          isAuto: true,
+                                        });
                                       }
                                     }}
                                     onPaste={(e) => {
                                       const val = e.clipboardData.getData("text").trim();
                                       if (
                                         val &&
-                                        !ep.thumbnail &&
+                                        !ep.thumbnail?.trim() &&
                                         isPersistablePlayableVideoUrl(val)
                                       ) {
                                         setTimeout(() => {
-                                          void onCaptureFrame(season.id, ep, val);
+                                          void onCaptureFrame(season.id, ep, val, {
+                                            isAuto: true,
+                                          });
                                         }, 100);
                                       }
                                     }}
@@ -684,21 +698,25 @@ export function EditorSeasons({
                                     const val = e.target.value.trim();
                                     if (
                                       val &&
-                                      !ep.thumbnail &&
+                                      !ep.thumbnail?.trim() &&
                                       isPersistablePlayableVideoUrl(val)
                                     ) {
-                                      void onCaptureFrame(season.id, ep, val);
+                                      void onCaptureFrame(season.id, ep, val, {
+                                        isAuto: true,
+                                      });
                                     }
                                   }}
                                   onPaste={(e) => {
                                     const val = e.clipboardData.getData("text").trim();
                                     if (
                                       val &&
-                                      !ep.thumbnail &&
+                                      !ep.thumbnail?.trim() &&
                                       isPersistablePlayableVideoUrl(val)
                                     ) {
                                       setTimeout(() => {
-                                        void onCaptureFrame(season.id, ep, val);
+                                        void onCaptureFrame(season.id, ep, val, {
+                                          isAuto: true,
+                                        });
                                       }, 100);
                                     }
                                   }}
@@ -713,58 +731,86 @@ export function EditorSeasons({
                                   )}
                               </Field>
 
-                              {/* Miniatura Real do Vídeo */}
-                              <Field
-                                label="Thumb do Episódio (Miniatura Real do Vídeo)"
-                                className="sm:col-span-12"
-                              >
-                                <div className="space-y-2">
-                                  <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
-                                    {ep.thumbnail ? (
-                                      <div className="relative h-10 w-16 shrink-0 overflow-hidden rounded-md border border-violet-500/35 bg-black">
-                                        <img
-                                          src={ep.thumbnail}
-                                          alt=""
-                                          className="size-full object-cover"
-                                        />
-                                      </div>
-                                    ) : (
-                                      <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-md border border-dashed border-white/15 bg-black/40 text-[var(--color-subtle)]">
-                                        <Film className="size-4" />
-                                      </div>
-                                    )}
+                              {/* Imagem do episódio (URL) */}
+                              <div className="sm:col-span-12">
+                                <Label
+                                  htmlFor={`ep-thumb-${ep.id}`}
+                                  className="mb-1.5 block text-xs font-semibold text-[var(--color-muted)]"
+                                >
+                                  Imagem do episódio (URL)
+                                </Label>
 
-                                    <Input
-                                      value={ep.thumbnail ?? ""}
-                                      onChange={(e) =>
+                                <div className="space-y-2.5">
+                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                                    <EpisodeThumbnailPreview
+                                      src={ep.thumbnail}
+                                      episodeNumber={ep.number}
+                                      onClear={() =>
                                         onPatchEpisode(season.id, ep.id, {
-                                          thumbnail: e.target.value,
+                                          thumbnail: "",
                                         })
                                       }
-                                      placeholder="URL da miniatura do episódio (capturada ou manual)"
-                                      className="h-10 min-w-0 flex-1 border-white/10 bg-[var(--studio-panel)] text-xs"
                                     />
 
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      disabled={captureStatus[ep.id]?.status === "loading"}
-                                      onClick={() => onCaptureFrame(season.id, ep)}
-                                      className="h-10 shrink-0 gap-1.5 border-white/10 bg-[var(--studio-panel)] text-xs text-violet-300 hover:text-white"
-                                      title="Capturar quadro do vídeo agora"
-                                    >
-                                      {captureStatus[ep.id]?.status === "loading" ? (
-                                        <>
-                                          <Loader2 className="size-3.5 animate-spin" />
-                                          <span>Capturando…</span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Camera className="size-3.5" />
-                                          <span>{ep.thumbnail ? "Recapturar" : "Capturar"}</span>
-                                        </>
-                                      )}
-                                    </Button>
+                                    <div className="min-w-0 flex-1 space-y-2">
+                                      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                                        <div className="relative min-w-0 flex-1">
+                                          <Input
+                                            id={`ep-thumb-${ep.id}`}
+                                            value={ep.thumbnail ?? ""}
+                                            onChange={(e) =>
+                                              onPatchEpisode(season.id, ep.id, {
+                                                thumbnail: e.target.value,
+                                              })
+                                            }
+                                            placeholder="Cole a URL da imagem do episódio (opcional)"
+                                            className="h-10 w-full border-white/10 bg-[var(--studio-panel)] pr-8 text-xs"
+                                          />
+                                          {Boolean(ep.thumbnail) && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                onPatchEpisode(season.id, ep.id, {
+                                                  thumbnail: "",
+                                                })
+                                              }
+                                              aria-label={`Limpar imagem do Episódio ${ep.number}`}
+                                              title="Limpar URL da imagem"
+                                              className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-[var(--color-subtle)] hover:bg-white/[0.08] hover:text-rose-400"
+                                            >
+                                              <X className="size-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          disabled={captureStatus[ep.id]?.status === "loading"}
+                                          onClick={() => onCaptureFrame(season.id, ep)}
+                                          className="h-10 shrink-0 gap-1.5 border-white/10 bg-[var(--studio-panel)] text-xs text-violet-300 hover:text-white"
+                                          title="Capturar quadro do vídeo agora (opcional)"
+                                        >
+                                          {captureStatus[ep.id]?.status === "loading" ? (
+                                            <>
+                                              <Loader2 className="size-3.5 animate-spin" />
+                                              <span>Capturando…</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Camera className="size-3.5" />
+                                              <span>
+                                                {ep.thumbnail?.trim() ? "Recapturar" : "Capturar"}
+                                              </span>
+                                            </>
+                                          )}
+                                        </Button>
+                                      </div>
+
+                                      <p className="text-[11px] text-[var(--color-subtle)]">
+                                        Opcional. A URL informada aqui tem prioridade sobre a imagem automática ou padrão do Hikari.
+                                      </p>
+                                    </div>
                                   </div>
 
                                   {captureStatus[ep.id]?.status === "loading" && (
@@ -781,7 +827,7 @@ export function EditorSeasons({
                                       <div className="flex items-center gap-1.5 font-medium text-amber-300">
                                         <AlertCircle className="size-3.5 shrink-0" />
                                         <span>
-                                          Captura automática indisponível para este vídeo:
+                                          Captura automática indisponível (não impede o salvamento nem a imagem manual):
                                         </span>
                                       </div>
                                       <p className="pl-5 text-[11px] text-amber-200/90">
@@ -797,7 +843,7 @@ export function EditorSeasons({
                                     </div>
                                   )}
                                 </div>
-                              </Field>
+                              </div>
                             </div>
                           </li>
                         );
@@ -877,6 +923,51 @@ export function EditorSeasons({
         </DialogContent>
       </Dialog>
     </section>
+  );
+}
+
+function EpisodeThumbnailPreview({
+  src,
+  episodeNumber,
+  onClear,
+}: {
+  src?: string;
+  episodeNumber: number;
+  onClear: () => void;
+}) {
+  const trimmed = src?.trim() ?? "";
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const hasError = Boolean(trimmed) && failedSrc === trimmed;
+
+  return (
+    <div className="relative flex aspect-video w-36 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black/50">
+      {trimmed && !hasError ? (
+        <>
+          <img
+            src={trimmed}
+            alt={`Pré-visualização do Episódio ${episodeNumber}`}
+            className="size-full object-cover"
+            onError={() => setFailedSrc(trimmed)}
+          />
+          <button
+            type="button"
+            onClick={onClear}
+            title="Remover imagem do episódio"
+            aria-label={`Remover imagem do Episódio ${episodeNumber}`}
+            className="absolute top-1 right-1 rounded-full bg-black/80 p-1 text-[var(--color-muted)] hover:text-rose-400"
+          >
+            <X className="size-3" />
+          </button>
+        </>
+      ) : (
+        <div className="flex flex-col items-center justify-center px-2 text-center text-[var(--color-subtle)]">
+          <Film className="mb-1 size-4 opacity-60" />
+          <span className="text-[10px] leading-tight">
+            {hasError ? "Prévia indisponível" : "Sem imagem"}
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 
