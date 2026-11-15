@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   createFileRoute,
   type ErrorComponentProps,
@@ -8,7 +8,7 @@ import { fetchHomeCatalog, fetchSeasonSection } from "@/lib/api";
 import { useHikariStore } from "@/lib/store";
 import { overlayList, overlaySeasonList } from "@/lib/overlay";
 import { currentAnimeSeason, type OfficialAnimeSeason } from "@/lib/utils";
-import { localToAnime, type LocalAnime, type SlimAnime } from "@/lib/types";
+import { localToAnime, type SlimAnime } from "@/lib/types";
 
 import { getAnimeLogo } from "@/lib/anime-logos";
 import {
@@ -33,6 +33,8 @@ function pickHeroItems(trending: SlimAnime[], popular: SlimAnime[]): SlimAnime[]
   const merged: SlimAnime[] = [];
   for (const item of [...trending, ...popular]) {
     if (!item || seen.has(item.id)) continue;
+    const hasImage = Boolean(item.banner?.trim() || item.cover?.trim());
+    if (!hasImage) continue;
     seen.add(item.id);
     merged.push(item);
   }
@@ -50,7 +52,7 @@ function pickHeroItems(trending: SlimAnime[], popular: SlimAnime[]): SlimAnime[]
 }
 
 export const Route = createFileRoute("/")({
-  staleTime: 0,
+  staleTime: 1000 * 60 * 5,
   gcTime: 1000 * 60 * 30,
   loader: async () => {
     const [homeCatalog, publicEpisodesResult] = await Promise.all([
@@ -330,47 +332,9 @@ function Home() {
       .map(localToAnime);
   }, [locals]);
 
-  const mergeHeroOverlay = useCallback(
-    (mappedItem: SlimAnime, remoteItem: SlimAnime, local: LocalAnime): SlimAnime => {
-      const serverUpdatedAt = remoteItem.catalogUpdatedAt ?? 0;
-      const localUpdatedAt = local.updatedAt ?? 0;
-      if (serverUpdatedAt > localUpdatedAt) {
-        return remoteItem;
-      }
-      return {
-        ...mappedItem,
-        id: remoteItem.id,
-        cover: mappedItem.cover?.trim() || remoteItem.cover,
-        banner: mappedItem.banner?.trim() || remoteItem.banner,
-        todayEpisode: remoteItem.todayEpisode,
-        todayUpcomingEpisodes: remoteItem.todayUpcomingEpisodes,
-        catalogUpdatedAt:
-          Math.max(serverUpdatedAt, localUpdatedAt) || undefined,
-      };
-    },
-    [],
-  );
-
-  const heroTrending = useMemo(
-    () =>
-      overlayList(data.trending, locals, {
-        includeExtras: false,
-        mapMatched: mergeHeroOverlay,
-      }),
-    [data.trending, locals, mergeHeroOverlay],
-  );
-  const heroPopular = useMemo(
-    () =>
-      overlayList(data.popular, locals, {
-        includeExtras: false,
-        mapMatched: mergeHeroOverlay,
-      }),
-    [data.popular, locals, mergeHeroOverlay],
-  );
-
   const featuredItems = useMemo(
-    () => pickHeroItems(heroTrending, heroPopular),
-    [heroTrending, heroPopular],
+    () => pickHeroItems(data.trending, data.popular),
+    [data.trending, data.popular],
   );
   const featured = featuredItems[0];
 

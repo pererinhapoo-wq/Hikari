@@ -740,7 +740,12 @@ export function Hero({
     [animes, anime],
   );
   const total = items.length;
+  const itemsKey = useMemo(
+    () => items.map((item) => item.id).join("|"),
+    [items],
+  );
 
+  const [prevItemsKey, setPrevItemsKey] = useState(itemsKey);
   const [index, setIndex] = useState(0);
   const [transitioning, setTransitioning] = useState<{
     fromIndex: number;
@@ -748,12 +753,33 @@ export function Hero({
     direction: "next" | "prev";
   } | null>(null);
 
+  if (itemsKey !== prevItemsKey) {
+    setPrevItemsKey(itemsKey);
+    if (index !== 0) {
+      setIndex(0);
+    }
+    if (transitioning !== null) {
+      setTransitioning(null);
+    }
+  }
+
+  const activeIndex = itemsKey !== prevItemsKey || index >= total || index < 0 ? 0 : index;
+  const activeTransition =
+    itemsKey === prevItemsKey &&
+    transitioning &&
+    transitioning.fromIndex >= 0 &&
+    transitioning.fromIndex < total &&
+    transitioning.toIndex >= 0 &&
+    transitioning.toIndex < total
+      ? transitioning
+      : null;
+
   const transitioningRef = useRef<{
     fromIndex: number;
     toIndex: number;
     direction: "next" | "prev";
   } | null>(null);
-  transitioningRef.current = transitioning;
+  transitioningRef.current = activeTransition;
 
   const containerRef = useRef<HTMLElement>(null);
   const timerRef = useRef<number | null>(null);
@@ -876,8 +902,8 @@ export function Hero({
       if (items.length < 2) return;
       const targetIndex =
         direction === "next"
-          ? (index + 1) % items.length
-          : (index - 1 + items.length) % items.length;
+          ? (activeIndex + 1) % items.length
+          : (activeIndex - 1 + items.length) % items.length;
 
       // Se houver agendamento ocioso pendente para o slide reverso, cancela para evitar trabalho redundante
       if (direction === "prev" && idleHandleRef.current !== null) {
@@ -887,7 +913,7 @@ export function Hero({
 
       preloadSlide(items[targetIndex]);
     },
-    [items, index, cancelIdleTask, preloadSlide]
+    [items, activeIndex, cancelIdleTask, preloadSlide]
   );
 
   // Pré-carregamento otimizado: prioriza o próximo slide inicialmente e adia o reverso para oportunidade ociosa
@@ -897,8 +923,8 @@ export function Hero({
     let cancelled = false;
     let delayTimer: number | null = null;
 
-    const nextIndex = (index + 1) % items.length;
-    const prevIndex = (index - 1 + items.length) % items.length;
+    const nextIndex = (activeIndex + 1) % items.length;
+    const prevIndex = (activeIndex - 1 + items.length) % items.length;
 
     const schedulePreload = () => {
       delayTimer = window.setTimeout(() => {
@@ -937,7 +963,7 @@ export function Hero({
         idleHandleRef.current = null;
       }
     };
-  }, [items, index, cancelIdleTask, preloadSlide, scheduleIdleTask]);
+  }, [items, activeIndex, cancelIdleTask, preloadSlide, scheduleIdleTask]);
 
   // Disparo da transição suave com crossfade e sobreposição
   const triggerTransition = useCallback(
@@ -947,7 +973,7 @@ export function Hero({
       ensureSlidePreloaded(direction);
 
       const targetIndex =
-        direction === "next" ? (index + 1) % total : (index - 1 + total) % total;
+        direction === "next" ? (activeIndex + 1) % total : (activeIndex - 1 + total) % total;
 
       const prefersReduced =
         typeof window !== "undefined" &&
@@ -959,12 +985,12 @@ export function Hero({
       }
 
       setTransitioning({
-        fromIndex: index,
+        fromIndex: activeIndex,
         toIndex: targetIndex,
         direction,
       });
     },
-    [total, index, ensureSlidePreloaded]
+    [total, activeIndex, ensureSlidePreloaded]
   );
 
   // Reinicia o temporizador automático de aproximadamente 8 segundos
@@ -996,19 +1022,19 @@ export function Hero({
         timerRef.current = null;
       }
     };
-  }, [resetAutoTimer, index]);
+  }, [resetAutoTimer, activeIndex]);
 
   // Conclui a animação após exatamente 1800ms com aceleração e desaceleração naturais
   useEffect(() => {
-    if (!transitioning) return;
+    if (!activeTransition) return;
 
     const timeout = window.setTimeout(() => {
-      setIndex(transitioning.toIndex);
+      setIndex(activeTransition.toIndex);
       setTransitioning(null);
     }, 1800);
 
     return () => window.clearTimeout(timeout);
-  }, [transitioning]);
+  }, [activeTransition]);
 
   // Manipulação de gestos de toque/ponteiro
   // A imagem permanece visualmente estática durante o arrasto, acionando a transição suave de escurecimento ao soltar
@@ -1122,7 +1148,7 @@ export function Hero({
         aria-label="Destaque principal"
         className="relative -mx-4 overflow-hidden bg-black border-b border-white/5 shadow-[0_12px_40px_rgba(0,0,0,0.85)] sm:-mx-6 md:mx-0 md:rounded-3xl md:border md:border-white/10 md:shadow-[0_20px_50px_rgba(0,0,0,0.7)] min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end [contain:layout_style]"
       >
-        <HeroSlide anime={items[0]} priority />
+        <HeroSlide key={items[0].id} anime={items[0]} priority />
       </section>
     );
   }
@@ -1140,18 +1166,18 @@ export function Hero({
       className="relative -mx-4 overflow-hidden bg-black border-b border-white/5 shadow-[0_12px_40px_rgba(0,0,0,0.85)] sm:-mx-6 md:mx-0 md:rounded-3xl md:border md:border-white/10 md:shadow-[0_20px_50px_rgba(0,0,0,0.7)] min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end select-none touch-pan-y cursor-default [contain:layout_style]"
     >
       {/* Camadas da transição ou anime ativo */}
-      {transitioning ? (
+      {activeTransition ? (
         <div className="relative size-full min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end">
           {/* Camada inferior: Anime saindo com escurecimento perceptível, gradual e desvanecimento suave */}
           <div
-            key={`outgoing-${transitioning.fromIndex}-${items[transitioning.fromIndex].id}`}
+            key={`outgoing-${activeTransition.fromIndex}-${items[activeTransition.fromIndex].id}`}
             className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity] [contain:paint] [transform:translateZ(0)]"
             style={{
               animation: "heroCrossfadeOut 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
               backfaceVisibility: "hidden",
             }}
           >
-            <HeroSlide anime={items[transitioning.fromIndex]} />
+            <HeroSlide anime={items[activeTransition.fromIndex]} />
             <div
               className="absolute inset-0 size-full pointer-events-none bg-black will-change-[opacity] z-30 [transform:translateZ(0)]"
               style={{
@@ -1164,22 +1190,22 @@ export function Hero({
 
           {/* Camada superior: Próximo anime surgindo suavemente sobre a imagem escurecida */}
           <div
-            key={`incoming-${transitioning.toIndex}-${items[transitioning.toIndex].id}`}
+            key={`incoming-${activeTransition.toIndex}-${items[activeTransition.toIndex].id}`}
             className="relative size-full overflow-hidden z-20 will-change-[opacity] [contain:paint] [transform:translateZ(0)]"
             style={{
               animation: "heroCrossfadeIn 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
               backfaceVisibility: "hidden",
             }}
           >
-            <HeroSlide anime={items[transitioning.toIndex]} priority />
+            <HeroSlide anime={items[activeTransition.toIndex]} priority />
           </div>
         </div>
       ) : (
         <div
-          key={`active-${index}-${items[index].id}`}
+          key={`active-${activeIndex}-${items[activeIndex].id}`}
           className="relative size-full overflow-hidden z-10 [contain:paint]"
         >
-          <HeroSlide anime={items[index]} priority />
+          <HeroSlide anime={items[activeIndex]} priority />
         </div>
       )}
     </section>

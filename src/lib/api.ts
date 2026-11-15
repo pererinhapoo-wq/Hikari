@@ -683,6 +683,12 @@ export function fromCache<T>(
     lookup.status === "stale" &&
     revalidate
   ) {
+    const isValidStale = options?.shouldCache
+      ? options.shouldCache(lookup.data, undefined)
+      : lookup.data !== null && lookup.data !== undefined;
+    if (!isValidStale) {
+      return null;
+    }
     triggerBackgroundRevalidation(
       key,
       revalidate,
@@ -707,13 +713,18 @@ export async function withCache<T>(
   }
 
   if (lookup.status === "stale") {
-    triggerBackgroundRevalidation(
-      key,
-      fetcher,
-      options,
-      lookup.data,
-    );
-    return lookup.data;
+    const isValidStale = options?.shouldCache
+      ? options.shouldCache(lookup.data, undefined)
+      : lookup.data !== null && lookup.data !== undefined;
+    if (isValidStale) {
+      triggerBackgroundRevalidation(
+        key,
+        fetcher,
+        options,
+        lookup.data,
+      );
+      return lookup.data;
+    }
   }
 
   const existingFlight =
@@ -4591,9 +4602,12 @@ export const fetchSeasonSection = createServerFn({
       return FALLBACK_ANIMES.slice(2, 18);
     },
     {
-      shouldCache: (items) => Array.isArray(items) && items.length > 0,
+      shouldCache: (items) =>
+        Array.isArray(items) &&
+        items.length > 0 &&
+        items.some((item) => item?.source !== "cache"),
       fallback: () => FALLBACK_ANIMES.slice(2, 18),
-      cacheFallback: true,
+      cacheFallback: false,
       freshTtl: 15 * 60 * 1000,
       swrWindow: 60 * 60 * 1000,
     },
@@ -4742,10 +4756,11 @@ export const fetchHomeCatalog =
         },
         {
           shouldCache: (catalog) =>
-            (catalog?.trending?.length ?? 0) > 0,
+            (catalog?.trending?.length ?? 0) > 0 &&
+            catalog.source === "anilist",
           fallback: () =>
             getEmergencyFallbackCatalog(),
-          cacheFallback: true,
+          cacheFallback: false,
         },
       );
 
