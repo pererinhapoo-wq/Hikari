@@ -222,6 +222,16 @@ export interface UserActivitiesResponse {
   limit: number;
   totalPages: number;
   hasMore: boolean;
+  nextCursor?: string | null;
+}
+
+export interface PaginatedProfileUsers {
+  items: ProfileUser[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasMore: boolean;
 }
 
 function parseFavorites(
@@ -637,7 +647,11 @@ export async function executeGetPublicProfile(
     throw new Error("Nick não informado.");
   }
 
-  const rows = await sql<{
+  const rawInput =
+    typeof rawNick === "string" ? rawNick.trim().replace(/^@+/, "") : "";
+
+  // 1. Busca prioritária por nick utilizando diretamente o índice "profile_nick_unique_idx" em lower("nick")
+  let rows = await sql<{
     userId: string;
     userName: string | null;
     userImage: string | null;
@@ -662,12 +676,79 @@ export async function executeGetPublicProfile(
       coalesce(p."isVerified", false) as "isVerified",
       u."createdAt" as "userCreatedAt",
       p."createdAt" as "profileCreatedAt"
-    from "user" u
-    left join "profile" p on p."userId" = u."id"
-    where (p."nick" is not null and lower(trim(p."nick")) = lower(${nick}))
-       or lower(u."id") = lower(${nick})
+    from "profile" p
+    inner join "user" u on u."id" = p."userId"
+    where lower(p."nick") = ${nick}
     limit 1
   `;
+
+  // 2. Se não encontrado por nick, buscar por ID exato utilizando a chave primária de "user" (Index Scan direto)
+  if (!rows[0] && rawInput) {
+    rows = await sql<{
+      userId: string;
+      userName: string | null;
+      userImage: string | null;
+      name: string | null;
+      nick: string | null;
+      bio: string | null;
+      image: string | null;
+      bannerUrl: string | null;
+      isVerified: boolean | null;
+      userCreatedAt: string | Date | null;
+      profileCreatedAt: string | Date | null;
+    }>`
+      select
+        u."id" as "userId",
+        u."name" as "userName",
+        u."image" as "userImage",
+        coalesce(p."displayName", u."name") as "name",
+        p."nick",
+        p."bio",
+        coalesce(nullif(trim(p."avatarUrl"), ''), nullif(trim(u."image"), '')) as "image",
+        nullif(trim(p."bannerUrl"), '') as "bannerUrl",
+        coalesce(p."isVerified", false) as "isVerified",
+        u."createdAt" as "userCreatedAt",
+        p."createdAt" as "profileCreatedAt"
+      from "user" u
+      left join "profile" p on p."userId" = u."id"
+      where u."id" = ${rawInput}
+      limit 1
+    `;
+  }
+
+  // 3. Fallback adicional para IDs normalizados caso rawInput divirja
+  if (!rows[0] && nick && nick !== rawInput) {
+    rows = await sql<{
+      userId: string;
+      userName: string | null;
+      userImage: string | null;
+      name: string | null;
+      nick: string | null;
+      bio: string | null;
+      image: string | null;
+      bannerUrl: string | null;
+      isVerified: boolean | null;
+      userCreatedAt: string | Date | null;
+      profileCreatedAt: string | Date | null;
+    }>`
+      select
+        u."id" as "userId",
+        u."name" as "userName",
+        u."image" as "userImage",
+        coalesce(p."displayName", u."name") as "name",
+        p."nick",
+        p."bio",
+        coalesce(nullif(trim(p."avatarUrl"), ''), nullif(trim(u."image"), '')) as "image",
+        nullif(trim(p."bannerUrl"), '') as "bannerUrl",
+        coalesce(p."isVerified", false) as "isVerified",
+        u."createdAt" as "userCreatedAt",
+        p."createdAt" as "profileCreatedAt"
+      from "user" u
+      left join "profile" p on p."userId" = u."id"
+      where u."id" = ${nick}
+      limit 1
+    `;
+  }
 
   let row = rows[0];
   if (!row) {
@@ -816,18 +897,36 @@ export const getProfileFollowers =
     method: "GET",
   })
     .middleware([authMiddleware])
+    .validator((d?: { page?: number; limit?: number }) => d)
     .handler(async ({
       context,
-    }) => {
+      data,
+    }): Promise<PaginatedProfileUsers> => {
       const sql = await getSql();
       const currentUserId = context?.userId ?? null;
 
       if (!currentUserId) {
-        return [];
+        return {
+          items: [],
+          total: 0,
+          page: 1,
+          limit: 20,
+          totalPages: 1,
+          hasMore: false,
+        };
       }
 
-      const rows =
-        await sql<{
+      const safePage = Math.max(1, data?.page ?? 1);
+      const safeLimit = Math.max(1, Math.min(100, data?.limit ?? 20));
+      const offset = (safePage - 1) * safeLimit;
+
+      const [countRows, rows] = await Promise.all([
+        sql<{ count: string }>`
+          select count(*)::text as count
+          from "user_follow"
+          where "followingId" = ${currentUserId}
+        `,
+        sql<{
           userId: string;
           nick: string | null;
           name: string | null;
@@ -856,41 +955,37 @@ export const getProfileFollowers =
                 and r."status" = 'pending'
             ) as "hasPendingRequest"
           from "user_follow" uf
+          inner join "user" u on u."id" = uf."followerId"
+          left join "profile" p on p."userId" = u."id"
+          where uf."followingId" = ${currentUserId}
+          order by uf."createdAt" desc, uf."followerId" desc
+          limit ${safeLimit} offset ${offset}
+        `,
+      ]);
 
-          inner join "user" u
-            on u."id" =
-              uf."followerId"
+      const total = Number(countRows[0]?.count ?? "0");
+      const totalPages = Math.ceil(total / safeLimit) || 1;
 
-          left join "profile" p
-            on p."userId" =
-              u."id"
+      const items: ProfileUser[] = rows.map((row) => ({
+        userId: row.userId,
+        nick: row.nick || row.userId,
+        name: row.name || "Usuário",
+        image: row.image,
+        isFollowing: Boolean(row.isFollowing),
+        hasPendingRequest: Boolean(row.hasPendingRequest),
+        isVerified: Boolean(row.isVerified),
+        followsOpenProfile: true,
+        followsViewer: true,
+      }));
 
-          where uf."followingId" =
-            ${currentUserId}
-
-          order by
-            uf."createdAt" desc
-        `;
-
-      const result: ProfileUser[] = [];
-
-      for (const row of rows) {
-        result.push({
-          userId: row.userId,
-          nick: row.nick || row.userId,
-          name:
-            row.name ||
-            "Usuário",
-          image: row.image,
-          isFollowing: Boolean(row.isFollowing),
-          hasPendingRequest: Boolean(row.hasPendingRequest),
-          isVerified: Boolean(row.isVerified),
-          followsOpenProfile: true,
-          followsViewer: true,
-        });
-      }
-
-      return result;
+      return {
+        items,
+        total,
+        page: safePage,
+        limit: safeLimit,
+        totalPages,
+        hasMore: safePage < totalPages,
+      };
     });
 
 /* ============================================================ */
@@ -902,18 +997,36 @@ export const getProfileFollowing =
     method: "GET",
   })
     .middleware([authMiddleware])
+    .validator((d?: { page?: number; limit?: number }) => d)
     .handler(async ({
       context,
-    }) => {
+      data,
+    }): Promise<PaginatedProfileUsers> => {
       const sql = await getSql();
       const currentUserId = context?.userId ?? null;
 
       if (!currentUserId) {
-        return [];
+        return {
+          items: [],
+          total: 0,
+          page: 1,
+          limit: 20,
+          totalPages: 1,
+          hasMore: false,
+        };
       }
 
-      const rows =
-        await sql<{
+      const safePage = Math.max(1, data?.page ?? 1);
+      const safeLimit = Math.max(1, Math.min(100, data?.limit ?? 20));
+      const offset = (safePage - 1) * safeLimit;
+
+      const [countRows, rows] = await Promise.all([
+        sql<{ count: string }>`
+          select count(*)::text as count
+          from "user_follow"
+          where "followerId" = ${currentUserId}
+        `,
+        sql<{
           userId: string;
           nick: string | null;
           name: string | null;
@@ -936,41 +1049,37 @@ export const getProfileFollowing =
                 and f."followingId" = ${currentUserId}
             ) as "followsViewer"
           from "user_follow" uf
+          inner join "user" u on u."id" = uf."followingId"
+          left join "profile" p on p."userId" = u."id"
+          where uf."followerId" = ${currentUserId}
+          order by uf."createdAt" desc, uf."followingId" desc
+          limit ${safeLimit} offset ${offset}
+        `,
+      ]);
 
-          inner join "user" u
-            on u."id" =
-              uf."followingId"
+      const total = Number(countRows[0]?.count ?? "0");
+      const totalPages = Math.ceil(total / safeLimit) || 1;
 
-          left join "profile" p
-            on p."userId" =
-              u."id"
+      const items: ProfileUser[] = rows.map((row) => ({
+        userId: row.userId,
+        nick: row.nick || row.userId,
+        name: row.name || "Usuário",
+        image: row.image,
+        isFollowing: true,
+        hasPendingRequest: false,
+        isVerified: Boolean(row.isVerified),
+        followsOpenProfile: Boolean(row.followsViewer),
+        followsViewer: Boolean(row.followsViewer),
+      }));
 
-          where uf."followerId" =
-            ${currentUserId}
-
-          order by
-            uf."createdAt" desc
-        `;
-
-      const result: ProfileUser[] = [];
-
-      for (const row of rows) {
-        result.push({
-          userId: row.userId,
-          nick: row.nick || row.userId,
-          name:
-            row.name ||
-            "Usuário",
-          image: row.image,
-          isFollowing: true,
-          hasPendingRequest: false,
-          isVerified: Boolean(row.isVerified),
-          followsOpenProfile: Boolean(row.followsViewer),
-          followsViewer: Boolean(row.followsViewer),
-        });
-      }
-
-      return result;
+      return {
+        items,
+        total,
+        page: safePage,
+        limit: safeLimit,
+        totalPages,
+        hasMore: safePage < totalPages,
+      };
     });
 
 /* ============================================================ */
@@ -1166,6 +1275,11 @@ export async function executeGetUserActivities(
       },
   page = 1,
   limit = 15,
+  options?: {
+    includeCount?: boolean;
+    preview?: boolean;
+    cursor?: string;
+  },
 ): Promise<UserActivitiesResponse> {
   const isOwner =
     typeof permissionsOrIsOwner === "boolean"
@@ -1183,279 +1297,222 @@ export async function executeGetUserActivities(
   const safePage = Math.max(1, page);
   const safeLimit = Math.max(1, Math.min(50, limit));
   const offset = (safePage - 1) * safeLimit;
+  const isPreview = Boolean(options?.preview);
+  const branchLimit = options?.cursor ? safeLimit : offset + safeLimit;
 
-  const countQuery = `
+  // Suporte a cursor ("createdAt_id") para paginação cronológica eficiente
+  let cursorCreatedAt: string | null = null;
+  let cursorId: string | null = null;
+  if (options?.cursor) {
+    const parts = options.cursor.split("_");
+    if (parts.length >= 2) {
+      cursorCreatedAt = parts[0];
+      cursorId = parts.slice(1).join("_");
+    }
+  }
+
+  // Consulta de seleção com pushdown de LIMIT em cada branch do UNION ALL,
+  // aproveitando índices compostos e varreduras parciais limitadas
+  const selectQuery = `
     WITH user_activities AS (
-      -- 1. Episódios assistidos exclusivos (player ou históricos sem correspondência em tracking recente)
-      SELECT
-        uwe."watchedAt" AS "createdAt"
-      FROM "user_watched_episode" uwe
-      WHERE uwe."userId" = $1
-        AND (
-          uwe."origin" = 'playback'
-          OR NOT EXISTS (
-            SELECT 1 FROM "user_anime_tracking" uat_chk
-            WHERE uat_chk."userId" = uwe."userId"
-              AND uat_chk."animeId" = uwe."animeId"
-              AND (
-                (uat_chk."episodesWatched" = uwe."episodeNumber" AND abs(extract(epoch from (uat_chk."updatedAt" - uwe."watchedAt"))) < 10)
-                OR (uat_chk."episodesWatched" = uwe."episodeNumber" AND abs(extract(epoch from (uat_chk."createdAt" - uwe."watchedAt"))) < 10)
-              )
+      -- 1. Episódios assistidos exclusivos (playback ou históricos)
+      (
+        SELECT
+          'watched:' || uwe."animeId" || ':' || uwe."episodeId" || ':' || to_char(uwe."watchedAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
+          'watched_episode' AS "type",
+          uwe."watchedAt" AS "createdAt",
+          'Atualizou o progresso de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'este anime') || ' para o episódio ' || uwe."episodeNumber" || '.' AS "description",
+          uwe."animeId" AS "resourceId",
+          COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
+          COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
+          'anime' AS "resourceType",
+          json_build_object(
+            'episodeId', uwe."episodeId",
+            'episodeNumber', uwe."episodeNumber",
+            'origin', uwe."origin",
+            'status', uat."status"
+          )::text AS "metadata"
+        FROM "user_watched_episode" uwe
+        LEFT JOIN "catalog_anime" ca ON ca."id" = uwe."animeId"
+        LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uwe."userId" AND uat."animeId" = uwe."animeId"
+        WHERE uwe."userId" = $1
+          AND (
+            $8::timestamptz IS NULL
+            OR uwe."watchedAt" < $8::timestamptz
+            OR (uwe."watchedAt" = $8::timestamptz AND ('watched:' || uwe."animeId" || ':' || uwe."episodeId" || ':' || to_char(uwe."watchedAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS')) < $9::text)
           )
-        )
+          AND (
+            uwe."origin" = 'playback'
+            OR NOT EXISTS (
+              SELECT 1 FROM "user_anime_tracking" uat_chk
+              WHERE uat_chk."userId" = uwe."userId"
+                AND uat_chk."animeId" = uwe."animeId"
+                AND (
+                  (uat_chk."episodesWatched" = uwe."episodeNumber" AND abs(extract(epoch from (uat_chk."updatedAt" - uwe."watchedAt"))) < 10)
+                  OR (uat_chk."episodesWatched" = uwe."episodeNumber" AND abs(extract(epoch from (uat_chk."createdAt" - uwe."watchedAt"))) < 10)
+                )
+            )
+          )
+        ORDER BY uwe."watchedAt" DESC
+        LIMIT $5
+      )
 
       UNION ALL
 
       -- 2. Anime adicionado ao acompanhamento (consolidado)
-      SELECT
-        uat."createdAt" AS "createdAt"
-      FROM "user_anime_tracking" uat
-      WHERE uat."userId" = $1
-
-      UNION ALL
-
-      -- 2b. Atualizações de acompanhamento (progresso, status, nota consolidados)
-      SELECT
-        uat."updatedAt" AS "createdAt"
-      FROM "user_anime_tracking" uat
-      WHERE uat."userId" = $1
-        AND uat."updatedAt" > (uat."createdAt" + interval '1 second')
+      (
+        SELECT
+          'tracking_add:' || uat."animeId" || ':' || to_char(uat."createdAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
+          'tracking_added' AS "type",
+          uat."createdAt" AS "createdAt",
+          CASE
+            WHEN uat."status" = 'completed' THEN
+              CASE
+                WHEN uat."episodesWatched" > 0 THEN 'Completou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' no episódio ' || uat."episodesWatched" || '.'
+                ELSE 'Completou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
+              END
+            WHEN uat."status" = 'on_hold' THEN
+              CASE
+                WHEN uat."episodesWatched" > 0 THEN 'Colocou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' em espera no episódio ' || uat."episodesWatched" || '.'
+                ELSE 'Colocou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' em espera.'
+              END
+            WHEN uat."status" = 'dropped' THEN
+              CASE
+                WHEN uat."episodesWatched" > 0 THEN 'Abandonou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' no episódio ' || uat."episodesWatched" || '.'
+                ELSE 'Abandonou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
+              END
+            WHEN uat."status" = 'watching' THEN
+              CASE
+                WHEN uat."episodesWatched" > 0 THEN 'Atualizou o progresso de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' para o episódio ' || uat."episodesWatched" || '.'
+                ELSE 'Começou a assistir ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
+              END
+            WHEN uat."status" = 'planning' THEN
+              'Adicionou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' à lista de interesse.'
+            ELSE 'Atualizou acompanhamento de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
+          END AS "description",
+          uat."animeId" AS "resourceId",
+          COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
+          COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
+          'anime' AS "resourceType",
+          json_build_object(
+            'status', uat."status",
+            'score', uat."score",
+            'episodeNumber', uat."episodesWatched",
+            'episodesWatched', uat."episodesWatched"
+          )::text AS "metadata"
+        FROM "user_anime_tracking" uat
+        LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+        WHERE uat."userId" = $1
+          AND (
+            $8::timestamptz IS NULL
+            OR uat."createdAt" < $8::timestamptz
+            OR (uat."createdAt" = $8::timestamptz AND ('tracking_add:' || uat."animeId" || ':' || to_char(uat."createdAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS')) < $9::text)
+          )
+        ORDER BY uat."createdAt" DESC
+        LIMIT $5
+      )
 
       UNION ALL
 
       -- 3. Favoritos adicionados
-      SELECT
-        uf."createdAt" AS "createdAt"
-      FROM "user_favorite" uf
-      WHERE uf."userId" = $1
-        AND ($4::boolean = true)
+      (
+        SELECT
+          'fav:' || uf."id" AS "id",
+          'favorite_added' AS "type",
+          uf."createdAt" AS "createdAt",
+          CASE uf."targetType"
+            WHEN 'anime' THEN 'Adicionou anime aos favoritos'
+            WHEN 'character' THEN 'Adicionou personagem aos favoritos'
+            WHEN 'studio' THEN 'Adicionou estúdio aos favoritos'
+            WHEN 'company' THEN 'Adicionou produtora aos favoritos'
+            WHEN 'person' THEN 'Adicionou pessoa aos favoritos'
+            ELSE 'Adicionou aos favoritos'
+          END AS "description",
+          COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "resourceId",
+          COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name", 'Favorito') AS "resourceTitle",
+          COALESCE(ca."cover", cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl", NULL) AS "resourceCover",
+          uf."targetType" AS "resourceType",
+          json_build_object(
+            'targetType', uf."targetType"
+          )::text AS "metadata"
+        FROM "user_favorite" uf
+        LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
+        LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
+        LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
+        LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
+        LEFT JOIN "catalog_person" cp ON cp."id" = uf."personId"
+        WHERE uf."userId" = $1
+          AND ($4::boolean = true)
+          AND (
+            $8::timestamptz IS NULL
+            OR uf."createdAt" < $8::timestamptz
+            OR (uf."createdAt" = $8::timestamptz AND ('fav:' || uf."id") < $9::text)
+          )
+        ORDER BY uf."createdAt" DESC
+        LIMIT $5
+      )
 
       UNION ALL
 
       -- 4. Criação de lista personalizada
-      SELECT
-        ucl."createdAt" AS "createdAt"
-      FROM "user_custom_list" ucl
-      WHERE ucl."userId" = $1
-        AND ($3::boolean = true)
-        AND ($2::boolean = true OR ucl."isPublic" = true)
+      (
+        SELECT
+          'list_create:' || ucl."id" AS "id",
+          'list_created' AS "type",
+          ucl."createdAt" AS "createdAt",
+          'Criou a lista "' || ucl."title" || '"' AS "description",
+          ucl."id" AS "resourceId",
+          ucl."title" AS "resourceTitle",
+          NULL AS "resourceCover",
+          'list' AS "resourceType",
+          json_build_object(
+            'listId', ucl."id",
+            'isPublic', ucl."isPublic"
+          )::text AS "metadata"
+        FROM "user_custom_list" ucl
+        WHERE ucl."userId" = $1
+          AND ($3::boolean = true)
+          AND ($2::boolean = true OR ucl."isPublic" = true)
+          AND (
+            $8::timestamptz IS NULL
+            OR ucl."createdAt" < $8::timestamptz
+            OR (ucl."createdAt" = $8::timestamptz AND ('list_create:' || ucl."id") < $9::text)
+          )
+        ORDER BY ucl."createdAt" DESC
+        LIMIT $5
+      )
 
       UNION ALL
 
       -- 5. Adição de anime a uma lista personalizada
-      SELECT
-        ucli."addedAt" AS "createdAt"
-      FROM "user_custom_list_item" ucli
-      INNER JOIN "user_custom_list" ucl ON ucl."id" = ucli."listId"
-      WHERE ucl."userId" = $1
-        AND ($3::boolean = true)
-        AND ($2::boolean = true OR ucl."isPublic" = true)
-    )
-    SELECT count(*)::int AS total FROM user_activities;
-  `;
-
-  const selectQuery = `
-    WITH user_activities AS (
-      -- 1. Episódios assistidos exclusivos (playback ou históricos)
-      SELECT
-        'watched:' || uwe."animeId" || ':' || uwe."episodeId" || ':' || to_char(uwe."watchedAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
-        'watched_episode' AS "type",
-        uwe."watchedAt" AS "createdAt",
-        'Atualizou o progresso de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'este anime') || ' para o episódio ' || uwe."episodeNumber" || '.' AS "description",
-        uwe."animeId" AS "resourceId",
-        COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
-        COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
-        'anime' AS "resourceType",
-        json_build_object(
-          'episodeId', uwe."episodeId",
-          'episodeNumber', uwe."episodeNumber",
-          'origin', uwe."origin",
-          'status', uat."status"
-        )::text AS "metadata"
-      FROM "user_watched_episode" uwe
-      LEFT JOIN "catalog_anime" ca ON ca."id" = uwe."animeId"
-      LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uwe."userId" AND uat."animeId" = uwe."animeId"
-      WHERE uwe."userId" = $1
-        AND (
-          uwe."origin" = 'playback'
-          OR NOT EXISTS (
-            SELECT 1 FROM "user_anime_tracking" uat_chk
-            WHERE uat_chk."userId" = uwe."userId"
-              AND uat_chk."animeId" = uwe."animeId"
-              AND (
-                (uat_chk."episodesWatched" = uwe."episodeNumber" AND abs(extract(epoch from (uat_chk."updatedAt" - uwe."watchedAt"))) < 10)
-                OR (uat_chk."episodesWatched" = uwe."episodeNumber" AND abs(extract(epoch from (uat_chk."createdAt" - uwe."watchedAt"))) < 10)
-              )
+      (
+        SELECT
+          'list_item:' || ucli."listId" || ':' || ucli."animeId" AS "id",
+          'list_item_added' AS "type",
+          ucli."addedAt" AS "createdAt",
+          'Adicionou à lista "' || ucl."title" || '"' AS "description",
+          ucli."animeId" AS "resourceId",
+          COALESCE(ca."title", (ucli."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
+          COALESCE(ca."cover", (ucli."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
+          'anime' AS "resourceType",
+          json_build_object(
+            'listId', ucl."id",
+            'listTitle', ucl."title"
+          )::text AS "metadata"
+        FROM "user_custom_list_item" ucli
+        INNER JOIN "user_custom_list" ucl ON ucl."id" = ucli."listId"
+        LEFT JOIN "catalog_anime" ca ON ca."id" = ucli."animeId"
+        WHERE ucl."userId" = $1
+          AND ($3::boolean = true)
+          AND ($2::boolean = true OR ucl."isPublic" = true)
+          AND (
+            $8::timestamptz IS NULL
+            OR ucli."addedAt" < $8::timestamptz
+            OR (ucli."addedAt" = $8::timestamptz AND ('list_item:' || ucli."listId" || ':' || ucli."animeId") < $9::text)
           )
-        )
-
-      UNION ALL
-
-      -- 2. Anime adicionado ao acompanhamento (consolidado com status, episódio e nota)
-      SELECT
-        'tracking_add:' || uat."animeId" || ':' || to_char(uat."createdAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
-        'tracking_added' AS "type",
-        uat."createdAt" AS "createdAt",
-        CASE
-          WHEN uat."status" = 'completed' THEN
-            CASE
-              WHEN uat."episodesWatched" > 0 THEN 'Completou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' no episódio ' || uat."episodesWatched" || '.'
-              ELSE 'Completou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
-            END
-          WHEN uat."status" = 'on_hold' THEN
-            CASE
-              WHEN uat."episodesWatched" > 0 THEN 'Colocou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' em espera no episódio ' || uat."episodesWatched" || '.'
-              ELSE 'Colocou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' em espera.'
-            END
-          WHEN uat."status" = 'dropped' THEN
-            CASE
-              WHEN uat."episodesWatched" > 0 THEN 'Abandonou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' no episódio ' || uat."episodesWatched" || '.'
-              ELSE 'Abandonou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
-            END
-          WHEN uat."status" = 'watching' THEN
-            CASE
-              WHEN uat."episodesWatched" > 0 THEN 'Atualizou o progresso de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' para o episódio ' || uat."episodesWatched" || '.'
-              ELSE 'Começou a assistir ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
-            END
-          WHEN uat."status" = 'planning' THEN
-            'Adicionou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' à lista de interesse.'
-          ELSE 'Atualizou acompanhamento de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
-        END AS "description",
-        uat."animeId" AS "resourceId",
-        COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
-        COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
-        'anime' AS "resourceType",
-        json_build_object(
-          'status', uat."status",
-          'score', uat."score",
-          'episodeNumber', uat."episodesWatched",
-          'episodesWatched', uat."episodesWatched"
-        )::text AS "metadata"
-      FROM "user_anime_tracking" uat
-      LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
-      WHERE uat."userId" = $1
-
-      UNION ALL
-
-      -- 2b. Atualizações de acompanhamento (consolidado com status, episódio e nota)
-      SELECT
-        'tracking_upd:' || uat."animeId" || ':' || to_char(uat."updatedAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
-        'tracking_updated' AS "type",
-        uat."updatedAt" AS "createdAt",
-        CASE
-          WHEN uat."status" = 'completed' THEN
-            CASE
-              WHEN uat."episodesWatched" > 0 THEN 'Completou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' no episódio ' || uat."episodesWatched" || '.'
-              ELSE 'Completou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
-            END
-          WHEN uat."status" = 'on_hold' THEN
-            CASE
-              WHEN uat."episodesWatched" > 0 THEN 'Colocou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' em espera no episódio ' || uat."episodesWatched" || '.'
-              ELSE 'Colocou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' em espera.'
-            END
-          WHEN uat."status" = 'dropped' THEN
-            CASE
-              WHEN uat."episodesWatched" > 0 THEN 'Abandonou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' no episódio ' || uat."episodesWatched" || '.'
-              ELSE 'Abandonou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
-            END
-          WHEN uat."status" = 'watching' THEN
-            CASE
-              WHEN uat."episodesWatched" > 0 THEN 'Atualizou o progresso de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' para o episódio ' || uat."episodesWatched" || '.'
-              ELSE 'Começou a assistir ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
-            END
-          WHEN uat."status" = 'planning' THEN
-            'Adicionou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' à lista de interesse.'
-          ELSE 'Atualizou acompanhamento de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
-        END AS "description",
-        uat."animeId" AS "resourceId",
-        COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
-        COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
-        'anime' AS "resourceType",
-        json_build_object(
-          'status', uat."status",
-          'score', uat."score",
-          'episodeNumber', uat."episodesWatched",
-          'episodesWatched', uat."episodesWatched"
-        )::text AS "metadata"
-      FROM "user_anime_tracking" uat
-      LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
-      WHERE uat."userId" = $1
-        AND uat."updatedAt" > (uat."createdAt" + interval '1 second')
-
-      UNION ALL
-
-      -- 3. Favoritos adicionados
-      SELECT
-        'fav:' || uf."id" AS "id",
-        'favorite_added' AS "type",
-        uf."createdAt" AS "createdAt",
-        CASE uf."targetType"
-          WHEN 'anime' THEN 'Adicionou anime aos favoritos'
-          WHEN 'character' THEN 'Adicionou personagem aos favoritos'
-          WHEN 'studio' THEN 'Adicionou estúdio aos favoritos'
-          WHEN 'company' THEN 'Adicionou produtora aos favoritos'
-          WHEN 'person' THEN 'Adicionou pessoa aos favoritos'
-          ELSE 'Adicionou aos favoritos'
-        END AS "description",
-        COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "resourceId",
-        COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name", 'Favorito') AS "resourceTitle",
-        COALESCE(ca."cover", cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl", NULL) AS "resourceCover",
-        uf."targetType" AS "resourceType",
-        json_build_object(
-          'targetType', uf."targetType"
-        )::text AS "metadata"
-      FROM "user_favorite" uf
-      LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
-      LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
-      LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
-      LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
-      LEFT JOIN "catalog_person" cp ON cp."id" = uf."personId"
-      WHERE uf."userId" = $1
-        AND ($4::boolean = true)
-
-      UNION ALL
-
-      -- 5. Criação de lista personalizada
-      SELECT
-        'list_create:' || ucl."id" AS "id",
-        'list_created' AS "type",
-        ucl."createdAt" AS "createdAt",
-        'Criou a lista "' || ucl."title" || '"' AS "description",
-        ucl."id" AS "resourceId",
-        ucl."title" AS "resourceTitle",
-        NULL AS "resourceCover",
-        'list' AS "resourceType",
-        json_build_object(
-          'listId', ucl."id",
-          'isPublic', ucl."isPublic"
-        )::text AS "metadata"
-      FROM "user_custom_list" ucl
-      WHERE ucl."userId" = $1
-        AND ($3::boolean = true)
-        AND ($2::boolean = true OR ucl."isPublic" = true)
-
-      UNION ALL
-
-      -- 6. Adição de anime a uma lista personalizada
-      SELECT
-        'list_item:' || ucli."listId" || ':' || ucli."animeId" AS "id",
-        'list_item_added' AS "type",
-        ucli."addedAt" AS "createdAt",
-        'Adicionou à lista "' || ucl."title" || '"' AS "description",
-        ucli."animeId" AS "resourceId",
-        COALESCE(ca."title", (ucli."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
-        COALESCE(ca."cover", (ucli."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
-        'anime' AS "resourceType",
-        json_build_object(
-          'listId', ucl."id",
-          'listTitle', ucl."title"
-        )::text AS "metadata"
-      FROM "user_custom_list_item" ucli
-      INNER JOIN "user_custom_list" ucl ON ucl."id" = ucli."listId"
-      LEFT JOIN "catalog_anime" ca ON ca."id" = ucli."animeId"
-      WHERE ucl."userId" = $1
-        AND ($3::boolean = true)
-        AND ($2::boolean = true OR ucl."isPublic" = true)
+        ORDER BY ucli."addedAt" DESC
+        LIMIT $5
+      )
     )
     SELECT
       "id",
@@ -1469,38 +1526,100 @@ export async function executeGetUserActivities(
       "metadata"
     FROM user_activities
     ORDER BY "createdAt" DESC, "id" DESC
-    LIMIT $5 OFFSET $6;
+    LIMIT $6 OFFSET $7;
   `;
 
-  const [countRes, rows] = await Promise.all([
-    sql.query<{ total: number }>(countQuery, [
-      targetUserId,
-      isOwner,
-      canViewLists,
-      canViewFavorites,
-    ]),
-    sql.query<{
-      id: string;
-      type: ActivityType;
-      createdAt: Date | string;
-      description: string;
-      resourceId: string;
-      resourceTitle: string;
-      resourceCover: string | null;
-      resourceType: "anime" | "list" | "character" | "studio" | "company" | "person";
-      metadata: string | null;
-    }>(selectQuery, [
-      targetUserId,
-      isOwner,
-      canViewLists,
-      canViewFavorites,
-      safeLimit,
-      offset,
-    ]),
+  const rows = await sql.query<{
+    id: string;
+    type: ActivityType;
+    createdAt: Date | string;
+    description: string;
+    resourceId: string;
+    resourceTitle: string;
+    resourceCover: string | null;
+    resourceType: "anime" | "list" | "character" | "studio" | "company" | "person";
+    metadata: string | null;
+  }>(selectQuery, [
+    targetUserId,
+    isOwner,
+    canViewLists,
+    canViewFavorites,
+    branchLimit,
+    safeLimit,
+    cursorCreatedAt ? 0 : offset,
+    cursorCreatedAt,
+    cursorId,
   ]);
 
-  const total = Number(countRes[0]?.total || 0);
+  // Se safePage === 1 e retornou menos que o limite, ou se for preview / contagem desativada,
+  // evita a execução onerosa de countQuery com varredura completa do histórico
+  let total: number;
+  const shouldSkipCount =
+    isPreview ||
+    options?.includeCount === false ||
+    Boolean(cursorCreatedAt) ||
+    (safePage === 1 && rows.length < safeLimit);
+
+  if (shouldSkipCount) {
+    total = rows.length;
+  } else {
+    const countQuery = `
+      WITH user_activities AS (
+        SELECT uwe."watchedAt" AS "createdAt"
+        FROM "user_watched_episode" uwe
+        WHERE uwe."userId" = $1 AND uwe."origin" = 'playback'
+
+        UNION ALL
+
+        SELECT uat."createdAt" AS "createdAt"
+        FROM "user_anime_tracking" uat
+        WHERE uat."userId" = $1
+
+        UNION ALL
+
+        SELECT uf."createdAt" AS "createdAt"
+        FROM "user_favorite" uf
+        WHERE uf."userId" = $1 AND ($4::boolean = true)
+
+        UNION ALL
+
+        SELECT ucl."createdAt" AS "createdAt"
+        FROM "user_custom_list" ucl
+        WHERE ucl."userId" = $1 AND ($3::boolean = true) AND ($2::boolean = true OR ucl."isPublic" = true)
+
+        UNION ALL
+
+        SELECT ucli."addedAt" AS "createdAt"
+        FROM "user_custom_list_item" ucli
+        INNER JOIN "user_custom_list" ucl ON ucl."id" = ucli."listId"
+        WHERE ucl."userId" = $1 AND ($3::boolean = true) AND ($2::boolean = true OR ucl."isPublic" = true)
+      )
+      SELECT count(*)::int AS total FROM user_activities;
+    `;
+
+    const countRes = await sql.query<{ total: number }>(countQuery, [
+      targetUserId,
+      isOwner,
+      canViewLists,
+      canViewFavorites,
+    ]);
+    total = Number(countRes[0]?.total || 0);
+  }
+
   const totalPages = Math.ceil(total / safeLimit) || 1;
+  const hasMore = cursorCreatedAt
+    ? rows.length >= safeLimit
+    : safePage < totalPages || rows.length >= safeLimit;
+
+  let nextCursor: string | null = null;
+  if (rows.length > 0 && rows.length >= safeLimit) {
+    const lastRow = rows[rows.length - 1];
+    const lastDate =
+      lastRow.createdAt instanceof Date
+        ? lastRow.createdAt.toISOString()
+        : String(lastRow.createdAt);
+    nextCursor = `${lastDate}_${lastRow.id}`;
+  }
 
   const items: UserActivityItem[] = rows.map((r) => {
     let parsedMetadata = undefined;
@@ -1550,7 +1669,8 @@ export async function executeGetUserActivities(
     page: safePage,
     limit: safeLimit,
     totalPages,
-    hasMore: safePage < totalPages,
+    hasMore,
+    nextCursor,
   };
 }
 
@@ -1558,7 +1678,7 @@ export const getMyActivities = createServerFn({
   method: "GET",
 })
   .middleware([authMiddleware])
-  .validator((d?: { page?: number; limit?: number }) => d)
+  .validator((d?: { page?: number; limit?: number; includeCount?: boolean; preview?: boolean; cursor?: string }) => d)
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     return executeGetUserActivities(
@@ -1571,6 +1691,11 @@ export const getMyActivities = createServerFn({
       },
       data?.page ?? 1,
       data?.limit ?? 15,
+      {
+        includeCount: data?.includeCount,
+        preview: data?.preview,
+        cursor: data?.cursor,
+      },
     );
   });
 
@@ -1578,7 +1703,7 @@ export const getPublicActivities = createServerFn({
   method: "GET",
 })
   .middleware([optionalAuthMiddleware])
-  .validator((d: { userId: string; page?: number; limit?: number }) => d)
+  .validator((d: { userId: string; page?: number; limit?: number; includeCount?: boolean; preview?: boolean; cursor?: string }) => d)
   .handler(async ({ context, data }) => {
     const viewerUserId = context?.userId ?? null;
     const userId = (data?.userId || "").trim();
@@ -1602,6 +1727,11 @@ export const getPublicActivities = createServerFn({
       },
       data?.page ?? 1,
       data?.limit ?? 15,
+      {
+        includeCount: data?.includeCount,
+        preview: data?.preview,
+        cursor: data?.cursor,
+      },
     );
   });
 
@@ -1613,62 +1743,78 @@ export async function executeGetPublicProfileFollowers(
   sql: Sql,
   targetUserId: string,
   viewerUserId: string | null,
+  options?: { page?: number; limit?: number },
 ) {
   const privacy = await evaluateUserPrivacy(sql, targetUserId, viewerUserId);
   if (!privacy.canViewFollowers) {
     throw new Error("A lista de seguidores deste perfil é privada.");
   }
 
-  const rows = await sql<{
-    userId: string;
-    nick: string | null;
-    name: string | null;
-    image: string | null;
-    isFollowing: boolean;
-    hasPendingRequest: boolean;
-    isBlocked: boolean;
-    isVerified: boolean;
-    followsViewer: boolean;
-  }>`
-    select
-      u."id" as "userId",
-      coalesce(p."nick", u."id") as "nick",
-      coalesce(p."displayName", u."name", 'Usuário') as "name",
-      coalesce(p."avatarUrl", u."image") as "image",
-      coalesce(p."isVerified", false) as "isVerified",
-      (${viewerUserId}::text is not null and exists (
-        select 1
-        from "user_follow" f
-        where f."followerId" = ${viewerUserId}
-          and f."followingId" = u."id"
-      )) as "isFollowing",
-      (${viewerUserId}::text is not null and exists (
-        select 1
-        from "user_follow_request" r
-        where r."requesterId" = ${viewerUserId}
-          and r."targetId" = u."id"
-          and r."status" = 'pending'
-      )) as "hasPendingRequest",
-      (${viewerUserId}::text is not null and exists (
-        select 1
-        from "user_block" ub
-        where (ub."blockerId" = ${viewerUserId} and ub."blockedId" = u."id")
-           or (ub."blockerId" = u."id" and ub."blockedId" = ${viewerUserId})
-      )) as "isBlocked",
-      (${viewerUserId}::text is not null and exists (
-        select 1
-        from "user_follow" f
-        where f."followerId" = u."id"
-          and f."followingId" = ${viewerUserId}
-      )) as "followsViewer"
-    from "user_follow" uf
-    inner join "user" u on u."id" = uf."followerId"
-    left join "profile" p on p."userId" = u."id"
-    where uf."followingId" = ${targetUserId}
-    order by uf."createdAt" desc
-  `;
+  const safePage = Math.max(1, options?.page ?? 1);
+  const safeLimit = Math.max(1, Math.min(100, options?.limit ?? 20));
+  const offset = (safePage - 1) * safeLimit;
 
-  return rows.map((r) => {
+  const [countRows, rows] = await Promise.all([
+    sql<{ count: string }>`
+      select count(*)::text as count
+      from "user_follow"
+      where "followingId" = ${targetUserId}
+    `,
+    sql<{
+      userId: string;
+      nick: string | null;
+      name: string | null;
+      image: string | null;
+      isFollowing: boolean;
+      hasPendingRequest: boolean;
+      isBlocked: boolean;
+      isVerified: boolean;
+      followsViewer: boolean;
+    }>`
+      select
+        u."id" as "userId",
+        coalesce(p."nick", u."id") as "nick",
+        coalesce(p."displayName", u."name", 'Usuário') as "name",
+        coalesce(p."avatarUrl", u."image") as "image",
+        coalesce(p."isVerified", false) as "isVerified",
+        (${viewerUserId}::text is not null and exists (
+          select 1
+          from "user_follow" f
+          where f."followerId" = ${viewerUserId}
+            and f."followingId" = u."id"
+        )) as "isFollowing",
+        (${viewerUserId}::text is not null and exists (
+          select 1
+          from "user_follow_request" r
+          where r."requesterId" = ${viewerUserId}
+            and r."targetId" = u."id"
+            and r."status" = 'pending'
+        )) as "hasPendingRequest",
+        (${viewerUserId}::text is not null and exists (
+          select 1
+          from "user_block" ub
+          where (ub."blockerId" = ${viewerUserId} and ub."blockedId" = u."id")
+             or (ub."blockerId" = u."id" and ub."blockedId" = ${viewerUserId})
+        )) as "isBlocked",
+        (${viewerUserId}::text is not null and exists (
+          select 1
+          from "user_follow" f
+          where f."followerId" = u."id"
+            and f."followingId" = ${viewerUserId}
+        )) as "followsViewer"
+      from "user_follow" uf
+      inner join "user" u on u."id" = uf."followerId"
+      left join "profile" p on p."userId" = u."id"
+      where uf."followingId" = ${targetUserId}
+      order by uf."createdAt" desc, uf."followerId" desc
+      limit ${safeLimit} offset ${offset}
+    `,
+  ]);
+
+  const total = Number(countRows[0]?.count ?? "0");
+  const totalPages = Math.ceil(total / safeLimit) || 1;
+
+  const items: ProfileUser[] = rows.map((r) => {
     const isBlocked = Boolean(r.isBlocked);
     return {
       userId: r.userId,
@@ -1683,6 +1829,15 @@ export async function executeGetPublicProfileFollowers(
       followsViewer: isBlocked ? false : Boolean(r.followsViewer),
     };
   });
+
+  return Object.assign([...items], {
+    items,
+    total,
+    page: safePage,
+    limit: safeLimit,
+    totalPages,
+    hasMore: safePage < totalPages,
+  });
 }
 
 export const getPublicProfileFollowers =
@@ -1690,83 +1845,111 @@ export const getPublicProfileFollowers =
     method: "GET",
   })
     .middleware([optionalAuthMiddleware])
-    .validator((d: { userId: string }) => d)
-    .handler(async ({ context, data }) => {
+    .validator((d: { userId: string; page?: number; limit?: number }) => d)
+    .handler(async ({ context, data }): Promise<PaginatedProfileUsers> => {
       const viewerUserId = context?.userId ?? null;
       const targetUserId = (data?.userId || "").trim();
       if (!targetUserId) throw new Error("Usuário não informado.");
 
       const sql = await getSql();
-      return executeGetPublicProfileFollowers(sql, targetUserId, viewerUserId);
+      const res = await executeGetPublicProfileFollowers(sql, targetUserId, viewerUserId, {
+        page: data?.page,
+        limit: data?.limit,
+      });
+
+      return {
+        items: res.items,
+        total: res.total,
+        page: res.page,
+        limit: res.limit,
+        totalPages: res.totalPages,
+        hasMore: res.hasMore,
+      };
     });
 
 export async function executeGetPublicProfileFollowing(
   sql: Sql,
   targetUserId: string,
   viewerUserId: string | null,
+  options?: { page?: number; limit?: number },
 ) {
   const privacy = await evaluateUserPrivacy(sql, targetUserId, viewerUserId);
   if (!privacy.canViewFollowers) {
     throw new Error("A lista de seguidos deste perfil é privada.");
   }
 
-  const rows = await sql<{
-    userId: string;
-    nick: string | null;
-    name: string | null;
-    image: string | null;
-    isFollowing: boolean;
-    hasPendingRequest: boolean;
-    isBlocked: boolean;
-    isVerified: boolean;
-    followsOpenProfile: boolean;
-    followsViewer: boolean;
-  }>`
-    select
-      u."id" as "userId",
-      coalesce(p."nick", u."id") as "nick",
-      coalesce(p."displayName", u."name", 'Usuário') as "name",
-      coalesce(p."avatarUrl", u."image") as "image",
-      coalesce(p."isVerified", false) as "isVerified",
-      (${viewerUserId}::text is not null and exists (
-        select 1
-        from "user_follow" f
-        where f."followerId" = ${viewerUserId}
-          and f."followingId" = u."id"
-      )) as "isFollowing",
-      (${viewerUserId}::text is not null and exists (
-        select 1
-        from "user_follow_request" r
-        where r."requesterId" = ${viewerUserId}
-          and r."targetId" = u."id"
-          and r."status" = 'pending'
-      )) as "hasPendingRequest",
-      (${viewerUserId}::text is not null and exists (
-        select 1
-        from "user_block" ub
-        where (ub."blockerId" = ${viewerUserId} and ub."blockedId" = u."id")
-           or (ub."blockerId" = u."id" and ub."blockedId" = ${viewerUserId})
-      )) as "isBlocked",
-      exists (
-        select 1
-        from "user_follow" f
-        where f."followerId" = u."id"
-          and f."followingId" = ${targetUserId}
-      ) as "followsOpenProfile",
-      (${viewerUserId}::text is not null and exists (
-        select 1
-        from "user_follow" f
-        where f."followerId" = u."id"
-          and f."followingId" = ${viewerUserId}
-      )) as "followsViewer"
-    from "user_follow" uf
-    inner join "user" u on u."id" = uf."followingId"
-    left join "profile" p on p."userId" = u."id"
-    where uf."followerId" = ${targetUserId}
-    order by uf."createdAt" desc
-  `;
+  const safePage = Math.max(1, options?.page ?? 1);
+  const safeLimit = Math.max(1, Math.min(100, options?.limit ?? 20));
+  const offset = (safePage - 1) * safeLimit;
 
-  return rows.map((r) => {
+  const [countRows, rows] = await Promise.all([
+    sql<{ count: string }>`
+      select count(*)::text as count
+      from "user_follow"
+      where "followerId" = ${targetUserId}
+    `,
+    sql<{
+      userId: string;
+      nick: string | null;
+      name: string | null;
+      image: string | null;
+      isFollowing: boolean;
+      hasPendingRequest: boolean;
+      isBlocked: boolean;
+      isVerified: boolean;
+      followsOpenProfile: boolean;
+      followsViewer: boolean;
+    }>`
+      select
+        u."id" as "userId",
+        coalesce(p."nick", u."id") as "nick",
+        coalesce(p."displayName", u."name", 'Usuário') as "name",
+        coalesce(p."avatarUrl", u."image") as "image",
+        coalesce(p."isVerified", false) as "isVerified",
+        (${viewerUserId}::text is not null and exists (
+          select 1
+          from "user_follow" f
+          where f."followerId" = ${viewerUserId}
+            and f."followingId" = u."id"
+        )) as "isFollowing",
+        (${viewerUserId}::text is not null and exists (
+          select 1
+          from "user_follow_request" r
+          where r."requesterId" = ${viewerUserId}
+            and r."targetId" = u."id"
+            and r."status" = 'pending'
+        )) as "hasPendingRequest",
+        (${viewerUserId}::text is not null and exists (
+          select 1
+          from "user_block" ub
+          where (ub."blockerId" = ${viewerUserId} and ub."blockedId" = u."id")
+             or (ub."blockerId" = u."id" and ub."blockedId" = ${viewerUserId})
+        )) as "isBlocked",
+        exists (
+          select 1
+          from "user_follow" f
+          where f."followerId" = u."id"
+            and f."followingId" = ${targetUserId}
+        ) as "followsOpenProfile",
+        (${viewerUserId}::text is not null and exists (
+          select 1
+          from "user_follow" f
+          where f."followerId" = u."id"
+            and f."followingId" = ${viewerUserId}
+        )) as "followsViewer"
+      from "user_follow" uf
+      inner join "user" u on u."id" = uf."followingId"
+      left join "profile" p on p."userId" = u."id"
+      where uf."followerId" = ${targetUserId}
+      order by uf."createdAt" desc, uf."followingId" desc
+      limit ${safeLimit} offset ${offset}
+    `,
+  ]);
+
+  const total = Number(countRows[0]?.count ?? "0");
+  const totalPages = Math.ceil(total / safeLimit) || 1;
+
+  const items: ProfileUser[] = rows.map((r) => {
     const isBlocked = Boolean(r.isBlocked);
     return {
       userId: r.userId,
@@ -1781,6 +1964,15 @@ export async function executeGetPublicProfileFollowing(
       followsViewer: isBlocked ? false : Boolean(r.followsViewer),
     };
   });
+
+  return Object.assign([...items], {
+    items,
+    total,
+    page: safePage,
+    limit: safeLimit,
+    totalPages,
+    hasMore: safePage < totalPages,
+  });
 }
 
 export const getPublicProfileFollowing =
@@ -1788,14 +1980,26 @@ export const getPublicProfileFollowing =
     method: "GET",
   })
     .middleware([optionalAuthMiddleware])
-    .validator((d: { userId: string }) => d)
-    .handler(async ({ context, data }) => {
+    .validator((d: { userId: string; page?: number; limit?: number }) => d)
+    .handler(async ({ context, data }): Promise<PaginatedProfileUsers> => {
       const viewerUserId = context?.userId ?? null;
       const targetUserId = (data?.userId || "").trim();
       if (!targetUserId) throw new Error("Usuário não informado.");
 
       const sql = await getSql();
-      return executeGetPublicProfileFollowing(sql, targetUserId, viewerUserId);
+      const res = await executeGetPublicProfileFollowing(sql, targetUserId, viewerUserId, {
+        page: data?.page,
+        limit: data?.limit,
+      });
+
+      return {
+        items: res.items,
+        total: res.total,
+        page: res.page,
+        limit: res.limit,
+        totalPages: res.totalPages,
+        hasMore: res.hasMore,
+      };
     });
 
 /* ============================================================ */

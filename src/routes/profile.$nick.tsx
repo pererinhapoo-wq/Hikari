@@ -474,6 +474,11 @@ function PublicProfile() {
   const [connectionsLoading, setConnectionsLoading] = useState(false);
   const [followersList, setFollowersList] = useState<ProfileUser[]>([]);
   const [followingList, setFollowingList] = useState<ProfileUser[]>([]);
+  const [followersPage, setFollowersPage] = useState(1);
+  const [followersHasMore, setFollowersHasMore] = useState(false);
+  const [followingPage, setFollowingPage] = useState(1);
+  const [followingHasMore, setFollowingHasMore] = useState(false);
+  const [connectionsLoadingMore, setConnectionsLoadingMore] = useState(false);
 
   // Sincroniza aba inicial caso venha via URL search ?tab=
   useEffect(() => {
@@ -715,6 +720,7 @@ function PublicProfile() {
         userId: profile.userId,
         page: 1,
         limit: 15,
+        preview: activeSpace === "overview",
       },
     })
       .then((act) => {
@@ -1025,26 +1031,40 @@ function PublicProfile() {
       setConnectionsLoading(true);
       try {
         if (tab === "followers") {
+          setFollowersPage(1);
           const data = await getFollowersFn({
             data: {
               userId: profile.userId,
+              page: 1,
+              limit: 20,
             },
           });
-          setFollowersList(data || []);
+          const items = Array.isArray(data) ? data : (data?.items ?? []);
+          const hasMore = Array.isArray(data) ? false : Boolean(data?.hasMore);
+          setFollowersList(items);
+          setFollowersHasMore(hasMore);
         } else {
+          setFollowingPage(1);
           const data = await getFollowingFn({
             data: {
               userId: profile.userId,
+              page: 1,
+              limit: 20,
             },
           });
-          setFollowingList(data || []);
+          const items = Array.isArray(data) ? data : (data?.items ?? []);
+          const hasMore = Array.isArray(data) ? false : Boolean(data?.hasMore);
+          setFollowingList(items);
+          setFollowingHasMore(hasMore);
         }
       } catch (err) {
         console.warn("Erro ao buscar conexões:", err);
         if (tab === "followers") {
           setFollowersList([]);
+          setFollowersHasMore(false);
         } else {
           setFollowingList([]);
+          setFollowingHasMore(false);
         }
       } finally {
         setConnectionsLoading(false);
@@ -1052,6 +1072,62 @@ function PublicProfile() {
     },
     [profile?.userId, getFollowersFn, getFollowingFn],
   );
+
+  const handleLoadMoreFollowers = useCallback(async () => {
+    if (!profile?.userId || connectionsLoadingMore || !followersHasMore) return;
+    setConnectionsLoadingMore(true);
+    try {
+      const nextPage = followersPage + 1;
+      const data = await getFollowersFn({
+        data: {
+          userId: profile.userId,
+          page: nextPage,
+          limit: 20,
+        },
+      });
+      const newItems = Array.isArray(data) ? data : (data?.items ?? []);
+      const hasMore = Array.isArray(data) ? false : Boolean(data?.hasMore);
+      setFollowersList((prev) => {
+        const existingIds = new Set(prev.map((u) => u.userId));
+        const filtered = newItems.filter((u) => !existingIds.has(u.userId));
+        return [...prev, ...filtered];
+      });
+      setFollowersPage(nextPage);
+      setFollowersHasMore(hasMore);
+    } catch (err) {
+      console.warn("Erro ao carregar mais seguidores:", err);
+    } finally {
+      setConnectionsLoadingMore(false);
+    }
+  }, [profile?.userId, connectionsLoadingMore, followersHasMore, followersPage, getFollowersFn]);
+
+  const handleLoadMoreFollowing = useCallback(async () => {
+    if (!profile?.userId || connectionsLoadingMore || !followingHasMore) return;
+    setConnectionsLoadingMore(true);
+    try {
+      const nextPage = followingPage + 1;
+      const data = await getFollowingFn({
+        data: {
+          userId: profile.userId,
+          page: nextPage,
+          limit: 20,
+        },
+      });
+      const newItems = Array.isArray(data) ? data : (data?.items ?? []);
+      const hasMore = Array.isArray(data) ? false : Boolean(data?.hasMore);
+      setFollowingList((prev) => {
+        const existingIds = new Set(prev.map((u) => u.userId));
+        const filtered = newItems.filter((u) => !existingIds.has(u.userId));
+        return [...prev, ...filtered];
+      });
+      setFollowingPage(nextPage);
+      setFollowingHasMore(hasMore);
+    } catch (err) {
+      console.warn("Erro ao carregar mais seguidos:", err);
+    } finally {
+      setConnectionsLoadingMore(false);
+    }
+  }, [profile?.userId, connectionsLoadingMore, followingHasMore, followingPage, getFollowingFn]);
 
   const handleOpenFollowers = useCallback(() => {
     void handleOpenConnections("followers");
@@ -1540,6 +1616,11 @@ function PublicProfile() {
             followersCount={followersCount}
             followingCount={followingCount}
             loading={connectionsLoading}
+            hasMoreFollowers={followersHasMore}
+            hasMoreFollowing={followingHasMore}
+            onLoadMoreFollowers={handleLoadMoreFollowers}
+            onLoadMoreFollowing={handleLoadMoreFollowing}
+            loadingMore={connectionsLoadingMore}
             onClose={() => setConnectionsOpen(false)}
             onFollowBack={handleFollowBack}
             currentUserId={currentUser?.id ?? null}

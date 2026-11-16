@@ -24,6 +24,11 @@ interface ProfileConnectionsModalProps {
   followingCount: number;
   requestsCount?: number;
   loading: boolean;
+  hasMoreFollowers?: boolean;
+  hasMoreFollowing?: boolean;
+  onLoadMoreFollowers?: () => void;
+  onLoadMoreFollowing?: () => void;
+  loadingMore?: boolean;
   onClose: () => void;
   onAcceptRequest?: (requesterId: string) => Promise<void>;
   onRejectRequest?: (requesterId: string) => Promise<void>;
@@ -44,6 +49,11 @@ export function ProfileConnectionsModal({
   followingCount,
   requestsCount = 0,
   loading,
+  hasMoreFollowers = false,
+  hasMoreFollowing = false,
+  onLoadMoreFollowers,
+  onLoadMoreFollowing,
+  loadingMore = false,
   onClose,
   onAcceptRequest,
   onRejectRequest,
@@ -425,6 +435,33 @@ export function ProfileConnectionsModal({
                 </div>
               );
             })
+          )}
+
+          {/* Paginação progressiva para seguidores e seguidos */}
+          {activeTab === "followers" && hasMoreFollowers && onLoadMoreFollowers && (
+            <div className="pt-2 pb-1 text-center">
+              <button
+                type="button"
+                disabled={loadingMore}
+                onClick={onLoadMoreFollowers}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.08] hover:text-white transition disabled:opacity-50 cursor-pointer"
+              >
+                {loadingMore ? "Carregando..." : "Carregar mais seguidores"}
+              </button>
+            </div>
+          )}
+
+          {activeTab === "following" && hasMoreFollowing && onLoadMoreFollowing && (
+            <div className="pt-2 pb-1 text-center">
+              <button
+                type="button"
+                disabled={loadingMore}
+                onClick={onLoadMoreFollowing}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.08] hover:text-white transition disabled:opacity-50 cursor-pointer"
+              >
+                {loadingMore ? "Carregando..." : "Carregar mais seguidos"}
+              </button>
+            </div>
           )}
         </div>
       </div>

@@ -547,6 +547,11 @@ function AccountProfile() {
   const [requestsList, setRequestsList] = useState<FollowRequestItem[]>([]);
   const [requestsCount, setRequestsCount] = useState<number>(0);
   const [connectionsLoading, setConnectionsLoading] = useState(false);
+  const [followersPage, setFollowersPage] = useState(1);
+  const [followersHasMore, setFollowersHasMore] = useState(false);
+  const [followingPage, setFollowingPage] = useState(1);
+  const [followingHasMore, setFollowingHasMore] = useState(false);
+  const [connectionsLoadingMore, setConnectionsLoadingMore] = useState(false);
 
   // Abrir conexões (Seguidores / Seguindo / Solicitações)
   const handleOpenConnections = useCallback(
@@ -557,11 +562,19 @@ function AccountProfile() {
 
       try {
         if (tab === "followers") {
-          const data = await getFollowersFnRef.current();
-          setFollowersList(data);
+          setFollowersPage(1);
+          const data = await getFollowersFnRef.current({ data: { page: 1, limit: 20 } });
+          const items = Array.isArray(data) ? data : (data?.items ?? []);
+          const hasMore = Array.isArray(data) ? false : Boolean(data?.hasMore);
+          setFollowersList(items);
+          setFollowersHasMore(hasMore);
         } else if (tab === "following") {
-          const data = await getFollowingFnRef.current();
-          setFollowingList(data);
+          setFollowingPage(1);
+          const data = await getFollowingFnRef.current({ data: { page: 1, limit: 20 } });
+          const items = Array.isArray(data) ? data : (data?.items ?? []);
+          const hasMore = Array.isArray(data) ? false : Boolean(data?.hasMore);
+          setFollowingList(items);
+          setFollowingHasMore(hasMore);
         } else {
           const data = await getRequestsFnRef.current();
           setRequestsList(data);
@@ -575,6 +588,50 @@ function AccountProfile() {
     },
     [],
   );
+
+  const handleLoadMoreFollowers = useCallback(async () => {
+    if (connectionsLoadingMore || !followersHasMore) return;
+    setConnectionsLoadingMore(true);
+    try {
+      const nextPage = followersPage + 1;
+      const data = await getFollowersFnRef.current({ data: { page: nextPage, limit: 20 } });
+      const newItems = Array.isArray(data) ? data : (data?.items ?? []);
+      const hasMore = Array.isArray(data) ? false : Boolean(data?.hasMore);
+      setFollowersList((prev) => {
+        const existingIds = new Set(prev.map((u) => u.userId));
+        const filtered = newItems.filter((u) => !existingIds.has(u.userId));
+        return [...prev, ...filtered];
+      });
+      setFollowersPage(nextPage);
+      setFollowersHasMore(hasMore);
+    } catch (err) {
+      console.warn("Erro ao carregar mais seguidores:", err);
+    } finally {
+      setConnectionsLoadingMore(false);
+    }
+  }, [connectionsLoadingMore, followersHasMore, followersPage]);
+
+  const handleLoadMoreFollowing = useCallback(async () => {
+    if (connectionsLoadingMore || !followingHasMore) return;
+    setConnectionsLoadingMore(true);
+    try {
+      const nextPage = followingPage + 1;
+      const data = await getFollowingFnRef.current({ data: { page: nextPage, limit: 20 } });
+      const newItems = Array.isArray(data) ? data : (data?.items ?? []);
+      const hasMore = Array.isArray(data) ? false : Boolean(data?.hasMore);
+      setFollowingList((prev) => {
+        const existingIds = new Set(prev.map((u) => u.userId));
+        const filtered = newItems.filter((u) => !existingIds.has(u.userId));
+        return [...prev, ...filtered];
+      });
+      setFollowingPage(nextPage);
+      setFollowingHasMore(hasMore);
+    } catch (err) {
+      console.warn("Erro ao carregar mais seguidos:", err);
+    } finally {
+      setConnectionsLoadingMore(false);
+    }
+  }, [connectionsLoadingMore, followingHasMore, followingPage]);
 
   // Callbacks estabilizados para o cabeçalho e modais do perfil
   const handleOpenEdit = useCallback(() => {
@@ -1440,6 +1497,11 @@ function AccountProfile() {
             followingCount={followingCount}
             requestsCount={requestsCount}
             loading={connectionsLoading}
+            hasMoreFollowers={followersHasMore}
+            hasMoreFollowing={followingHasMore}
+            onLoadMoreFollowers={handleLoadMoreFollowers}
+            onLoadMoreFollowing={handleLoadMoreFollowing}
+            loadingMore={connectionsLoadingMore}
             onClose={() => setConnectionsModalOpen(false)}
             onAcceptRequest={handleAcceptRequest}
             onRejectRequest={handleRejectRequest}
