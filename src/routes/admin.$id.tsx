@@ -230,6 +230,7 @@ function AdminEditor() {
 
   const [form, setForm] = useState<LocalAnime | null>(null);
   const [animeSyncState, setAnimeSyncState] = useState<AnimeSyncState>("local");
+  const [activeTab, setActiveTab] = useState<"all" | "metadata" | "seasons">("all");
   const [genreText, setGenreText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingEpisode, setUploadingEpisode] = useState<string | null>(null);
@@ -1774,28 +1775,53 @@ function AdminEditor() {
         syncState={animeSyncState}
       />
 
-      {/* Navegação rápida entre seções do editor */}
+      {/* Abas de Navegação do Editor (Console Daylight) */}
       <nav
         aria-label="Seções do editor"
-        className="flex flex-wrap items-center gap-2"
+        className="flex flex-wrap items-center gap-2 border-b border-[var(--studio-line)] pb-4"
       >
-        <a
-          href="#metadata"
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--studio-line)] bg-[var(--studio-panel)] px-3.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:border-violet-500/40 hover:text-[var(--color-fg)]"
+        <button
+          type="button"
+          onClick={() => setActiveTab("all")}
+          className={cn(
+            "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-all cursor-pointer",
+            activeTab === "all"
+              ? "bg-[var(--studio-accent)] text-white shadow-sm"
+              : "border border-[var(--studio-line)] bg-[var(--studio-panel)] text-[var(--color-muted)] hover:border-blue-300 hover:text-[var(--color-fg)]"
+          )}
         >
-          <Info className="size-3.5 text-violet-400" />
-          <span>Metadados &amp; Mídia</span>
-        </a>
-        <a
-          href="#seasons"
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--studio-line)] bg-[var(--studio-panel)] px-3.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:border-violet-500/40 hover:text-[var(--color-fg)]"
+          <Info className="size-3.5" />
+          <span>Visão Geral &amp; Completo</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("metadata")}
+          className={cn(
+            "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-all cursor-pointer",
+            activeTab === "metadata"
+              ? "bg-[var(--studio-accent)] text-white shadow-sm"
+              : "border border-[var(--studio-line)] bg-[var(--studio-panel)] text-[var(--color-muted)] hover:border-blue-300 hover:text-[var(--color-fg)]"
+          )}
         >
-          <Layers className="size-3.5 text-violet-400" />
+          <Info className="size-3.5 text-blue-600" />
+          <span>Metadados &amp; Imagens</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("seasons")}
+          className={cn(
+            "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-all cursor-pointer",
+            activeTab === "seasons"
+              ? "bg-[var(--studio-accent)] text-white shadow-sm"
+              : "border border-[var(--studio-line)] bg-[var(--studio-panel)] text-[var(--color-muted)] hover:border-blue-300 hover:text-[var(--color-fg)]"
+          )}
+        >
+          <Layers className="size-3.5 text-teal-600" />
           <span>Temporadas &amp; Episódios</span>
-          <span className="studio-mono rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-[var(--color-fg)]">
+          <span className="studio-mono rounded bg-slate-200/60 px-1.5 py-0.5 text-[10px] text-slate-800">
             {current.seasons.length}T · {totalEpisodesInEditor}E
           </span>
-        </a>
+        </button>
       </nav>
 
       {/* Banner de Sincronização do Outbox */}
@@ -1891,43 +1917,46 @@ function AdminEditor() {
         </div>
       )}
 
-      {/* Metadados Organizados do Anime */}
-      <EditorMetadata
-        form={current}
-        onChange={set}
-        onToggleRecentBadge={toggleRecentBadge}
-        genreText={genreText}
-        onGenreTextChange={(val) => {
-          setGenreText(val);
-          setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
-        }}
-        resolvedMobileBanner={displayMedia?.mobileBanner ?? null}
-        hasCustomDesktopBanner={displayMedia?.hasCustomDesktopBanner ?? false}
-      />
+      {/* Seções condicionadas por aba (Console Daylight) */}
+      {(activeTab === "all" || activeTab === "metadata") && (
+        <EditorMetadata
+          form={current}
+          onChange={set}
+          onToggleRecentBadge={toggleRecentBadge}
+          genreText={genreText}
+          onGenreTextChange={(val) => {
+            setGenreText(val);
+            setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
+          }}
+          resolvedMobileBanner={displayMedia?.mobileBanner ?? null}
+          hasCustomDesktopBanner={displayMedia?.hasCustomDesktopBanner ?? false}
+        />
+      )}
 
-      {/* Gerenciamento Modernizado de Temporadas e Episódios */}
-      <EditorSeasons
-        animeId={current.id}
-        seasons={current.seasons}
-        onAddSeason={addSeason}
-        onPatchSeason={patchSeason}
-        onRemoveSeason={removeSeason}
-        onAddEpisode={addEpisode}
-        onPatchEpisode={patchEpisode}
-        onRemoveEpisode={removeEpisode}
-        onCaptureFrame={handleCaptureEpisodeFrame}
-        onDiscoverCandidates={handleDiscoverEpisodeThumbnails}
-        onSelectCandidate={handleSelectEpisodeCandidate}
-        episodeCandidates={episodeCandidates}
-        onUploadVideoToB2={handleUploadVideoToB2}
-        uploadingEpisode={uploadingEpisode}
-        captureStatus={captureStatus}
-        outboxOps={outboxOps}
-        getInheritedThumbnail={getInheritedEpisodeThumbnail}
-        thumbnailEditModes={thumbnailEditModes}
-        onThumbnailChange={handleEpisodeThumbnailChange}
-        onThumbnailClear={handleEpisodeThumbnailClear}
-      />
+      {(activeTab === "all" || activeTab === "seasons") && (
+        <EditorSeasons
+          animeId={current.id}
+          seasons={current.seasons}
+          onAddSeason={addSeason}
+          onPatchSeason={patchSeason}
+          onRemoveSeason={removeSeason}
+          onAddEpisode={addEpisode}
+          onPatchEpisode={patchEpisode}
+          onRemoveEpisode={removeEpisode}
+          onCaptureFrame={handleCaptureEpisodeFrame}
+          onDiscoverCandidates={handleDiscoverEpisodeThumbnails}
+          onSelectCandidate={handleSelectEpisodeCandidate}
+          episodeCandidates={episodeCandidates}
+          onUploadVideoToB2={handleUploadVideoToB2}
+          uploadingEpisode={uploadingEpisode}
+          captureStatus={captureStatus}
+          outboxOps={outboxOps}
+          getInheritedThumbnail={getInheritedEpisodeThumbnail}
+          thumbnailEditModes={thumbnailEditModes}
+          onThumbnailChange={handleEpisodeThumbnailChange}
+          onThumbnailClear={handleEpisodeThumbnailClear}
+        />
+      )}
 
       {/* Barra de Ação Mobile Fixa */}
       <EditorMobileBar
