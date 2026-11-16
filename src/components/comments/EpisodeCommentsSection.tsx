@@ -25,6 +25,7 @@ import {
   LogIn,
   LogOut,
   MessageCircle,
+  MessageSquare,
   MoreVertical,
   Search,
   Send,
@@ -3293,9 +3294,7 @@ export function EpisodeCommentsSection({
                 <Button
                   type="button"
                   size="sm"
-                  onClick={() =>
-                    void handleComment()
-                  }
+                  onClick={() => void handleComment()}
                   disabled={
                     (!text.trim() &&
                       !commentImage &&
@@ -3303,16 +3302,19 @@ export function EpisodeCommentsSection({
                     sending ||
                     imageUploading
                   }
-                  className="w-auto px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-xl bg-[#a855f7] hover:bg-[#9333ea] text-white shadow-[0_0_12px_rgba(168,85,247,0.25)] active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none shrink-0 inline-flex items-center gap-1.5"
+                  className="group relative inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-purple-500/35 bg-gradient-to-b from-[#1b1532] to-[#130f24] px-4 text-xs sm:text-sm font-semibold text-zinc-100 shadow-[0_2px_8px_rgba(0,0,0,0.5)] transition-all duration-200 hover:border-purple-400/70 hover:from-[#241c44] hover:to-[#1a1433] hover:text-white hover:shadow-[0_0_16px_rgba(168,85,247,0.3)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-purple-500/35 disabled:hover:from-[#1b1532] disabled:hover:to-[#130f24] disabled:hover:shadow-none select-none cursor-pointer shrink-0"
                 >
-                  <Send className="size-3.5 shrink-0" />
-                  <span>
-                    {imageUploading
-                      ? "Enviando..."
-                      : sending
-                        ? "Enviando..."
-                        : "Comentar"}
-                  </span>
+                  {imageUploading || sending ? (
+                    <>
+                      <Loader2 className="size-3.5 shrink-0 animate-spin text-purple-400" />
+                      <span>{imageUploading ? "Enviando..." : "Publicando..."}</span>
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare className="size-3.5 shrink-0 text-purple-400 transition-transform duration-200 group-hover:scale-110 group-hover:text-purple-300" />
+                      <span>Comentar</span>
+                    </>
+                  )}
                 </Button>
               </div>
 
