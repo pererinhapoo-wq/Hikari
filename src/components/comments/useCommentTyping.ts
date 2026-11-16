@@ -7,7 +7,7 @@ const HEARTBEAT_INTERVAL_MS = 1800;
 const INACTIVITY_STOP_MS = 2800;
 const MIN_LOCAL_EXPIRY_MS = 1200;
 
-interface TypingViewPayload {
+export interface TypingViewPayload {
   isTyping?: boolean;
   typingCount?: number;
   expiresInMs?: number;
@@ -27,6 +27,7 @@ export interface UseCommentTypingOptions {
   sessionReady?: boolean;
   containerRef?: RefObject<HTMLElement | null>;
   enabled?: boolean;
+  externalPolling?: boolean;
 }
 
 function buildAuthHeaders(extra?: Record<string, string>): Record<string, string> {
@@ -44,6 +45,7 @@ export function useCommentTyping({
   sessionReady = true,
   containerRef,
   enabled = true,
+  externalPolling = false,
 }: UseCommentTypingOptions) {
   const trimmedAnimeId = animeId.trim();
   const trimmedEpisodeId = episodeId.trim();
@@ -54,11 +56,13 @@ export function useCommentTyping({
     typeof document === "undefined" ? true : document.visibilityState === "visible",
   );
   const [isSectionVisible, setIsSectionVisible] = useState(() => {
+    if (externalPolling) return false;
     if (!containerRef) return true;
     if (typeof window === "undefined") return false;
     return !("IntersectionObserver" in window);
   });
 
+  const isMountedRef = useRef(true);
   const isLocallyTypingRef = useRef(false);
   const lastSentAtRef = useRef(0);
   const authRejectedRef = useRef(false);
@@ -67,6 +71,13 @@ export function useCommentTyping({
   const pendingPostRef = useRef<TypingPostJob | null>(null);
   const postInFlightRef = useRef(false);
   const postAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const contextRef = useRef({
     animeId: trimmedAnimeId,
@@ -92,6 +103,37 @@ export function useCommentTyping({
       remoteExpiryTimerRef.current = null;
     }
   }, []);
+
+  const applyTypingPayload = useCallback(
+    (payload: TypingViewPayload | null | undefined) => {
+      if (!isMountedRef.current || !contextRef.current.enabled) {
+        return;
+      }
+
+      clearRemoteExpiryTimer();
+
+      const active = Boolean(payload?.isTyping);
+      const count = active ? Math.max(1, Number(payload?.typingCount) || 1) : 0;
+
+      setRemoteTyping(active);
+      setRemoteTypingCount(count);
+
+      if (active) {
+        const expiresInMs = Math.max(
+          MIN_LOCAL_EXPIRY_MS,
+          (Number(payload?.expiresInMs) || 4500) + 300,
+        );
+        remoteExpiryTimerRef.current = window.setTimeout(() => {
+          remoteExpiryTimerRef.current = null;
+          if (isMountedRef.current) {
+            setRemoteTyping(false);
+            setRemoteTypingCount(0);
+          }
+        }, expiresInMs);
+      }
+    },
+    [clearRemoteExpiryTimer],
+  );
 
   const clearInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current !== null) {
@@ -310,8 +352,13 @@ export function useCommentTyping({
     };
   }, [stopTypingNow]);
 
-  // Track whether the comments section is inside the visible viewport
+  // Track whether the comments section is inside the visible viewport (only needed for standalone GET polling)
   useEffect(() => {
+    if (externalPolling) {
+      setIsSectionVisible(false);
+      return;
+    }
+
     if (!containerRef) {
       setIsSectionVisible(true);
       return;
@@ -350,7 +397,7 @@ export function useCommentTyping({
     return () => {
       observer.disconnect();
     };
-  }, [containerRef, enabled, trimmedAnimeId, trimmedEpisodeId]);
+  }, [containerRef, enabled, externalPolling, trimmedAnimeId, trimmedEpisodeId]);
 
   // Reset typing view immediately on room switch/disable, and stop active typing on unmount or room switch
   useEffect(() => {
@@ -380,8 +427,9 @@ export function useCommentTyping({
     sendKeepaliveStop,
   ]);
 
-  // Adaptive HTTP polling: only runs when comments are enabled, session is ready, tab is foreground, and section is visible
+  // Adaptive HTTP polling: only runs when standalone (not fed by shared polling)
   const shouldPoll =
+    !externalPolling &&
     typeof window !== "undefined" &&
     enabled &&
     sessionReady &&
@@ -415,29 +463,9 @@ export function useCommentTyping({
       }, delayMs);
     };
 
-    const applyTypingPayload = (payload: TypingViewPayload) => {
+    const applyStandaloneTypingPayload = (payload: TypingViewPayload) => {
       if (cancelled) return;
-      clearRemoteExpiryTimer();
-
-      const active = Boolean(payload?.isTyping);
-      const count = active ? Math.max(1, Number(payload?.typingCount) || 1) : 0;
-
-      setRemoteTyping(active);
-      setRemoteTypingCount(count);
-
-      if (active) {
-        const expiresInMs = Math.max(
-          MIN_LOCAL_EXPIRY_MS,
-          (Number(payload?.expiresInMs) || 4500) + 300,
-        );
-        remoteExpiryTimerRef.current = window.setTimeout(() => {
-          remoteExpiryTimerRef.current = null;
-          if (!cancelled) {
-            setRemoteTyping(false);
-            setRemoteTypingCount(0);
-          }
-        }, expiresInMs);
-      }
+      applyTypingPayload(payload);
     };
 
     const pollOnce = async () => {
@@ -486,7 +514,7 @@ export function useCommentTyping({
         if (cancelled || controller.signal.aborted) return;
 
         consecutiveErrors = 0;
-        applyTypingPayload(payload);
+        applyStandaloneTypingPayload(payload);
         scheduleNext(POLL_INTERVAL_MS);
       } catch (err) {
         if (
@@ -519,6 +547,7 @@ export function useCommentTyping({
     trimmedAnimeId,
     trimmedEpisodeId,
     viewerUserId,
+    applyTypingPayload,
     clearRemoteExpiryTimer,
   ]);
 
@@ -527,5 +556,6 @@ export function useCommentTyping({
     remoteTypingCount,
     notifyTypingInput,
     stopTypingNow,
+    applyTypingPayload,
   };
 }

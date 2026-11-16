@@ -1,6 +1,7 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getBearerToken } from "@/lib/auth/client";
 import type { Comment } from "@/components/comments/EpisodeCommentsSection";
+import type { TypingViewPayload } from "@/components/comments/useCommentTyping";
 
 const POLL_UPDATES_INTERVAL_MS = 3000;
 const MAX_POLL_BACKOFF_MS = 15000;
@@ -18,6 +19,7 @@ interface CommentUpdatesPollResponse {
   totalCount?: number;
   totalRoots?: number;
   serverTime?: string;
+  typing?: TypingViewPayload;
 }
 
 export interface AppliedNewCommentsPayload {
@@ -38,7 +40,9 @@ export interface UseCommentUpdatesOptions {
   ownCommentIdsRef: RefObject<Set<string>>;
   containerRef?: RefObject<HTMLElement | null>;
   enabled?: boolean;
+  includeTyping?: boolean;
   onApplyNewComments: (payload: AppliedNewCommentsPayload) => void;
+  onTypingUpdate?: (payload: TypingViewPayload) => void;
 }
 
 function buildAuthHeaders(extra?: Record<string, string>): Record<string, string> {
@@ -80,7 +84,9 @@ export function useCommentUpdates({
   ownCommentIdsRef,
   containerRef,
   enabled = true,
+  includeTyping = false,
   onApplyNewComments,
+  onTypingUpdate,
 }: UseCommentUpdatesOptions) {
   const trimmedAnimeId = animeId.trim();
   const trimmedEpisodeId = episodeId.trim();
@@ -107,6 +113,9 @@ export function useCommentUpdates({
 
   const onApplyRef = useRef(onApplyNewComments);
   onApplyRef.current = onApplyNewComments;
+
+  const onTypingUpdateRef = useRef(onTypingUpdate);
+  onTypingUpdateRef.current = onTypingUpdate;
 
   const generationRef = useRef(0);
   const pollAbortRef = useRef<AbortController | null>(null);
@@ -242,6 +251,9 @@ export function useCommentUpdates({
           episodeId: trimmedEpisodeId,
           since: activeBaseline,
         });
+        if (includeTyping) {
+          params.set("includeTyping", "1");
+        }
 
         const response = await fetch(`/api/comments/updates?${params.toString()}`, {
           method: "GET",
@@ -288,6 +300,9 @@ export function useCommentUpdates({
           ownCommentIdsRef.current,
         );
         setPendingItems(filtered);
+        if (includeTyping && data?.typing) {
+          onTypingUpdateRef.current?.(data.typing);
+        }
         scheduleNext(POLL_UPDATES_INTERVAL_MS);
       } catch (err) {
         if (
@@ -322,6 +337,7 @@ export function useCommentUpdates({
     trimmedEpisodeId,
     viewerUserId,
     baselineSince,
+    includeTyping,
     ownCommentIdsRef,
   ]);
 
@@ -368,6 +384,9 @@ export function useCommentUpdates({
         since: activeBaseline,
         includeComments: "1",
       });
+      if (includeTyping) {
+        params.set("includeTyping", "1");
+      }
 
       const response = await fetch(`/api/comments/updates?${params.toString()}`, {
         method: "GET",
@@ -397,6 +416,9 @@ export function useCommentUpdates({
       const loadedComments = Array.isArray(data?.comments) ? data.comments : [];
 
       setPendingItems([]);
+      if (includeTyping && data?.typing) {
+        onTypingUpdateRef.current?.(data.typing);
+      }
       onApplyRef.current({
         comments: loadedComments,
         newIds,
@@ -415,7 +437,7 @@ export function useCommentUpdates({
       isRevealingRef.current = false;
       setIsRevealing(false);
     }
-  }, [trimmedAnimeId, trimmedEpisodeId, ownCommentIdsRef]);
+  }, [trimmedAnimeId, trimmedEpisodeId, includeTyping, ownCommentIdsRef]);
 
   return {
     pendingNewCount,

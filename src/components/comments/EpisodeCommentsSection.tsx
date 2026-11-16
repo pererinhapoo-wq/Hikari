@@ -698,6 +698,7 @@ export function EpisodeCommentsSection({
     remoteTypingCount,
     notifyTypingInput,
     stopTypingNow,
+    applyTypingPayload,
   } = useCommentTyping({
     animeId,
     episodeId,
@@ -705,6 +706,7 @@ export function EpisodeCommentsSection({
     sessionReady: !sessionLoading,
     containerRef: commentsSectionRef,
     enabled: settings.modules.comments,
+    externalPolling: true,
   });
 
   const handleApplyNewComments = useCallback(
@@ -794,7 +796,9 @@ export function EpisodeCommentsSection({
     ownCommentIdsRef,
     containerRef: commentsSectionRef,
     enabled: settings.modules.comments,
+    includeTyping: true,
     onApplyNewComments: handleApplyNewComments,
+    onTypingUpdate: applyTypingPayload,
   });
 
   /* ====================================================== */

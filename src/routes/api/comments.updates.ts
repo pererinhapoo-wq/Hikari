@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { resolveApiUser } from "@/lib/auth/api-session";
+import { getTypingViewForViewer } from "@/lib/comment-typing.server";
 
 const NO_STORE_HEADERS = {
   "Cache-Control": "private, no-cache, no-store, must-revalidate",
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/api/comments/updates")({
           const episodeId = rawEpisodeId || "anime";
           const rawSince = url.searchParams.get("since")?.trim() ?? "";
           const includeComments = url.searchParams.get("includeComments") === "1";
+          const includeTyping = url.searchParams.get("includeTyping") === "1";
 
           if (!animeId || animeId.length > 100 || episodeId.length > 100) {
             return Response.json(
@@ -44,28 +46,37 @@ export const Route = createFileRoute("/api/comments/updates")({
           const apiUser = await resolveApiUser(request, sql);
           const currentUserId = apiUser?.id ?? null;
 
-          const rawPollRows = await sql.query(
-            `
-              with server_now as (
-                select to_char(CURRENT_TIMESTAMP at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "serverTime"
-              )
-              select
-                sn."serverTime",
-                c."id",
-                c."parentId",
-                c."userId",
-                to_char(c."createdAt" at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "createdAtIso"
-              from server_now sn
-              left join "comment" c
-                on c."animeId" = $1
-               and c."episodeId" = $2
-               and c."createdAt" >= $3::timestamptz
-               and ($4::text is null or c."userId" <> $4)
-              order by c."createdAt" asc nulls last, c."id" asc nulls last
-              limit 200
-            `,
-            [animeId, episodeId, rawSince, currentUserId],
-          );
+          const [rawPollRows, typing] = await Promise.all([
+            sql.query(
+              `
+                with server_now as (
+                  select to_char(CURRENT_TIMESTAMP at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "serverTime"
+                )
+                select
+                  sn."serverTime",
+                  c."id",
+                  c."parentId",
+                  c."userId",
+                  to_char(c."createdAt" at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "createdAtIso"
+                from server_now sn
+                left join "comment" c
+                  on c."animeId" = $1
+                 and c."episodeId" = $2
+                 and c."createdAt" >= $3::timestamptz
+                 and ($4::text is null or c."userId" <> $4)
+                order by c."createdAt" asc nulls last, c."id" asc nulls last
+                limit 200
+              `,
+              [animeId, episodeId, rawSince, currentUserId],
+            ),
+            includeTyping
+              ? getTypingViewForViewer(sql, {
+                  animeId,
+                  episodeId,
+                  viewerUserId: currentUserId,
+                })
+              : Promise.resolve(null),
+          ]);
 
           const pollRows: any[] = Array.isArray(rawPollRows)
             ? rawPollRows
@@ -86,7 +97,11 @@ export const Route = createFileRoute("/api/comments/updates")({
 
           if (!includeComments) {
             return Response.json(
-              { items, serverTime },
+              {
+                items,
+                serverTime,
+                ...(typing ? { typing } : {}),
+              },
               { headers: NO_STORE_HEADERS },
             );
           }
@@ -117,6 +132,7 @@ export const Route = createFileRoute("/api/comments/updates")({
                 totalCount,
                 totalRoots,
                 serverTime,
+                ...(typing ? { typing } : {}),
               },
               { headers: NO_STORE_HEADERS },
             );
@@ -240,6 +256,7 @@ export const Route = createFileRoute("/api/comments/updates")({
               totalCount,
               totalRoots,
               serverTime,
+              ...(typing ? { typing } : {}),
             },
             { headers: NO_STORE_HEADERS },
           );

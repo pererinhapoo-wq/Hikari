@@ -189,31 +189,55 @@ export async function ensureUserProfile(
   return { nick: finalCheck[0]?.nick || fallbackNick, created: true };
 }
 
+let hasProvisionedSuccessfully = false;
+let provisionInFlightPromise: Promise<number> | null = null;
+
 /**
  * Varre com segurança e provisiona contas da tabela "user" que ainda não possuam
  * registro na tabela "profile". Seguro e idempotente.
+ * 
+ * Protegido por Singleflight e execução única bem-sucedida por instância da Vercel
+ * para evitar varreduras repetidas desnecessárias ao Neon.
  */
 export async function provisionMissingProfiles(sql: Sql): Promise<number> {
-  try {
-    const unprovisioned = await sql<{
-      id: string;
-      name: string | null;
-      image: string | null;
-    }>`
-      select u."id", u."name", u."image"
-      from "user" u
-      left join "profile" p on p."userId" = u."id"
-      where p."userId" is null
-    `;
-
-    let count = 0;
-    for (const user of unprovisioned) {
-      await ensureUserProfile(sql, user);
-      count++;
-    }
-    return count;
-  } catch (err) {
-    console.error("[profile-provision] Erro ao sincronizar perfis ausentes:", err);
+  if (hasProvisionedSuccessfully) {
     return 0;
   }
+
+  if (provisionInFlightPromise) {
+    return provisionInFlightPromise;
+  }
+
+  provisionInFlightPromise = (async () => {
+    try {
+      const unprovisioned = await sql<{
+        id: string;
+        name: string | null;
+        image: string | null;
+      }>`
+        select u."id", u."name", u."image"
+        from "user" u
+        left join "profile" p on p."userId" = u."id"
+        where p."userId" is null
+      `;
+
+      let count = 0;
+      for (const user of unprovisioned) {
+        await ensureUserProfile(sql, user);
+        count++;
+      }
+
+      // Marca como bem-sucedido somente após concluir todo o provisionamento
+      hasProvisionedSuccessfully = true;
+      return count;
+    } catch (err) {
+      console.error("[profile-provision] Erro ao sincronizar perfis ausentes:", err);
+      // Permite novas tentativas em caso de falha
+      return 0;
+    } finally {
+      provisionInFlightPromise = null;
+    }
+  })();
+
+  return provisionInFlightPromise;
 }
