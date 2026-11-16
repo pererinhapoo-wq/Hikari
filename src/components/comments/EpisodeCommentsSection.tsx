@@ -3210,10 +3210,10 @@ export function EpisodeCommentsSection({
             {/* BARRA DE FERRAMENTAS E CONTROLES DO FORMULÁRIO */}
             {/* ============================================= */}
 
-            <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5">
+            <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-x-1 gap-y-2 sm:gap-x-3">
 
               {/* Grupo esquerdo: Imagem, GIF único e Spoiler */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 min-w-0">
 
                 <input
                   ref={
@@ -3239,9 +3239,9 @@ export function EpisodeCommentsSection({
                   }
                   aria-label="Adicionar imagem"
                   title="Adicionar imagem"
-                  className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-[#16161b] px-2.5 py-1 text-xs font-medium text-white/80 transition-all hover:border-[#a855f7]/40 hover:bg-[#a855f7]/10 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 items-center gap-1 sm:gap-1.5 rounded-lg border border-white/10 bg-[#16161b] px-1.5 sm:px-2.5 text-[11px] sm:text-xs font-medium text-white/80 transition-all hover:border-[#a855f7]/40 hover:bg-[#a855f7]/10 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
                 >
-                  <ImageIcon className="size-3.5 text-[#c084fc] shrink-0" />
+                  <ImageIcon className="size-3 sm:size-3.5 text-[#c084fc] shrink-0" />
                   <span>Imagem</span>
                 </button>
 
@@ -3257,9 +3257,9 @@ export function EpisodeCommentsSection({
                   }
                   aria-label="Adicionar GIF"
                   title="Adicionar GIF"
-                  className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-white/10 bg-[#16161b] px-2.5 py-1 text-xs font-medium text-white/80 transition-all hover:border-[#a855f7]/40 hover:bg-[#a855f7]/10 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-[#16161b] px-1 sm:px-2.5 text-[11px] sm:text-xs font-medium text-white/80 transition-all hover:border-[#a855f7]/40 hover:bg-[#a855f7]/10 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
                 >
-                  <span className="rounded bg-[#a855f7]/20 border border-[#a855f7]/35 px-1.5 py-0.5 text-[9px] font-black tracking-wider text-[#c084fc] shrink-0">
+                  <span className="rounded bg-[#a855f7]/20 border border-[#a855f7]/35 px-1 sm:px-1.5 py-0.5 text-[9px] font-black tracking-wider text-[#c084fc] shrink-0">
                     GIF
                   </span>
                 </button>
@@ -3268,7 +3268,7 @@ export function EpisodeCommentsSection({
                 <div className="hidden sm:block h-3.5 w-px bg-white/10 mx-0.5" />
 
                 {/* Marcar como spoiler */}
-                <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/70 hover:text-white select-none py-1 transition-colors">
+                <label className="inline-flex h-8 cursor-pointer items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs text-white/70 hover:text-white select-none transition-colors shrink-0">
                   <input
                     type="checkbox"
                     checked={isSpoiler}
@@ -3280,7 +3280,7 @@ export function EpisodeCommentsSection({
                           .checked,
                       );
                     }}
-                    className="size-3.5 rounded border-white/20 bg-[#0c0c10] text-[#a855f7] accent-[#a855f7] focus:ring-1 focus:ring-[#a855f7]"
+                    className="size-3 sm:size-3.5 rounded border-white/20 bg-[#0c0c10] text-[#a855f7] accent-[#a855f7] focus:ring-1 focus:ring-[#a855f7]"
                   />
                   <span className="truncate">
                     Spoiler
@@ -3290,7 +3290,7 @@ export function EpisodeCommentsSection({
               </div>
 
               {/* Grupo direito: Enviar */}
-              <div className="flex items-center gap-2.5 ml-auto">
+              <div className="flex items-center shrink-0 ml-auto">
                 <Button
                   type="button"
                   size="sm"
@@ -3302,16 +3302,16 @@ export function EpisodeCommentsSection({
                     sending ||
                     imageUploading
                   }
-                  className="group relative inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-purple-500/35 bg-gradient-to-b from-[#1b1532] to-[#130f24] px-4 text-xs sm:text-sm font-semibold text-zinc-100 shadow-[0_2px_8px_rgba(0,0,0,0.5)] transition-all duration-200 hover:border-purple-400/70 hover:from-[#241c44] hover:to-[#1a1433] hover:text-white hover:shadow-[0_0_16px_rgba(168,85,247,0.3)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-purple-500/35 disabled:hover:from-[#1b1532] disabled:hover:to-[#130f24] disabled:hover:shadow-none select-none cursor-pointer shrink-0"
+                  className="group relative inline-flex h-8 sm:h-9 items-center justify-center gap-1 sm:gap-2 rounded-lg border border-purple-500/35 bg-gradient-to-b from-[#1b1532] to-[#130f24] px-1.5 min-[375px]:px-2 sm:px-4 text-[11px] sm:text-sm font-semibold text-zinc-100 shadow-[0_2px_8px_rgba(0,0,0,0.5)] transition-all duration-200 hover:border-purple-400/70 hover:from-[#241c44] hover:to-[#1a1433] hover:text-white hover:shadow-[0_0_16px_rgba(168,85,247,0.3)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-purple-500/35 disabled:hover:from-[#1b1532] disabled:hover:to-[#130f24] disabled:hover:shadow-none select-none cursor-pointer shrink-0"
                 >
                   {imageUploading || sending ? (
                     <>
-                      <Loader2 className="size-3.5 shrink-0 animate-spin text-purple-400" />
+                      <Loader2 className="size-3 sm:size-3.5 shrink-0 animate-spin text-purple-400" />
                       <span>{imageUploading ? "Enviando..." : "Publicando..."}</span>
                     </>
                   ) : (
                     <>
-                      <MessageSquare className="size-3.5 shrink-0 text-purple-400 transition-transform duration-200 group-hover:scale-110 group-hover:text-purple-300" />
+                      <MessageSquare className="size-3 sm:size-3.5 shrink-0 text-purple-400 transition-transform duration-200 group-hover:scale-110 group-hover:text-purple-300" />
                       <span>Comentar</span>
                     </>
                   )}

@@ -62,11 +62,13 @@ import { Route as NewsSearchRouteImport } from './routes/news_.search'
 import { Route as ProfileNickRouteImport } from './routes/profile.$nick'
 import { Route as WatchIdRouteImport } from './routes/watch.$id'
 import { Route as ApiAdminBackupRouteImport } from './routes/api/admin/backup'
+import { Route as ApiAdminBansRouteImport } from './routes/api/admin/bans'
 import { Route as ApiAdminCatalogAnimeRouteImport } from './routes/api/admin/catalog-anime'
 import { Route as ApiAdminCatalogEpisodeRouteImport } from './routes/api/admin/catalog-episode'
 import { Route as ApiAdminCatalogImportRouteImport } from './routes/api/admin/catalog-import'
 import { Route as ApiAdminCatalogSeasonRouteImport } from './routes/api/admin/catalog-season'
 import { Route as ApiAdminCommentReportsRouteImport } from './routes/api/admin/comment-reports'
+import { Route as ApiAdminCommentsRouteImport } from './routes/api/admin/comments'
 import { Route as ApiAdminHealthRouteImport } from './routes/api/admin/health'
 import { Route as ApiAdminImagesRouteImport } from './routes/api/admin/images'
 import { Route as ApiAdminMaintenanceRouteImport } from './routes/api/admin/maintenance'
@@ -347,6 +349,11 @@ const ApiAdminBackupRoute = ApiAdminBackupRouteImport.update({
   path: '/api/admin/backup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminBansRoute = ApiAdminBansRouteImport.update({
+  id: '/api/admin/bans',
+  path: '/api/admin/bans',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminCatalogAnimeRoute = ApiAdminCatalogAnimeRouteImport.update({
   id: '/api/admin/catalog-anime',
   path: '/api/admin/catalog-anime',
@@ -370,6 +377,11 @@ const ApiAdminCatalogSeasonRoute = ApiAdminCatalogSeasonRouteImport.update({
 const ApiAdminCommentReportsRoute = ApiAdminCommentReportsRouteImport.update({
   id: '/api/admin/comment-reports',
   path: '/api/admin/comment-reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminCommentsRoute = ApiAdminCommentsRouteImport.update({
+  id: '/api/admin/comments',
+  path: '/api/admin/comments',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminHealthRoute = ApiAdminHealthRouteImport.update({
@@ -497,11 +509,13 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
   '/api/admin/backup': typeof ApiAdminBackupRoute
+  '/api/admin/bans': typeof ApiAdminBansRoute
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
   '/api/admin/catalog-season': typeof ApiAdminCatalogSeasonRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/admin/comments': typeof ApiAdminCommentsRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/images': typeof ApiAdminImagesRoute
   '/api/admin/maintenance': typeof ApiAdminMaintenanceRoute
@@ -569,11 +583,13 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/adult': typeof AdultIndexRoute
   '/api/admin/backup': typeof ApiAdminBackupRoute
+  '/api/admin/bans': typeof ApiAdminBansRoute
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
   '/api/admin/catalog-season': typeof ApiAdminCatalogSeasonRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/admin/comments': typeof ApiAdminCommentsRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/images': typeof ApiAdminImagesRoute
   '/api/admin/maintenance': typeof ApiAdminMaintenanceRoute
@@ -644,11 +660,13 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
   '/api/admin/backup': typeof ApiAdminBackupRoute
+  '/api/admin/bans': typeof ApiAdminBansRoute
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
   '/api/admin/catalog-season': typeof ApiAdminCatalogSeasonRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/admin/comments': typeof ApiAdminCommentsRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/images': typeof ApiAdminImagesRoute
   '/api/admin/maintenance': typeof ApiAdminMaintenanceRoute
@@ -720,11 +738,13 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/adult/'
     | '/api/admin/backup'
+    | '/api/admin/bans'
     | '/api/admin/catalog-anime'
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
     | '/api/admin/catalog-season'
     | '/api/admin/comment-reports'
+    | '/api/admin/comments'
     | '/api/admin/health'
     | '/api/admin/images'
     | '/api/admin/maintenance'
@@ -792,11 +812,13 @@ export interface FileRouteTypes {
     | '/admin'
     | '/adult'
     | '/api/admin/backup'
+    | '/api/admin/bans'
     | '/api/admin/catalog-anime'
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
     | '/api/admin/catalog-season'
     | '/api/admin/comment-reports'
+    | '/api/admin/comments'
     | '/api/admin/health'
     | '/api/admin/images'
     | '/api/admin/maintenance'
@@ -866,11 +888,13 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/adult/'
     | '/api/admin/backup'
+    | '/api/admin/bans'
     | '/api/admin/catalog-anime'
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
     | '/api/admin/catalog-season'
     | '/api/admin/comment-reports'
+    | '/api/admin/comments'
     | '/api/admin/health'
     | '/api/admin/images'
     | '/api/admin/maintenance'
@@ -926,11 +950,13 @@ export interface RootRouteChildren {
   ProfileNickRoute: typeof ProfileNickRoute
   WatchIdRoute: typeof WatchIdRoute
   ApiAdminBackupRoute: typeof ApiAdminBackupRoute
+  ApiAdminBansRoute: typeof ApiAdminBansRoute
   ApiAdminCatalogAnimeRoute: typeof ApiAdminCatalogAnimeRoute
   ApiAdminCatalogEpisodeRoute: typeof ApiAdminCatalogEpisodeRoute
   ApiAdminCatalogImportRoute: typeof ApiAdminCatalogImportRoute
   ApiAdminCatalogSeasonRoute: typeof ApiAdminCatalogSeasonRoute
   ApiAdminCommentReportsRoute: typeof ApiAdminCommentReportsRoute
+  ApiAdminCommentsRoute: typeof ApiAdminCommentsRoute
   ApiAdminHealthRoute: typeof ApiAdminHealthRoute
   ApiAdminImagesRoute: typeof ApiAdminImagesRoute
   ApiAdminMaintenanceRoute: typeof ApiAdminMaintenanceRoute
@@ -1315,6 +1341,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminBackupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/bans': {
+      id: '/api/admin/bans'
+      path: '/api/admin/bans'
+      fullPath: '/api/admin/bans'
+      preLoaderRoute: typeof ApiAdminBansRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/catalog-anime': {
       id: '/api/admin/catalog-anime'
       path: '/api/admin/catalog-anime'
@@ -1348,6 +1381,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/comment-reports'
       fullPath: '/api/admin/comment-reports'
       preLoaderRoute: typeof ApiAdminCommentReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/comments': {
+      id: '/api/admin/comments'
+      path: '/api/admin/comments'
+      fullPath: '/api/admin/comments'
+      preLoaderRoute: typeof ApiAdminCommentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/health': {
@@ -1556,11 +1596,13 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileNickRoute: ProfileNickRoute,
   WatchIdRoute: WatchIdRoute,
   ApiAdminBackupRoute: ApiAdminBackupRoute,
+  ApiAdminBansRoute: ApiAdminBansRoute,
   ApiAdminCatalogAnimeRoute: ApiAdminCatalogAnimeRoute,
   ApiAdminCatalogEpisodeRoute: ApiAdminCatalogEpisodeRoute,
   ApiAdminCatalogImportRoute: ApiAdminCatalogImportRoute,
   ApiAdminCatalogSeasonRoute: ApiAdminCatalogSeasonRoute,
   ApiAdminCommentReportsRoute: ApiAdminCommentReportsRoute,
+  ApiAdminCommentsRoute: ApiAdminCommentsRoute,
   ApiAdminHealthRoute: ApiAdminHealthRoute,
   ApiAdminImagesRoute: ApiAdminImagesRoute,
   ApiAdminMaintenanceRoute: ApiAdminMaintenanceRoute,
