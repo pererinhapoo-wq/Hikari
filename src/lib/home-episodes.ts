@@ -1,0 +1,141 @@
+import { getSql } from "@/lib/db";
+import type { AnimeRecentBadges } from "@/lib/catalog-badges";
+
+export interface HomeEpisodeRow {
+  id: string;
+  animeId: string;
+  seasonNumber: number;
+  number: number;
+  title: string | null;
+  thumbnail: string | null;
+  duration: null;
+  synopsis: null;
+  videoUrl: string | null;
+  videoUrl2: null;
+  videoUrl3: null;
+  videoUrl4: null;
+  videoUrl5: null;
+  published: boolean;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  animeTitle: string | null;
+  animeTitleRomaji: string | null;
+  animeTitleEnglish: string | null;
+  animeTitleNative: string | null;
+  animeCover: string | null;
+  animeBanner: string | null;
+  animeStatus: string | null;
+  animeEpisodesCount: number | null;
+  animeCreatedAt: null;
+  animeUpdatedAt: null;
+  animeAnilistId?: number | null;
+  animeMalId?: number | null;
+  animeKitsuId?: number | null;
+  animeRecentBadges?: AnimeRecentBadges | null;
+  seasonTitle: string | null;
+}
+
+export interface HomeEpisodesResult {
+  status: "success" | "empty" | "error";
+  episodes: HomeEpisodeRow[];
+  total: number;
+  error?: string;
+}
+
+/**
+ * Consulta otimizada e exclusiva para a Home, projetando somente as colunas
+ * necessárias para a vitrine de episódios recentes e removendo campos inativos
+ * (videoUrl2-5, synopsis, duration, animeCreatedAt, animeUpdatedAt) para
+ * otimizar o payload de transferência entre Neon e Vercel e o JSON de hidratação SSR.
+ */
+export async function executeGetHomePublicEpisodes(options?: {
+  limit?: number;
+  offset?: number;
+}): Promise<HomeEpisodesResult> {
+  try {
+    const sql = await getSql();
+    const {
+      loadAllAnimeRecentBadgesFromDb,
+      findAnimeRecentBadgesInLookup,
+    } = await import("@/lib/catalog-badges");
+    const limit =
+      typeof options?.limit === "number" && options.limit > 0
+        ? options.limit
+        : 10000;
+    const offset =
+      typeof options?.offset === "number" && options.offset >= 0
+        ? options.offset
+        : 0;
+
+    const [rows, badgeLookup] = await Promise.all([
+      sql.query<HomeEpisodeRow>(
+        `SELECT
+           e."id",
+           e."animeId",
+           e."seasonNumber",
+           e."number",
+           e."title",
+           e."thumbnail",
+           NULL AS "duration",
+           NULL AS "synopsis",
+           e."videoUrl",
+           NULL AS "videoUrl2",
+           NULL AS "videoUrl3",
+           NULL AS "videoUrl4",
+           NULL AS "videoUrl5",
+           e."published",
+           e."publishedAt",
+           e."createdAt",
+           e."updatedAt",
+           COALESCE(NULLIF(a."title", ''), a."titleRomaji", a."titleEnglish", 'Anime') AS "animeTitle",
+           a."titleRomaji" AS "animeTitleRomaji",
+           a."titleEnglish" AS "animeTitleEnglish",
+           a."titleNative" AS "animeTitleNative",
+           a."cover" AS "animeCover",
+           a."banner" AS "animeBanner",
+           a."status" AS "animeStatus",
+           a."episodesCount" AS "animeEpisodesCount",
+           NULL AS "animeCreatedAt",
+           NULL AS "animeUpdatedAt",
+           a."anilistId" AS "animeAnilistId",
+           a."malId" AS "animeMalId",
+           a."kitsuId" AS "animeKitsuId",
+           s."title" AS "seasonTitle"
+         FROM "catalog_episode" e
+         LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
+         LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
+         WHERE e."published" = true
+         ORDER BY e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."seasonNumber" DESC, e."number" DESC
+         LIMIT $1 OFFSET $2;`,
+        [limit, offset],
+      ),
+      loadAllAnimeRecentBadgesFromDb(),
+    ]);
+
+    const episodes = (Array.isArray(rows) ? rows : []).map((row) => ({
+      ...row,
+      animeRecentBadges: findAnimeRecentBadgesInLookup(badgeLookup, {
+        id: row.animeId,
+        anilistId: row.animeAnilistId ?? null,
+        malId: row.animeMalId ?? null,
+        kitsuId: row.animeKitsuId ?? null,
+        allowExternalFallback: false,
+      }),
+    }));
+
+    return {
+      status: episodes.length > 0 ? "success" : "empty",
+      episodes,
+      total: episodes.length,
+    };
+  } catch (err: any) {
+    console.warn("[Hikari] Falha segura ao consultar episódios da Home no PostgreSQL:", err);
+    return {
+      status: "error",
+      episodes: [],
+      total: 0,
+      error: err?.message || String(err),
+    };
+  }
+}

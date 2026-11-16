@@ -21,10 +21,7 @@ import { AnimeRow } from "@/components/anime-row";
 import { TodayEpisodesSection } from "@/components/today-episodes-section";
 import { RecentEpisodesSection } from "@/components/recent-episodes-section";
 import { resolvePublicRecentEpisodes } from "@/lib/published-episodes";
-import {
-  executeGetPublicCatalogEpisodes,
-  getPublicCatalogEpisodes,
-} from "@/lib/catalog-episodes";
+import { executeGetHomePublicEpisodes } from "@/lib/home-episodes";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { SectionReveal } from "@/components/section-reveal";
 
@@ -58,7 +55,7 @@ export const Route = createFileRoute("/")({
     const [homeCatalog, publicEpisodesResult] = await Promise.all([
       fetchHomeCatalog(),
       (typeof window === "undefined"
-        ? executeGetPublicCatalogEpisodes()
+        ? executeGetHomePublicEpisodes()
         : getPublicCatalogEpisodes()
       ).catch((err) => ({
         status: "error" as const,
