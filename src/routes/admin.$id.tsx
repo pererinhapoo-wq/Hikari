@@ -21,7 +21,7 @@ import {
   type Season,
 } from "@/lib/types";
 import { useHikariStore } from "@/lib/store";
-import { youtubeIdFrom } from "@/lib/utils";
+import { youtubeIdFrom, cn } from "@/lib/utils";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { uploadVideoToB2 } from "@/lib/b2";
 import { getBearerToken } from "@/lib/auth/client";
