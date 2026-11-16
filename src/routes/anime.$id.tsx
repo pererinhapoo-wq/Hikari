@@ -93,6 +93,8 @@ import {
   fetchAnimeEpisodes,
   fetchAnimePictures,
   fetchAnimeSeasonNavigation,
+  fromCache,
+  toCache,
 } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -140,7 +142,6 @@ import {
 } from "@/lib/profile-tracking.functions";
 import type { AnimeUserInitialState } from "@/types/profile-tracking";
 import {
-  clearAnimeUserClientCache,
   getAnimeUserClientCache,
   saveAnimeUserClientCache,
 } from "@/lib/anime-user-client-cache";
@@ -195,6 +196,19 @@ const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 const clientHydrationState = { hydrated: false };
+
+function setCappedClientMap<K, V>(map: Map<K, V>, key: K, value: V, maxEntries = 50): void {
+  if (map.has(key)) {
+    map.delete(key);
+  } else if (map.size >= maxEntries) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey !== undefined) {
+      map.delete(oldestKey);
+    }
+  }
+  map.set(key, value);
+}
+
 const clientCreditsCache = new Map<
   string,
   {
@@ -204,9 +218,15 @@ const clientCreditsCache = new Map<
   }
 >();
 const clientCreditsInFlight = new Set<string>();
+const clientEpisodesCache = new Map<string, Episode[]>();
 const clientEpisodesInFlight = new Set<string>();
 const clientPicturesCache = new Map<number, string[]>();
 const clientPicturesInFlight = new Set<number>();
+const clientSeasonNavCache = new Map<
+  string,
+  Array<{ id: string; label?: string; title?: string }>
+>();
+const clientSeasonNavInFlight = new Set<string>();
 
 function buildSeasonBannerInputFromAnime(
   animeId: string,
@@ -307,9 +327,22 @@ export const Route = createFileRoute("/anime/$id")({
       return { remote: null, initialUserStatus: null };
     }
 
-    const remote = await fetchAnimeDetail({
-      data: { id: params.id },
-    });
+    const detailKey = `detail:v7:${params.id}`;
+    let remote: Anime | null = fromCache<Anime | null>(detailKey, () =>
+      fetchAnimeDetail({ data: { id: params.id } }),
+    );
+
+    if (!remote) {
+      remote = await fetchAnimeDetail({
+        data: { id: params.id },
+      });
+      if (remote) {
+        toCache(detailKey, remote);
+        if (remote.id && remote.id !== params.id) {
+          toCache(`detail:v7:${remote.id}`, remote);
+        }
+      }
+    }
 
     if (typeof window !== "undefined") {
       void import("@/lib/anime-banner-warmup").then((m) =>
@@ -342,16 +375,32 @@ export const Route = createFileRoute("/anime/$id")({
       : [];
 
     let initialUserStatus: AnimeUserInitialState | null = null;
-    try {
-      initialUserStatus = await fetchAnimeUserInitialState({
-        data: {
-          animeId: remote?.id || params.id,
-          candidateIds,
-          titles,
-        },
-      });
-    } catch {
-      initialUserStatus = null;
+    const fetchUserPromise = fetchAnimeUserInitialState({
+      data: {
+        animeId: remote?.id || params.id,
+        candidateIds,
+        titles,
+      },
+    }).catch(() => null);
+
+    if (typeof window !== "undefined") {
+      const localCachedUser = getAnimeUserClientCache(candidateIds);
+      if (localCachedUser) {
+        // Se já temos cache local recente do usuário (LRU), resolve imediatamente sem travar
+        initialUserStatus = await Promise.race([
+          fetchUserPromise,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 80)),
+        ]);
+      } else {
+        // Primeira navegação na sessão: aguarda até 250ms antes de liberar a rota para renderização
+        initialUserStatus = await Promise.race([
+          fetchUserPromise,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
+        ]);
+      }
+    } else {
+      // No SSR aguarda completamente para garantir consistência no HTML
+      initialUserStatus = await fetchUserPromise;
     }
 
     return { remote, initialUserStatus };
@@ -671,6 +720,9 @@ function AnimePageContent({
   remote: Anime | null;
   initialUserStatus?: AnimeUserInitialState | null;
 }) {
+  const activeAnimeIdRef = useRef(id);
+  activeAnimeIdRef.current = id;
+
   const remote = useMemo(() => {
     if (!rawRemote) return null;
     if (
@@ -1052,9 +1104,8 @@ function AnimePageContent({
       },
     })
       .then((res) => {
-        clientCreditsInFlight.delete(animeId);
         if (!res) {
-          clientCreditsCache.set(animeId, {
+          setCappedClientMap(clientCreditsCache, animeId, {
             studios: [],
             characters: [],
             staff: [],
@@ -1062,13 +1113,13 @@ function AnimePageContent({
           return;
         }
 
-        clientCreditsCache.set(animeId, {
+        setCappedClientMap(clientCreditsCache, animeId, {
           studios: res.studios,
           characters: res.characters,
           staff: res.staff,
         });
 
-        if (cancelled) return;
+        if (cancelled || activeAnimeIdRef.current !== id) return;
         if (
           res.characters.length > 0 ||
           res.staff.length > 0 ||
@@ -1085,16 +1136,18 @@ function AnimePageContent({
         }
       })
       .catch(() => {
-        clientCreditsInFlight.delete(animeId);
         // Silencioso: preserva o que já estiver disponível na página
+      })
+      .finally(() => {
+        clientCreditsInFlight.delete(animeId);
       });
 
     return () => {
       cancelled = true;
-      clientCreditsInFlight.delete(animeId);
     };
   }, [
     shouldLoadCredits,
+    id,
     animeId,
     animeAnilistId,
     animeMalId,
@@ -2192,27 +2245,40 @@ function AnimePageContent({
   const [extraSeasonNavigation, setExtraSeasonNavigation] = useState<{
     forId: string;
     items: Array<{ id: string; label?: string; title?: string }>;
-  } | null>(null);
-
-  const requestedSeasonNavRef = useRef<Set<string>>(new Set());
+  } | null>(() => {
+    if (!id) return null;
+    const cached = clientSeasonNavCache.get(id);
+    return cached ? { forId: id, items: cached } : null;
+  });
 
   useEffect(() => {
     if (!id || id.startsWith("local-") || id.startsWith("kitsu-")) {
       return;
     }
 
-    if (requestedSeasonNavRef.current.has(id)) {
+    if (clientSeasonNavCache.has(id)) {
+      const cached = clientSeasonNavCache.get(id)!;
+      if (extraSeasonNavigation?.forId !== id) {
+        setExtraSeasonNavigation({ forId: id, items: cached });
+      }
+      return;
+    }
+
+    if (clientSeasonNavInFlight.has(id)) {
       return;
     }
 
     let cancelled = false;
-    requestedSeasonNavRef.current.add(id);
+    clientSeasonNavInFlight.add(id);
 
     fetchAnimeSeasonNavigation({
       data: { id },
     })
       .then((res) => {
-        if (cancelled || !res?.items || res.items.length === 0) return;
+        if (!res?.items || res.items.length === 0) return;
+        setCappedClientMap(clientSeasonNavCache, id, res.items);
+
+        if (cancelled || activeAnimeIdRef.current !== id) return;
 
         const areSame =
           initialSeasonNavigation.length === res.items.length &&
@@ -2231,12 +2297,15 @@ function AnimePageContent({
       })
       .catch(() => {
         // Silencioso: mantém a página funcionando com os dados iniciais
+      })
+      .finally(() => {
+        clientSeasonNavInFlight.delete(id);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [id, initialSeasonNavigation]);
+  }, [id, initialSeasonNavigation, extraSeasonNavigation?.forId]);
 
   const seasonNavigation = useMemo(() => {
     if (
@@ -2261,7 +2330,12 @@ function AnimePageContent({
   const [extraEpisodes, setExtraEpisodes] = useState<{
     forId: string;
     episodes: Episode[];
-  } | null>(null);
+  } | null>(() => {
+    const targetId = animeId || id;
+    if (!targetId) return null;
+    const cached = clientEpisodesCache.get(targetId);
+    return cached ? { forId: targetId, episodes: cached } : null;
+  });
 
   const effectiveEpisodes = useMemo(() => {
     if (
@@ -2310,6 +2384,14 @@ function AnimePageContent({
     );
     if (!hasGenericTitles) return;
 
+    if (clientEpisodesCache.has(animeId)) {
+      const cached = clientEpisodesCache.get(animeId)!;
+      if (extraEpisodes?.forId !== animeId) {
+        setExtraEpisodes({ forId: animeId, episodes: cached });
+      }
+      return;
+    }
+
     if (clientEpisodesInFlight.has(animeId)) return;
     clientEpisodesInFlight.add(animeId);
 
@@ -2322,8 +2404,7 @@ function AnimePageContent({
       },
     })
       .then((seasonsRes) => {
-        clientEpisodesInFlight.delete(animeId);
-        if (cancelled || !seasonsRes?.[0]?.episodes?.length) return;
+        if (!seasonsRes?.[0]?.episodes?.length) return;
         const jikanEps = seasonsRes[0].episodes;
         const titleMap = new Map<number, { title: string; aired?: string }>();
         for (const ep of jikanEps) {
@@ -2333,32 +2414,49 @@ function AnimePageContent({
         }
         if (titleMap.size === 0) return;
 
+        const enrichedEpisodes = baseEpisodes.map((ep) => {
+          const jikan = titleMap.get(ep.number);
+          return jikan
+            ? {
+                ...ep,
+                title: jikan.title,
+                aired: jikan.aired ?? ep.aired,
+              }
+            : ep;
+        });
+
+        setCappedClientMap(clientEpisodesCache, animeId, enrichedEpisodes);
+        if (id && id !== animeId) {
+          setCappedClientMap(clientEpisodesCache, id, enrichedEpisodes);
+        }
+
+        if (cancelled || activeAnimeIdRef.current !== id) return;
+
         startTransition(() => {
           setExtraEpisodes({
             forId: animeId,
-            episodes: baseEpisodes.map((ep) => {
-              const jikan = titleMap.get(ep.number);
-              return jikan
-                ? {
-                    ...ep,
-                    title: jikan.title,
-                    aired: jikan.aired ?? ep.aired,
-                  }
-                : ep;
-            }),
+            episodes: enrichedEpisodes,
           });
         });
       })
       .catch(() => {
-        clientEpisodesInFlight.delete(animeId);
         // Silencioso: mantém os episódios numerados já funcionais
+      })
+      .finally(() => {
+        clientEpisodesInFlight.delete(animeId);
       });
 
     return () => {
       cancelled = true;
-      clientEpisodesInFlight.delete(animeId);
     };
-  }, [animeId, animeMalId, anime, currentEpisodes]);
+  }, [
+    animeId,
+    animeMalId,
+    anime?.streamingEpisodes,
+    currentEpisodes,
+    extraEpisodes?.forId,
+    id,
+  ]);
 
   const allEpisodes = useMemo(
     () =>
@@ -4408,7 +4506,7 @@ const ImagensSection = memo(function ImagensSection({
     fetchAnimePictures({ data: { malId } })
       .then((pics) => {
         if (isMounted && Array.isArray(pics) && pics.length > 0) {
-          clientPicturesCache.set(malId, pics);
+          setCappedClientMap(clientPicturesCache, malId, pics);
           startTransition(() => {
             setExtraPictures(pics);
           });
@@ -4423,7 +4521,6 @@ const ImagensSection = memo(function ImagensSection({
 
     return () => {
       isMounted = false;
-      clientPicturesInFlight.delete(malId);
     };
   }, [malId, images]);
 
