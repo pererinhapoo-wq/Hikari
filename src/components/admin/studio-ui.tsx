@@ -68,7 +68,7 @@ export function StudioPageHeader({
           <span className="studio-kicker">{kicker}</span>
           {status && (
             <>
-              <span className="text-slate-300" aria-hidden="true">
+              <span className="text-zinc-600" aria-hidden="true">
                 ·
               </span>
               <div className="text-xs">{status}</div>
@@ -76,12 +76,12 @@ export function StudioPageHeader({
           )}
         </div>
 
-        <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+        <h1 className="font-display text-2xl font-bold tracking-tight text-zinc-100 sm:text-3xl">
           {title}
         </h1>
 
         {description && (
-          <p className="max-w-2xl text-xs leading-relaxed text-slate-600 sm:text-sm">
+          <p className="max-w-2xl text-xs leading-relaxed text-zinc-400 sm:text-sm">
             {description}
           </p>
         )}
@@ -105,7 +105,7 @@ export interface StudioStatItem {
 }
 
 /**
- * Faixa de métricas unificada com divisórias hairline em superfície clara.
+ * Faixa de métricas unificada com divisórias hairline em superfície escura.
  */
 export function StudioStatStrip({
   items,
@@ -126,7 +126,7 @@ export function StudioStatStrip({
   return (
     <div
       className={cn(
-        "studio-panel grid overflow-hidden rounded-xl divide-y divide-slate-200 sm:divide-x sm:divide-y-0",
+        "studio-panel grid overflow-hidden rounded-xl divide-y divide-white/[0.08] sm:divide-x sm:divide-y-0",
         gridCols,
         className,
       )}
@@ -134,14 +134,14 @@ export function StudioStatStrip({
       {items.map((item) => {
         const accentClass =
           item.accent === "cobalt" || item.accent === "violet"
-            ? "text-blue-700"
+            ? "text-purple-400"
             : item.accent === "emerald"
-              ? "text-emerald-700"
+              ? "text-emerald-400"
               : item.accent === "amber"
-                ? "text-amber-700"
+                ? "text-amber-400"
                 : item.accent === "rose"
-                  ? "text-rose-700"
-                  : "text-slate-900";
+                  ? "text-rose-400"
+                  : "text-zinc-100";
 
         const content = (
           <div className="flex h-full flex-col justify-between p-4 sm:p-5">
@@ -155,7 +155,7 @@ export function StudioStatStrip({
               {item.value}
             </div>
             {item.detail && (
-              <div className="studio-tabular mt-1.5 text-xs text-slate-500">
+              <div className="studio-tabular mt-1.5 text-xs text-zinc-400">
                 {item.detail}
               </div>
             )}
@@ -167,7 +167,7 @@ export function StudioStatStrip({
             <Link
               key={item.label}
               to={item.href}
-              className="block transition-colors hover:bg-slate-50"
+              className="block transition-colors hover:bg-white/[0.04]"
             >
               {content}
             </Link>
@@ -191,7 +191,7 @@ interface StudioPanelProps {
 }
 
 /**
- * Painel estrutural único (single-elevation) com cabeçalho hairline em superfície branca.
+ * Painel estrutural único (single-elevation) com cabeçalho hairline em superfície escura.
  */
 export function StudioPanel({
   title,
@@ -205,21 +205,21 @@ export function StudioPanel({
   return (
     <section className={cn("studio-panel rounded-xl", className)}>
       {(title || right) && (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] px-5 py-4">
           <div className="flex min-w-0 items-center gap-3">
             {icon && (
-              <div className="grid size-8 shrink-0 place-items-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700">
+              <div className="grid size-8 shrink-0 place-items-center rounded-lg border border-purple-500/30 bg-purple-500/15 text-purple-300">
                 {icon}
               </div>
             )}
             <div className="min-w-0">
               {title && (
-                <h2 className="truncate font-display text-base font-semibold text-slate-900">
+                <h2 className="truncate font-display text-base font-semibold text-zinc-100">
                   {title}
                 </h2>
               )}
               {description && (
-                <p className="mt-0.5 truncate text-xs text-slate-500">
+                <p className="mt-0.5 truncate text-xs text-zinc-400">
                   {description}
                 </p>
               )}
@@ -240,8 +240,8 @@ export function StudioLoadingState({
 }) {
   return (
     <div className="studio-enter studio-panel flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-xl p-8 text-center">
-      <Loader2 className="size-7 animate-spin text-blue-600" />
-      <p className="studio-mono text-xs text-slate-500">{message}</p>
+      <Loader2 className="size-7 animate-spin text-purple-400" />
+      <p className="studio-mono text-xs text-zinc-400">{message}</p>
     </div>
   );
 }
@@ -259,13 +259,13 @@ export function StudioEmptyState({
 }) {
   return (
     <div className="studio-panel flex min-h-[240px] flex-col items-center justify-center rounded-xl p-8 text-center">
-      <div className="grid size-12 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500">
+      <div className="grid size-12 place-items-center rounded-xl border border-white/[0.08] bg-[#161226] text-zinc-400">
         {icon}
       </div>
-      <h3 className="mt-4 font-display text-base font-semibold text-slate-900">
+      <h3 className="mt-4 font-display text-base font-semibold text-zinc-100">
         {title}
       </h3>
-      <p className="mt-1.5 max-w-md text-xs leading-relaxed text-slate-500">
+      <p className="mt-1.5 max-w-md text-xs leading-relaxed text-zinc-400">
         {description}
       </p>
       {action && (
@@ -399,16 +399,16 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
         }
       }}
     >
-      <DialogContent className="hikari-studio-dialog max-h-[90dvh] overflow-y-auto border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-lg">
+      <DialogContent className="hikari-studio-dialog max-h-[90dvh] overflow-y-auto border border-white/[0.08] bg-[#12101e] text-zinc-100 shadow-2xl sm:max-w-lg">
         <div className="flex items-start gap-3">
-          <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600">
+          <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-rose-500/30 bg-rose-500/15 text-rose-400">
             <Ban className="size-5" />
           </div>
           <div className="min-w-0 pr-6">
-            <DialogTitle className="font-display text-lg font-bold text-slate-900">
+            <DialogTitle className="font-display text-lg font-bold text-zinc-100">
               Suspender Usuário Temporariamente
             </DialogTitle>
-            <DialogDescription className="mt-1 text-xs leading-relaxed text-slate-600">
+            <DialogDescription className="mt-1 text-xs leading-relaxed text-zinc-400">
               Bloqueia o envio de comentários, respostas, curtidas, denúncias e
               anexos até o fim do prazo definido.
             </DialogDescription>
@@ -417,9 +417,9 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
 
         {target && (
           <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs">
-              <p className="font-semibold text-slate-900">{target.userName}</p>
-              <p className="studio-mono mt-0.5 truncate text-[11px] text-slate-500">
+            <div className="rounded-lg border border-white/[0.08] bg-[#161226] px-3.5 py-2.5 text-xs">
+              <p className="font-semibold text-zinc-100">{target.userName}</p>
+              <p className="studio-mono mt-0.5 truncate text-[11px] text-zinc-400">
                 {target.userNick ? `@${target.userNick} · ` : ""}
                 {target.userEmail || target.userId}
               </p>
@@ -438,10 +438,10 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
                       type="button"
                       onClick={() => setPreset(opt.value)}
                       className={cn(
-                        "h-9 rounded-lg border px-2 text-xs font-semibold transition-colors",
+                        "h-9 rounded-lg border px-2 text-xs font-semibold transition-colors cursor-pointer",
                         selected
-                          ? "border-blue-600 bg-blue-600 text-white shadow-sm"
-                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50",
+                          ? "border-purple-600 bg-purple-600 text-white shadow-sm shadow-purple-600/30"
+                          : "border-white/[0.08] bg-[#161226] text-zinc-300 hover:border-purple-500/30 hover:bg-[#1f1a36]",
                       )}
                     >
                       {opt.shortLabel}
@@ -452,10 +452,10 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
                   type="button"
                   onClick={() => setPreset("custom")}
                   className={cn(
-                    "h-9 rounded-lg border px-2 text-xs font-semibold transition-colors",
+                    "h-9 rounded-lg border px-2 text-xs font-semibold transition-colors cursor-pointer",
                     preset === "custom"
-                      ? "border-blue-600 bg-blue-600 text-white shadow-sm"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50",
+                      ? "border-purple-600 bg-purple-600 text-white shadow-sm shadow-purple-600/30"
+                      : "border-white/[0.08] bg-[#161226] text-zinc-300 hover:border-purple-500/30 hover:bg-[#1f1a36]",
                   )}
                 >
                   Custom
@@ -463,9 +463,9 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
               </div>
 
               {preset === "custom" && (
-                <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-white/[0.08] bg-[#161226] p-3">
                   <div>
-                    <label className="mb-1 block text-[11px] font-medium text-slate-600">
+                    <label className="mb-1 block text-[11px] font-medium text-zinc-400">
                       Quantidade
                     </label>
                     <Input
@@ -478,7 +478,7 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[11px] font-medium text-slate-600">
+                    <label className="mb-1 block text-[11px] font-medium text-zinc-400">
                       Unidade
                     </label>
                     <select
@@ -486,7 +486,7 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
                       onChange={(e) =>
                         setCustomUnit(e.target.value as CustomDurationUnit)
                       }
-                      className="studio-input h-9 w-full rounded-md px-2.5 text-xs"
+                      className="studio-input h-9 w-full rounded-md px-2.5 text-xs bg-[#161226] text-zinc-100"
                     >
                       <option value="minutes">Minuto(s)</option>
                       <option value="hours">Hora(s)</option>
@@ -497,19 +497,19 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
               )}
 
               {durationValid ? (
-                <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                  <Clock className="size-3.5 text-blue-600" />
+                <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+                  <Clock className="size-3.5 text-purple-400" />
                   <span>
                     Duração:{" "}
-                    <strong className="text-slate-900">{previewLabel}</strong> ·
+                    <strong className="text-zinc-100">{previewLabel}</strong> ·
                     Expira em{" "}
-                    <strong className="studio-tabular text-slate-900">
+                    <strong className="studio-tabular text-zinc-100">
                       {previewExpires}
                     </strong>
                   </span>
                 </div>
               ) : (
-                <p className="text-[11px] font-medium text-rose-600">
+                <p className="text-[11px] font-medium text-rose-400">
                   {durationError}
                 </p>
               )}
@@ -531,19 +531,19 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
                 placeholder="Ex.: Spam repetitivo ou spoilers sem marcação nos comentários..."
                 className="studio-input min-h-20 resize-none text-xs leading-relaxed"
               />
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-zinc-400">
                 Este motivo ficará visível para o usuário bloqueado e no
                 histórico de moderação.
               </p>
             </div>
 
-            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+            <div className="flex flex-col-reverse gap-2 border-t border-white/[0.08] pt-4 sm:flex-row sm:justify-end">
               <Button
                 type="button"
                 variant="outline"
                 disabled={submitting}
                 onClick={onClose}
-                className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
+                className="h-9 border-white/[0.08] bg-[#161226] text-xs text-zinc-300 hover:bg-[#1f1a36]"
               >
                 Cancelar
               </Button>

@@ -824,19 +824,19 @@ function AdminIndex() {
     <div className="studio-enter space-y-7 pb-8">
       {/* Banners de Progresso e Reenvio em Lotes */}
       {isImporting && importProgress && (
-        <div className="studio-panel rounded-xl border-blue-200 bg-blue-50/60 p-4 text-sm">
+        <div className="studio-panel rounded-xl border-purple-500/30 bg-[#161226]/80 p-4 text-sm">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-semibold text-blue-800">
+            <span className="font-semibold text-purple-300">
               Sincronizando catálogo no PostgreSQL…
             </span>
-            <span className="studio-mono text-xs text-slate-600">
+            <span className="studio-mono text-xs text-zinc-400">
               Lote {importProgress.currentBatchIndex} de{" "}
               {importProgress.totalBatches}
             </span>
           </div>
-          <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+          <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-white/10">
             <div
-              className="h-full bg-blue-700 transition-all duration-300"
+              className="h-full bg-purple-600 transition-all duration-300"
               style={{
                 width: `${Math.round(
                   ((importProgress.completedBatches +
@@ -847,7 +847,7 @@ function AdminIndex() {
               }}
             />
           </div>
-          <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-slate-600">
+          <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-zinc-400">
             <span className="studio-tabular">
               {importProgress.processedAnimes} de {importProgress.totalAnimes}{" "}
               animes processados
@@ -860,12 +860,12 @@ function AdminIndex() {
       )}
 
       {failedBatches.length > 0 && !isImporting && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/15 p-4 text-sm text-amber-200">
           <div className="space-y-0.5">
-            <p className="font-semibold text-amber-900">
+            <p className="font-semibold text-amber-300">
               Importação parcialmente concluída
             </p>
-            <p className="text-xs text-amber-800">
+            <p className="text-xs text-amber-400">
               {failedBatches.length} lote(s) apresentaram erros e foram mantidos
               para reenvio seguro.
             </p>
@@ -902,7 +902,7 @@ function AdminIndex() {
                 setIsImporting(false);
               }
             }}
-            className="h-9 border-amber-300 bg-white text-xs font-semibold text-amber-900 hover:bg-amber-100"
+            className="h-9 border-amber-500/30 bg-[#161226] text-xs font-semibold text-amber-300 hover:bg-amber-500/20"
           >
             Reenviar lotes pendentes ({failedBatches.length})
           </Button>
@@ -918,7 +918,7 @@ function AdminIndex() {
           <span
             className={cn(
               "studio-mono inline-flex items-center gap-1.5 font-semibold",
-              systemStatus?.connected ? "text-emerald-700" : "text-amber-700",
+              systemStatus?.connected ? "text-emerald-400" : "text-amber-400",
             )}
           >
             {systemStatus?.connected
@@ -930,7 +930,7 @@ function AdminIndex() {
           <>
             <Button
               asChild
-              className="h-10 bg-blue-700 px-4 text-xs font-semibold text-white shadow-sm hover:bg-blue-800"
+              className="h-10 bg-purple-600 px-4 text-xs font-semibold text-white shadow-md shadow-purple-600/25 hover:bg-purple-700"
             >
               <Link to="/admin/$id" params={{ id: "new" }}>
                 <Plus className="size-4" />
@@ -942,15 +942,15 @@ function AdminIndex() {
               type="button"
               variant="outline"
               onClick={exportJson}
-              className="h-10 border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              className="h-10 border-white/[0.08] bg-[#161226] px-3 text-xs font-semibold text-zinc-300 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
               title="Exportar backup completo em arquivo JSON"
             >
-              <Download className="size-4 text-blue-700" />
+              <Download className="size-4 text-purple-400" />
               <span className="hidden sm:inline">Exportar</span>
             </Button>
 
-            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50">
-              <Upload className="size-4 text-blue-700" />
+            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-white/[0.08] bg-[#161226] px-3 text-xs font-semibold text-zinc-300 transition-colors hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white">
+              <Upload className="size-4 text-purple-400" />
               <span className="hidden sm:inline">Importar JSON</span>
               <input
                 type="file"
@@ -971,12 +971,12 @@ function AdminIndex() {
               className={cn(
                 "h-10 px-3.5 text-xs font-semibold transition-colors",
                 toolsOpen
-                  ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+                  ? "border-purple-500/30 bg-purple-500/15 text-purple-300"
+                  : "border-white/[0.08] bg-[#161226] text-zinc-300 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white",
               )}
               title="Abrir ferramentas de importação AniList e backup"
             >
-              <Sparkles className="size-4 text-blue-700" />
+              <Sparkles className="size-4 text-purple-400" />
               <span>AniList &amp; Ferramentas</span>
             </Button>
           </>
@@ -995,10 +995,10 @@ function AdminIndex() {
                 type="button"
                 onClick={() => setToolsTab("anilist")}
                 className={cn(
-                  "h-9 rounded-lg px-3 text-xs font-semibold transition-colors",
+                  "h-9 rounded-lg px-3 text-xs font-semibold transition-colors cursor-pointer",
                   toolsTab === "anilist"
-                    ? "border border-blue-200 bg-blue-50 text-blue-700"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                    ? "border border-purple-500/30 bg-purple-500/15 text-purple-300"
+                    : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100",
                 )}
               >
                 AniList
@@ -1007,10 +1007,10 @@ function AdminIndex() {
                 type="button"
                 onClick={() => setToolsTab("json")}
                 className={cn(
-                  "h-9 rounded-lg px-3 text-xs font-semibold transition-colors",
+                  "h-9 rounded-lg px-3 text-xs font-semibold transition-colors cursor-pointer",
                   toolsTab === "json"
-                    ? "border border-blue-200 bg-blue-50 text-blue-700"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                    ? "border border-purple-500/30 bg-purple-500/15 text-purple-300"
+                    : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100",
                 )}
               >
                 Backup &amp; JSON
@@ -1018,7 +1018,7 @@ function AdminIndex() {
               <button
                 type="button"
                 onClick={() => setToolsOpen(false)}
-                className="ml-1 flex size-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                className="ml-1 flex size-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/[0.08] hover:text-white cursor-pointer"
                 aria-label="Fechar ferramentas"
               >
                 <X className="size-4" />
@@ -1028,7 +1028,7 @@ function AdminIndex() {
         >
           {toolsTab === "anilist" ? (
             <div className="space-y-4">
-              <p className="text-xs leading-relaxed text-slate-600">
+              <p className="text-xs leading-relaxed text-zinc-400">
                 Pesquise na base pública do AniList para importar capa, banner,
                 sinopse, gêneros e identificadores externos.
               </p>
