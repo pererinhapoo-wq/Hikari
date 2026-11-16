@@ -11,11 +11,9 @@ export interface LogoProps {
 }
 
 /**
- * Identidade visual oficial HIKARI com Elizabeth (Gintama) em duas camadas independentes.
- * Camada traseira: Elizabeth segurando a placa ("エリザベス"), posicionada acima das letras.
- * Camada frontal: Logotipo HIKARI em destaque com tipografia estilizada e brilho violeta,
- * cobrindo parcialmente a parte inferior da personagem para criar profundidade e manter
- * a marca perfeitamente contida dentro do cabeçalho sem invadir o banner.
+ * Identidade visual oficial HIKARI com Elizabeth (Gintama) em duas camadas independentes,
+ * enriquecida com animação cinematográfica de abertura de anime (energia violeta pulsando,
+ * Elizabeth flutuando, reflexo de luz nas letras, pétalas de cerejeira e partículas mágicas).
  */
 export function Logo({
   className,
@@ -57,40 +55,53 @@ export function Logo({
   const content = (
     <div
       className={cn(
-        "relative inline-flex flex-col items-center justify-end select-none transition-transform duration-200 ease-out group-hover:scale-[1.02]",
+        "hikari-animated-logo-container relative inline-flex flex-col items-center justify-end select-none transition-transform duration-200 ease-out group-hover:scale-[1.03]",
         containerSizeClasses,
         className
       )}
       aria-label="HIKARI"
     >
-      {/* Camada Traseira: Elizabeth com a placa levantada (posicionada acima das letras com alinhamento simétrico) */}
-      <picture className="contents">
-        <source
-          type="image/webp"
-          srcSet="/assets/hikari-elizabeth-character-sm.webp 186w, /assets/hikari-elizabeth-character.webp 290w"
-          sizes={charSizesAttr}
-        />
-        <img
-          src="/assets/hikari-elizabeth-character.png"
-          alt=""
-          aria-hidden="true"
-          width={290}
-          height={140}
-          className={cn(
-            "absolute top-0 z-0 w-auto object-contain pointer-events-none -translate-x-[3.5%] drop-shadow-[0_2px_8px_rgba(0,0,0,0.65)]",
-            charSizeClasses
-          )}
-          loading={loading}
-          decoding="async"
-          fetchPriority={fetchPriority}
-          draggable={false}
-        />
-      </picture>
+      {/* Camada Traseira: Elizabeth com a placa levantada (flutuando suavemente) */}
+      <div className="hikari-elizabeth-animated absolute top-0 inset-x-0 flex justify-center pointer-events-none z-0">
+        <picture className="contents">
+          <source
+            type="image/webp"
+            srcSet="/assets/hikari-elizabeth-character-sm.webp 186w, /assets/hikari-elizabeth-character.webp 290w"
+            sizes={charSizesAttr}
+          />
+          <img
+            src="/assets/hikari-elizabeth-character.png"
+            alt=""
+            aria-hidden="true"
+            width={290}
+            height={140}
+            className={cn(
+              "w-auto object-contain -translate-x-[3.5%] drop-shadow-[0_2px_12px_rgba(168,85,247,0.4)]",
+              charSizeClasses
+            )}
+            loading={loading}
+            decoding="async"
+            fetchPriority={fetchPriority}
+            draggable={false}
+          />
+        </picture>
+      </div>
 
-      {/* Camada Frontal: HIKARI com tipografia estilizada e brilho violeta (com corte preciso do topo e do texto inferior 「ヒカリ」) */}
+      {/* Partículas Mágicas e Pétalas de Cerejeira em Camadas */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden z-20">
+        <span className="hikari-petal" style={{ top: "10%", left: "15%", animationDelay: "0ms", animationDuration: "3.5s" }} />
+        <span className="hikari-petal" style={{ top: "60%", left: "75%", animationDelay: "1200ms", animationDuration: "4.2s" }} />
+        <span className="hikari-petal" style={{ top: "30%", left: "50%", animationDelay: "2400ms", animationDuration: "3.8s" }} />
+        <span className="hikari-particle" style={{ top: "20%", left: "25%", animationDelay: "300ms" }} />
+        <span className="hikari-particle" style={{ top: "70%", left: "65%", animationDelay: "900ms" }} />
+        <span className="hikari-particle" style={{ top: "45%", left: "85%", animationDelay: "1500ms" }} />
+        <span className="hikari-particle" style={{ top: "15%", left: "70%", animationDelay: "2100ms" }} />
+      </div>
+
+      {/* Camada Frontal: HIKARI com tipografia estilizada, energia violeta pulsante e reflexo de luz */}
       <div
         className={cn(
-          "relative z-10 inline-flex items-center justify-center filter drop-shadow-[0_2px_14px_rgba(168,85,247,0.55)]",
+          "hikari-energy-aura relative z-10 inline-flex items-center justify-center overflow-hidden rounded filter drop-shadow-[0_2px_18px_rgba(168,85,247,0.7)]",
           wordmarkSizeClasses
         )}
       >
@@ -112,6 +123,8 @@ export function Logo({
             draggable={false}
           />
         </picture>
+        {/* Reflexo luminoso cinematográfico percorrendo as letras */}
+        <div className="hikari-glint-overlay" />
       </div>
     </div>
   );
@@ -136,4 +149,3 @@ export const HikariWordmark = Logo;
 export function HikariSymbol() {
   return null;
 }
-
