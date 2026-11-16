@@ -127,6 +127,10 @@ import {
   type Season,
   type SlimAnime,
 } from "@/lib/types";
+import {
+  invalidateAccountProfileCache,
+  invalidatePublicProfileCacheByUserId,
+} from "@/lib/profile-client-cache";
 import { cn, stripHtml, youtubeIdFrom } from "@/lib/utils";
 import {
   fetchAnimeUserInitialState,
@@ -1604,6 +1608,8 @@ function AnimePageContent({
               : params.personSnapshot?.biography?.includes("Dublador")
               ? "Dublador(a)"
               : "Pessoa";
+          invalidateAccountProfileCache(user.id);
+          invalidatePublicProfileCacheByUserId(user.id);
           notifyToast(
             "success",
             `${typeLabel} "${params.name}" adicionado aos favoritos!`,
@@ -1619,6 +1625,8 @@ function AnimePageContent({
                   : undefined,
             },
           });
+          invalidateAccountProfileCache(user.id);
+          invalidatePublicProfileCacheByUserId(user.id);
           notifyToast("info", `"${params.name}" removido dos favoritos.`);
         }
       } catch (err: unknown) {
@@ -1709,6 +1717,8 @@ function AnimePageContent({
       if (!inList) {
         toggleList(anime, user.id);
       }
+      invalidateAccountProfileCache(user.id);
+      invalidatePublicProfileCacheByUserId(user.id);
 
       notifyToast(
         "success",
@@ -1762,6 +1772,8 @@ function AnimePageContent({
       if (inList) {
         toggleList(anime, user.id);
       }
+      invalidateAccountProfileCache(user.id);
+      invalidatePublicProfileCacheByUserId(user.id);
 
       notifyToast("info", "Anime removido da sua coleção.");
     } catch (err: unknown) {
@@ -1807,6 +1819,8 @@ function AnimePageContent({
           isFavorite: true,
           favFavoriteId: created.id,
         });
+        invalidateAccountProfileCache(user.id);
+        invalidatePublicProfileCacheByUserId(user.id);
         notifyToast("success", "Adicionado aos seus favoritos!");
       } else {
         await removeProfileFavoriteFnRef.current({
@@ -1823,6 +1837,8 @@ function AnimePageContent({
           isFavorite: false,
           favFavoriteId: null,
         });
+        invalidateAccountProfileCache(user.id);
+        invalidatePublicProfileCacheByUserId(user.id);
         notifyToast("info", "Removido dos favoritos.");
       }
     } catch (err: unknown) {

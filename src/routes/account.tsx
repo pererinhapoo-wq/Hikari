@@ -4,33 +4,39 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 
 import { RedirectToSignIn } from "@/lib/auth/gates";
+import { authEnabled, getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
 import {
   getMyComments,
   getMyActivities,
-  getProfile,
+  getAccountProfileBundle,
   getProfileFollowers,
   getProfileFollowing,
   updateProfile,
   followUser,
+  type AccountProfileBundle,
   type MyProfileComment,
   type UserActivityItem,
   type ProfileUser,
   type UserProfile,
   type FollowRequestItem,
   getReceivedFollowRequests,
-  getReceivedFollowRequestsCount,
   acceptFollowRequest,
   rejectFollowRequest,
   removeFollower,
 } from "@/lib/profile.functions";
 
+import { removeProfileFavorite } from "@/lib/profile-favorites.functions";
 import {
-  getMyProfileFavorites,
-  removeProfileFavorite,
-} from "@/lib/profile-favorites.functions";
-import { getMyAnimeTracking } from "@/lib/profile-tracking.functions";
+  getCachedAccountProfileBundle,
+  getKnownViewerId,
+  invalidateAccountProfileCache,
+  invalidatePublicProfileCache,
+  setCachedAccountProfileBundle,
+  setCachedProfileMeta,
+  setKnownViewerId,
+} from "@/lib/profile-client-cache";
 
 import type {
   ProfileFavoriteItem,
@@ -263,6 +269,7 @@ function WorksViewSkeleton() {
 }
 
 interface AccountSearchParams {
+  tab?: "comments" | "activity" | "favorites";
   status?: TrackingStatus;
   edit?: string;
   studio?: string;
@@ -335,7 +342,13 @@ export const Route = createFileRoute("/account")({
         ? (raw.connections as "followers" | "following" | "requests")
         : undefined;
 
+    const tab =
+      raw.tab === "comments" || raw.tab === "activity" || raw.tab === "favorites"
+        ? (raw.tab as "comments" | "activity" | "favorites")
+        : undefined;
+
     return {
+      tab,
       status,
       edit,
       connections,
@@ -349,12 +362,38 @@ export const Route = createFileRoute("/account")({
       personId: staffId,
     };
   },
+  loaderDeps: () => ({}),
+  loader: async () => {
+    try {
+      if (typeof window !== "undefined") {
+        const cached = getCachedAccountProfileBundle(getKnownViewerId());
+        if (cached) {
+          return { bundle: cached };
+        }
+      }
+      const bundle = await getAccountProfileBundle();
+      if (typeof window !== "undefined") {
+        setCachedAccountProfileBundle(bundle);
+      }
+      return { bundle };
+    } catch {
+      return { bundle: null as AccountProfileBundle | null };
+    }
+  },
   component: AccountProfile,
 });
 
 const EMPTY_FAVORITES: string[] = [];
+const EMPTY_FAVORITES_GROUPED: ProfileFavoritesGrouped = {
+  anime: [],
+  character: [],
+  studio: [],
+  company: [],
+  person: [],
+};
 
 function AccountProfile() {
+  const loaderData = Route.useLoaderData();
   const navigate = Route.useNavigate();
   const search = Route.useSearch();
   const urlStatus =
@@ -405,65 +444,40 @@ function AccountProfile() {
       : undefined);
 
   const { user, isPending } = useCurrentUserState();
+  const [isClientReady, setIsClientReady] = useState(false);
+  useEffect(() => {
+    setIsClientReady(true);
+  }, []);
 
   // Server Functions
-  const getProfileFn = useServerFn(getProfile);
+  const getAccountProfileBundleFn = useServerFn(getAccountProfileBundle);
   const updateProfileFn = useServerFn(updateProfile);
   const followUserFn = useServerFn(followUser);
   const getFollowersFn = useServerFn(getProfileFollowers);
   const getFollowingFn = useServerFn(getProfileFollowing);
   const getRequestsFn = useServerFn(getReceivedFollowRequests);
-  const getRequestsCountFn = useServerFn(getReceivedFollowRequestsCount);
   const acceptRequestFn = useServerFn(acceptFollowRequest);
   const rejectRequestFn = useServerFn(rejectFollowRequest);
   const removeFollowerFn = useServerFn(removeFollower);
   const getCommentsFn = useServerFn(getMyComments);
-  const getTrackingFn = useServerFn(getMyAnimeTracking);
-  const getFavoritesFn = useServerFn(getMyProfileFavorites);
   const removeFavoriteFn = useServerFn(removeProfileFavorite);
   const getActivitiesFn = useServerFn(getMyActivities);
 
-  // Estabilização de referências de Server Functions com useRef + useCallback
-  // Evita que novas instâncias recriadas pelo hook useServerFn invalidem requisições em voo
-  const getProfileFnRef = useRef(getProfileFn);
-  getProfileFnRef.current = getProfileFn;
-  const stableGetProfile = useCallback(
-    (...args: Parameters<typeof getProfileFn>) => getProfileFnRef.current(...args),
+  const getAccountProfileBundleFnRef = useRef(getAccountProfileBundleFn);
+  getAccountProfileBundleFnRef.current = getAccountProfileBundleFn;
+  const stableGetAccountBundle = useCallback(
+    (...args: Parameters<typeof getAccountProfileBundleFn>) =>
+      getAccountProfileBundleFnRef.current(...args),
     [],
   );
 
   const getRequestsFnRef = useRef(getRequestsFn);
   getRequestsFnRef.current = getRequestsFn;
-  const stableGetRequests = useCallback(
-    (...args: Parameters<typeof getRequestsFn>) => getRequestsFnRef.current(...args),
-    [],
-  );
-
-  const getRequestsCountFnRef = useRef(getRequestsCountFn);
-  getRequestsCountFnRef.current = getRequestsCountFn;
-  const stableGetRequestsCount = useCallback(
-    (...args: Parameters<typeof getRequestsCountFn>) => getRequestsCountFnRef.current(...args),
-    [],
-  );
 
   const getFollowersFnRef = useRef(getFollowersFn);
   getFollowersFnRef.current = getFollowersFn;
   const getFollowingFnRef = useRef(getFollowingFn);
   getFollowingFnRef.current = getFollowingFn;
-
-  const getTrackingFnRef = useRef(getTrackingFn);
-  getTrackingFnRef.current = getTrackingFn;
-  const stableGetTracking = useCallback(
-    (...args: Parameters<typeof getTrackingFn>) => getTrackingFnRef.current(...args),
-    [],
-  );
-
-  const getFavoritesFnRef = useRef(getFavoritesFn);
-  getFavoritesFnRef.current = getFavoritesFn;
-  const stableGetFavorites = useCallback(
-    (...args: Parameters<typeof getFavoritesFn>) => getFavoritesFnRef.current(...args),
-    [],
-  );
 
   const getCommentsFnRef = useRef(getCommentsFn);
   getCommentsFnRef.current = getCommentsFn;
@@ -481,41 +495,50 @@ function AccountProfile() {
 
   // Contadores de sequência para controle de concorrência e descarte de respostas obsoletas
   const profileRequestIdRef = useRef(0);
-  const requestsRequestIdRef = useRef(0);
-  const trackingRequestIdRef = useRef(0);
-  const favoritesRequestIdRef = useRef(0);
   const commentsRequestIdRef = useRef(0);
   const activitiesRequestIdRef = useRef(0);
 
-  // Estados principais do perfil
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(true);
+  const initialBundle = loaderData?.bundle ?? null;
+
+  // Estados principais do perfil (pré-populados pelo loader agregado quando disponível)
+  const [profile, setProfile] = useState<UserProfile | null>(
+    () => initialBundle?.profile ?? null,
+  );
+  const [profileLoading, setProfileLoading] = useState<boolean>(() => !initialBundle);
 
   // Espaço ativo na navegação horizontal do perfil:
-  // "overview" (Visão geral) como espaço inicial obrigatório
-  const [activeSpace, setActiveSpace] = useState<ProfileSpace>("overview");
+  // "overview" (Visão geral) como espaço inicial padrão, respeitando ?tab=
+  const [activeSpace, setActiveSpace] = useState<ProfileSpace>(() => {
+    if (search.tab === "comments") return "comments";
+    if (search.tab === "activity") return "activity";
+    return "overview";
+  });
+
+  useEffect(() => {
+    if (search.tab === "comments") setActiveSpace("comments");
+    else if (search.tab === "activity") setActiveSpace("activity");
+    else if (search.tab === "favorites") setActiveSpace("overview");
+  }, [search.tab]);
 
   // Acompanhamento de Animes (Necessário para a visão geral e contadores)
-  const [trackingItems, setTrackingItems] = useState<UserAnimeTrackingItem[]>([]);
-  const [trackingLoading, setTrackingLoading] = useState(true);
-  const [trackingLoaded, setTrackingLoaded] = useState(false);
+  const [trackingItems, setTrackingItems] = useState<UserAnimeTrackingItem[]>(
+    () => initialBundle?.trackingItems ?? [],
+  );
+  const [trackingLoading, setTrackingLoading] = useState<boolean>(() => !initialBundle);
+  const [trackingLoaded, setTrackingLoaded] = useState<boolean>(() => Boolean(initialBundle));
   const [statusCounts, setStatusCounts] = useState<Record<"all" | TrackingStatus, number> | null>(null);
-  const trackingFetchingRef = useRef(false);
 
   // Favoritos Canônicos (Necessário para a visão geral)
-  const [favoritesGrouped, setFavoritesGrouped] = useState<ProfileFavoritesGrouped>({
-    anime: [],
-    character: [],
-    studio: [],
-    company: [],
-    person: [],
-  });
-  const [, setFavoritesItems] = useState<ProfileFavoriteItem[]>([]);
-  const [favoritesLoading, setFavoritesLoading] = useState(true);
-  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
-  const favoritesFetchingRef = useRef(false);
+  const [favoritesGrouped, setFavoritesGrouped] = useState<ProfileFavoritesGrouped>(
+    () => initialBundle?.favoritesGrouped ?? EMPTY_FAVORITES_GROUPED,
+  );
+  const [favoritesItems, setFavoritesItems] = useState<ProfileFavoriteItem[]>(
+    () => initialBundle?.favoritesItems ?? [],
+  );
+  const [favoritesLoading, setFavoritesLoading] = useState<boolean>(() => !initialBundle);
+  const [favoritesLoaded, setFavoritesLoaded] = useState<boolean>(() => Boolean(initialBundle));
 
-  // Feed de Atividades Unificado (Carregado sob demanda na aba "activity" ou Visão Geral)
+  // Feed de Atividades Unificado (Carregado progressivamente: preview na Visão Geral ou completo na aba)
   const [activityItems, setActivityItems] = useState<UserActivityItem[]>([]);
   const [activityTotal, setActivityTotal] = useState(0);
   const [activityPage, setActivityPage] = useState(1);
@@ -523,10 +546,10 @@ function AccountProfile() {
   const [activityHasMore, setActivityHasMore] = useState(false);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityLoadingMore, setActivityLoadingMore] = useState(false);
-  const [activityLoaded, setActivityLoaded] = useState(false);
+  const [activityLoadedMode, setActivityLoadedMode] = useState<"none" | "preview" | "full">("none");
   const activityFetchingRef = useRef(false);
 
-  // Comentários da Comunidade (Carregados sob demanda na aba "comments" ou Visão Geral)
+  // Comentários da Comunidade (Carregados progressivamente quando visíveis ou ao abrir a aba)
   const [comments, setComments] = useState<MyProfileComment[]>([]);
   const [commentsTotal, setCommentsTotal] = useState(0);
   const [commentsPage, setCommentsPage] = useState(1);
@@ -545,7 +568,9 @@ function AccountProfile() {
   const [followersList, setFollowersList] = useState<ProfileUser[]>([]);
   const [followingList, setFollowingList] = useState<ProfileUser[]>([]);
   const [requestsList, setRequestsList] = useState<FollowRequestItem[]>([]);
-  const [requestsCount, setRequestsCount] = useState<number>(0);
+  const [requestsCount, setRequestsCount] = useState<number>(
+    () => initialBundle?.requestsCount ?? 0,
+  );
   const [connectionsLoading, setConnectionsLoading] = useState(false);
   const [followersPage, setFollowersPage] = useState(1);
   const [followersHasMore, setFollowersHasMore] = useState(false);
@@ -708,55 +733,104 @@ function AccountProfile() {
     };
   }, [search.connections, handleOpenConnections]);
 
-  // Carregamento inicial do perfil
-  // Carregamento inicial paralelo e otimizado do perfil, contagem de solicitações, tracking e favoritos
-  useEffect(() => {
-    if (!user?.id) return;
-    const reqId = ++profileRequestIdRef.current;
+  const syncShellProfileMeta = useCallback((p: UserProfile) => {
+    if (typeof window === "undefined") return;
+    if (p.userId) {
+      setCachedProfileMeta(p.userId, {
+        image: p.image ?? null,
+        nick: p.nick ?? null,
+      });
+    }
+    window.dispatchEvent(
+      new CustomEvent("hikari:profile-updated", {
+        detail: {
+          image: p.image ?? null,
+          nick: p.nick,
+        },
+      }),
+    );
+  }, []);
 
+  const applyAccountBundle = useCallback(
+    (bundle: AccountProfileBundle) => {
+      setProfile(bundle.profile);
+      setRequestsCount(bundle.requestsCount);
+      setTrackingItems(bundle.trackingItems);
+      setTrackingLoaded(true);
+      setFavoritesGrouped(bundle.favoritesGrouped);
+      setFavoritesItems(bundle.favoritesItems);
+      setFavoritesLoaded(true);
+      setProfileLoading(false);
+      setTrackingLoading(false);
+      setFavoritesLoading(false);
+      syncShellProfileMeta(bundle.profile);
+    },
+    [syncShellProfileMeta],
+  );
+
+  // Carregamento agregado e reconciliação entre SSR, Preview Bearer Token e Cache
+  const bearerPresent = isClientReady && Boolean(getBearerToken());
+  const cachedInitialBundleRef = useRef<AccountProfileBundle | null>(null);
+  useEffect(() => {
+    if (!isClientReady) return;
+    if (!user?.id) {
+      // Caso o modo sem auth explícita ainda use Bearer ou fallback, só aguarda se sessão estiver pendente
+      if (!authEnabled && bearerPresent) return;
+      return;
+    }
+
+    setKnownViewerId(user.id);
+
+    // Se o loader já entregou os dados deste exato usuário, sincroniza o cache inicial uma única vez e não refaz chamada
+    if (profile?.userId === user.id && trackingLoaded && favoritesLoaded) {
+      if (initialBundle && initialBundle.profile.userId === user.id && cachedInitialBundleRef.current !== initialBundle) {
+        cachedInitialBundleRef.current = initialBundle;
+        setCachedAccountProfileBundle(initialBundle);
+      }
+      syncShellProfileMeta(profile);
+      return;
+    }
+
+    const cached = getCachedAccountProfileBundle(user.id);
+    if (cached && cached.profile.userId === user.id) {
+      applyAccountBundle(cached);
+      return;
+    }
+
+    const reqId = ++profileRequestIdRef.current;
     setProfileLoading(true);
     setTrackingLoading(true);
     setFavoritesLoading(true);
 
-    void Promise.allSettled([
-      stableGetProfile(),
-      stableGetRequestsCount(),
-      stableGetTracking({ data: { minimal: true } }),
-      stableGetFavorites({ data: {} }),
-    ]).then(([profileRes, requestsRes, trackingRes, favoritesRes]) => {
-      if (reqId !== profileRequestIdRef.current) return;
+    void stableGetAccountBundle()
+      .then((bundle) => {
+        if (reqId !== profileRequestIdRef.current) return;
+        setCachedAccountProfileBundle(bundle);
+        applyAccountBundle(bundle);
+      })
+      .catch((err) => {
+        if (reqId !== profileRequestIdRef.current) return;
+        console.warn("Erro ao carregar bundle da conta:", err);
+        setProfileLoading(false);
+        setTrackingLoading(false);
+        setFavoritesLoading(false);
+      });
+  }, [
+    isClientReady,
+    user?.id,
+    bearerPresent,
+    initialBundle,
+    profile,
+    trackingLoaded,
+    favoritesLoaded,
+    favoritesItems,
+    applyAccountBundle,
+    syncShellProfileMeta,
+    stableGetAccountBundle,
+  ]);
 
-      if (profileRes.status === "fulfilled") {
-        setProfile(profileRes.value);
-      }
-      setProfileLoading(false);
-
-      if (requestsRes.status === "fulfilled") {
-        setRequestsCount(requestsRes.value.count);
-      }
-      if (trackingRes.status === "fulfilled") {
-        setTrackingItems(trackingRes.value);
-        setTrackingLoaded(true);
-      }
-      setTrackingLoading(false);
-
-      if (favoritesRes.status === "fulfilled") {
-        setFavoritesGrouped(favoritesRes.value.grouped);
-        setFavoritesItems(favoritesRes.value.items);
-        setFavoritesLoaded(true);
-      }
-      setFavoritesLoading(false);
-    });
-  }, [user?.id, stableGetProfile, stableGetRequestsCount, stableGetTracking, stableGetFavorites]);
-
-  // Carregamento sob demanda para a aba de Comentários ou Visão Geral (Cache por aba e trava contra cliques rápidos)
-  useEffect(() => {
-    if (
-      !user?.id ||
-      (activeSpace !== "comments" && activeSpace !== "overview") ||
-      commentsLoaded ||
-      commentsFetchingRef.current
-    ) {
+  const loadCommentsFirstPage = useCallback(() => {
+    if (!user?.id || commentsLoaded || commentsFetchingRef.current) {
       return;
     }
 
@@ -785,45 +859,79 @@ function AccountProfile() {
           setCommentsLoading(false);
         }
       });
-  }, [user?.id, activeSpace, commentsLoaded, stableGetComments]);
+  }, [user?.id, commentsLoaded, stableGetComments]);
 
-  // Carregamento sob demanda para a aba de Atividades ou Visão Geral (Cache por aba e trava contra cliques rápidos)
+  const loadActivitiesFirstPage = useCallback(
+    (mode: "preview" | "full") => {
+      if (!user?.id || activityFetchingRef.current) {
+        return;
+      }
+      if (mode === "preview" && activityLoadedMode !== "none") {
+        return;
+      }
+      if (mode === "full" && activityLoadedMode === "full") {
+        return;
+      }
+
+      if (mode === "full" && activityLoadedMode === "preview" && !activityHasMore) {
+        setActivityLoadedMode("full");
+        setActivityTotal(activityItems.length);
+        setActivityTotalPages(1);
+        return;
+      }
+
+      const reqId = ++activitiesRequestIdRef.current;
+      activityFetchingRef.current = true;
+      setActivityLoading(true);
+
+      const isPreview = mode === "preview";
+      void stableGetActivities({
+        data: {
+          page: 1,
+          limit: isPreview ? 6 : 15,
+          preview: isPreview,
+        },
+      })
+        .then((res) => {
+          if (reqId !== activitiesRequestIdRef.current) return;
+          setActivityItems(res.items);
+          setActivityTotal(res.total);
+          setActivityPage(res.page);
+          setActivityTotalPages(res.totalPages);
+          setActivityHasMore(res.hasMore);
+          setActivityLoadedMode(isPreview ? "preview" : "full");
+        })
+        .catch((err) => {
+          if (reqId === activitiesRequestIdRef.current) {
+            console.warn("Erro ao buscar atividades:", err);
+          }
+        })
+        .finally(() => {
+          if (reqId === activitiesRequestIdRef.current) {
+            activityFetchingRef.current = false;
+            setActivityLoading(false);
+          }
+        });
+    },
+    [user?.id, activityLoadedMode, activityHasMore, activityItems.length, stableGetActivities],
+  );
+
+  // Carregamento sob demanda somente quando a aba correspondente é aberta
   useEffect(() => {
-    if (
-      !user?.id ||
-      (activeSpace !== "activity" && activeSpace !== "overview") ||
-      activityLoaded ||
-      activityFetchingRef.current
-    ) {
-      return;
+    if (!user?.id) return;
+    if (activeSpace === "comments") {
+      loadCommentsFirstPage();
+    } else if (activeSpace === "activity") {
+      loadActivitiesFirstPage("full");
     }
+  }, [user?.id, activeSpace, loadCommentsFirstPage, loadActivitiesFirstPage]);
 
-    const reqId = ++activitiesRequestIdRef.current;
-    activityFetchingRef.current = true;
-    setActivityLoading(true);
-
-    void stableGetActivities({ data: { page: 1, limit: 15 } })
-      .then((res) => {
-        if (reqId !== activitiesRequestIdRef.current) return;
-        setActivityItems(res.items);
-        setActivityTotal(res.total);
-        setActivityPage(res.page);
-        setActivityTotalPages(res.totalPages);
-        setActivityHasMore(res.hasMore);
-        setActivityLoaded(true);
-      })
-      .catch((err) => {
-        if (reqId === activitiesRequestIdRef.current) {
-          console.warn("Erro ao buscar atividades:", err);
-        }
-      })
-      .finally(() => {
-        if (reqId === activitiesRequestIdRef.current) {
-          activityFetchingRef.current = false;
-          setActivityLoading(false);
-        }
-      });
-  }, [user?.id, activeSpace, activityLoaded, stableGetActivities]);
+  // Carregamento progressivo disparado por IntersectionObserver quando "Atividades recentes" entra próximo da viewport
+  const handleRecentActivitiesNearVisible = useCallback(() => {
+    if (!user?.id) return;
+    loadActivitiesFirstPage("preview");
+    loadCommentsFirstPage();
+  }, [user?.id, loadActivitiesFirstPage, loadCommentsFirstPage]);
 
   // Carregamento contínuo (scroll infinito via IntersectionObserver) no feed de atividades
   const handleLoadMoreActivities = useCallback(async () => {
@@ -881,13 +989,18 @@ function AccountProfile() {
     }
   }, [commentsHasMore, commentsLoadingMore, commentsPage, stableGetComments]);
 
-  const handleCommentDeleted = useCallback((commentId: string) => {
-    setComments((prev) => prev.filter((c) => c.id !== commentId));
-    setCommentsTotal((prev) => Math.max(0, prev - 1));
-    setProfile((prev) =>
-      prev ? { ...prev, commentCount: Math.max(0, prev.commentCount - 1) } : prev,
-    );
-  }, []);
+  const handleCommentDeleted = useCallback(
+    (commentId: string) => {
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+      setCommentsTotal((prev) => Math.max(0, prev - 1));
+      setProfile((prev) =>
+        prev ? { ...prev, commentCount: Math.max(0, prev.commentCount - 1) } : prev,
+      );
+      invalidateAccountProfileCache(user?.id);
+      invalidatePublicProfileCache(profile?.nick);
+    },
+    [user?.id, profile?.nick],
+  );
 
   const handleCommentUpdated = useCallback(
     (commentId: string, newContent: string, isSpoiler: boolean) => {
@@ -921,8 +1034,10 @@ function AccountProfile() {
         }
         return inserted ? next : [updated, ...next];
       });
+      invalidateAccountProfileCache(user?.id);
+      invalidatePublicProfileCache(profile?.nick);
     },
-    [],
+    [user?.id, profile?.nick],
   );
 
   const handleRemoveFavorite = useCallback(
@@ -942,13 +1057,15 @@ function AccountProfile() {
           ),
         }));
         setFavoritesItems((prev) => prev.filter((f) => f.id !== item.id));
+        invalidateAccountProfileCache(user?.id);
+        invalidatePublicProfileCache(profile?.nick);
         toast.info(`"${item.title}" removido dos favoritos.`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Erro ao remover favorito.";
         toast.error(msg);
       }
     },
-    [removeFavoriteFn],
+    [removeFavoriteFn, user?.id, profile?.nick],
   );
 
   // Alternar aba dentro do modal de conexões
@@ -958,13 +1075,18 @@ function AccountProfile() {
     try {
       if (tab === "followers") {
         const data = await getFollowersFn();
-        setFollowersList(data);
+        const items = Array.isArray(data) ? data : (data?.items ?? []);
+        setFollowersList(items);
+        setFollowersHasMore(Array.isArray(data) ? false : Boolean(data?.hasMore));
       } else if (tab === "following") {
         const data = await getFollowingFn();
-        setFollowingList(data);
+        const items = Array.isArray(data) ? data : (data?.items ?? []);
+        setFollowingList(items);
+        setFollowingHasMore(Array.isArray(data) ? false : Boolean(data?.hasMore));
       } else {
         const data = await getRequestsFn();
         setRequestsList(data);
+        setRequestsCount(data.length);
       }
     } catch (err) {
       console.warn("Erro ao alternar aba de conexões:", err);
@@ -977,11 +1099,14 @@ function AccountProfile() {
     try {
       await acceptRequestFn({ data: { requesterId } });
       setRequestsList((prev) => prev.filter((r) => r.requesterId !== requesterId));
+      setRequestsCount((prev) => Math.max(0, prev - 1));
       setProfile((prev) =>
         prev ? { ...prev, followersCount: prev.followersCount + 1 } : prev,
       );
+      invalidateAccountProfileCache(user?.id);
+      invalidatePublicProfileCache(profile?.nick);
       const freshFollowers = await getFollowersFn();
-      setFollowersList(freshFollowers);
+      setFollowersList(Array.isArray(freshFollowers) ? freshFollowers : (freshFollowers?.items ?? []));
     } catch (err) {
       console.error("Erro ao aceitar solicitação:", err);
     }
@@ -991,6 +1116,8 @@ function AccountProfile() {
     try {
       await rejectRequestFn({ data: { requesterId } });
       setRequestsList((prev) => prev.filter((r) => r.requesterId !== requesterId));
+      setRequestsCount((prev) => Math.max(0, prev - 1));
+      invalidateAccountProfileCache(user?.id);
     } catch (err) {
       console.error("Erro ao recusar solicitação:", err);
     }
@@ -1017,6 +1144,7 @@ function AccountProfile() {
         setProfile((prev) =>
           prev ? { ...prev, followingCount: prev.followingCount + 1 } : prev,
         );
+        invalidateAccountProfileCache(user?.id);
         toast.success("Você agora está seguindo este usuário.");
       } else if (res.status === "requested") {
         setFollowersList((prev) =>
@@ -1054,6 +1182,8 @@ function AccountProfile() {
         setProfile((prev) =>
           prev ? { ...prev, followersCount: Math.max(0, prev.followersCount - 1) } : prev,
         );
+        invalidateAccountProfileCache(user?.id);
+        invalidatePublicProfileCache(profile?.nick);
       }
       toast.success("Seguidor removido.");
     } catch (err) {
@@ -1109,17 +1239,27 @@ function AccountProfile() {
       );
 
       if (typeof window !== "undefined") {
+        const nextImage = updated.image !== undefined ? updated.image : null;
+        if (user?.id) {
+          setCachedProfileMeta(user.id, {
+            image: nextImage,
+            nick: updated.nick,
+          });
+        }
+        invalidateAccountProfileCache(user?.id);
+        invalidatePublicProfileCache(profile?.nick);
+        invalidatePublicProfileCache(updated.nick);
         window.dispatchEvent(
           new CustomEvent("hikari:profile-updated", {
             detail: {
-              image: updated.image !== undefined ? updated.image : null,
+              image: nextImage,
               nick: updated.nick,
             },
           }),
         );
       }
     },
-    [updateProfileFn, user?.displayName, user?.primaryEmail, user?.profileImageUrl],
+    [updateProfileFn, user?.id, user?.displayName, user?.primaryEmail, user?.profileImageUrl, profile?.nick],
   );
 
   const handleRemoveBanner = useCallback(async () => {
@@ -1162,6 +1302,8 @@ function AccountProfile() {
     });
 
     setProfile((prev) => (prev ? { ...prev, ...updated } : null));
+    invalidateAccountProfileCache(user?.id);
+    invalidatePublicProfileCache(profile?.nick);
   };
 
   // Filtro selecionado na aba Animes (preservado entre trocas de abas)
@@ -1196,7 +1338,7 @@ function AccountProfile() {
     TAB_PREFETCHERS[space]?.();
   }, []);
 
-  if (isPending || (!statusParam && profileLoading && !profile)) {
+  if (isPending || !isClientReady) {
     return (
       <div className="w-full px-4 py-8 text-white">
         <div className="mx-auto max-w-6xl space-y-6">
@@ -1217,6 +1359,25 @@ function AccountProfile() {
 
   if (!user) {
     return <RedirectToSignIn to="/login" />;
+  }
+
+  if (!statusParam && profileLoading && !profile) {
+    return (
+      <div className="w-full px-4 py-8 text-white">
+        <div className="mx-auto max-w-6xl space-y-6">
+          <div className="h-64 animate-pulse rounded-3xl bg-white/[0.04]" />
+          <div className="h-14 animate-pulse rounded-2xl bg-white/[0.04]" />
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="aspect-[3/4] animate-pulse rounded-2xl bg-white/[0.04]"
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (studioParam) {
@@ -1339,10 +1500,18 @@ function AccountProfile() {
   const userNick = profile?.nick || "";
   const userBio = profile?.bio || "";
   const userImage = profile?.image || user.profileImageUrl || null;
+  const userFavoritesList = profile?.favorites ?? EMPTY_FAVORITES;
   const followersCount = profile?.followersCount ?? 0;
   const followingCount = profile?.followingCount ?? 0;
-  const commentCount = profile?.commentCount ?? commentsTotal;
-  const userFavoritesList = profile?.favorites ?? EMPTY_FAVORITES;
+  const effectiveCommentCount = commentsLoaded
+    ? commentsTotal
+    : (profile?.commentCount ?? commentsTotal);
+  const effectiveActivityCount =
+    activityLoadedMode === "full" || (activityLoadedMode === "preview" && !activityHasMore)
+      ? activityTotal
+      : 0;
+  const overviewRecentActivitiesLoaded =
+    activityLoadedMode !== "none" && commentsLoaded;
 
   return (
     <div className="w-full text-zinc-100 pt-1 sm:pt-3">
@@ -1358,8 +1527,8 @@ function AccountProfile() {
           isVerified={Boolean(profile?.isVerified)}
           followersCount={followersCount}
           followingCount={followingCount}
-          requestsCount={requestsList.length}
-          commentCount={commentCount}
+          requestsCount={requestsCount}
+          commentCount={effectiveCommentCount}
           totalTrackingCount={trackingItems.length}
           favorites={userFavoritesList}
           onOpenEdit={handleOpenEdit}
@@ -1377,8 +1546,8 @@ function AccountProfile() {
           onPrefetchSpace={handlePrefetchSpace}
           counts={{
             animes: trackingItems.length,
-            comments: commentsTotal || profile?.commentCount || 0,
-            activity: activityTotal,
+            comments: effectiveCommentCount,
+            activity: effectiveActivityCount,
           }}
         />
 
@@ -1394,6 +1563,9 @@ function AccountProfile() {
                 comments={comments}
                 trackingLoading={trackingLoading}
                 favoritesLoading={favoritesLoading}
+                activitiesLoading={activityLoading || commentsLoading}
+                activitiesLoaded={overviewRecentActivitiesLoaded}
+                onRecentActivitiesNearVisible={handleRecentActivitiesNearVisible}
                 onUpdateItem={handleUpdateTrackingItem}
                 onRemoveFavorite={handleRemoveFavorite}
               />

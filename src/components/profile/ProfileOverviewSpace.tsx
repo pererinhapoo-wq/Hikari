@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { ProfileAnimeStats } from "@/components/profile/ProfileAnimeStats";
 import { ProfileOverviewFavorites } from "@/components/profile/ProfileOverviewFavorites";
 import { ProfileRecentActivities } from "@/components/profile/ProfileRecentActivities";
@@ -13,6 +14,9 @@ interface ProfileOverviewSpaceProps {
   loading?: boolean;
   trackingLoading?: boolean;
   favoritesLoading?: boolean;
+  activitiesLoading?: boolean;
+  activitiesLoaded?: boolean;
+  onRecentActivitiesNearVisible?: () => void;
   onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
   onRemoveFavorite?: (item: ProfileFavoriteItem) => Promise<void> | void;
   profileNick?: string;
@@ -27,11 +31,66 @@ export function ProfileOverviewSpace({
   loading = false,
   trackingLoading = false,
   favoritesLoading = false,
+  activitiesLoading,
+  activitiesLoaded = true,
+  onRecentActivitiesNearVisible,
   onUpdateItem,
   onRemoveFavorite,
   profileNick,
   isOwner = true,
 }: ProfileOverviewSpaceProps) {
+  const recentActivitiesRef = useRef<HTMLDivElement | null>(null);
+  const onNearVisibleRef = useRef(onRecentActivitiesNearVisible);
+  onNearVisibleRef.current = onRecentActivitiesNearVisible;
+  const triggeredRef = useRef(false);
+
+  const aboveFoldReady = !loading && !trackingLoading && !favoritesLoading;
+
+  useEffect(() => {
+    if (activitiesLoaded) {
+      triggeredRef.current = true;
+      return;
+    }
+    triggeredRef.current = false;
+  }, [activitiesLoaded, profileNick]);
+
+  useEffect(() => {
+    if (!aboveFoldReady || activitiesLoaded || triggeredRef.current) return;
+    if (!onNearVisibleRef.current) return;
+
+    const fireOnce = () => {
+      if (triggeredRef.current) return;
+      triggeredRef.current = true;
+      onNearVisibleRef.current?.();
+    };
+
+    if (typeof IntersectionObserver === "undefined") {
+      const timer = window.setTimeout(fireOnce, 150);
+      return () => window.clearTimeout(timer);
+    }
+
+    const el = recentActivitiesRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          observer.disconnect();
+          fireOnce();
+        }
+      },
+      { rootMargin: "100px 0px" },
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [aboveFoldReady, activitiesLoaded]);
+
+  const showRecentActivitiesLoading =
+    activitiesLoading !== undefined
+      ? activitiesLoading || (!activitiesLoaded && Boolean(onRecentActivitiesNearVisible))
+      : loading;
+
   return (
     <div className="space-y-10 sm:space-y-12">
       {/* Seção A: Anime Stats */}
@@ -63,12 +122,15 @@ export function ProfileOverviewSpace({
         />
       )}
 
-      {/* Nova Seção Independente: Atividades recentes (exclusivamente no final da Visão Geral, abaixo da dobra) */}
-      <div className="[content-visibility:auto] [contain-intrinsic-size:auto_360px]">
+      {/* Seção Independente abaixo da dobra: Atividades recentes (carregamento progressivo) */}
+      <div
+        ref={recentActivitiesRef}
+        className="[content-visibility:auto] [contain-intrinsic-size:auto_360px]"
+      >
         <ProfileRecentActivities
           activityItems={activityItems}
           comments={comments}
-          loading={loading}
+          loading={showRecentActivitiesLoading}
         />
       </div>
     </div>

@@ -20,6 +20,10 @@ import { triggerProfileSaveNotification } from "@/components/profile/ProfileSave
 import { HikariImage } from "@/components/ui/hikari-image";
 import { useScrollLock } from "@/lib/scroll-lock";
 import {
+  invalidateAccountProfileCache,
+  invalidatePublicProfileCacheByUserId,
+} from "@/lib/profile-client-cache";
+import {
   getMyBlockedUsers,
   getProfile,
   unblockUser,
@@ -190,6 +194,8 @@ export function ProfilePrivacyModal({
     setBlockedError("");
     try {
       await unblockUserFn({ data: { targetUserId } });
+      invalidateAccountProfileCache(resolvedProfile?.userId);
+      invalidatePublicProfileCacheByUserId(targetUserId);
       setBlockedUsers((prev) => prev.filter((u) => u.id !== targetUserId));
       setUnblockSuccess(
         `Usuário ${targetName || "selecionado"} foi desbloqueado.`,

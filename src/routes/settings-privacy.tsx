@@ -22,6 +22,11 @@ import {
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import {
+  invalidateAccountProfileCache,
+  invalidatePublicProfileCache,
+  invalidatePublicProfileCacheByUserId,
+} from "@/lib/profile-client-cache";
+import {
   getMyBlockedUsers,
   getProfile,
   unblockUser,
@@ -140,6 +145,8 @@ export function SettingsPrivacy() {
     setErrorMsg(null);
     try {
       await unblockUserFn({ data: { targetUserId: unblockTarget.id } });
+      invalidateAccountProfileCache(user?.id);
+      invalidatePublicProfileCacheByUserId(unblockTarget.id);
       setBlockedUsers((prev) => prev.filter((u) => u.id !== unblockTarget.id));
       setUnblockSuccess(`Usuário ${unblockTarget.name || unblockTarget.username || "selecionado"} foi desbloqueado.`);
       setUnblockTarget(null);
@@ -194,6 +201,8 @@ export function SettingsPrivacy() {
       };
 
       setInitialState(nextState);
+      invalidateAccountProfileCache(user?.id);
+      invalidatePublicProfileCache(updated.nick);
       setSuccessMsg("Configurações de privacidade salvas com sucesso!");
       setTimeout(() => setSuccessMsg(null), 3500);
     } catch (err: unknown) {

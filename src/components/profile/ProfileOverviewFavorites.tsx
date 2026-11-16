@@ -129,11 +129,15 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
       ? s
       : undefined;
 
+  const narrowTab = (t: unknown) =>
+    t === "favorites" || t === "comments" || t === "activity" ? t : undefined;
+
   const handleDubladorClick = useCallback((item: ProfileFavoriteItem) => {
     void navigate({
       to: "/account",
       search: (prev) => ({
         ...prev,
+        tab: narrowTab(prev.tab),
         status: narrowStatus(prev.status),
         dublador: item.title,
         dubladorId: item.targetId,
@@ -152,6 +156,7 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
       to: "/account",
       search: (prev) => ({
         ...prev,
+        tab: narrowTab(prev.tab),
         status: narrowStatus(prev.status),
         studio: item.title,
         studioId: item.targetId,
@@ -170,6 +175,7 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
       to: "/account",
       search: (prev) => ({
         ...prev,
+        tab: narrowTab(prev.tab),
         status: narrowStatus(prev.status),
         staff: item.title,
         staffId: item.targetId,

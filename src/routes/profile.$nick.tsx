@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { authEnabled, getBearerToken } from "@/lib/auth/client";
 
 import {
   blockUser,
@@ -20,18 +21,26 @@ import {
   followUser,
   getPublicActivities,
   getPublicComments,
-  getPublicProfile,
+  getPublicProfileBundle,
   unblockUser,
   unfollowUser,
   getPublicProfileFollowers,
   getPublicProfileFollowing,
   setUserVerification,
+  type PublicProfileBundle,
   type PublicProfileComment,
+  type PublicUserProfile,
   type UserActivityItem,
   type ProfileUser,
 } from "@/lib/profile.functions";
-import { getPublicProfileFavorites } from "@/lib/profile-favorites.functions";
-import { getPublicAnimeTracking } from "@/lib/profile-tracking.functions";
+import {
+  getCachedPublicProfileBundle,
+  getKnownViewerId,
+  invalidateAccountProfileCache,
+  invalidatePublicProfileCache,
+  setCachedPublicProfileBundle,
+  setKnownViewerId,
+} from "@/lib/profile-client-cache";
 import type { ProfileFavoritesGrouped } from "@/types/favorite";
 import {
   STATUS_CONFIG,
@@ -296,26 +305,60 @@ export const Route = createFileRoute("/profile/$nick")({
               : undefined,
     };
   },
+  loaderDeps: () => ({}),
+  loader: async ({ params }) => {
+    try {
+      if (typeof window !== "undefined") {
+        const hasBearer = Boolean(getBearerToken());
+        const viewerKey = getKnownViewerId();
+        if (!hasBearer || viewerKey) {
+          const cached = getCachedPublicProfileBundle(viewerKey, params.nick);
+          if (cached) {
+            return { bundle: cached, errorMessage: null as string | null };
+          }
+        }
+      }
+      const bundle = await getPublicProfileBundle({
+        data: { nick: params.nick },
+      });
+      if (typeof window !== "undefined") {
+        if (bundle.viewerUserId) {
+          setKnownViewerId(bundle.viewerUserId);
+        }
+        setCachedPublicProfileBundle(bundle.viewerUserId, params.nick, bundle);
+      }
+      return { bundle, errorMessage: null as string | null };
+    } catch (err) {
+      return {
+        bundle: null as PublicProfileBundle | null,
+        errorMessage:
+          err instanceof Error ? err.message : "Erro ao carregar o perfil.",
+      };
+    }
+  },
   component: PublicProfile,
 });
 
 const EMPTY_FAVORITES: string[] = [];
-
-const profileMemoryCache = new Map<
-  string,
-  { profile: any; tracking: any; favorites: any; timestamp: number }
->();
-const CACHE_TTL_MS = 2 * 60 * 1000;
-
-function getProfileCacheKey(viewerId: string | null | undefined, nick: string): string {
-  return `${viewerId ?? "anon"}:${nick.trim().toLowerCase()}`;
-}
+const EMPTY_FAVORITES_GROUPED: ProfileFavoritesGrouped = {
+  anime: [],
+  character: [],
+  studio: [],
+  company: [],
+  person: [],
+};
 
 function PublicProfile() {
   const { nick } = Route.useParams();
+  const loaderData = Route.useLoaderData();
   const navigate = useNavigate();
   const search = Route.useSearch();
-  const { user: currentUser } = useCurrentUserState();
+  const { user: currentUser, isPending: authPending } = useCurrentUserState();
+
+  const [isClientReady, setIsClientReady] = useState(false);
+  useEffect(() => {
+    setIsClientReady(true);
+  }, []);
 
   const urlStatus =
     search.status ||
@@ -366,11 +409,9 @@ function PublicProfile() {
         undefined
       : undefined);
 
-  const getPublicProfileFn = useServerFn(getPublicProfile);
+  const getPublicProfileBundleFn = useServerFn(getPublicProfileBundle);
   const getPublicCommentsFn = useServerFn(getPublicComments);
   const getPublicActivitiesFn = useServerFn(getPublicActivities);
-  const getPublicFavoritesFn = useServerFn(getPublicProfileFavorites);
-  const getPublicAnimeTrackingFn = useServerFn(getPublicAnimeTracking);
   const getFollowersFn = useServerFn(getPublicProfileFollowers);
   const getFollowingFn = useServerFn(getPublicProfileFollowing);
 
@@ -381,61 +422,63 @@ function PublicProfile() {
   const unblockUserFn = useServerFn(unblockUser);
   const setUserVerificationFn = useServerFn(setUserVerification);
 
-  // Estabilização de referências de Server Functions com useRef + useCallback
-  const getPublicProfileFnRef = useRef(getPublicProfileFn);
-  getPublicProfileFnRef.current = getPublicProfileFn;
-  const stableGetPublicProfile = useCallback(
-    (...args: Parameters<typeof getPublicProfileFn>) => getPublicProfileFnRef.current(...args),
+  const getPublicProfileBundleFnRef = useRef(getPublicProfileBundleFn);
+  getPublicProfileBundleFnRef.current = getPublicProfileBundleFn;
+  const stableGetPublicProfileBundle = useCallback(
+    (...args: Parameters<typeof getPublicProfileBundleFn>) =>
+      getPublicProfileBundleFnRef.current(...args),
     [],
   );
 
-  const getPublicFavoritesFnRef = useRef(getPublicFavoritesFn);
-  getPublicFavoritesFnRef.current = getPublicFavoritesFn;
-  const stableGetPublicFavorites = useCallback(
-    (...args: Parameters<typeof getPublicFavoritesFn>) => getPublicFavoritesFnRef.current(...args),
+  const getPublicCommentsFnRef = useRef(getPublicCommentsFn);
+  getPublicCommentsFnRef.current = getPublicCommentsFn;
+  const stableGetPublicComments = useCallback(
+    (...args: Parameters<typeof getPublicCommentsFn>) =>
+      getPublicCommentsFnRef.current(...args),
     [],
   );
 
-  const getPublicAnimeTrackingFnRef = useRef(getPublicAnimeTrackingFn);
-  getPublicAnimeTrackingFnRef.current = getPublicAnimeTrackingFn;
-  const stableGetPublicAnimeTracking = useCallback(
-    (...args: Parameters<typeof getPublicAnimeTrackingFn>) => getPublicAnimeTrackingFnRef.current(...args),
+  const getPublicActivitiesFnRef = useRef(getPublicActivitiesFn);
+  getPublicActivitiesFnRef.current = getPublicActivitiesFn;
+  const stableGetPublicActivities = useCallback(
+    (...args: Parameters<typeof getPublicActivitiesFn>) =>
+      getPublicActivitiesFnRef.current(...args),
     [],
   );
 
-  const currentViewerId = currentUser?.id ?? "anon";
-  const prevViewerIdRef = useRef(currentViewerId);
-  useEffect(() => {
-    if (prevViewerIdRef.current !== currentViewerId) {
-      profileMemoryCache.clear();
-      prevViewerIdRef.current = currentViewerId;
-    }
-  }, [currentViewerId]);
+  const initialBundle = loaderData?.bundle ?? null;
 
-  const [profile, setProfile] = useState<
-    Awaited<ReturnType<typeof getPublicProfileFn>> | null
-  >(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [bundleViewerUserId, setBundleViewerUserId] = useState<string | null>(
+    () => initialBundle?.viewerUserId ?? null,
+  );
+  const [profile, setProfile] = useState<PublicUserProfile | null>(
+    () => initialBundle?.profile ?? null,
+  );
+  const [loading, setLoading] = useState<boolean>(
+    () => !initialBundle && !loaderData?.errorMessage,
+  );
+  const [error, setError] = useState<string>(() => loaderData?.errorMessage ?? "");
 
-  const [activeSpace, setActiveSpace] = useState<ProfileSpace>("overview");
+  const [activeSpace, setActiveSpace] = useState<ProfileSpace>(() => {
+    if (search.tab === "comments") return "comments";
+    if (search.tab === "activity") return "activity";
+    return "overview";
+  });
 
   // Acompanhamento de animes para o Anime Stats do perfil visitado
-  const [trackingItems, setTrackingItems] = useState<UserAnimeTrackingItem[]>([]);
+  const [trackingItems, setTrackingItems] = useState<UserAnimeTrackingItem[]>(
+    () => initialBundle?.trackingItems ?? [],
+  );
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [statusCounts, setStatusCounts] = useState<Record<"all" | TrackingStatus, number> | null>(null);
 
   // Favoritos agrupados (necessários para a Visão Geral)
-  const [favoritesGrouped, setFavoritesGrouped] = useState<ProfileFavoritesGrouped>({
-    anime: [],
-    character: [],
-    studio: [],
-    company: [],
-    person: [],
-  });
+  const [favoritesGrouped, setFavoritesGrouped] = useState<ProfileFavoritesGrouped>(
+    () => initialBundle?.favoritesGrouped ?? EMPTY_FAVORITES_GROUPED,
+  );
   const [favoritesLoading, setFavoritesLoading] = useState(false);
 
-  // Comentários (Carregados sob demanda na aba "comments")
+  // Comentários (Carregados progressivamente quando visíveis na visão geral ou ao abrir a aba)
   const [comments, setComments] = useState<PublicProfileComment[]>([]);
   const [commentsTotal, setCommentsTotal] = useState(0);
   const [commentsPage, setCommentsPage] = useState(1);
@@ -446,7 +489,7 @@ function PublicProfile() {
   const [commentsLoaded, setCommentsLoaded] = useState(false);
   const commentsFetchingRef = useRef(false);
 
-  // Atividades (Carregadas sob demanda na aba "activity")
+  // Atividades (Carregadas progressivamente: modo preview na Visão Geral, modo completo na aba)
   const [activities, setActivities] = useState<UserActivityItem[]>([]);
   const [activityTotal, setActivityTotal] = useState(0);
   const [activityPage, setActivityPage] = useState(1);
@@ -454,18 +497,18 @@ function PublicProfile() {
   const [activityHasMore, setActivityHasMore] = useState(false);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityLoadingMore, setActivityLoadingMore] = useState(false);
-  const [activityLoaded, setActivityLoaded] = useState(false);
+  const [activityLoadedMode, setActivityLoadedMode] = useState<"none" | "preview" | "full">("none");
   const activityFetchingRef = useRef(false);
 
   // Ações sociais
-  const [following, setFollowing] = useState(false);
-  const [followersCount, setFollowersCount] = useState(0);
+  const [following, setFollowing] = useState(() => Boolean(initialBundle?.profile.isFollowing));
+  const [followersCount, setFollowersCount] = useState(() => initialBundle?.profile.followersCount ?? 0);
   const [followLoading, setFollowLoading] = useState(false);
-  const [hasPendingRequest, setHasPendingRequest] = useState(false);
+  const [hasPendingRequest, setHasPendingRequest] = useState(() => Boolean(initialBundle?.profile.hasPendingRequest));
 
   // Bloqueio
-  const [isBlockedByMe, setIsBlockedByMe] = useState(false);
-  const [isBlockedByTarget, setIsBlockedByTarget] = useState(false);
+  const [isBlockedByMe, setIsBlockedByMe] = useState(() => Boolean(initialBundle?.profile.isBlockedByMe));
+  const [isBlockedByTarget, setIsBlockedByTarget] = useState(() => Boolean(initialBundle?.profile.isBlockedByTarget));
   const [blockLoading, setBlockLoading] = useState(false);
 
   // Modal de Conexões (Seguidores / Seguindo)
@@ -480,6 +523,52 @@ function PublicProfile() {
   const [followingHasMore, setFollowingHasMore] = useState(false);
   const [connectionsLoadingMore, setConnectionsLoadingMore] = useState(false);
 
+  const bundleRequestIdRef = useRef(0);
+  const lastAppliedKeyRef = useRef<string | null>(
+    initialBundle
+      ? `${initialBundle.viewerUserId ?? "anon"}:${nick.trim().toLowerCase()}`
+      : null,
+  );
+
+  const applyBundle = useCallback(
+    (bundle: PublicProfileBundle) => {
+      setBundleViewerUserId(bundle.viewerUserId);
+      setProfile(bundle.profile);
+      setFollowing(bundle.profile.isFollowing);
+      setHasPendingRequest(Boolean(bundle.profile.hasPendingRequest));
+      setFollowersCount(bundle.profile.followersCount);
+      setIsBlockedByMe(Boolean(bundle.profile.isBlockedByMe));
+      setIsBlockedByTarget(Boolean(bundle.profile.isBlockedByTarget));
+      setTrackingItems(bundle.trackingItems || []);
+      setFavoritesGrouped(bundle.favoritesGrouped || EMPTY_FAVORITES_GROUPED);
+      setError("");
+      setLoading(false);
+      setTrackingLoading(false);
+      setFavoritesLoading(false);
+    },
+    [],
+  );
+
+  const resetLazySections = useCallback(() => {
+    setComments([]);
+    setCommentsTotal(0);
+    setCommentsPage(1);
+    setCommentsTotalPages(1);
+    setCommentsHasMore(false);
+    setCommentsLoading(false);
+    setCommentsLoaded(false);
+    commentsFetchingRef.current = false;
+
+    setActivities([]);
+    setActivityTotal(0);
+    setActivityPage(1);
+    setActivityTotalPages(1);
+    setActivityHasMore(false);
+    setActivityLoading(false);
+    setActivityLoadedMode("none");
+    activityFetchingRef.current = false;
+  }, []);
+
   // Sincroniza aba inicial caso venha via URL search ?tab=
   useEffect(() => {
     if (search.tab === "comments") setActiveSpace("comments");
@@ -487,150 +576,103 @@ function PublicProfile() {
     else if (search.tab === "favorites") setActiveSpace("overview");
   }, [search.tab]);
 
-  // Carregamento inicial otimizado com cache em memória e requisições em paralelo
+  // Atualiza viewer conhecido para cache cliente isolado por sessão
   useEffect(() => {
-    let active = true;
-    const cacheKey = getProfileCacheKey(currentViewerId, nick);
+    if (!isClientReady || authPending) return;
+    setKnownViewerId(currentUser?.id ?? null);
+  }, [isClientReady, authPending, currentUser?.id]);
 
-    const cached = profileMemoryCache.get(cacheKey);
-    const now = Date.now();
-    if (cached && now - cached.timestamp < CACHE_TTL_MS) {
-      setProfile(cached.profile);
-      setFollowing(cached.profile.isFollowing);
-      setHasPendingRequest(Boolean(cached.profile.hasPendingRequest));
-      setFollowersCount(cached.profile.followersCount);
-      setIsBlockedByMe(Boolean(cached.profile.isBlockedByMe));
-      setIsBlockedByTarget(Boolean(cached.profile.isBlockedByTarget));
-      setTrackingItems(cached.tracking || []);
-      setFavoritesGrouped(
-        cached.favorites || {
-          anime: [],
-          character: [],
-          studio: [],
-          company: [],
-          person: [],
-        },
-      );
-      setLoading(false);
-      setTrackingLoading(false);
-      setFavoritesLoading(false);
+  // Detecta se o SSR anônimo divergiu da sessão autenticada no cliente (ex: Bearer Token no Preview)
+  const bearerPresent = isClientReady && Boolean(getBearerToken());
+  const needsAuthRevalidation = Boolean(
+    isClientReady &&
+      ((bearerPresent && bundleViewerUserId === null) ||
+        (authEnabled &&
+          !authPending &&
+          (currentUser?.id ?? null) !== (bundleViewerUserId ?? null))),
+  );
+
+  // Sincroniza troca de perfil (loaderData) ou revalidação de sessão no cliente sem duplicar chamadas
+  useEffect(() => {
+    if (!isClientReady) return;
+
+    const normalizedNick = nick.trim().replace(/^@+/, "").toLowerCase();
+    const targetKey = `${currentUser?.id ?? bundleViewerUserId ?? "anon"}:${normalizedNick}`;
+
+    // Se o loader acabou de trazer um bundle fresco compatível com a sessão atual, apenas aplica
+    if (
+      loaderData?.bundle &&
+      !needsAuthRevalidation &&
+      loaderData.bundle.profile.nick.trim().replace(/^@+/, "").toLowerCase() === normalizedNick &&
+      lastAppliedKeyRef.current !==
+        `${loaderData.bundle.viewerUserId ?? "anon"}:${normalizedNick}`
+    ) {
+      lastAppliedKeyRef.current = `${loaderData.bundle.viewerUserId ?? "anon"}:${normalizedNick}`;
+      setCachedPublicProfileBundle(loaderData.bundle.viewerUserId, nick, loaderData.bundle);
+      resetLazySections();
+      applyBundle(loaderData.bundle);
       return;
     }
 
+    // Se o loader já retornou erro definitivo compatível com a sessão atual, não refaz chamada redundante
+    if (loaderData?.errorMessage && !needsAuthRevalidation) {
+      if (lastAppliedKeyRef.current !== targetKey) {
+        lastAppliedKeyRef.current = targetKey;
+        resetLazySections();
+        setError(loaderData.errorMessage);
+        setProfile(null);
+        setLoading(false);
+        setTrackingLoading(false);
+        setFavoritesLoading(false);
+      }
+      return;
+    }
+
+    // Caso o perfil já esteja carregado e não haja mismatch de sessão ou mudança de nick, não refaz fetch
+    if (!needsAuthRevalidation && lastAppliedKeyRef.current === targetKey) {
+      return;
+    }
+
+    // Aguarda sessão pendente se já sabemos que há Bearer token sendo resolvido
+    if (authEnabled && authPending && bearerPresent) {
+      return;
+    }
+
+    const viewerCacheKey = currentUser?.id ?? null;
+    if (!needsAuthRevalidation || viewerCacheKey) {
+      const cached = getCachedPublicProfileBundle(viewerCacheKey, nick);
+      if (cached && (!bearerPresent || cached.viewerUserId !== null)) {
+        lastAppliedKeyRef.current = `${cached.viewerUserId ?? "anon"}:${normalizedNick}`;
+        resetLazySections();
+        applyBundle(cached);
+        return;
+      }
+    }
+
+    let active = true;
+    const reqId = ++bundleRequestIdRef.current;
     setLoading(true);
     setError("");
-    setTrackingItems([]);
-    setTrackingLoading(false);
     setStatusCounts(null);
-    setFavoritesGrouped({
-      anime: [],
-      character: [],
-      studio: [],
-      company: [],
-      person: [],
-    });
-    setFavoritesLoading(false);
-    setComments([]);
-    setCommentsTotal(0);
-    setCommentsLoaded(false);
-    setActivities([]);
-    setActivityTotal(0);
-    setActivityLoaded(false);
+    resetLazySections();
 
-    void stableGetPublicProfile({
-      data: {
-        nick,
-      },
+    void stableGetPublicProfileBundle({
+      data: { nick },
     })
-      .then(async (result) => {
-        if (!active) return;
-
-        if (result.isOwner) {
-          void navigate({
-            to: "/account",
-            search: statusParamRef.current
-              ? { status: statusParamRef.current }
-              : undefined,
-            replace: true,
-          });
-          return;
+      .then((bundle) => {
+        if (!active || reqId !== bundleRequestIdRef.current) return;
+        if (bundle.viewerUserId) {
+          setKnownViewerId(bundle.viewerUserId);
         }
-
-        setProfile(result);
-        setFollowing(result.isFollowing);
-        setHasPendingRequest(Boolean(result.hasPendingRequest));
-        setFollowersCount(result.followersCount);
-        setIsBlockedByMe(Boolean(result.isBlockedByMe));
-        setIsBlockedByTarget(Boolean(result.isBlockedByTarget));
-        setLoading(false);
-
-        const canAccessProfileContent =
-          result.canViewContent &&
-          !result.isBlockedByMe &&
-          !result.isBlockedByTarget;
-
-        let trackingResult: UserAnimeTrackingItem[] = [];
-        let favoritesResult = {
-          anime: [],
-          character: [],
-          studio: [],
-          company: [],
-          person: [],
-        };
-
-        if (canAccessProfileContent) {
-          setTrackingLoading(true);
-          if (result.canViewFavorites) setFavoritesLoading(true);
-
-          const [trackingRes, favRes] = await Promise.all([
-            stableGetPublicAnimeTracking({
-              data: { userId: result.userId, minimal: true },
-            }).catch(() => []),
-            result.canViewFavorites
-              ? stableGetPublicFavorites({ data: { userId: result.userId } }).catch(
-                  () => ({
-                    grouped: {
-                      anime: [],
-                      character: [],
-                      studio: [],
-                      company: [],
-                      person: [],
-                    },
-                  }),
-                )
-              : Promise.resolve({
-                  grouped: {
-                    anime: [],
-                    character: [],
-                    studio: [],
-                    company: [],
-                    person: [],
-                  },
-                }),
-          ]);
-
-          if (!active) return;
-          trackingResult = trackingRes;
-          favoritesResult = favRes.grouped;
-
-          setTrackingItems(trackingResult);
-          setTrackingLoading(false);
-          setFavoritesGrouped(favoritesResult);
-          setFavoritesLoading(false);
-        }
-
-        profileMemoryCache.set(cacheKey, {
-          profile: result,
-          tracking: trackingResult,
-          favorites: favoritesResult,
-          timestamp: Date.now(),
-        });
+        setCachedPublicProfileBundle(bundle.viewerUserId, nick, bundle);
+        lastAppliedKeyRef.current = `${bundle.viewerUserId ?? "anon"}:${normalizedNick}`;
+        applyBundle(bundle);
       })
       .catch((err) => {
-        if (!active) return;
-        setError(
-          err instanceof Error ? err.message : "Erro ao carregar o perfil.",
-        );
+        if (!active || reqId !== bundleRequestIdRef.current) return;
+        lastAppliedKeyRef.current = targetKey;
+        setError(err instanceof Error ? err.message : "Erro ao carregar o perfil.");
+        setProfile(null);
         setLoading(false);
         setTrackingLoading(false);
         setFavoritesLoading(false);
@@ -640,116 +682,159 @@ function PublicProfile() {
       active = false;
     };
   }, [
+    isClientReady,
     nick,
-    currentViewerId,
-    stableGetPublicProfile,
-    stableGetPublicFavorites,
-    stableGetPublicAnimeTracking,
-    navigate,
+    loaderData,
+    needsAuthRevalidation,
+    authPending,
+    bearerPresent,
+    currentUser?.id,
+    bundleViewerUserId,
+    applyBundle,
+    resetLazySections,
+    stableGetPublicProfileBundle,
   ]);
 
-  // Carregamento sob demanda para a aba de Comentários (Cache e trava contra cliques rápidos)
+  // Redirecionamento preservado para o próprio perfil (/profile/$nick -> /account)
   useEffect(() => {
-    if (
-      !profile?.userId ||
-      !profile.canViewComments ||
-      (activeSpace !== "comments" && activeSpace !== "overview") ||
-      commentsLoaded ||
-      commentsFetchingRef.current
-    ) {
-      return;
-    }
+    if (!isClientReady || !profile?.isOwner) return;
+    void navigate({
+      to: "/account",
+      search: statusParamRef.current ? { status: statusParamRef.current } : undefined,
+      replace: true,
+    });
+  }, [isClientReady, profile?.isOwner, navigate]);
 
-    let active = true;
-    commentsFetchingRef.current = true;
-    setCommentsLoading(true);
+  const loadCommentsFirstPage = useCallback(
+    (targetProfile: PublicUserProfile) => {
+      if (
+        !targetProfile.userId ||
+        !targetProfile.canViewComments ||
+        commentsLoaded ||
+        commentsFetchingRef.current
+      ) {
+        return;
+      }
 
-    void getPublicCommentsFn({
-      data: {
-        userId: profile.userId,
-        page: 1,
-        limit: 15,
-      },
-    })
-      .then((res) => {
-        if (!active) return;
-        setComments(res.items);
-        setCommentsTotal(res.total);
-        setCommentsPage(res.page);
-        setCommentsTotalPages(res.totalPages);
-        setCommentsHasMore(res.hasMore);
-        setCommentsLoaded(true);
+      commentsFetchingRef.current = true;
+      setCommentsLoading(true);
+      const targetUserId = targetProfile.userId;
+
+      void stableGetPublicComments({
+        data: {
+          userId: targetUserId,
+          page: 1,
+          limit: 15,
+        },
       })
-      .catch((err) => {
-        console.warn("Erro ao buscar comentários públicos:", err);
+        .then((res) => {
+          setComments(res.items);
+          setCommentsTotal(res.total);
+          setCommentsPage(res.page);
+          setCommentsTotalPages(res.totalPages);
+          setCommentsHasMore(res.hasMore);
+          setCommentsLoaded(true);
+        })
+        .catch((err) => {
+          console.warn("Erro ao buscar comentários públicos:", err);
+        })
+        .finally(() => {
+          commentsFetchingRef.current = false;
+          setCommentsLoading(false);
+        });
+    },
+    [commentsLoaded, stableGetPublicComments],
+  );
+
+  const loadActivitiesFirstPage = useCallback(
+    (targetProfile: PublicUserProfile, mode: "preview" | "full") => {
+      if (
+        !targetProfile.userId ||
+        !targetProfile.canViewHistory ||
+        activityFetchingRef.current
+      ) {
+        return;
+      }
+
+      if (mode === "preview" && activityLoadedMode !== "none") {
+        return;
+      }
+      if (mode === "full" && activityLoadedMode === "full") {
+        return;
+      }
+
+      // Se a prévia já carregou todos os registros (< 6), promove para completo sem chamada extra
+      if (mode === "full" && activityLoadedMode === "preview" && !activityHasMore) {
+        setActivityLoadedMode("full");
+        setActivityTotal(activities.length);
+        setActivityTotalPages(1);
+        return;
+      }
+
+      activityFetchingRef.current = true;
+      setActivityLoading(true);
+
+      const isPreview = mode === "preview";
+      void stableGetPublicActivities({
+        data: {
+          userId: targetProfile.userId,
+          page: 1,
+          limit: isPreview ? 6 : 15,
+          preview: isPreview,
+        },
       })
-      .finally(() => {
-        commentsFetchingRef.current = false;
-        if (active) setCommentsLoading(false);
-      });
+        .then((act) => {
+          setActivities(act.items);
+          setActivityTotal(act.total);
+          setActivityPage(act.page);
+          setActivityTotalPages(act.totalPages);
+          setActivityHasMore(act.hasMore);
+          setActivityLoadedMode(isPreview ? "preview" : "full");
+        })
+        .catch((err) => {
+          console.warn("Erro ao buscar atividades públicas:", err);
+        })
+        .finally(() => {
+          activityFetchingRef.current = false;
+          setActivityLoading(false);
+        });
+    },
+    [activityLoadedMode, activityHasMore, activities.length, stableGetPublicActivities],
+  );
 
-    return () => {
-      active = false;
-    };
-  }, [
-    profile?.userId,
-    profile?.canViewComments,
-    activeSpace,
-    commentsLoaded,
-    getPublicCommentsFn,
-  ]);
-
-  // Carregamento sob demanda para a aba de Atividades ou Visão Geral (Cache e trava contra cliques rápidos)
+  // Carregamento sob demanda somente ao abrir as abas "comments" ou "activity"
   useEffect(() => {
-    if (
-      !profile?.userId ||
-      !profile.canViewHistory ||
-      (activeSpace !== "activity" && activeSpace !== "overview") ||
-      activityLoaded ||
-      activityFetchingRef.current
-    ) {
-      return;
+    if (!profile || profile.isOwner || needsAuthRevalidation) return;
+    if (activeSpace === "comments") {
+      loadCommentsFirstPage(profile);
+    } else if (activeSpace === "activity") {
+      loadActivitiesFirstPage(profile, "full");
     }
-
-    let active = true;
-    activityFetchingRef.current = true;
-    setActivityLoading(true);
-
-    void getPublicActivitiesFn({
-      data: {
-        userId: profile.userId,
-        page: 1,
-        limit: 15,
-        preview: activeSpace === "overview",
-      },
-    })
-      .then((act) => {
-        if (!active) return;
-        setActivities(act.items);
-        setActivityTotal(act.total);
-        setActivityPage(act.page);
-        setActivityTotalPages(act.totalPages);
-        setActivityHasMore(act.hasMore);
-        setActivityLoaded(true);
-      })
-      .catch((err) => {
-        console.warn("Erro ao buscar atividades públicas:", err);
-      })
-      .finally(() => {
-        activityFetchingRef.current = false;
-        if (active) setActivityLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
   }, [
-    profile?.userId,
-    profile?.canViewHistory,
+    profile,
+    needsAuthRevalidation,
     activeSpace,
-    activityLoaded,
-    getPublicActivitiesFn,
+    loadCommentsFirstPage,
+    loadActivitiesFirstPage,
   ]);
+
+  // Carregamento progressivo disparado por IntersectionObserver na seção abaixo da dobra
+  const handleRecentActivitiesNearVisible = useCallback(() => {
+    if (!profile || profile.isOwner || needsAuthRevalidation) return;
+    if (profile.canViewHistory) {
+      loadActivitiesFirstPage(profile, "preview");
+    }
+    if (profile.canViewComments) {
+      loadCommentsFirstPage(profile);
+    }
+  }, [
+    profile,
+    needsAuthRevalidation,
+    loadActivitiesFirstPage,
+    loadCommentsFirstPage,
+  ]);
+
+  // Paginação e carregamento incremental de comentários/atividades preservados abaixo
 
   const handleFollowToggle = useCallback(async () => {
     if (!profile || followLoading) return;
@@ -760,13 +845,21 @@ function PublicProfile() {
         await unfollowUserFn({ data: { targetUserId: profile.userId } });
         setFollowing(false);
         setFollowersCount((prev) => Math.max(0, prev - 1));
+        invalidatePublicProfileCache(profile.nick);
+        invalidatePublicProfileCache(nick);
+        invalidateAccountProfileCache(currentUser?.id);
         toast.success(`Você deixou de seguir @${profile.nick}`);
       } else if (hasPendingRequest) {
         await cancelFollowRequestFn({ data: { targetUserId: profile.userId } });
         setHasPendingRequest(false);
+        invalidatePublicProfileCache(profile.nick);
+        invalidatePublicProfileCache(nick);
         toast.info("Solicitação para seguir cancelada.");
       } else {
         const res = await followUserFn({ data: { targetUserId: profile.userId } });
+        invalidatePublicProfileCache(profile.nick);
+        invalidatePublicProfileCache(nick);
+        invalidateAccountProfileCache(currentUser?.id);
         if (res.status === "requested") {
           setHasPendingRequest(true);
           toast.success("Solicitação enviada.");
@@ -784,6 +877,8 @@ function PublicProfile() {
     }
   }, [
     profile,
+    nick,
+    currentUser?.id,
     followLoading,
     following,
     hasPendingRequest,
@@ -800,11 +895,17 @@ function PublicProfile() {
       if (isBlockedByMe) {
         await unblockUserFn({ data: { targetUserId: profile.userId } });
         setIsBlockedByMe(false);
+        invalidatePublicProfileCache(profile.nick);
+        invalidatePublicProfileCache(nick);
+        invalidateAccountProfileCache(currentUser?.id);
         toast.success(`Usuário @${profile.nick} desbloqueado com sucesso.`);
       } else {
         await blockUserFn({ data: { targetUserId: profile.userId } });
         setIsBlockedByMe(true);
         setFollowing(false);
+        invalidatePublicProfileCache(profile.nick);
+        invalidatePublicProfileCache(nick);
+        invalidateAccountProfileCache(currentUser?.id);
         toast.success(`Usuário @${profile.nick} bloqueado.`);
       }
     } catch (err) {
@@ -813,7 +914,7 @@ function PublicProfile() {
     } finally {
       setBlockLoading(false);
     }
-  }, [profile, blockLoading, isBlockedByMe, unblockUserFn, blockUserFn]);
+  }, [profile, nick, currentUser?.id, blockLoading, isBlockedByMe, unblockUserFn, blockUserFn]);
 
   const handleToggleVerification = useCallback(async () => {
     if (!profile) return;
@@ -826,6 +927,9 @@ function PublicProfile() {
         },
       });
       setProfile((prev) => (prev ? { ...prev, isVerified: newVerified } : prev));
+      invalidatePublicProfileCache(profile.nick);
+      invalidatePublicProfileCache(nick);
+      invalidateAccountProfileCache(profile.userId);
       toast.success(
         newVerified
           ? `Selo de verificado concedido a @${profile.nick}.`
@@ -839,7 +943,7 @@ function PublicProfile() {
           : "Não foi possível alterar o selo de verificação.",
       );
     }
-  }, [profile, setUserVerificationFn]);
+  }, [profile, nick, setUserVerificationFn]);
 
   const handleFollowBack = async (targetUserId: string) => {
     try {
@@ -1187,26 +1291,40 @@ function PublicProfile() {
     setConnectionsLoading(true);
     try {
       if (tab === "followers") {
+        setFollowersPage(1);
         const data = await getFollowersFn({
           data: {
             userId: profile.userId,
+            page: 1,
+            limit: 20,
           },
         });
-        setFollowersList(data || []);
+        const items = Array.isArray(data) ? data : (data?.items ?? []);
+        const hasMore = Array.isArray(data) ? false : Boolean(data?.hasMore);
+        setFollowersList(items);
+        setFollowersHasMore(hasMore);
       } else if (tab === "following") {
+        setFollowingPage(1);
         const data = await getFollowingFn({
           data: {
             userId: profile.userId,
+            page: 1,
+            limit: 20,
           },
         });
-        setFollowingList(data || []);
+        const items = Array.isArray(data) ? data : (data?.items ?? []);
+        const hasMore = Array.isArray(data) ? false : Boolean(data?.hasMore);
+        setFollowingList(items);
+        setFollowingHasMore(hasMore);
       }
     } catch (err) {
       console.warn("Erro ao alternar conexões:", err);
       if (tab === "followers") {
         setFollowersList([]);
+        setFollowersHasMore(false);
       } else if (tab === "following") {
         setFollowingList([]);
+        setFollowingHasMore(false);
       }
     } finally {
       setConnectionsLoading(false);
@@ -1313,7 +1431,7 @@ function PublicProfile() {
     );
   }
 
-  if (loading) {
+  if (loading || needsAuthRevalidation || profile?.isOwner) {
     return (
       <div className="w-full px-4 py-8 text-white">
         <div className="mx-auto max-w-6xl space-y-6">
@@ -1415,16 +1533,24 @@ function PublicProfile() {
   const userImage = profile.image;
   const followingCount = profile.followingCount ?? 0;
   const userFavoritesList = (profile as { favorites?: string[] }).favorites ?? EMPTY_FAVORITES;
+  const effectiveCommentCount = commentsLoaded ? commentsTotal : profile.commentCount;
+  const effectiveActivityCount =
+    activityLoadedMode === "full" || (activityLoadedMode === "preview" && !activityHasMore)
+      ? activityTotal
+      : 0;
+  const overviewRecentActivitiesLoaded =
+    (!profile.canViewHistory || activityLoadedMode !== "none") &&
+    (!profile.canViewComments || commentsLoaded);
 
   // Espaços públicos baseados em permissões de privacidade
   const publicSpaces: ProfileSpaceItem[] = [
     { id: "overview", label: "Visão Geral" },
     ...(profile.canViewComments
-      ? [{ id: "comments" as const, label: "Comentários", count: commentsTotal }]
+      ? [{ id: "comments" as const, label: "Comentários", count: effectiveCommentCount }]
       : []),
     { id: "about", label: "Sobre" },
     ...(profile.canViewHistory
-      ? [{ id: "activity" as const, label: "Atividades", count: activityTotal }]
+      ? [{ id: "activity" as const, label: "Atividades", count: effectiveActivityCount }]
       : []),
   ];
 
@@ -1445,7 +1571,7 @@ function PublicProfile() {
           onToggleVerification={handleToggleVerification}
           followersCount={followersCount}
           followingCount={followingCount}
-          commentCount={commentsTotal}
+          commentCount={effectiveCommentCount}
           totalTrackingCount={trackingItems.length}
           favorites={userFavoritesList}
           isBlockedByMe={isBlockedByMe}
@@ -1497,8 +1623,8 @@ function PublicProfile() {
               onPrefetchSpace={handlePrefetchSpace}
               counts={{
                 animes: trackingItems.length,
-                comments: commentsTotal,
-                activity: activityTotal,
+                comments: effectiveCommentCount,
+                activity: effectiveActivityCount,
               }}
               spaces={publicSpaces}
             />
@@ -1545,7 +1671,11 @@ function PublicProfile() {
                         favoritesGrouped={favoritesGrouped}
                         activityItems={activities}
                         comments={comments}
-                        loading={favoritesLoading || trackingLoading}
+                        trackingLoading={trackingLoading}
+                        favoritesLoading={favoritesLoading}
+                        activitiesLoading={activityLoading || commentsLoading}
+                        activitiesLoaded={overviewRecentActivitiesLoaded}
+                        onRecentActivitiesNearVisible={handleRecentActivitiesNearVisible}
                         profileNick={profile.nick}
                         isOwner={false}
                       />

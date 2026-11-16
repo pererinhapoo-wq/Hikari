@@ -160,6 +160,7 @@ export function ProfileHistorySpace({
 
   useEffect(() => {
     if (!onLoadMore || !hasMore || loadingMore || loading) return;
+    if (typeof IntersectionObserver === "undefined") return;
 
     const el = sentinelRef.current;
     if (!el) return;

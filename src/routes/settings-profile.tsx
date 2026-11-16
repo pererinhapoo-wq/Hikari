@@ -14,6 +14,10 @@ import {
   useState,
 } from "react";
 
+import {
+  invalidateAccountProfileCache,
+  invalidatePublicProfileCache,
+} from "@/lib/profile-client-cache";
 import { updateProfile } from "@/lib/profile.functions";
 
 export const Route = createFileRoute(
@@ -89,13 +93,26 @@ function SettingsProfile() {
         setSaving(true);
         setMessage("");
 
-        await updateProfile({
+        const saved = await updateProfile({
           data: {
             nick: nick.trim(),
             bio: bio.trim(),
             favorites: [],
           },
         });
+
+        invalidateAccountProfileCache(saved?.userId);
+        invalidatePublicProfileCache(saved?.nick || nick.trim());
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("hikari:profile-updated", {
+              detail: {
+                image: saved?.image ?? null,
+                nick: saved?.nick ?? nick.trim(),
+              },
+            }),
+          );
+        }
 
         setMessage(
           "Perfil salvo com sucesso.",

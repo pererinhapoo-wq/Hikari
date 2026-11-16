@@ -25,6 +25,12 @@ import {
   acceptFollowRequest,
   rejectFollowRequest,
 } from "@/lib/profile.functions";
+import {
+  getKnownViewerId,
+  invalidateAccountProfileCache,
+  invalidatePublicProfileCache,
+  invalidatePublicProfileCacheByUserId,
+} from "@/lib/profile-client-cache";
 import type { LocalAnime } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -480,6 +486,12 @@ export function NotificationItemCard({
         } else {
           setIsFollowing(true);
         }
+        const viewerId = getKnownViewerId();
+        invalidateAccountProfileCache(viewerId ?? undefined);
+        if (notification.actorNick) {
+          invalidatePublicProfileCache(notification.actorNick);
+        }
+        invalidatePublicProfileCacheByUserId(notification.actorId);
         window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
       }
     } catch {
@@ -498,6 +510,11 @@ export function NotificationItemCard({
     try {
       await acceptRequestFn({ data: { requesterId: notification.actorId } });
       setRequestDecision("accepted");
+      const viewerId = getKnownViewerId();
+      invalidateAccountProfileCache(viewerId ?? undefined);
+      if (viewerId) {
+        invalidatePublicProfileCacheByUserId(viewerId);
+      }
       toast.success("Solicitação aceita.");
       window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
     } catch (err) {
@@ -519,6 +536,8 @@ export function NotificationItemCard({
     try {
       await rejectRequestFn({ data: { requesterId: notification.actorId } });
       setRequestDecision("rejected");
+      const viewerId = getKnownViewerId();
+      invalidateAccountProfileCache(viewerId ?? undefined);
       toast.info("Solicitação recusada.");
       window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
     } catch (err) {

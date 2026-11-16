@@ -5,6 +5,11 @@ import { isHikariAdmin } from "@/lib/auth/admin";
 import { signOut } from "@/lib/auth/client";
 import type { AppUser } from "@/lib/auth/use-current-user";
 import { getProfile } from "@/lib/profile.functions";
+import {
+  fetchProfileMetaOnce,
+  getCachedProfileMeta,
+  setCachedProfileMeta,
+} from "@/lib/profile-client-cache";
 import { cn } from "@/lib/utils";
 
 interface ProfileDropdownMenuProps {
@@ -45,19 +50,14 @@ function useDropdownPresence(open: boolean, exitMs = 150) {
   };
 }
 
-const profileMetaCache = new Map<
-  string,
-  { image: string | null; nick: string | null }
->();
-
 export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
   const [open, setOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [customAvatar, setCustomAvatar] = useState<string | null>(
-    () => profileMetaCache.get(user.id)?.image ?? user.profileImageUrl ?? null,
+    () => getCachedProfileMeta(user.id)?.image ?? user.profileImageUrl ?? null,
   );
   const [customNick, setCustomNick] = useState<string | null>(
-    () => profileMetaCache.get(user.id)?.nick ?? user.profileNick ?? null,
+    () => getCachedProfileMeta(user.id)?.nick ?? user.profileNick ?? null,
   );
   const [imgError, setImgError] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -66,20 +66,27 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
+  const isOnAccountRoute = pathname.startsWith("/account");
 
   // Fecha o menu ao navegar para qualquer página
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
 
-  // Carrega avatar customizado e nick do perfil (reutiliza session context quando disponível)
+  // Carrega avatar customizado e nick do perfil (reutiliza session context, /account e cache compartilhado)
   useEffect(() => {
     if (!user.id) return;
     let active = true;
 
-    const hasSsrMeta = Boolean(user.profileNick && user.profileImageUrl);
-    if (hasSsrMeta && !profileMetaCache.has(user.id)) {
-      profileMetaCache.set(user.id, {
+    const cachedMeta = getCachedProfileMeta(user.id);
+    if (cachedMeta) {
+      if (cachedMeta.image !== undefined) setCustomAvatar(cachedMeta.image);
+      if (cachedMeta.nick) setCustomNick(cachedMeta.nick);
+    }
+
+    const hasSsrMeta = Boolean(user.profileNick);
+    if (hasSsrMeta && !cachedMeta) {
+      setCachedProfileMeta(user.id, {
         image: user.profileImageUrl ?? null,
         nick: user.profileNick ?? null,
       });
@@ -91,25 +98,23 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
       }
     }
 
-    if (!hasSsrMeta) {
-      void getProfile()
+    // Não duplicar getProfile() quando já estamos em /account (o bundle /account popula o cache)
+    if (!hasSsrMeta && !cachedMeta && !isOnAccountRoute) {
+      void fetchProfileMetaOnce(user.id, () => getProfile())
         .then((data) => {
           if (!active || !data) return;
-          const nextImage = data.image ?? null;
-          const nextNick = data.nick ?? null;
-          profileMetaCache.set(user.id, { image: nextImage, nick: nextNick });
-          if (nextImage) {
-            setCustomAvatar(nextImage);
+          if (data.image) {
+            setCustomAvatar(data.image);
             setImgError(false);
           }
-          if (nextNick) setCustomNick(nextNick);
+          if (data.nick) setCustomNick(data.nick);
         })
         .catch(() => {});
     }
 
     const handleProfileUpdated = (event: Event) => {
       const customEvent = event as CustomEvent<{ image?: string | null; nick?: string }>;
-      const prev = profileMetaCache.get(user.id) ?? {
+      const prev = getCachedProfileMeta(user.id) ?? {
         image: customAvatar,
         nick: customNick,
       };
@@ -117,7 +122,7 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
         customEvent.detail?.image !== undefined ? customEvent.detail.image : prev.image;
       const nextNick =
         customEvent.detail?.nick !== undefined ? customEvent.detail.nick : prev.nick;
-      profileMetaCache.set(user.id, { image: nextImage ?? null, nick: nextNick ?? null });
+      setCachedProfileMeta(user.id, { image: nextImage ?? null, nick: nextNick ?? null });
       if (customEvent.detail?.image !== undefined) {
         setCustomAvatar(customEvent.detail.image);
         setImgError(false);
@@ -132,7 +137,7 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
       active = false;
       window.removeEventListener("hikari:profile-updated", handleProfileUpdated);
     };
-  }, [user.id]);
+  }, [user.id, user.profileNick, user.profileImageUrl, isOnAccountRoute]);
 
   // Fecha ao clicar fora ou pressionar Escape
   useEffect(() => {

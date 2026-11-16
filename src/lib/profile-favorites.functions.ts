@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware, optionalAuthMiddleware } from "@/lib/auth/middleware";
-import { getSql } from "@/lib/db";
+import { getSql, type Sql } from "@/lib/db";
+import type { EvaluatedPrivacy } from "@/lib/profile.functions";
 import { getStudioLogo } from "@/lib/studio-logos";
 import {
   addFavoriteSchema,
@@ -629,6 +630,150 @@ export const removeProfileFavorite = createServerFn({
     };
   });
 
+export function createEmptyFavoritesGrouped(): ProfileFavoritesGrouped {
+  return {
+    anime: [],
+    character: [],
+    studio: [],
+    company: [],
+    person: [],
+  };
+}
+
+export async function executeGetMyProfileFavorites(
+  sql: Sql,
+  userId: string,
+  options?: {
+    targetType?: FavoriteTargetType | null;
+    targetId?: string | null;
+  },
+): Promise<ProfileFavoritesResponse> {
+  const targetTypeFilter = options?.targetType ?? null;
+  const targetIdFilter = options?.targetId ? options.targetId.trim() : null;
+
+  const query = `
+    SELECT
+      uf."id",
+      uf."userId",
+      uf."targetType",
+      uf."position",
+      uf."createdAt",
+      COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "targetId",
+      COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name", 'Sem título') AS "title",
+      COALESCE(ca."titleNative", cc."nativeName", cp."nativeName") AS "nativeTitle",
+      COALESCE(ca."cover", cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl") AS "image",
+      ca."banner" AS "banner",
+      COALESCE(ca."synopsis", cc."description", cs."description", cp."biography") AS "description",
+      CASE
+        WHEN uf."targetType" = 'anime' THEN
+          CASE
+            WHEN ca."year" IS NOT NULL AND ca."format" IS NOT NULL THEN ca."format" || ' • ' || ca."year"
+            WHEN ca."year" IS NOT NULL THEN ca."year"::text
+            ELSE ca."format"
+          END
+        WHEN uf."targetType" = 'character' THEN
+          COALESCE(
+            (SELECT CASE
+              WHEN ac."role" = 'main' THEN 'Protagonista'
+              WHEN ac."role" = 'supporting' THEN 'Secundário'
+              ELSE 'Personagem'
+             END
+             FROM "anime_character" ac
+             WHERE ac."characterId" = cc."id"
+             LIMIT 1
+            ),
+            'Personagem'
+          )
+        WHEN uf."targetType" = 'studio' THEN
+          CASE
+            WHEN cs."establishedYear" IS NOT NULL THEN 'Fundado em ' || cs."establishedYear"
+            ELSE 'Estúdio de animação'
+          END
+        WHEN uf."targetType" = 'company' THEN cco."website"
+        WHEN uf."targetType" = 'person' THEN
+          COALESCE(
+            (SELECT ans."role" FROM "anime_staff" ans WHERE ans."personId" = cp."id" LIMIT 1),
+            (SELECT 'Dublador(a) (' || cva."language" || ')' FROM "character_voice_actor" cva WHERE cva."personId" = cp."id" LIMIT 1),
+            NULLIF(cp."biography", ''),
+            'Produção & Elenco'
+          )
+        ELSE NULL
+      END AS "subtitle",
+      uat."score" AS "userScore"
+    FROM "user_favorite" uf
+    LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
+    LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
+    LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
+    LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
+    LEFT JOIN "catalog_person" cp ON cp."id" = uf."personId"
+    LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uf."userId" AND uat."animeId" = uf."animeId"
+    WHERE uf."userId" = $1
+      AND ($2::text IS NULL OR uf."targetType" = $2)
+      AND ($3::text IS NULL OR COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") = $3)
+    ORDER BY uf."targetType" ASC, uf."position" ASC, uf."createdAt" ASC;
+  `;
+
+  const rawRows = await sql.query<{
+    id: string;
+    userId: string;
+    targetType: FavoriteTargetType;
+    position: number;
+    createdAt: string;
+    targetId: string;
+    title: string;
+    nativeTitle: string | null;
+    image: string | null;
+    banner: string | null;
+    description: string | null;
+    subtitle: string | null;
+    userScore: number | string | null;
+  }>(query, [userId, targetTypeFilter, targetIdFilter]);
+
+  const seenEntities = new Set<string>();
+  const items: ProfileFavoriteItem[] = [];
+
+  for (const row of rawRows) {
+    const entityKey = `${row.targetType}:${row.targetId}`;
+    const titleKey = `${row.targetType}:${(row.title || "").toLowerCase().trim()}`;
+    if (seenEntities.has(entityKey) || (row.title && row.title !== "Sem título" && seenEntities.has(titleKey))) {
+      continue;
+    }
+    seenEntities.add(entityKey);
+    if (row.title && row.title !== "Sem título") {
+      seenEntities.add(titleKey);
+    }
+
+    items.push({
+      id: row.id,
+      userId: row.userId,
+      targetType: row.targetType,
+      targetId: row.targetId,
+      position: Number(row.position),
+      createdAt: row.createdAt,
+      title: row.title,
+      nativeTitle: row.nativeTitle ?? null,
+      image: row.image || (row.targetType === "studio" ? getStudioLogo(row.title) : null),
+      banner: row.banner ?? null,
+      description: row.description ?? null,
+      subtitle: row.subtitle ?? null,
+      userScore: row.userScore !== null && row.userScore !== undefined ? Number(row.userScore) : null,
+    });
+  }
+
+  const grouped = createEmptyFavoritesGrouped();
+
+  for (const item of items) {
+    if (grouped[item.targetType]) {
+      grouped[item.targetType].push(item);
+    }
+  }
+
+  return {
+    items,
+    grouped,
+  };
+}
+
 /**
  * 3. Consultar favoritos do usuário autenticado.
  * Retorna itens enriquecidos com os dados canônicos do catálogo via LEFT JOIN.
@@ -639,140 +784,158 @@ export const getMyProfileFavorites = createServerFn({
   .middleware([authMiddleware])
   .validator(getFavoritesSchema)
   .handler(async ({ context, data }): Promise<ProfileFavoritesResponse> => {
-    const userId = context.userId;
-    const targetTypeFilter = data?.targetType ?? null;
-    const targetIdFilter = data?.targetId ? data.targetId.trim() : null;
-
     const sql = await getSql();
-
-    const query = `
-      SELECT
-        uf."id",
-        uf."userId",
-        uf."targetType",
-        uf."position",
-        uf."createdAt",
-        COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "targetId",
-        COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name", 'Sem título') AS "title",
-        COALESCE(ca."titleNative", cc."nativeName", cp."nativeName") AS "nativeTitle",
-        COALESCE(ca."cover", cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl") AS "image",
-        ca."banner" AS "banner",
-        COALESCE(ca."synopsis", cc."description", cs."description", cp."biography") AS "description",
-        CASE
-          WHEN uf."targetType" = 'anime' THEN
-            CASE
-              WHEN ca."year" IS NOT NULL AND ca."format" IS NOT NULL THEN ca."format" || ' • ' || ca."year"
-              WHEN ca."year" IS NOT NULL THEN ca."year"::text
-              ELSE ca."format"
-            END
-          WHEN uf."targetType" = 'character' THEN
-            COALESCE(
-              (SELECT CASE
-                WHEN ac."role" = 'main' THEN 'Protagonista'
-                WHEN ac."role" = 'supporting' THEN 'Secundário'
-                ELSE 'Personagem'
-               END
-               FROM "anime_character" ac
-               WHERE ac."characterId" = cc."id"
-               LIMIT 1
-              ),
-              'Personagem'
-            )
-          WHEN uf."targetType" = 'studio' THEN
-            CASE
-              WHEN cs."establishedYear" IS NOT NULL THEN 'Fundado em ' || cs."establishedYear"
-              ELSE 'Estúdio de animação'
-            END
-          WHEN uf."targetType" = 'company' THEN cco."website"
-          WHEN uf."targetType" = 'person' THEN
-            COALESCE(
-              (SELECT ans."role" FROM "anime_staff" ans WHERE ans."personId" = cp."id" LIMIT 1),
-              (SELECT 'Dublador(a) (' || cva."language" || ')' FROM "character_voice_actor" cva WHERE cva."personId" = cp."id" LIMIT 1),
-              NULLIF(cp."biography", ''),
-              'Produção & Elenco'
-            )
-          ELSE NULL
-        END AS "subtitle",
-        uat."score" AS "userScore"
-      FROM "user_favorite" uf
-      LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
-      LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
-      LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
-      LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
-      LEFT JOIN "catalog_person" cp ON cp."id" = uf."personId"
-      LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uf."userId" AND uat."animeId" = uf."animeId"
-      WHERE uf."userId" = $1
-        AND ($2::text IS NULL OR uf."targetType" = $2)
-        AND ($3::text IS NULL OR COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") = $3)
-      ORDER BY uf."targetType" ASC, uf."position" ASC, uf."createdAt" ASC;
-    `;
-
-    const rawRows = await sql.query<{
-      id: string;
-      userId: string;
-      targetType: FavoriteTargetType;
-      position: number;
-      createdAt: string;
-      targetId: string;
-      title: string;
-      nativeTitle: string | null;
-      image: string | null;
-      banner: string | null;
-      description: string | null;
-      subtitle: string | null;
-      userScore: number | string | null;
-    }>(query, [userId, targetTypeFilter, targetIdFilter]);
-
-    const seenEntities = new Set<string>();
-    const items: ProfileFavoriteItem[] = [];
-
-    for (const row of rawRows) {
-      const entityKey = `${row.targetType}:${row.targetId}`;
-      const titleKey = `${row.targetType}:${(row.title || "").toLowerCase().trim()}`;
-      if (seenEntities.has(entityKey) || (row.title && row.title !== "Sem título" && seenEntities.has(titleKey))) {
-        continue;
-      }
-      seenEntities.add(entityKey);
-      if (row.title && row.title !== "Sem título") {
-        seenEntities.add(titleKey);
-      }
-
-      items.push({
-        id: row.id,
-        userId: row.userId,
-        targetType: row.targetType,
-        targetId: row.targetId,
-        position: Number(row.position),
-        createdAt: row.createdAt,
-        title: row.title,
-        nativeTitle: row.nativeTitle ?? null,
-        image: row.image || (row.targetType === "studio" ? getStudioLogo(row.title) : null),
-        banner: row.banner ?? null,
-        description: row.description ?? null,
-        subtitle: row.subtitle ?? null,
-        userScore: row.userScore !== null && row.userScore !== undefined ? Number(row.userScore) : null,
-      });
-    }
-
-    const grouped: ProfileFavoritesGrouped = {
-      anime: [],
-      character: [],
-      studio: [],
-      company: [],
-      person: [],
-    };
-
-    for (const item of items) {
-      if (grouped[item.targetType]) {
-        grouped[item.targetType].push(item);
-      }
-    }
-
-    return {
-      items,
-      grouped,
-    };
+    return executeGetMyProfileFavorites(sql, context.userId, {
+      targetType: data?.targetType ?? null,
+      targetId: data?.targetId ?? null,
+    });
   });
+
+export async function executeGetPublicProfileFavorites(
+  sql: Sql,
+  targetUserId: string,
+  viewerId: string | null,
+  options?: {
+    targetType?: FavoriteTargetType | null;
+    privacy?: EvaluatedPrivacy;
+  },
+): Promise<ProfileFavoritesResponse> {
+  const cleanTargetUserId = (targetUserId || "").trim();
+  if (!cleanTargetUserId) throw new Error("Usuário não informado.");
+
+  let privacy = options?.privacy;
+  if (!privacy) {
+    const { evaluateUserPrivacy } = await import("@/lib/profile.functions");
+    privacy = await evaluateUserPrivacy(sql, cleanTargetUserId, viewerId);
+  }
+
+  if (!privacy.canViewAccount || privacy.isBlocked || !privacy.canViewFavorites) {
+    throw new Error("Os favoritos deste perfil são privados.");
+  }
+
+  const targetTypeFilter = options?.targetType ?? null;
+
+  const query = `
+    SELECT
+      uf."id",
+      uf."userId",
+      uf."targetType",
+      uf."position",
+      uf."createdAt",
+      COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "targetId",
+      COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name", 'Sem título') AS "title",
+      COALESCE(ca."titleNative", cc."nativeName", cp."nativeName") AS "nativeTitle",
+      COALESCE(ca."cover", cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl") AS "image",
+      ca."banner" AS "banner",
+      COALESCE(ca."synopsis", cc."description", cs."description", cp."biography") AS "description",
+      CASE
+        WHEN uf."targetType" = 'anime' THEN
+          CASE
+            WHEN ca."year" IS NOT NULL AND ca."format" IS NOT NULL THEN ca."format" || ' • ' || ca."year"
+            WHEN ca."year" IS NOT NULL THEN ca."year"::text
+            ELSE ca."format"
+          END
+        WHEN uf."targetType" = 'character' THEN
+          COALESCE(
+            (SELECT CASE
+              WHEN ac."role" = 'main' THEN 'Protagonista'
+              WHEN ac."role" = 'supporting' THEN 'Secundário'
+              ELSE 'Personagem'
+             END
+             FROM "anime_character" ac
+             WHERE ac."characterId" = cc."id"
+             LIMIT 1
+            ),
+            'Personagem'
+          )
+        WHEN uf."targetType" = 'studio' THEN
+          CASE
+            WHEN cs."establishedYear" IS NOT NULL THEN 'Fundado em ' || cs."establishedYear"
+            ELSE 'Estúdio de animação'
+          END
+        WHEN uf."targetType" = 'company' THEN cco."website"
+        WHEN uf."targetType" = 'person' THEN
+          COALESCE(
+            (SELECT ans."role" FROM "anime_staff" ans WHERE ans."personId" = cp."id" LIMIT 1),
+            (SELECT 'Dublador(a) (' || cva."language" || ')' FROM "character_voice_actor" cva WHERE cva."personId" = cp."id" LIMIT 1),
+            NULLIF(cp."biography", ''),
+            'Produção & Elenco'
+          )
+        ELSE NULL
+      END AS "subtitle",
+      uat."score" AS "userScore"
+    FROM "user_favorite" uf
+    LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
+    LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
+    LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
+    LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
+    LEFT JOIN "catalog_person" cp ON cp."id" = uf."personId"
+    LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uf."userId" AND uat."animeId" = uf."animeId"
+    WHERE uf."userId" = $1
+      AND ($2::text IS NULL OR uf."targetType" = $2)
+    ORDER BY uf."targetType" ASC, uf."position" ASC, uf."createdAt" ASC;
+  `;
+
+  const rawRows = await sql.query<{
+    id: string;
+    userId: string;
+    targetType: FavoriteTargetType;
+    position: number;
+    createdAt: string;
+    targetId: string;
+    title: string;
+    nativeTitle: string | null;
+    image: string | null;
+    banner: string | null;
+    description: string | null;
+    subtitle: string | null;
+    userScore: number | string | null;
+  }>(query, [cleanTargetUserId, targetTypeFilter]);
+
+  const seenEntities = new Set<string>();
+  const items: ProfileFavoriteItem[] = [];
+
+  for (const row of rawRows) {
+    const entityKey = `${row.targetType}:${row.targetId}`;
+    const titleKey = `${row.targetType}:${(row.title || "").toLowerCase().trim()}`;
+    if (seenEntities.has(entityKey) || (row.title && row.title !== "Sem título" && seenEntities.has(titleKey))) {
+      continue;
+    }
+    seenEntities.add(entityKey);
+    if (row.title && row.title !== "Sem título") {
+      seenEntities.add(titleKey);
+    }
+
+    items.push({
+      id: row.id,
+      userId: row.userId,
+      targetType: row.targetType,
+      targetId: row.targetId,
+      position: Number(row.position),
+      createdAt: row.createdAt,
+      title: row.title,
+      nativeTitle: row.nativeTitle ?? null,
+      image: row.image || (row.targetType === "studio" ? getStudioLogo(row.title) : null),
+      banner: row.banner ?? null,
+      description: row.description ?? null,
+      subtitle: row.subtitle ?? null,
+      userScore: row.userScore !== null && row.userScore !== undefined ? Number(row.userScore) : null,
+    });
+  }
+
+  const grouped = createEmptyFavoritesGrouped();
+
+  for (const item of items) {
+    if (grouped[item.targetType]) {
+      grouped[item.targetType].push(item);
+    }
+  }
+
+  return {
+    items,
+    grouped,
+  };
+}
 
 /**
  * Consultar favoritos públicos de um perfil respeitando as permissões de privacidade.
@@ -788,140 +951,9 @@ export const getPublicProfileFavorites = createServerFn({
     if (!targetUserId) throw new Error("Usuário não informado.");
 
     const sql = await getSql();
-    const { evaluateUserPrivacy } = await import("@/lib/profile.functions");
-    const privacy = await evaluateUserPrivacy(sql, targetUserId, viewerId);
-    if (!privacy.canViewFavorites) {
-      throw new Error("Os favoritos deste perfil são privados.");
-    }
-
-    const targetTypeFilter = data?.targetType ?? null;
-
-    const query = `
-      SELECT
-        uf."id",
-        uf."userId",
-        uf."targetType",
-        uf."position",
-        uf."createdAt",
-        COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "targetId",
-        COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name", 'Sem título') AS "title",
-        COALESCE(ca."titleNative", cc."nativeName", cp."nativeName") AS "nativeTitle",
-        COALESCE(ca."cover", cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl") AS "image",
-        ca."banner" AS "banner",
-        COALESCE(ca."synopsis", cc."description", cs."description", cp."biography") AS "description",
-        CASE
-          WHEN uf."targetType" = 'anime' THEN
-            CASE
-              WHEN ca."year" IS NOT NULL AND ca."format" IS NOT NULL THEN ca."format" || ' • ' || ca."year"
-              WHEN ca."year" IS NOT NULL THEN ca."year"::text
-              ELSE ca."format"
-            END
-          WHEN uf."targetType" = 'character' THEN
-            COALESCE(
-              (SELECT CASE
-                WHEN ac."role" = 'main' THEN 'Protagonista'
-                WHEN ac."role" = 'supporting' THEN 'Secundário'
-                ELSE 'Personagem'
-               END
-               FROM "anime_character" ac
-               WHERE ac."characterId" = cc."id"
-               LIMIT 1
-              ),
-              'Personagem'
-            )
-          WHEN uf."targetType" = 'studio' THEN
-            CASE
-              WHEN cs."establishedYear" IS NOT NULL THEN 'Fundado em ' || cs."establishedYear"
-              ELSE 'Estúdio de animação'
-            END
-          WHEN uf."targetType" = 'company' THEN cco."website"
-          WHEN uf."targetType" = 'person' THEN
-            COALESCE(
-              (SELECT ans."role" FROM "anime_staff" ans WHERE ans."personId" = cp."id" LIMIT 1),
-              (SELECT 'Dublador(a) (' || cva."language" || ')' FROM "character_voice_actor" cva WHERE cva."personId" = cp."id" LIMIT 1),
-              NULLIF(cp."biography", ''),
-              'Produção & Elenco'
-            )
-          ELSE NULL
-        END AS "subtitle",
-        uat."score" AS "userScore"
-      FROM "user_favorite" uf
-      LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
-      LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
-      LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
-      LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
-      LEFT JOIN "catalog_person" cp ON cp."id" = uf."personId"
-      LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uf."userId" AND uat."animeId" = uf."animeId"
-      WHERE uf."userId" = $1
-        AND ($2::text IS NULL OR uf."targetType" = $2)
-      ORDER BY uf."targetType" ASC, uf."position" ASC, uf."createdAt" ASC;
-    `;
-
-    const rawRows = await sql.query<{
-      id: string;
-      userId: string;
-      targetType: FavoriteTargetType;
-      position: number;
-      createdAt: string;
-      targetId: string;
-      title: string;
-      nativeTitle: string | null;
-      image: string | null;
-      banner: string | null;
-      description: string | null;
-      subtitle: string | null;
-      userScore: number | string | null;
-    }>(query, [targetUserId, targetTypeFilter]);
-
-    const seenEntities = new Set<string>();
-    const items: ProfileFavoriteItem[] = [];
-
-    for (const row of rawRows) {
-      const entityKey = `${row.targetType}:${row.targetId}`;
-      const titleKey = `${row.targetType}:${(row.title || "").toLowerCase().trim()}`;
-      if (seenEntities.has(entityKey) || (row.title && row.title !== "Sem título" && seenEntities.has(titleKey))) {
-        continue;
-      }
-      seenEntities.add(entityKey);
-      if (row.title && row.title !== "Sem título") {
-        seenEntities.add(titleKey);
-      }
-
-      items.push({
-        id: row.id,
-        userId: row.userId,
-        targetType: row.targetType,
-        targetId: row.targetId,
-        position: Number(row.position),
-        createdAt: row.createdAt,
-        title: row.title,
-        nativeTitle: row.nativeTitle ?? null,
-        image: row.image || (row.targetType === "studio" ? getStudioLogo(row.title) : null),
-        banner: row.banner ?? null,
-        description: row.description ?? null,
-        subtitle: row.subtitle ?? null,
-        userScore: row.userScore !== null && row.userScore !== undefined ? Number(row.userScore) : null,
-      });
-    }
-
-    const grouped: ProfileFavoritesGrouped = {
-      anime: [],
-      character: [],
-      studio: [],
-      company: [],
-      person: [],
-    };
-
-    for (const item of items) {
-      if (grouped[item.targetType]) {
-        grouped[item.targetType].push(item);
-      }
-    }
-
-    return {
-      items,
-      grouped,
-    };
+    return executeGetPublicProfileFavorites(sql, targetUserId, viewerId, {
+      targetType: data?.targetType ?? null,
+    });
   });
 
 /**

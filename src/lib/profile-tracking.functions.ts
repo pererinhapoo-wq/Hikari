@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware, optionalAuthMiddleware } from "@/lib/auth/middleware";
 import { getSql, type Sql } from "@/lib/db";
+import type { EvaluatedPrivacy } from "@/lib/profile.functions";
 import {
   upsertAnimeTrackingSchema,
   getMyAnimeTrackingSchema,
@@ -168,6 +169,219 @@ export const upsertAnimeTracking = createServerFn({
     };
   });
 
+export async function executeGetMyAnimeTracking(
+  sql: Sql,
+  userId: string,
+  options?: {
+    status?: TrackingStatus;
+    animeId?: string;
+    animeIds?: string[];
+    animeSnapshot?: AnimeSnapshot | null;
+    minimal?: boolean;
+  },
+): Promise<UserAnimeTrackingItem[]> {
+  const statusFilter = options?.status ?? null;
+  const animeIdFilter = options?.animeId ? options.animeId.trim() : null;
+  const isMinimal = Boolean(options?.minimal);
+
+  const rawCandidateIds = [
+    ...(animeIdFilter ? [animeIdFilter] : []),
+    ...(options?.animeIds ?? []).map((id) => id.trim()).filter(Boolean),
+  ];
+
+  if (animeIdFilter) {
+    const resolved = await resolveAndConsolidateTrackingTarget(
+      sql,
+      userId,
+      animeIdFilter,
+      options?.animeSnapshot,
+    );
+    rawCandidateIds.push(...resolved.candidateIds);
+  }
+
+  const uniqueCandidateIds = Array.from(new Set(rawCandidateIds));
+  const animeIdsFilter =
+    uniqueCandidateIds.length > 0 ? uniqueCandidateIds : null;
+
+  if (isMinimal) {
+    const rows = await sql.query<{
+      userId: string;
+      animeId: string;
+      status: TrackingStatus;
+      score: string | number | null;
+      episodesWatched: number;
+      startedAt: string | null;
+      completedAt: string | null;
+      createdAt: string;
+      updatedAt: string;
+    }>(
+      `SELECT
+         uat."userId",
+         uat."animeId",
+         uat."status",
+         uat."score",
+         uat."episodesWatched",
+         uat."startedAt",
+         uat."completedAt",
+         uat."createdAt",
+         uat."updatedAt"
+       FROM "user_anime_tracking" uat
+       WHERE uat."userId" = $1
+         AND ($2::text IS NULL OR uat."status" = $2)
+         AND ($3::text[] IS NULL OR uat."animeId" = ANY($3::text[]))
+       ORDER BY uat."updatedAt" DESC;`,
+      [userId, statusFilter, animeIdsFilter],
+    );
+
+    return rows.map((row) => ({
+      userId: row.userId,
+      animeId: row.animeId,
+      status: row.status,
+      score: row.score !== null && row.score !== undefined ? Number(row.score) : null,
+      episodesWatched: Number(row.episodesWatched) || 0,
+      title: "",
+      titleRomaji: null,
+      titleEnglish: null,
+      titleNative: null,
+      cover: null,
+      banner: null,
+      format: null,
+      year: null,
+      episodesCount: null,
+      animeStatus: null,
+      startedAt: row.startedAt ? String(row.startedAt) : null,
+      completedAt: row.completedAt ? String(row.completedAt) : null,
+      createdAt: String(row.createdAt),
+      updatedAt: String(row.updatedAt),
+      animeSnapshot: null,
+    }));
+  }
+
+  const query = `
+    SELECT
+      uat."userId",
+      uat."animeId",
+      uat."status",
+      uat."score",
+      uat."episodesWatched",
+      uat."animeSnapshot",
+      uat."startedAt",
+      uat."completedAt",
+      uat."createdAt",
+      uat."updatedAt",
+      ca."title" AS "catalogTitle",
+      ca."titleRomaji" AS "catalogTitleRomaji",
+      ca."titleEnglish" AS "catalogTitleEnglish",
+      ca."titleNative" AS "catalogTitleNative",
+      ca."cover" AS "catalogCover",
+      ca."banner" AS "catalogBanner",
+      ca."format" AS "catalogFormat",
+      ca."year" AS "catalogYear",
+      ca."episodesCount" AS "catalogEpisodesCount",
+      ca."status" AS "catalogStatus"
+    FROM "user_anime_tracking" uat
+    LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+    WHERE uat."userId" = $1
+      AND ($2::text IS NULL OR uat."status" = $2)
+      AND ($3::text[] IS NULL OR uat."animeId" = ANY($3::text[]))
+    ORDER BY uat."updatedAt" DESC;
+  `;
+
+  const rows = await sql.query<{
+    userId: string;
+    animeId: string;
+    status: TrackingStatus;
+    score: string | number | null;
+    episodesWatched: number;
+    animeSnapshot: unknown;
+    startedAt: string | null;
+    completedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    catalogTitle: string | null;
+    catalogTitleRomaji: string | null;
+    catalogTitleEnglish: string | null;
+    catalogTitleNative: string | null;
+    catalogCover: string | null;
+    catalogBanner: string | null;
+    catalogFormat: string | null;
+    catalogYear: number | null;
+    catalogEpisodesCount: number | null;
+    catalogStatus: string | null;
+  }>(query, [userId, statusFilter, animeIdsFilter]);
+
+  return rows.map((row) => {
+    let snapshotObj: AnimeSnapshot | null = null;
+    if (row.animeSnapshot && typeof row.animeSnapshot === "object" && !Array.isArray(row.animeSnapshot)) {
+      snapshotObj = row.animeSnapshot as AnimeSnapshot;
+    } else if (typeof row.animeSnapshot === "string") {
+      try {
+        snapshotObj = JSON.parse(row.animeSnapshot) as AnimeSnapshot;
+      } catch {
+        snapshotObj = null;
+      }
+    }
+
+    const title =
+      row.catalogTitle ||
+      (typeof snapshotObj?.title === "string" ? snapshotObj.title : null) ||
+      "Sem título";
+
+    const cover =
+      row.catalogCover ||
+      (typeof snapshotObj?.cover === "string" ? snapshotObj.cover : null);
+
+    const banner =
+      row.catalogBanner ||
+      (typeof snapshotObj?.banner === "string" ? snapshotObj.banner : null);
+
+    const format =
+      row.catalogFormat ||
+      (typeof snapshotObj?.format === "string" ? snapshotObj.format : null);
+
+    const year =
+      row.catalogYear !== null && row.catalogYear !== undefined
+        ? Number(row.catalogYear)
+        : typeof snapshotObj?.year === "number"
+          ? snapshotObj.year
+          : null;
+
+    const episodesCount =
+      row.catalogEpisodesCount !== null && row.catalogEpisodesCount !== undefined
+        ? Number(row.catalogEpisodesCount)
+        : typeof snapshotObj?.episodesCount === "number"
+          ? snapshotObj.episodesCount
+          : null;
+
+    const animeStatus =
+      row.catalogStatus ||
+      (typeof snapshotObj?.status === "string" ? snapshotObj.status : null);
+
+    return {
+      userId: row.userId,
+      animeId: row.animeId,
+      status: row.status,
+      score: row.score !== null && row.score !== undefined ? Number(row.score) : null,
+      episodesWatched: Number(row.episodesWatched) || 0,
+      title,
+      titleRomaji: row.catalogTitleRomaji || snapshotObj?.titleRomaji || null,
+      titleEnglish: row.catalogTitleEnglish || snapshotObj?.titleEnglish || null,
+      titleNative: row.catalogTitleNative || snapshotObj?.titleNative || null,
+      cover,
+      banner,
+      format,
+      year,
+      episodesCount,
+      animeStatus,
+      startedAt: row.startedAt ? String(row.startedAt) : null,
+      completedAt: row.completedAt ? String(row.completedAt) : null,
+      createdAt: String(row.createdAt),
+      updatedAt: String(row.updatedAt),
+      animeSnapshot: snapshotObj,
+    };
+  });
+}
+
 /**
  * 2. getMyAnimeTracking — Consultar acompanhamentos do usuário autenticado.
  * Retorna lista enriquecida com dados canônicos do catálogo ou snapshot.
@@ -178,208 +392,13 @@ export const getMyAnimeTracking = createServerFn({
   .middleware([authMiddleware])
   .validator(getMyAnimeTrackingSchema)
   .handler(async ({ context, data }): Promise<UserAnimeTrackingItem[]> => {
-    const userId = context.userId;
-    const statusFilter = data?.status ?? null;
-    const animeIdFilter = data?.animeId ? data.animeId.trim() : null;
-    const isMinimal = Boolean(data?.minimal);
-
     const sql = await getSql();
-
-    const rawCandidateIds = [
-      ...(animeIdFilter ? [animeIdFilter] : []),
-      ...(data?.animeIds ?? []).map((id) => id.trim()).filter(Boolean),
-    ];
-
-    if (animeIdFilter) {
-      const resolved = await resolveAndConsolidateTrackingTarget(
-        sql,
-        userId,
-        animeIdFilter,
-        data?.animeSnapshot,
-      );
-      rawCandidateIds.push(...resolved.candidateIds);
-    }
-
-    const uniqueCandidateIds = Array.from(new Set(rawCandidateIds));
-    const animeIdsFilter =
-      uniqueCandidateIds.length > 0 ? uniqueCandidateIds : null;
-
-    if (isMinimal) {
-      const rows = await sql.query<{
-        userId: string;
-        animeId: string;
-        status: TrackingStatus;
-        score: string | number | null;
-        episodesWatched: number;
-        startedAt: string | null;
-        completedAt: string | null;
-        createdAt: string;
-        updatedAt: string;
-      }>(
-        `SELECT
-           uat."userId",
-           uat."animeId",
-           uat."status",
-           uat."score",
-           uat."episodesWatched",
-           uat."startedAt",
-           uat."completedAt",
-           uat."createdAt",
-           uat."updatedAt"
-         FROM "user_anime_tracking" uat
-         WHERE uat."userId" = $1
-           AND ($2::text IS NULL OR uat."status" = $2)
-           AND ($3::text[] IS NULL OR uat."animeId" = ANY($3::text[]))
-         ORDER BY uat."updatedAt" DESC;`,
-        [userId, statusFilter, animeIdsFilter],
-      );
-
-      return rows.map((row) => ({
-        userId: row.userId,
-        animeId: row.animeId,
-        status: row.status,
-        score: row.score !== null && row.score !== undefined ? Number(row.score) : null,
-        episodesWatched: Number(row.episodesWatched) || 0,
-        title: "",
-        titleRomaji: null,
-        titleEnglish: null,
-        titleNative: null,
-        cover: null,
-        banner: null,
-        format: null,
-        year: null,
-        episodesCount: null,
-        animeStatus: null,
-        startedAt: row.startedAt ? String(row.startedAt) : null,
-        completedAt: row.completedAt ? String(row.completedAt) : null,
-        createdAt: String(row.createdAt),
-        updatedAt: String(row.updatedAt),
-        animeSnapshot: null,
-      }));
-    }
-
-    const query = `
-      SELECT
-        uat."userId",
-        uat."animeId",
-        uat."status",
-        uat."score",
-        uat."episodesWatched",
-        uat."animeSnapshot",
-        uat."startedAt",
-        uat."completedAt",
-        uat."createdAt",
-        uat."updatedAt",
-        ca."title" AS "catalogTitle",
-        ca."titleRomaji" AS "catalogTitleRomaji",
-        ca."titleEnglish" AS "catalogTitleEnglish",
-        ca."titleNative" AS "catalogTitleNative",
-        ca."cover" AS "catalogCover",
-        ca."banner" AS "catalogBanner",
-        ca."format" AS "catalogFormat",
-        ca."year" AS "catalogYear",
-        ca."episodesCount" AS "catalogEpisodesCount",
-        ca."status" AS "catalogStatus"
-      FROM "user_anime_tracking" uat
-      LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
-      WHERE uat."userId" = $1
-        AND ($2::text IS NULL OR uat."status" = $2)
-        AND ($3::text[] IS NULL OR uat."animeId" = ANY($3::text[]))
-      ORDER BY uat."updatedAt" DESC;
-    `;
-
-    const rows = await sql.query<{
-      userId: string;
-      animeId: string;
-      status: TrackingStatus;
-      score: string | number | null;
-      episodesWatched: number;
-      animeSnapshot: unknown;
-      startedAt: string | null;
-      completedAt: string | null;
-      createdAt: string;
-      updatedAt: string;
-      catalogTitle: string | null;
-      catalogTitleRomaji: string | null;
-      catalogTitleEnglish: string | null;
-      catalogTitleNative: string | null;
-      catalogCover: string | null;
-      catalogBanner: string | null;
-      catalogFormat: string | null;
-      catalogYear: number | null;
-      catalogEpisodesCount: number | null;
-      catalogStatus: string | null;
-    }>(query, [userId, statusFilter, animeIdsFilter]);
-
-    return rows.map((row) => {
-      let snapshotObj: AnimeSnapshot | null = null;
-      if (row.animeSnapshot && typeof row.animeSnapshot === "object" && !Array.isArray(row.animeSnapshot)) {
-        snapshotObj = row.animeSnapshot as AnimeSnapshot;
-      } else if (typeof row.animeSnapshot === "string") {
-        try {
-          snapshotObj = JSON.parse(row.animeSnapshot) as AnimeSnapshot;
-        } catch {
-          snapshotObj = null;
-        }
-      }
-
-      const title =
-        row.catalogTitle ||
-        (typeof snapshotObj?.title === "string" ? snapshotObj.title : null) ||
-        "Sem título";
-
-      const cover =
-        row.catalogCover ||
-        (typeof snapshotObj?.cover === "string" ? snapshotObj.cover : null);
-
-      const banner =
-        row.catalogBanner ||
-        (typeof snapshotObj?.banner === "string" ? snapshotObj.banner : null);
-
-      const format =
-        row.catalogFormat ||
-        (typeof snapshotObj?.format === "string" ? snapshotObj.format : null);
-
-      const year =
-        row.catalogYear !== null && row.catalogYear !== undefined
-          ? Number(row.catalogYear)
-          : typeof snapshotObj?.year === "number"
-            ? snapshotObj.year
-            : null;
-
-      const episodesCount =
-        row.catalogEpisodesCount !== null && row.catalogEpisodesCount !== undefined
-          ? Number(row.catalogEpisodesCount)
-          : typeof snapshotObj?.episodesCount === "number"
-            ? snapshotObj.episodesCount
-            : null;
-
-      const animeStatus =
-        row.catalogStatus ||
-        (typeof snapshotObj?.status === "string" ? snapshotObj.status : null);
-
-      return {
-        userId: row.userId,
-        animeId: row.animeId,
-        status: row.status,
-        score: row.score !== null && row.score !== undefined ? Number(row.score) : null,
-        episodesWatched: Number(row.episodesWatched) || 0,
-        title,
-        titleRomaji: row.catalogTitleRomaji || snapshotObj?.titleRomaji || null,
-        titleEnglish: row.catalogTitleEnglish || snapshotObj?.titleEnglish || null,
-        titleNative: row.catalogTitleNative || snapshotObj?.titleNative || null,
-        cover,
-        banner,
-        format,
-        year,
-        episodesCount,
-        animeStatus,
-        startedAt: row.startedAt ? String(row.startedAt) : null,
-        completedAt: row.completedAt ? String(row.completedAt) : null,
-        createdAt: String(row.createdAt),
-        updatedAt: String(row.updatedAt),
-        animeSnapshot: snapshotObj,
-      };
+    return executeGetMyAnimeTracking(sql, context.userId, {
+      status: data?.status,
+      animeId: data?.animeId,
+      animeIds: data?.animeIds,
+      animeSnapshot: data?.animeSnapshot,
+      minimal: data?.minimal,
     });
   });
 
@@ -396,6 +415,7 @@ export async function executeGetPublicAnimeTracking(
     status?: TrackingStatus;
     animeId?: string;
     minimal?: boolean;
+    privacy?: EvaluatedPrivacy;
   },
 ): Promise<UserAnimeTrackingItem[]> {
   const cleanTargetUserId = (targetUserId || "").trim();
@@ -403,25 +423,18 @@ export async function executeGetPublicAnimeTracking(
     throw new Error("Usuário não informado.");
   }
 
-  const { evaluateUserPrivacy } = await import("@/lib/profile.functions");
-  const privacy = await evaluateUserPrivacy(sql, cleanTargetUserId, viewerId);
+  let privacy = options?.privacy;
+  if (!privacy) {
+    const { evaluateUserPrivacy } = await import("@/lib/profile.functions");
+    privacy = await evaluateUserPrivacy(sql, cleanTargetUserId, viewerId);
+  }
 
   if (!privacy.canViewAccount) {
     throw new Error("As estatísticas deste perfil são privadas.");
   }
 
-  if (viewerId && viewerId !== cleanTargetUserId) {
-    const blockRows = await sql.query<{ hasBlock: boolean }>(
-      `SELECT exists (
-        SELECT 1 FROM "user_block"
-        WHERE ("blockerId" = $1 AND "blockedId" = $2)
-           OR ("blockerId" = $2 AND "blockedId" = $1)
-      ) AS "hasBlock"`,
-      [viewerId, cleanTargetUserId],
-    );
-    if (blockRows[0]?.hasBlock) {
-      throw new Error("Não foi possível acessar as estatísticas deste perfil.");
-    }
+  if (privacy.isBlocked) {
+    throw new Error("Não foi possível acessar as estatísticas deste perfil.");
   }
 
   const statusFilter = options?.status ?? null;
@@ -843,6 +856,7 @@ export async function executeGetPublicAnimeTrackingPaginated(
     status?: TrackingStatus;
     page?: number;
     limit?: number;
+    privacy?: EvaluatedPrivacy;
   },
 ): Promise<PaginatedAnimeTrackingResponse> {
   const cleanTargetUserId = (targetUserId || "").trim();
@@ -850,25 +864,18 @@ export async function executeGetPublicAnimeTrackingPaginated(
     throw new Error("Usuário não informado.");
   }
 
-  const { evaluateUserPrivacy } = await import("@/lib/profile.functions");
-  const privacy = await evaluateUserPrivacy(sql, cleanTargetUserId, viewerId);
+  let privacy = options?.privacy;
+  if (!privacy) {
+    const { evaluateUserPrivacy } = await import("@/lib/profile.functions");
+    privacy = await evaluateUserPrivacy(sql, cleanTargetUserId, viewerId);
+  }
 
   if (!privacy.canViewAccount) {
     throw new Error("As listas de animes deste perfil são privadas.");
   }
 
-  if (viewerId && viewerId !== cleanTargetUserId) {
-    const blockRows = await sql.query<{ hasBlock: boolean }>(
-      `SELECT exists (
-        SELECT 1 FROM "user_block"
-        WHERE ("blockerId" = $1 AND "blockedId" = $2)
-           OR ("blockerId" = $2 AND "blockedId" = $1)
-      ) AS "hasBlock"`,
-      [viewerId, cleanTargetUserId],
-    );
-    if (blockRows[0]?.hasBlock) {
-      throw new Error("Não foi possível acessar as listas de animes deste perfil.");
-    }
+  if (privacy.isBlocked) {
+    throw new Error("Não foi possível acessar as listas de animes deste perfil.");
   }
 
   const statusFilter =

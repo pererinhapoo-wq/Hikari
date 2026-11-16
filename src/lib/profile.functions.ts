@@ -6,6 +6,17 @@ import { getSql, type Sql } from "@/lib/db";
 import { executeCreateNotification } from "@/lib/notifications.functions";
 import { FALLBACK_ANIMES } from "@/lib/fallback-catalog";
 import { ensureUserProfile } from "@/lib/profile-provision";
+import {
+  createEmptyFavoritesGrouped,
+  executeGetMyProfileFavorites,
+  executeGetPublicProfileFavorites,
+} from "@/lib/profile-favorites.functions";
+import {
+  executeGetMyAnimeTracking,
+  executeGetPublicAnimeTracking,
+} from "@/lib/profile-tracking.functions";
+import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favorite";
+import type { UserAnimeTrackingItem } from "@/types/profile-tracking";
 
 export type SectionPrivacyLevel = "public" | "followers" | "private";
 export type AccountType = "public" | "private";
@@ -234,6 +245,32 @@ export interface PaginatedProfileUsers {
   hasMore: boolean;
 }
 
+export interface PreloadedProfilePrivacyRow {
+  accountType: string | null;
+  allowFollowers: boolean | null;
+  privacyLists: string | null;
+  privacyFavorites: string | null;
+  privacyHistory: string | null;
+  privacyComments: string | null;
+  privacyFollowers: string | null;
+}
+
+export interface PublicProfileBundle {
+  profile: PublicUserProfile;
+  privacy: EvaluatedPrivacy;
+  trackingItems: UserAnimeTrackingItem[];
+  favoritesGrouped: ProfileFavoritesGrouped;
+  viewerUserId: string | null;
+}
+
+export interface AccountProfileBundle {
+  profile: UserProfile;
+  trackingItems: UserAnimeTrackingItem[];
+  favoritesItems: ProfileFavoriteItem[];
+  favoritesGrouped: ProfileFavoritesGrouped;
+  requestsCount: number;
+}
+
 function parseFavorites(
   value: unknown,
 ): string[] {
@@ -290,32 +327,27 @@ export async function evaluateUserPrivacy(
   sql: Sql,
   ownerUserId: string,
   viewerUserId: string | null,
+  preloadedProfile?: PreloadedProfilePrivacyRow,
 ): Promise<EvaluatedPrivacy> {
   const isOwner = Boolean(viewerUserId && viewerUserId === ownerUserId);
 
-  const rows = await sql<{
-    accountType: string | null;
-    allowFollowers: boolean | null;
-    privacyLists: string | null;
-    privacyFavorites: string | null;
-    privacyHistory: string | null;
-    privacyComments: string | null;
-    privacyFollowers: string | null;
-  }>`
-    select
-      "accountType",
-      "allowFollowers",
-      "privacyLists",
-      "privacyFavorites",
-      "privacyHistory",
-      "privacyComments",
-      "privacyFollowers"
-    from "profile"
-    where "userId" = ${ownerUserId}
-    limit 1
-  `;
-
-  const profile = rows[0];
+  let profile = preloadedProfile;
+  if (!profile) {
+    const rows = await sql<PreloadedProfilePrivacyRow>`
+      select
+        "accountType",
+        "allowFollowers",
+        "privacyLists",
+        "privacyFavorites",
+        "privacyHistory",
+        "privacyComments",
+        "privacyFollowers"
+      from "profile"
+      where "userId" = ${ownerUserId}
+      limit 1
+    `;
+    profile = rows[0];
+  }
   const accountType: AccountType =
     profile?.accountType === "private" ? "private" : "public";
   const allowFollowers = profile?.allowFollowers ?? true;
@@ -471,6 +503,155 @@ export async function evaluateUserPrivacy(
 /* MEU PERFIL                                                     */
 /* ============================================================ */
 
+export async function executeGetProfile(
+  sql: Sql,
+  userId: string,
+): Promise<UserProfile> {
+  const [rows, commentRows, followerRows, followingRows, userRows] = await Promise.all([
+    sql<{
+      nick: string | null;
+      bio: string | null;
+      favorites: string | null;
+      displayName: string | null;
+      avatarUrl: string | null;
+      bannerUrl: string | null;
+      accountType: string | null;
+      allowFollowers: boolean | null;
+      privacyLists: string | null;
+      privacyFavorites: string | null;
+      privacyHistory: string | null;
+      privacyComments: string | null;
+      privacyFollowers: string | null;
+      isVerified: boolean | null;
+      createdAt?: string | Date | null;
+    }>`
+      select
+        "nick",
+        "bio",
+        "favorites",
+        "displayName",
+        "avatarUrl",
+        "bannerUrl",
+        "accountType",
+        "allowFollowers",
+        "privacyLists",
+        "privacyFavorites",
+        "privacyHistory",
+        "privacyComments",
+        "privacyFollowers",
+        "createdAt",
+        coalesce("isVerified", false) as "isVerified"
+      from "profile"
+      where "userId" = ${userId}
+      limit 1
+    `,
+    sql<{ count: string }>`
+      select count(*)::text as count
+      from "comment"
+      where "userId" = ${userId}
+    `,
+    sql<{ count: string }>`
+      select count(*)::text as count
+      from "user_follow"
+      where "followingId" = ${userId}
+    `,
+    sql<{ count: string }>`
+      select count(*)::text as count
+      from "user_follow"
+      where "followerId" = ${userId}
+    `,
+    sql<{
+      name: string | null;
+      email: string | null;
+      image: string | null;
+      createdAt: string | Date | null;
+    }>`
+      select "name", "email", "image", "createdAt"
+      from "user"
+      where "id" = ${userId}
+      limit 1
+    `,
+  ]);
+
+  const userRow = userRows[0];
+  let row = rows[0];
+
+  // Auto-provisionamento seguro e idempotente para contas existentes sem perfil ou sem nick
+  if (!row || !row.nick) {
+    await ensureUserProfile(sql, {
+      id: userId,
+      name: userRow?.name,
+      image: userRow?.image,
+    });
+
+    const refreshedRows = await sql<{
+      nick: string | null;
+      bio: string | null;
+      favorites: string | null;
+      displayName: string | null;
+      avatarUrl: string | null;
+      bannerUrl: string | null;
+      accountType: string | null;
+      allowFollowers: boolean | null;
+      privacyLists: string | null;
+      privacyFavorites: string | null;
+      privacyHistory: string | null;
+      privacyComments: string | null;
+      privacyFollowers: string | null;
+      isVerified: boolean | null;
+      createdAt?: string | Date | null;
+    }>`
+      select
+        "nick",
+        "bio",
+        "favorites",
+        "displayName",
+        "avatarUrl",
+        "bannerUrl",
+        "accountType",
+        "allowFollowers",
+        "privacyLists",
+        "privacyFavorites",
+        "privacyHistory",
+        "privacyComments",
+        "privacyFollowers",
+        "createdAt",
+        coalesce("isVerified", false) as "isVerified"
+      from "profile"
+      where "userId" = ${userId}
+      limit 1
+    `;
+    row = refreshedRows[0];
+  }
+
+  return {
+    userId,
+    name: row?.displayName || userRow?.name || "",
+    email: userRow?.email ?? "",
+    image: row?.avatarUrl || userRow?.image || null,
+    bannerUrl: row?.bannerUrl ?? null,
+    nick: row?.nick ?? "",
+    bio: row?.bio ?? "",
+    favorites: parseFavorites(row?.favorites),
+    commentCount: Number(commentRows[0]?.count ?? "0"),
+    followersCount: Number(followerRows[0]?.count ?? "0"),
+    followingCount: Number(followingRows[0]?.count ?? "0"),
+    accountType: (row?.accountType === "private" ? "private" : "public") as AccountType,
+    allowFollowers: row?.allowFollowers ?? true,
+    privacyLists: (row?.privacyLists as SectionPrivacyLevel) || "public",
+    privacyFavorites: (row?.privacyFavorites as SectionPrivacyLevel) || "public",
+    privacyHistory: (row?.privacyHistory as SectionPrivacyLevel) || "public",
+    privacyComments: (row?.privacyComments as SectionPrivacyLevel) || "public",
+    privacyFollowers: (row?.privacyFollowers as SectionPrivacyLevel) || "public",
+    isVerified: Boolean(row?.isVerified),
+    createdAt: userRow?.createdAt
+      ? new Date(userRow.createdAt).toISOString()
+      : row?.createdAt
+        ? new Date(row.createdAt).toISOString()
+        : null,
+  } satisfies UserProfile;
+}
+
 export const getProfile =
   createServerFn({
     method: "GET",
@@ -478,170 +659,38 @@ export const getProfile =
     .middleware([authMiddleware])
     .handler(async ({ context }) => {
       const sql = await getSql();
-
-      const [rows, commentRows, followerRows, followingRows, userRows] = await Promise.all([
-        sql<{
-          nick: string | null;
-          bio: string | null;
-          favorites: string | null;
-          displayName: string | null;
-          avatarUrl: string | null;
-          bannerUrl: string | null;
-          accountType: string | null;
-          allowFollowers: boolean | null;
-          privacyLists: string | null;
-          privacyFavorites: string | null;
-          privacyHistory: string | null;
-          privacyComments: string | null;
-          privacyFollowers: string | null;
-          isVerified: boolean | null;
-          createdAt?: string | Date | null;
-        }>`
-          select
-            "nick",
-            "bio",
-            "favorites",
-            "displayName",
-            "avatarUrl",
-            "bannerUrl",
-            "accountType",
-            "allowFollowers",
-            "privacyLists",
-            "privacyFavorites",
-            "privacyHistory",
-            "privacyComments",
-            "privacyFollowers",
-            "createdAt",
-            coalesce("isVerified", false) as "isVerified"
-          from "profile"
-          where "userId" = ${context.userId}
-          limit 1
-        `,
-        sql<{ count: string }>`
-          select count(*)::text as count
-          from "comment"
-          where "userId" = ${context.userId}
-        `,
-        sql<{ count: string }>`
-          select count(*)::text as count
-          from "user_follow"
-          where "followingId" = ${context.userId}
-        `,
-        sql<{ count: string }>`
-          select count(*)::text as count
-          from "user_follow"
-          where "followerId" = ${context.userId}
-        `,
-        sql<{
-          name: string | null;
-          email: string | null;
-          image: string | null;
-          createdAt: string | Date | null;
-        }>`
-          select "name", "email", "image", "createdAt"
-          from "user"
-          where "id" = ${context.userId}
-          limit 1
-        `,
-      ]);
-
-      const userRow = userRows[0];
-      let row = rows[0];
-
-      // Auto-provisionamento seguro e idempotente para contas existentes sem perfil ou sem nick
-      if (!row || !row.nick) {
-        const { ensureUserProfile } = await import("./profile-provision");
-        await ensureUserProfile(sql, {
-          id: context.userId,
-          name: userRow?.name,
-          image: userRow?.image,
-        });
-
-        const refreshedRows = await sql<{
-          nick: string | null;
-          bio: string | null;
-          favorites: string | null;
-          displayName: string | null;
-          avatarUrl: string | null;
-          bannerUrl: string | null;
-          accountType: string | null;
-          allowFollowers: boolean | null;
-          privacyLists: string | null;
-          privacyFavorites: string | null;
-          privacyHistory: string | null;
-          privacyComments: string | null;
-          privacyFollowers: string | null;
-          isVerified: boolean | null;
-          createdAt?: string | Date | null;
-        }>`
-          select
-            "nick",
-            "bio",
-            "favorites",
-            "displayName",
-            "avatarUrl",
-            "bannerUrl",
-            "accountType",
-            "allowFollowers",
-            "privacyLists",
-            "privacyFavorites",
-            "privacyHistory",
-            "privacyComments",
-            "privacyFollowers",
-            "createdAt",
-            coalesce("isVerified", false) as "isVerified"
-          from "profile"
-          where "userId" = ${context.userId}
-          limit 1
-        `;
-        row = refreshedRows[0];
-      }
-
-      return {
-        userId: context.userId,
-        name: row?.displayName || userRow?.name || "",
-        email: userRow?.email ?? "",
-        image: row?.avatarUrl || userRow?.image || null,
-        bannerUrl: row?.bannerUrl ?? null,
-        nick: row?.nick ?? "",
-        bio: row?.bio ?? "",
-        favorites: parseFavorites(
-          row?.favorites,
-        ),
-        commentCount: Number(
-          commentRows[0]?.count ?? "0",
-        ),
-        followersCount: Number(
-          followerRows[0]?.count ?? "0",
-        ),
-        followingCount: Number(
-          followingRows[0]?.count ?? "0",
-        ),
-        accountType: (row?.accountType === "private" ? "private" : "public") as AccountType,
-        allowFollowers: row?.allowFollowers ?? true,
-        privacyLists: (row?.privacyLists as SectionPrivacyLevel) || "public",
-        privacyFavorites: (row?.privacyFavorites as SectionPrivacyLevel) || "public",
-        privacyHistory: (row?.privacyHistory as SectionPrivacyLevel) || "public",
-        privacyComments: (row?.privacyComments as SectionPrivacyLevel) || "public",
-        privacyFollowers: (row?.privacyFollowers as SectionPrivacyLevel) || "public",
-        isVerified: Boolean(row?.isVerified),
-        createdAt: userRow?.createdAt
-          ? new Date(userRow.createdAt).toISOString()
-          : row?.createdAt
-            ? new Date(row.createdAt).toISOString()
-            : null,
-      } satisfies UserProfile;
+      return executeGetProfile(sql, context.userId);
     });
 
 /* ============================================================ */
 /* PERFIL PÚBLICO                                                  */
 /* ============================================================ */
 
-export async function executeGetPublicProfile(
+type PublicProfileLookupRow = {
+  userId: string;
+  userName: string | null;
+  userImage: string | null;
+  name: string | null;
+  nick: string | null;
+  bio: string | null;
+  image: string | null;
+  bannerUrl: string | null;
+  isVerified: boolean | null;
+  userCreatedAt: string | Date | null;
+  profileCreatedAt: string | Date | null;
+  accountType: string | null;
+  allowFollowers: boolean | null;
+  privacyLists: string | null;
+  privacyFavorites: string | null;
+  privacyHistory: string | null;
+  privacyComments: string | null;
+  privacyFollowers: string | null;
+};
+
+async function resolvePublicProfileRow(
   sql: Sql,
   rawNick: unknown,
-  viewerUserId: string | null,
-): Promise<PublicUserProfile> {
+): Promise<PublicProfileLookupRow> {
   const nick = normalizeNick(rawNick);
   if (!nick) {
     throw new Error("Nick não informado.");
@@ -651,19 +700,7 @@ export async function executeGetPublicProfile(
     typeof rawNick === "string" ? rawNick.trim().replace(/^@+/, "") : "";
 
   // 1. Busca prioritária por nick utilizando diretamente o índice "profile_nick_unique_idx" em lower("nick")
-  let rows = await sql<{
-    userId: string;
-    userName: string | null;
-    userImage: string | null;
-    name: string | null;
-    nick: string | null;
-    bio: string | null;
-    image: string | null;
-    bannerUrl: string | null;
-    isVerified: boolean | null;
-    userCreatedAt: string | Date | null;
-    profileCreatedAt: string | Date | null;
-  }>`
+  let rows = await sql<PublicProfileLookupRow>`
     select
       u."id" as "userId",
       u."name" as "userName",
@@ -675,7 +712,14 @@ export async function executeGetPublicProfile(
       nullif(trim(p."bannerUrl"), '') as "bannerUrl",
       coalesce(p."isVerified", false) as "isVerified",
       u."createdAt" as "userCreatedAt",
-      p."createdAt" as "profileCreatedAt"
+      p."createdAt" as "profileCreatedAt",
+      p."accountType",
+      p."allowFollowers",
+      p."privacyLists",
+      p."privacyFavorites",
+      p."privacyHistory",
+      p."privacyComments",
+      p."privacyFollowers"
     from "profile" p
     inner join "user" u on u."id" = p."userId"
     where lower(p."nick") = ${nick}
@@ -684,19 +728,7 @@ export async function executeGetPublicProfile(
 
   // 2. Se não encontrado por nick, buscar por ID exato utilizando a chave primária de "user" (Index Scan direto)
   if (!rows[0] && rawInput) {
-    rows = await sql<{
-      userId: string;
-      userName: string | null;
-      userImage: string | null;
-      name: string | null;
-      nick: string | null;
-      bio: string | null;
-      image: string | null;
-      bannerUrl: string | null;
-      isVerified: boolean | null;
-      userCreatedAt: string | Date | null;
-      profileCreatedAt: string | Date | null;
-    }>`
+    rows = await sql<PublicProfileLookupRow>`
       select
         u."id" as "userId",
         u."name" as "userName",
@@ -708,7 +740,14 @@ export async function executeGetPublicProfile(
         nullif(trim(p."bannerUrl"), '') as "bannerUrl",
         coalesce(p."isVerified", false) as "isVerified",
         u."createdAt" as "userCreatedAt",
-        p."createdAt" as "profileCreatedAt"
+        p."createdAt" as "profileCreatedAt",
+        p."accountType",
+        p."allowFollowers",
+        p."privacyLists",
+        p."privacyFavorites",
+        p."privacyHistory",
+        p."privacyComments",
+        p."privacyFollowers"
       from "user" u
       left join "profile" p on p."userId" = u."id"
       where u."id" = ${rawInput}
@@ -718,19 +757,7 @@ export async function executeGetPublicProfile(
 
   // 3. Fallback adicional para IDs normalizados caso rawInput divirja
   if (!rows[0] && nick && nick !== rawInput) {
-    rows = await sql<{
-      userId: string;
-      userName: string | null;
-      userImage: string | null;
-      name: string | null;
-      nick: string | null;
-      bio: string | null;
-      image: string | null;
-      bannerUrl: string | null;
-      isVerified: boolean | null;
-      userCreatedAt: string | Date | null;
-      profileCreatedAt: string | Date | null;
-    }>`
+    rows = await sql<PublicProfileLookupRow>`
       select
         u."id" as "userId",
         u."name" as "userName",
@@ -742,7 +769,14 @@ export async function executeGetPublicProfile(
         nullif(trim(p."bannerUrl"), '') as "bannerUrl",
         coalesce(p."isVerified", false) as "isVerified",
         u."createdAt" as "userCreatedAt",
-        p."createdAt" as "profileCreatedAt"
+        p."createdAt" as "profileCreatedAt",
+        p."accountType",
+        p."allowFollowers",
+        p."privacyLists",
+        p."privacyFavorites",
+        p."privacyHistory",
+        p."privacyComments",
+        p."privacyFollowers"
       from "user" u
       left join "profile" p on p."userId" = u."id"
       where u."id" = ${nick}
@@ -767,51 +801,31 @@ export async function executeGetPublicProfile(
     };
   }
 
-  // Avaliação estrita de privacidade no servidor
-  const privacy = await evaluateUserPrivacy(sql, row.userId, viewerUserId);
+  return row;
+}
 
-  const [commentRows, followerRows, followingRows, reqRows, followedByRows] = await Promise.all([
-    privacy.canViewComments
-      ? sql<{ count: string }>`select count(*)::text as count from "comment" where "userId" = ${row.userId}`
-      : Promise.resolve([]),
-    privacy.canViewFollowers
-      ? sql<{ count: string }>`select count(*)::text as count from "user_follow" where "followingId" = ${row.userId}`
-      : Promise.resolve([]),
-    privacy.canViewFollowers
-      ? sql<{ count: string }>`select count(*)::text as count from "user_follow" where "followerId" = ${row.userId}`
-      : Promise.resolve([]),
-    viewerUserId && !privacy.isOwner && !privacy.isFollower
-      ? sql<{ count: string }>`
-          select count(*)::text as count
-          from "user_follow_request"
-          where "requesterId" = ${viewerUserId}
-            and "targetId" = ${row.userId}
-            and "status" = 'pending'
-          limit 1
-        `
-      : Promise.resolve([]),
-    viewerUserId && !privacy.isOwner
-      ? sql<{ count: string }>`
-          select count(*)::text as count
-          from "user_follow"
-          where "followerId" = ${row.userId}
-            and "followingId" = ${viewerUserId}
-          limit 1
-        `
-      : Promise.resolve([]),
-  ]);
+function buildPublicUserProfile(params: {
+  row: PublicProfileLookupRow;
+  privacy: EvaluatedPrivacy;
+  commentCount: number;
+  followersCount: number;
+  followingCount: number;
+  hasPendingRequest: boolean;
+  isFollowedBy: boolean;
+  canManageVerification: boolean;
+}): PublicUserProfile {
+  const {
+    row,
+    privacy,
+    commentCount,
+    followersCount,
+    followingCount,
+    hasPendingRequest,
+    isFollowedBy,
+    canManageVerification,
+  } = params;
 
-  const commentCount = Number(commentRows[0]?.count ?? "0");
-  const followersCount = Number(followerRows[0]?.count ?? "0");
-  const followingCount = Number(followingRows[0]?.count ?? "0");
-
-  const isBlockedByMe = privacy.isBlockedByMe;
-  const isBlockedByTarget = privacy.isBlockedByTarget;
   const isBlocked = privacy.isBlocked;
-
-  const hasPendingRequest = !isBlocked && Number(reqRows[0]?.count ?? "0") > 0;
-  const isFollowedBy = !isBlocked && Number(followedByRows[0]?.count ?? "0") > 0;
-
   let relationStatus: FollowRelationshipStatus = "none";
   if (privacy.isOwner) {
     relationStatus = "self";
@@ -823,25 +837,13 @@ export async function executeGetPublicProfile(
     relationStatus = "requested";
   }
 
-  let canManageVerification = false;
-  if (viewerUserId) {
-    const vRows = await sql<{ nick: string | null }>`
-      select p."nick"
-      from "profile" p
-      where p."userId" = ${viewerUserId}
-      limit 1
-    `;
-    const vNick = (vRows[0]?.nick || "").trim().toLowerCase();
-    canManageVerification = vNick === "pererinha";
-  }
-
   return {
     userId: row.userId,
     name: row.name || row.nick || "Usuário",
     nick: row.nick || row.userId,
-    bio: privacy.canViewAccount ? (row.bio ?? "") : "",
+    bio: privacy.canViewAccount && !isBlocked ? (row.bio ?? "") : "",
     image: row.image,
-    bannerUrl: privacy.canViewAccount ? (row.bannerUrl ?? null) : null,
+    bannerUrl: privacy.canViewAccount && !isBlocked ? (row.bannerUrl ?? null) : null,
     commentCount,
     followersCount,
     followingCount,
@@ -850,8 +852,8 @@ export async function executeGetPublicProfile(
     hasPendingRequest,
     relationStatus,
     isBlocked,
-    isBlockedByMe,
-    isBlockedByTarget,
+    isBlockedByMe: privacy.isBlockedByMe,
+    isBlockedByTarget: privacy.isBlockedByTarget,
     accountType: privacy.accountType,
     allowFollowers: privacy.allowFollowers,
     privacyLists: privacy.privacyLists,
@@ -876,6 +878,70 @@ export async function executeGetPublicProfile(
   };
 }
 
+export async function executeGetPublicProfile(
+  sql: Sql,
+  rawNick: unknown,
+  viewerUserId: string | null,
+): Promise<PublicUserProfile> {
+  const row = await resolvePublicProfileRow(sql, rawNick);
+
+  // Avaliação estrita de privacidade no servidor reutilizando os campos já carregados
+  const privacy = await evaluateUserPrivacy(sql, row.userId, viewerUserId, row);
+
+  const [commentRows, followerRows, followingRows, reqRows, followedByRows, viewerRows] =
+    await Promise.all([
+      privacy.canViewComments
+        ? sql<{ count: string }>`select count(*)::text as count from "comment" where "userId" = ${row.userId}`
+        : Promise.resolve([]),
+      privacy.canViewFollowers
+        ? sql<{ count: string }>`select count(*)::text as count from "user_follow" where "followingId" = ${row.userId}`
+        : Promise.resolve([]),
+      privacy.canViewFollowers
+        ? sql<{ count: string }>`select count(*)::text as count from "user_follow" where "followerId" = ${row.userId}`
+        : Promise.resolve([]),
+      viewerUserId && !privacy.isOwner && !privacy.isFollower && !privacy.isBlocked
+        ? sql<{ count: string }>`
+            select count(*)::text as count
+            from "user_follow_request"
+            where "requesterId" = ${viewerUserId}
+              and "targetId" = ${row.userId}
+              and "status" = 'pending'
+            limit 1
+          `
+        : Promise.resolve([]),
+      viewerUserId && !privacy.isOwner && !privacy.isBlocked
+        ? sql<{ count: string }>`
+            select count(*)::text as count
+            from "user_follow"
+            where "followerId" = ${row.userId}
+              and "followingId" = ${viewerUserId}
+            limit 1
+          `
+        : Promise.resolve([]),
+      viewerUserId && !privacy.isOwner
+        ? sql<{ nick: string | null }>`
+            select p."nick"
+            from "profile" p
+            where p."userId" = ${viewerUserId}
+            limit 1
+          `
+        : Promise.resolve([]),
+    ]);
+
+  const vNick = (viewerRows[0]?.nick || "").trim().toLowerCase();
+
+  return buildPublicUserProfile({
+    row,
+    privacy,
+    commentCount: Number(commentRows[0]?.count ?? "0"),
+    followersCount: Number(followerRows[0]?.count ?? "0"),
+    followingCount: Number(followingRows[0]?.count ?? "0"),
+    hasPendingRequest: !privacy.isBlocked && Number(reqRows[0]?.count ?? "0") > 0,
+    isFollowedBy: !privacy.isBlocked && Number(followedByRows[0]?.count ?? "0") > 0,
+    canManageVerification: vNick === "pererinha",
+  });
+}
+
 export const getPublicProfile =
   createServerFn({
     method: "GET",
@@ -887,6 +953,180 @@ export const getPublicProfile =
       const sql = await getSql();
       return executeGetPublicProfile(sql, data?.nick, viewerUserId);
     });
+
+/**
+ * Loader agregado para perfis públicos:
+ * 1) Resolve perfil alvo e avalia privacidade no servidor usando apenas context.userId.
+ * 2) Reutiliza a avaliação de privacidade em toda a requisição sem queries repetidas.
+ * 3) Se for o próprio dono, retorna payload leve imediato para redirecionamento para /account.
+ * 4) Busca em paralelo contagens sociais, acompanhamento mínimo e favoritos agrupados somente quando permitido.
+ */
+export async function executeGetPublicProfileBundle(
+  sql: Sql,
+  rawNick: unknown,
+  viewerUserId: string | null,
+): Promise<PublicProfileBundle> {
+  const row = await resolvePublicProfileRow(sql, rawNick);
+  const privacy = await evaluateUserPrivacy(sql, row.userId, viewerUserId, row);
+
+  if (privacy.isOwner) {
+    return {
+      profile: buildPublicUserProfile({
+        row,
+        privacy,
+        commentCount: 0,
+        followersCount: 0,
+        followingCount: 0,
+        hasPendingRequest: false,
+        isFollowedBy: false,
+        canManageVerification: false,
+      }),
+      privacy,
+      trackingItems: [],
+      favoritesGrouped: createEmptyFavoritesGrouped(),
+      viewerUserId,
+    };
+  }
+
+  const canFetchTracking = privacy.canViewAccount && !privacy.isBlocked;
+  const canFetchFavorites =
+    privacy.canViewAccount && !privacy.isBlocked && privacy.canViewFavorites;
+
+  const [
+    commentRows,
+    followerRows,
+    followingRows,
+    reqRows,
+    followedByRows,
+    viewerRows,
+    trackingItems,
+    favoritesRes,
+  ] = await Promise.all([
+    privacy.canViewComments
+      ? sql<{ count: string }>`select count(*)::text as count from "comment" where "userId" = ${row.userId}`
+      : Promise.resolve([]),
+    privacy.canViewFollowers
+      ? sql<{ count: string }>`select count(*)::text as count from "user_follow" where "followingId" = ${row.userId}`
+      : Promise.resolve([]),
+    privacy.canViewFollowers
+      ? sql<{ count: string }>`select count(*)::text as count from "user_follow" where "followerId" = ${row.userId}`
+      : Promise.resolve([]),
+    viewerUserId && !privacy.isFollower && !privacy.isBlocked
+      ? sql<{ count: string }>`
+          select count(*)::text as count
+          from "user_follow_request"
+          where "requesterId" = ${viewerUserId}
+            and "targetId" = ${row.userId}
+            and "status" = 'pending'
+          limit 1
+        `
+      : Promise.resolve([]),
+    viewerUserId && !privacy.isBlocked
+      ? sql<{ count: string }>`
+          select count(*)::text as count
+          from "user_follow"
+          where "followerId" = ${row.userId}
+            and "followingId" = ${viewerUserId}
+          limit 1
+        `
+      : Promise.resolve([]),
+    viewerUserId
+      ? sql<{ nick: string | null }>`
+          select p."nick"
+          from "profile" p
+          where p."userId" = ${viewerUserId}
+          limit 1
+        `
+      : Promise.resolve([]),
+    canFetchTracking
+      ? executeGetPublicAnimeTracking(sql, row.userId, viewerUserId, {
+          minimal: true,
+          privacy,
+        }).catch(() => [])
+      : Promise.resolve([]),
+    canFetchFavorites
+      ? executeGetPublicProfileFavorites(sql, row.userId, viewerUserId, {
+          privacy,
+        }).catch(() => ({ items: [], grouped: createEmptyFavoritesGrouped() }))
+      : Promise.resolve({ items: [], grouped: createEmptyFavoritesGrouped() }),
+  ]);
+
+  const vNick = (viewerRows[0]?.nick || "").trim().toLowerCase();
+
+  return {
+    profile: buildPublicUserProfile({
+      row,
+      privacy,
+      commentCount: Number(commentRows[0]?.count ?? "0"),
+      followersCount: Number(followerRows[0]?.count ?? "0"),
+      followingCount: Number(followingRows[0]?.count ?? "0"),
+      hasPendingRequest: !privacy.isBlocked && Number(reqRows[0]?.count ?? "0") > 0,
+      isFollowedBy: !privacy.isBlocked && Number(followedByRows[0]?.count ?? "0") > 0,
+      canManageVerification: vNick === "pererinha",
+    }),
+    privacy,
+    trackingItems,
+    favoritesGrouped: favoritesRes.grouped,
+    viewerUserId,
+  };
+}
+
+const publicProfileBundleSchema = z.object({
+  nick: z.string().trim().min(1, "Nick não informado."),
+});
+
+export const getPublicProfileBundle = createServerFn({
+  method: "GET",
+})
+  .middleware([optionalAuthMiddleware])
+  .validator((d: { nick: string }) =>
+    publicProfileBundleSchema.parse({ nick: d?.nick ?? "" }),
+  )
+  .handler(async ({ context, data }): Promise<PublicProfileBundle> => {
+    // Nunca aceitar viewerUserId enviado pelo cliente: somente context.userId verificado no servidor
+    const viewerUserId = context?.userId ?? null;
+    const sql = await getSql();
+    return executeGetPublicProfileBundle(sql, data.nick, viewerUserId);
+  });
+
+/**
+ * Loader agregado para o próprio perfil (/account):
+ * Valida sessão exclusivamente no servidor (cookie ou Bearer token) e reúne
+ * perfil, contagem de solicitações, tracking mínimo e favoritos em paralelo.
+ */
+export async function executeGetAccountProfileBundle(
+  sql: Sql,
+  userId: string,
+): Promise<AccountProfileBundle> {
+  const cleanUserId = (userId || "").trim();
+  if (!cleanUserId) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  const [profile, requestsRes, trackingItems, favoritesRes] = await Promise.all([
+    executeGetProfile(sql, cleanUserId),
+    executeGetReceivedFollowRequestsCount(sql, cleanUserId),
+    executeGetMyAnimeTracking(sql, cleanUserId, { minimal: true }),
+    executeGetMyProfileFavorites(sql, cleanUserId, {}),
+  ]);
+
+  return {
+    profile,
+    trackingItems,
+    favoritesItems: favoritesRes.items,
+    favoritesGrouped: favoritesRes.grouped,
+    requestsCount: requestsRes.count,
+  };
+}
+
+export const getAccountProfileBundle = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<AccountProfileBundle> => {
+    const sql = await getSql();
+    return executeGetAccountProfileBundle(sql, context.userId);
+  });
 
 /* ============================================================ */
 /* SEGUIDORES                                                      */
@@ -2309,32 +2549,23 @@ export const updateProfile =
           "updatedAt" = CURRENT_TIMESTAMP
       `;
 
-      const commentRows = await sql<{
-        count: string;
-      }>`
-        select count(*)::text as count
-        from "comment"
-        where "userId" =
-          ${context.userId}
-      `;
-
-      const followerRows = await sql<{
-        count: string;
-      }>`
-        select count(*)::text as count
-        from "user_follow"
-        where "followingId" =
-          ${context.userId}
-      `;
-
-      const followingRows = await sql<{
-        count: string;
-      }>`
-        select count(*)::text as count
-        from "user_follow"
-        where "followerId" =
-          ${context.userId}
-      `;
+      const [commentRows, followerRows, followingRows] = await Promise.all([
+        sql<{ count: string }>`
+          select count(*)::text as count
+          from "comment"
+          where "userId" = ${context.userId}
+        `,
+        sql<{ count: string }>`
+          select count(*)::text as count
+          from "user_follow"
+          where "followingId" = ${context.userId}
+        `,
+        sql<{ count: string }>`
+          select count(*)::text as count
+          from "user_follow"
+          where "followerId" = ${context.userId}
+        `,
+      ]);
 
       return {
         userId: context.userId,
@@ -3485,6 +3716,20 @@ export const setUserVerification = createServerFn({
     };
   });
 
+export async function executeGetReceivedFollowRequestsCount(
+  sql: Sql,
+  ownerId: string,
+): Promise<{ count: number }> {
+  const rows = await sql<{ count: string }>`
+    select count(*)::text as count
+    from "user_follow_request"
+    where "targetId" = ${ownerId}
+      and "status" = 'pending'
+  `;
+
+  return { count: Number(rows[0]?.count ?? "0") };
+}
+
 /**
  * Retornar apenas a quantidade de solicitações de acompanhamento recebidas (otimização de leitura inicial).
  */
@@ -3493,17 +3738,8 @@ export const getReceivedFollowRequestsCount = createServerFn({
 })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const ownerId = context.userId;
     const sql = await getSql();
-
-    const rows = await sql<{ count: string }>`
-      select count(*)::text as count
-      from "user_follow_request"
-      where "targetId" = ${ownerId}
-        and "status" = 'pending'
-    `;
-
-    return { count: Number(rows[0]?.count ?? "0") };
+    return executeGetReceivedFollowRequestsCount(sql, context.userId);
   });
 
 

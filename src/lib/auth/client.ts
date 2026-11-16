@@ -1,6 +1,7 @@
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.mjs";
+import { invalidateAllProfileCaches } from "@/lib/profile-client-cache";
 import { GROK_PROVIDERS } from "./providers";
 
 /**
@@ -111,6 +112,7 @@ export async function signIn(
     } catch {
       /* ignore */
     }
+    invalidateAllProfileCaches();
   }
   const callbackURL = opts.callbackURL ?? "/";
   const errorCallbackURL = opts.errorCallbackURL ?? "/";
@@ -137,6 +139,7 @@ export async function signIn(
     const token = await waitForPopupToken(popup);
     if (!token) throw new Error("Sign-in was cancelled or failed");
     setBearerToken(token);
+    invalidateAllProfileCaches();
     // Refresh the client session store with the bearer attached (onRequest).
     // Avoid a full iframe reload when we're already on the destination — that
     // reload was the slow "still loading after the popup closed" feeling.
@@ -250,6 +253,7 @@ export async function signOut(redirectTo = "/"): Promise<void> {
     } catch {
       /* ignore */
     }
+    invalidateAllProfileCaches();
   }
 
   if (!authEnabled) {
@@ -268,7 +272,10 @@ export async function signOut(redirectTo = "/"): Promise<void> {
       const { error } = await authClient.signOut();
       if (error) throw new Error(error.message ?? "Sign-out failed");
     },
-    clearToken: () => setBearerToken(null),
+    clearToken: () => {
+      setBearerToken(null);
+      invalidateAllProfileCaches();
+    },
     redirect: () => {
       window.location.href = redirectTo;
     },

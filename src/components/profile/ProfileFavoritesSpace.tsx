@@ -252,11 +252,15 @@ export const ProfileFavoritesSpace = React.memo(function ProfileFavoritesSpace({
           ? s
           : undefined;
 
+      const narrowTab = (t: unknown) =>
+        t === "favorites" || t === "comments" || t === "activity" ? t : undefined;
+
       if (item.targetType === "studio" || item.targetType === "company") {
         void navigate({
           to: "/account",
           search: (prev) => ({
             ...prev,
+            tab: narrowTab(prev.tab),
             status: narrowStatus(prev.status),
             studio: item.title,
             studioId: item.targetId,
@@ -279,6 +283,7 @@ export const ProfileFavoritesSpace = React.memo(function ProfileFavoritesSpace({
             to: "/account",
             search: (prev) => ({
               ...prev,
+              tab: narrowTab(prev.tab),
               status: narrowStatus(prev.status),
               dublador: item.title,
               dubladorId: item.targetId,
@@ -295,6 +300,7 @@ export const ProfileFavoritesSpace = React.memo(function ProfileFavoritesSpace({
             to: "/account",
             search: (prev) => ({
               ...prev,
+              tab: narrowTab(prev.tab),
               status: narrowStatus(prev.status),
               staff: item.title,
               staffId: item.targetId,

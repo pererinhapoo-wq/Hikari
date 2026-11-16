@@ -19,6 +19,11 @@ import {
   getPublicAnimeTrackingPaginated,
   upsertAnimeTracking,
 } from "@/lib/profile-tracking.functions";
+import {
+  getKnownViewerId,
+  invalidateAccountProfileCache,
+  invalidatePublicProfileCacheByUserId,
+} from "@/lib/profile-client-cache";
 import { cn } from "@/lib/utils";
 import {
   STATUS_CONFIG,
@@ -782,6 +787,9 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
       applyItemMutationToCache(finalItem, updatedItem.status, item.animeId);
       onUpdateItem?.(finalItem, item.animeId);
+      const ownerId = targetUserId ?? getKnownViewerId();
+      invalidateAccountProfileCache(ownerId ?? undefined);
+      if (ownerId) invalidatePublicProfileCacheByUserId(ownerId);
       toast.success(`Episódio ${finalItem.episodesWatched}${maxEps ? ` de ${maxEps}` : ""} marcado!`);
     } catch (err) {
       applyItemMutationToCache(previousItem, updatedItem.status, item.animeId);
@@ -845,6 +853,9 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
       applyItemMutationToCache(finalItem, optimisticItem.status, targetItem.animeId);
       onUpdateItem?.(finalItem, targetItem.animeId);
+      const ownerId = targetUserId ?? getKnownViewerId();
+      invalidateAccountProfileCache(ownerId ?? undefined);
+      if (ownerId) invalidatePublicProfileCacheByUserId(ownerId);
       toast.success("Coleção atualizada com sucesso!");
     } catch (err) {
       applyItemMutationToCache(previousItem, optimisticItem.status, targetItem.animeId);
