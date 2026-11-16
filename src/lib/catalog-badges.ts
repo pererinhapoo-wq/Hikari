@@ -83,36 +83,65 @@ function parseStoredRecord(
   }
 }
 
-export async function loadAllAnimeRecentBadgesFromDb(): Promise<AnimeRecentBadgesLookup> {
-  const lookup = createEmptyLookup();
-  try {
-    const sql = await getSql();
-    const rows = await sql.query<{ key: string; value: string }>(
-      `SELECT "key", "value"
-       FROM "admin_settings"
-       WHERE "key" LIKE $1;`,
-      [`${ANIME_RECENT_BADGES_KEY_PREFIX}%`],
-    );
+let cachedBadgesResult: { data: AnimeRecentBadgesLookup; timestamp: number } | null = null;
+let badgesInFlightPromise: Promise<AnimeRecentBadgesLookup> | null = null;
+const BADGES_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutos
 
-    for (const row of rows ?? []) {
-      const record = parseStoredRecord(row.key, row.value);
-      if (!record) continue;
-      const badges = normalizeAnimeRecentBadges(record);
-      lookup.byId.set(record.animeId, badges);
-      if (record.anilistId && record.anilistId > 0 && !lookup.byAnilistId.has(record.anilistId)) {
-        lookup.byAnilistId.set(record.anilistId, badges);
-      }
-      if (record.malId && record.malId > 0 && !lookup.byMalId.has(record.malId)) {
-        lookup.byMalId.set(record.malId, badges);
-      }
-      if (record.kitsuId && record.kitsuId > 0 && !lookup.byKitsuId.has(record.kitsuId)) {
-        lookup.byKitsuId.set(record.kitsuId, badges);
-      }
-    }
-  } catch (err) {
-    console.warn("[catalog-badges] Falha segura ao carregar selos de admin_settings:", err);
+export function invalidateAnimeRecentBadgesCache(): void {
+  cachedBadgesResult = null;
+  badgesInFlightPromise = null;
+}
+
+export async function loadAllAnimeRecentBadgesFromDb(): Promise<AnimeRecentBadgesLookup> {
+  const now = Date.now();
+  if (cachedBadgesResult && now - cachedBadgesResult.timestamp < BADGES_CACHE_TTL_MS) {
+    return cachedBadgesResult.data;
   }
-  return lookup;
+
+  if (badgesInFlightPromise) {
+    return badgesInFlightPromise;
+  }
+
+  badgesInFlightPromise = (async () => {
+    const lookup = createEmptyLookup();
+    try {
+      const sql = await getSql();
+      const rows = await sql.query<{ key: string; value: string }>(
+        `SELECT "key", "value"
+         FROM "admin_settings"
+         WHERE "key" LIKE $1;`,
+        [`${ANIME_RECENT_BADGES_KEY_PREFIX}%`],
+      );
+
+      for (const row of rows ?? []) {
+        const record = parseStoredRecord(row.key, row.value);
+        if (!record) continue;
+        const badges = normalizeAnimeRecentBadges(record);
+        lookup.byId.set(record.animeId, badges);
+        if (record.anilistId && record.anilistId > 0 && !lookup.byAnilistId.has(record.anilistId)) {
+          lookup.byAnilistId.set(record.anilistId, badges);
+        }
+        if (record.malId && record.malId > 0 && !lookup.byMalId.has(record.malId)) {
+          lookup.byMalId.set(record.malId, badges);
+        }
+        if (record.kitsuId && record.kitsuId > 0 && !lookup.byKitsuId.has(record.kitsuId)) {
+          lookup.byKitsuId.set(record.kitsuId, badges);
+        }
+      }
+
+      cachedBadgesResult = {
+        data: lookup,
+        timestamp: Date.now(),
+      };
+    } catch (err) {
+      console.warn("[catalog-badges] Falha segura ao carregar selos de admin_settings:", err);
+    } finally {
+      badgesInFlightPromise = null;
+    }
+    return cachedBadgesResult ? cachedBadgesResult.data : lookup;
+  })();
+
+  return badgesInFlightPromise;
 }
 
 export function findAnimeRecentBadgesInLookup(
@@ -207,6 +236,7 @@ export async function saveAnimeRecentBadgesToDb(input: {
       .catch(() => undefined);
   }
 
+  invalidateAnimeRecentBadgesCache();
   return normalized;
 }
 
@@ -220,6 +250,7 @@ export async function deleteAnimeRecentBadgesFromDb(
     await sql.query(`DELETE FROM "admin_settings" WHERE "key" = $1;`, [
       buildAnimeRecentBadgesKey(cleanId),
     ]);
+    invalidateAnimeRecentBadgesCache();
   } catch (err) {
     console.warn("[catalog-badges] Falha ao remover selos de admin_settings:", err);
   }
