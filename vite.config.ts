@@ -1,5 +1,6 @@
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -130,6 +131,7 @@ function sitemapPlugin(): Plugin {
 
 export default defineConfig(({ command, isPreview }) => {
   const isBuildOrPreview = command === "build" || Boolean(isPreview);
+  const isCloudflare = process.env.CLOUDFLARE === "true";
 
   return {
     envPrefix: ["VITE_", "NEXT_PUBLIC_"],
@@ -180,6 +182,7 @@ export default defineConfig(({ command, isPreview }) => {
       grokPwaPlugin(),
       authPopupPlugin(),
       tailwindcss(),
+      ...(isCloudflare ? [cloudflare({ viteEnvironment: { name: "ssr" } })] : []),
       tanstackStart(),
       viteReact(),
       ...(isBuildOrPreview && !process.env.CLOUDFLARE
