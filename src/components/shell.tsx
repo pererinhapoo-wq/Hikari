@@ -1404,10 +1404,10 @@ export function Shell() {
           menuOpen
         }
       >
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-1.5 min-[380px]:gap-3 px-3 min-[380px]:px-4 sm:h-16 sm:px-6">
+        <div className="relative mx-auto flex h-14 max-w-6xl items-center justify-between gap-1.5 min-[380px]:gap-3 px-3 min-[380px]:px-4 sm:h-16 sm:px-6">
 
-          {/* LADO ESQUERDO: Menu Mobile + Logo + Navegação Desktop */}
-          <div className="flex min-w-0 shrink-0 items-center gap-1.5 min-[380px]:gap-3 sm:gap-6">
+          {/* LADO ESQUERDO: Menu Mobile + Navegação Desktop */}
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5 min-[380px]:gap-3">
             {/* BOTÃO MENU (visível em telas menores que md) */}
             <button
               type="button"
@@ -1417,11 +1417,6 @@ export function Shell() {
             >
               <Menu className="size-5" />
             </button>
-
-            {/* LOGO OFICIAL HIKARI */}
-            <div className="flex shrink-0 items-center">
-              <Logo size="md" />
-            </div>
 
             {/* LINKS DE NAVEGAÇÃO DESKTOP */}
             <nav className="hidden md:flex items-center gap-1" aria-label="Navegação principal">
@@ -1457,6 +1452,13 @@ export function Shell() {
 
 
             </nav>
+          </div>
+
+          {/* CENTRO: LOGO OFICIAL HIKARI (EXATAMENTE CENTRALIZADO) */}
+          <div className="pointer-events-none absolute inset-y-0 left-1/2 flex -translate-x-1/2 items-center justify-center">
+            <div className="pointer-events-auto flex shrink-0 items-center">
+              <Logo size="md" fetchPriority="high" />
+            </div>
           </div>
 
           {/* AÇÕES DA DIREITA */}

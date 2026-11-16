@@ -210,6 +210,22 @@ function RootDocument() {
           content="width=device-width, initial-scale=1, interactive-widget=resizes-content"
         />
         <link rel="stylesheet" href={appCss} />
+        <link
+          rel="preload"
+          as="image"
+          type="image/webp"
+          imageSrcSet="/assets/hikari-elizabeth-character-sm.webp 186w, /assets/hikari-elizabeth-character.webp 290w"
+          imageSizes="(min-width: 640px) 96px, 83px"
+          fetchPriority="high"
+        />
+        <link
+          rel="preload"
+          as="image"
+          type="image/webp"
+          imageSrcSet="/assets/hikari-wordmark-sm.webp 200w, /assets/hikari-wordmark.webp 329w"
+          imageSizes="(min-width: 640px) 118px, 100px"
+          fetchPriority="high"
+        />
         <link rel="preconnect" href="https://s4.anilist.co" />
         <link rel="dns-prefetch" href="https://s4.anilist.co" />
         <HeadContent />
