@@ -441,9 +441,40 @@ function PublicProfile() {
     else if (search.tab === "favorites") setActiveSpace("overview");
   }, [search.tab]);
 
-  // Carregamento inicial obrigatório do perfil e favoritos da Visão Geral
+const profileMemoryCache = new Map<
+  string,
+  { profile: any; tracking: any; favorites: any; timestamp: number }
+>();
+const CACHE_TTL_MS = 2 * 60 * 1000;
+
+  // Carregamento inicial otimizado com cache em memória e requisições em paralelo
   useEffect(() => {
     let active = true;
+
+    const cached = profileMemoryCache.get(nick);
+    const now = Date.now();
+    if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+      setProfile(cached.profile);
+      setFollowing(cached.profile.isFollowing);
+      setHasPendingRequest(Boolean(cached.profile.hasPendingRequest));
+      setFollowersCount(cached.profile.followersCount);
+      setIsBlockedByMe(Boolean(cached.profile.isBlockedByMe));
+      setIsBlockedByTarget(Boolean(cached.profile.isBlockedByTarget));
+      setTrackingItems(cached.tracking || []);
+      setFavoritesGrouped(
+        cached.favorites || {
+          anime: [],
+          character: [],
+          studio: [],
+          company: [],
+          person: [],
+        },
+      );
+      setLoading(false);
+      setTrackingLoading(false);
+      setFavoritesLoading(false);
+      return;
+    }
 
     setLoading(true);
     setError("");
@@ -473,11 +504,12 @@ function PublicProfile() {
       .then(async (result) => {
         if (!active) return;
 
-        // Se for o próprio usuário, redireciona imediatamente para o Perfil próprio (/account)
         if (result.isOwner) {
           void navigate({
             to: "/account",
-            search: statusParamRef.current ? { status: statusParamRef.current } : undefined,
+            search: statusParamRef.current
+              ? { status: statusParamRef.current }
+              : undefined,
             replace: true,
           });
           return;
@@ -489,61 +521,90 @@ function PublicProfile() {
         setFollowersCount(result.followersCount);
         setIsBlockedByMe(Boolean(result.isBlockedByMe));
         setIsBlockedByTarget(Boolean(result.isBlockedByTarget));
+        setLoading(false);
 
         const canAccessProfileContent =
-          result.canViewContent && !result.isBlockedByMe && !result.isBlockedByTarget;
+          result.canViewContent &&
+          !result.isBlockedByMe &&
+          !result.isBlockedByTarget;
 
-        // Carrega dados reais de acompanhamento de animes para o Anime Stats do perfil visitado
+        let trackingResult: UserAnimeTrackingItem[] = [];
+        let favoritesResult = {
+          anime: [],
+          character: [],
+          studio: [],
+          company: [],
+          person: [],
+        };
+
         if (canAccessProfileContent) {
           setTrackingLoading(true);
-          getPublicAnimeTrackingFn({
-            data: {
-              userId: result.userId,
-              minimal: true,
-            },
-          })
-            .then((items) => {
-              if (active) setTrackingItems(items);
-            })
-            .catch((err) => {
-              console.warn("Erro ao buscar estatísticas públicas de animes:", err);
-            })
-            .finally(() => {
-              if (active) setTrackingLoading(false);
-            });
+          if (result.canViewFavorites) setFavoritesLoading(true);
+
+          const [trackingRes, favRes] = await Promise.all([
+            getPublicAnimeTrackingFn({
+              data: { userId: result.userId, minimal: true },
+            }).catch(() => []),
+            result.canViewFavorites
+              ? getPublicFavoritesFn({ data: { userId: result.userId } }).catch(
+                  () => ({
+                    grouped: {
+                      anime: [],
+                      character: [],
+                      studio: [],
+                      company: [],
+                      person: [],
+                    },
+                  }),
+                )
+              : Promise.resolve({
+                  grouped: {
+                    anime: [],
+                    character: [],
+                    studio: [],
+                    company: [],
+                    person: [],
+                  },
+                }),
+          ]);
+
+          if (!active) return;
+          trackingResult = trackingRes;
+          favoritesResult = favRes.grouped;
+
+          setTrackingItems(trackingResult);
+          setTrackingLoading(false);
+          setFavoritesGrouped(favoritesResult);
+          setFavoritesLoading(false);
         }
 
-        // Carrega Favoritos da Visão Geral somente se o perfil e a seção de favoritos estiverem acessíveis
-        if (canAccessProfileContent && result.canViewFavorites) {
-          setFavoritesLoading(true);
-          getPublicFavoritesFn({
-            data: {
-              userId: result.userId,
-            },
-          })
-            .then((favs) => {
-              if (active) setFavoritesGrouped(favs.grouped);
-            })
-            .catch((err) => {
-              console.warn("Erro ao buscar favoritos públicos:", err);
-            })
-            .finally(() => {
-              if (active) setFavoritesLoading(false);
-            });
-        }
+        profileMemoryCache.set(nick, {
+          profile: result,
+          tracking: trackingResult,
+          favorites: favoritesResult,
+          timestamp: Date.now(),
+        });
       })
       .catch((err) => {
         if (!active) return;
-        setError(err instanceof Error ? err.message : "Erro ao carregar o perfil.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
+        setError(
+          err instanceof Error ? err.message : "Erro ao carregar o perfil.",
+        );
+        setLoading(false);
+        setTrackingLoading(false);
+        setFavoritesLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [nick, getPublicProfileFn, getPublicFavoritesFn, getPublicAnimeTrackingFn, navigate]);
+  }, [
+    nick,
+    getPublicProfileFn,
+    getPublicFavoritesFn,
+    getPublicAnimeTrackingFn,
+    navigate,
+  ]);
 
   // Carregamento sob demanda para a aba de Comentários (Cache e trava contra cliques rápidos)
   useEffect(() => {

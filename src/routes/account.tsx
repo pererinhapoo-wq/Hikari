@@ -641,114 +641,45 @@ function AccountProfile() {
   }, [search.connections, handleOpenConnections]);
 
   // Carregamento inicial do perfil
+  // Carregamento inicial paralelo e otimizado do perfil, solicitações, tracking e favoritos
   useEffect(() => {
     if (!user?.id) return;
     const reqId = ++profileRequestIdRef.current;
 
     setProfileLoading(true);
-
-    void stableGetProfile()
-      .then((data) => {
-        if (reqId !== profileRequestIdRef.current) return;
-        setProfile(data);
-      })
-      .catch((err) => {
-        if (reqId === profileRequestIdRef.current) {
-          console.warn("Erro ao obter dados do perfil:", err);
-        }
-      })
-      .finally(() => {
-        if (reqId === profileRequestIdRef.current) {
-          setProfileLoading(false);
-        }
-      });
-  }, [user?.id, stableGetProfile]);
-
-  // Solicitações de seguidores (necessárias para o indicador de badge do cabeçalho)
-  useEffect(() => {
-    if (!user?.id) return;
-    const reqId = ++requestsRequestIdRef.current;
-
-    void stableGetRequests()
-      .then((res) => {
-        if (reqId !== requestsRequestIdRef.current) return;
-        setRequestsList(res);
-      })
-      .catch((err) => {
-        if (reqId === requestsRequestIdRef.current) {
-          console.warn("Erro ao buscar solicitações:", err);
-        }
-      });
-  }, [user?.id, stableGetRequests]);
-
-  // Carregamento sob demanda do Acompanhamento de Animes (Visão Geral e Aba Animes)
-  useEffect(() => {
-    if (
-      !user?.id ||
-      (activeSpace !== "overview" && activeSpace !== "animes" && !statusParam) ||
-      trackingLoaded ||
-      trackingFetchingRef.current
-    ) {
-      return;
-    }
-
-    const reqId = ++trackingRequestIdRef.current;
-    trackingFetchingRef.current = true;
     setTrackingLoading(true);
-
-    void stableGetTracking({ data: { minimal: true } })
-      .then((items) => {
-        if (reqId !== trackingRequestIdRef.current) return;
-        setTrackingItems(items);
-        setTrackingLoaded(true);
-      })
-      .catch((err) => {
-        if (reqId === trackingRequestIdRef.current) {
-          console.warn("Erro ao buscar acompanhamento:", err);
-        }
-      })
-      .finally(() => {
-        if (reqId === trackingRequestIdRef.current) {
-          trackingFetchingRef.current = false;
-          setTrackingLoading(false);
-        }
-      });
-  }, [user?.id, activeSpace, statusParam, trackingLoaded, stableGetTracking]);
-
-  // Carregamento sob demanda dos Favoritos Canônicos (Visão Geral)
-  useEffect(() => {
-    if (
-      !user?.id ||
-      activeSpace !== "overview" ||
-      favoritesLoaded ||
-      favoritesFetchingRef.current
-    ) {
-      return;
-    }
-
-    const reqId = ++favoritesRequestIdRef.current;
-    favoritesFetchingRef.current = true;
     setFavoritesLoading(true);
 
-    void stableGetFavorites({ data: {} })
-      .then((res) => {
-        if (reqId !== favoritesRequestIdRef.current) return;
-        setFavoritesGrouped(res.grouped);
-        setFavoritesItems(res.items);
+    void Promise.allSettled([
+      stableGetProfile(),
+      stableGetRequests(),
+      stableGetTracking({ data: { minimal: true } }),
+      stableGetFavorites({ data: {} }),
+    ]).then(([profileRes, requestsRes, trackingRes, favoritesRes]) => {
+      if (reqId !== profileRequestIdRef.current) return;
+
+      if (profileRes.status === "fulfilled") {
+        setProfile(profileRes.value);
+      }
+      setProfileLoading(false);
+
+      if (requestsRes.status === "fulfilled") {
+        setRequestsList(requestsRes.value);
+      }
+      if (trackingRes.status === "fulfilled") {
+        setTrackingItems(trackingRes.value);
+        setTrackingLoaded(true);
+      }
+      setTrackingLoading(false);
+
+      if (favoritesRes.status === "fulfilled") {
+        setFavoritesGrouped(favoritesRes.value.grouped);
+        setFavoritesItems(favoritesRes.value.items);
         setFavoritesLoaded(true);
-      })
-      .catch((err) => {
-        if (reqId === favoritesRequestIdRef.current) {
-          console.warn("Erro ao buscar favoritos:", err);
-        }
-      })
-      .finally(() => {
-        if (reqId === favoritesRequestIdRef.current) {
-          favoritesFetchingRef.current = false;
-          setFavoritesLoading(false);
-        }
-      });
-  }, [user?.id, activeSpace, favoritesLoaded, stableGetFavorites]);
+      }
+      setFavoritesLoading(false);
+    });
+  }, [user?.id, stableGetProfile, stableGetRequests, stableGetTracking, stableGetFavorites]);
 
   // Carregamento sob demanda para a aba de Comentários ou Visão Geral (Cache por aba e trava contra cliques rápidos)
   useEffect(() => {
