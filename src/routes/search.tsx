@@ -29,6 +29,13 @@ import {
   fetchGenres,
   searchCatalog,
 } from "@/lib/api";
+import {
+  getCachedAnimeSearch,
+  setCachedAnimeSearch,
+  getCachedUserSearch,
+  setCachedUserSearch,
+  setKnownSearchViewerId,
+} from "@/lib/search-client-cache";
 
 import {
   AnimeCard,
@@ -159,19 +166,22 @@ export const Route =
       }
 
       const { tab: _tab, ...catalogDeps } = deps;
-      const [result, genres] = await Promise.all([
-        searchCatalog({
-          data: {
-            ...catalogDeps,
-            page: catalogDeps.page ?? 1,
-          },
-        }),
-        fetchGenres(),
-      ]);
+      const page = catalogDeps.page ?? 1;
+      const searchParams = { ...catalogDeps, page };
+
+      let result = getCachedAnimeSearch(searchParams);
+      if (!result) {
+        result = await searchCatalog({
+          data: searchParams,
+        });
+        if (result && Array.isArray(result.items)) {
+          setCachedAnimeSearch(searchParams, result);
+        }
+      }
 
       return {
         result,
-        genres,
+        genres: [] as string[],
       };
     },
 
@@ -244,8 +254,31 @@ export const Route =
 function SearchPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const { result, genres } = Route.useLoaderData();
+  const { result, genres: loaderGenres } = Route.useLoaderData();
   const locals = useHikariStore((s) => s.animes);
+
+  const [genres, setGenres] = useState<string[]>(loaderGenres ?? []);
+  const [genresLoading, setGenresLoading] = useState(false);
+  const [genresLoaded, setGenresLoaded] = useState(false);
+
+  useEffect(() => {
+    if (filtersOpen && !genresLoaded && !genresLoading) {
+      setGenresLoading(true);
+      fetchGenres()
+        .then((list) => {
+          if (Array.isArray(list) && list.length > 0) {
+            setGenres(list);
+          }
+          setGenresLoaded(true);
+        })
+        .catch(() => {
+          setGenresLoaded(true);
+        })
+        .finally(() => {
+          setGenresLoading(false);
+        });
+    }
+  }, [filtersOpen, genresLoaded, genresLoading]);
 
   /*
    * =========================================================
@@ -393,13 +426,26 @@ function SearchPage() {
     setUsersError(null);
 
     try {
-      const results = await searchUsers({
-        data: {
-          query: clean,
-          page: 1,
-          limit: 20,
-        },
-      });
+      const currentUserId = useHikariStore.getState().currentUserId;
+      setKnownSearchViewerId(currentUserId);
+      const userParams = {
+        query: clean,
+        page: 1,
+        limit: 20,
+      };
+
+      let results = getCachedUserSearch(userParams, currentUserId);
+      if (!results) {
+        results = await searchUsers({
+          data: userParams,
+        });
+        if (reqId !== userReqIdRef.current) return;
+        if (Array.isArray(results)) {
+          setCachedUserSearch(userParams, currentUserId, results);
+        }
+      } else {
+        if (reqId !== userReqIdRef.current) return;
+      }
       if (reqId !== userReqIdRef.current) return;
       setUserResults(results);
       setUsersPage(1);
@@ -477,13 +523,26 @@ function SearchPage() {
     setUsersLoadingMore(true);
 
     try {
-      const moreUsers = await searchUsers({
-        data: {
-          query: clean,
-          page: nextPage,
-          limit: 20,
-        },
-      });
+      const currentUserId = useHikariStore.getState().currentUserId;
+      setKnownSearchViewerId(currentUserId);
+      const userParams = {
+        query: clean,
+        page: nextPage,
+        limit: 20,
+      };
+
+      let moreUsers = getCachedUserSearch(userParams, currentUserId);
+      if (!moreUsers) {
+        moreUsers = await searchUsers({
+          data: userParams,
+        });
+        if (reqId !== userReqIdRef.current) return;
+        if (Array.isArray(moreUsers)) {
+          setCachedUserSearch(userParams, currentUserId, moreUsers);
+        }
+      } else {
+        if (reqId !== userReqIdRef.current) return;
+      }
       if (reqId !== userReqIdRef.current) return;
 
       setUserResults((prev) => {
@@ -1173,7 +1232,7 @@ function SearchPage() {
             {/* Painel expansível de filtros */}
             {filtersOpen && (
               <div className="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 rounded-xl border border-white/10 bg-[#0c0a17]/70 p-3 pt-3.5">
-                <Field label="Gênero">
+                <Field label={genresLoading ? "Gênero (Carregando...)" : "Gênero"}>
                   <NativeSelect
                     value={search.genre ?? ""}
                     onChange={(e) =>

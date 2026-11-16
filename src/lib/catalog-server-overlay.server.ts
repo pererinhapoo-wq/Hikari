@@ -60,7 +60,19 @@ interface CatalogIndex {
   byKitsuId: Map<number, DbCatalogAnimeRow>;
 }
 
+let cachedCatalogIndex: { data: CatalogIndex; timestamp: number } | null = null;
+const CATALOG_INDEX_TTL_MS = 3 * 60 * 1000; // 3 minutos
+
+export function invalidateCatalogIndex(): void {
+  cachedCatalogIndex = null;
+}
+
 async function loadCatalogIndex(): Promise<CatalogIndex | null> {
+  const now = Date.now();
+  if (cachedCatalogIndex && now - cachedCatalogIndex.timestamp < CATALOG_INDEX_TTL_MS) {
+    return cachedCatalogIndex.data;
+  }
+
   try {
     const sql = await getSql();
     const rows = await sql.query<DbCatalogAnimeRow>(
@@ -122,10 +134,12 @@ async function loadCatalogIndex(): Promise<CatalogIndex | null> {
       }
     }
 
-    return { byId, byAnilistId, byMalId, byKitsuId };
+    const index = { byId, byAnilistId, byMalId, byKitsuId };
+    cachedCatalogIndex = { data: index, timestamp: now };
+    return index;
   } catch (err) {
     console.warn("[catalog-server-overlay] Falha ao consultar catalog_anime:", err);
-    return null;
+    return cachedCatalogIndex?.data ?? null;
   }
 }
 
@@ -461,3 +475,62 @@ export async function applyDbCatalogOverlayToDetail(
       : detail.resolvedMobileBanner,
   };
 }
+
+export async function searchLocalCatalogAnime(
+  query: string,
+  limit = 12,
+): Promise<SlimAnime[]> {
+  const clean = query.trim().toLowerCase();
+  if (!clean || clean.length < 2) return [];
+
+  try {
+    const sql = await getSql();
+    const escaped = clean.replace(/[\\%_]/g, "\\$&");
+    const pattern = `%${escaped}%`;
+
+    const rows = await sql.query<DbCatalogAnimeRow>(
+      `SELECT DISTINCT c.*
+       FROM "catalog_anime" c
+       LEFT JOIN "anime_alias" a ON a."anime_id" = c."id"
+       WHERE c."hidden" = false
+         AND (
+           c."search_blob" ILIKE ${pattern} ESCAPE '\\'
+           OR c."title_norm" ILIKE ${pattern} ESCAPE '\\'
+           OR a."alias_norm" ILIKE ${pattern} ESCAPE '\\'
+         )
+       ORDER BY c."updatedAt" DESC
+       LIMIT ${limit};`,
+    );
+
+    if (!rows || rows.length === 0) return [];
+
+    return rows.map((row) => ({
+      id: row.id,
+      anilistId: row.anilistId ?? undefined,
+      malId: row.malId ?? undefined,
+      kitsuId: row.kitsuId ?? undefined,
+      titles: {
+        romaji: row.titleRomaji?.trim() || row.title?.trim() || "",
+        english: row.titleEnglish?.trim() || "",
+        native: row.titleNative?.trim() || "",
+      },
+      cover: stripCatalogImageVersion(row.cover),
+      banner: stripCatalogImageVersion(row.banner),
+      synopsis: row.synopsis?.trim() || "",
+      format: row.format?.trim() || "TV",
+      status: row.status?.trim() || "FINISHED",
+      episodesCount: row.episodesCount ?? null,
+      season: row.season?.trim() || null,
+      year: row.year ?? null,
+      genres: Array.isArray(row.genres) ? row.genres : [],
+      score: row.score ?? null,
+      catalogUpdatedAt: toTimestampMs(row.updatedAt),
+      serverCatalogId: row.id,
+      source: "catalog" as const,
+    }));
+  } catch (err) {
+    console.warn("[catalog-server-overlay] Erro na busca local otimizada de catalog_anime:", err);
+    return [];
+  }
+}
+

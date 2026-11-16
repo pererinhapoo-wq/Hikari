@@ -10,6 +10,13 @@ import {
 import { searchCatalog } from "@/lib/api";
 import { searchUsers, type SearchUserItem } from "@/lib/profile.functions";
 import {
+  getCachedAnimeSearch,
+  setCachedAnimeSearch,
+  getCachedUserSearch,
+  setCachedUserSearch,
+  setKnownSearchViewerId,
+} from "@/lib/search-client-cache";
+import {
   searchPeople,
   searchCharacters,
   type SearchPersonItem,
@@ -308,13 +315,21 @@ export function SearchModal({
           typeof window !== "undefined" &&
           window.location.pathname.startsWith("/adult");
 
-        const result = await searchCatalog({
-          data: {
-            q: trimmed,
-            page: 1,
-            adult: isAdultArea,
-          },
-        });
+        const searchParams = {
+          q: trimmed,
+          page: 1,
+          adult: isAdultArea,
+        };
+
+        let result = getCachedAnimeSearch(searchParams);
+        if (!result) {
+          result = await searchCatalog({
+            data: searchParams,
+          });
+          if (result && Array.isArray(result.items)) {
+            setCachedAnimeSearch(searchParams, result);
+          }
+        }
 
         if (reqId !== animeReqIdRef.current) return;
 
@@ -387,13 +402,26 @@ export function SearchModal({
     setUserPage(1);
 
     try {
-      const users = await searchUsers({
-        data: {
-          query: clean,
-          page: 1,
-          limit: 18,
-        },
-      });
+      const currentUserId = useHikariStore.getState().currentUserId;
+      setKnownSearchViewerId(currentUserId);
+      const userParams = {
+        query: clean,
+        page: 1,
+        limit: 18,
+      };
+
+      let users = getCachedUserSearch(userParams, currentUserId);
+      if (!users) {
+        users = await searchUsers({
+          data: userParams,
+        });
+        if (reqId !== userReqIdRef.current) return;
+        if (Array.isArray(users)) {
+          setCachedUserSearch(userParams, currentUserId, users);
+        }
+      } else {
+        if (reqId !== userReqIdRef.current) return;
+      }
 
       if (reqId === userReqIdRef.current) {
         setUserResults(users);
@@ -625,13 +653,21 @@ export function SearchModal({
         typeof window !== "undefined" &&
         window.location.pathname.startsWith("/adult");
 
-      const result = await searchCatalog({
-        data: {
-          q: trimmed,
-          page: nextPage,
-          adult: isAdultArea,
-        },
-      });
+      const searchParams = {
+        q: trimmed,
+        page: nextPage,
+        adult: isAdultArea,
+      };
+
+      let result = getCachedAnimeSearch(searchParams);
+      if (!result) {
+        result = await searchCatalog({
+          data: searchParams,
+        });
+        if (result && Array.isArray(result.items)) {
+          setCachedAnimeSearch(searchParams, result);
+        }
+      }
 
       if (reqId !== animeReqIdRef.current) return;
 
@@ -688,13 +724,26 @@ export function SearchModal({
     const nextPage = userPage + 1;
 
     try {
-      const users = await searchUsers({
-        data: {
-          query: clean,
-          page: nextPage,
-          limit: 18,
-        },
-      });
+      const currentUserId = useHikariStore.getState().currentUserId;
+      setKnownSearchViewerId(currentUserId);
+      const userParams = {
+        query: clean,
+        page: nextPage,
+        limit: 18,
+      };
+
+      let users = getCachedUserSearch(userParams, currentUserId);
+      if (!users) {
+        users = await searchUsers({
+          data: userParams,
+        });
+        if (reqId !== userReqIdRef.current) return;
+        if (Array.isArray(users)) {
+          setCachedUserSearch(userParams, currentUserId, users);
+        }
+      } else {
+        if (reqId !== userReqIdRef.current) return;
+      }
 
       if (reqId !== userReqIdRef.current) return;
 

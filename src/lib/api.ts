@@ -484,6 +484,10 @@ export function invalidateServerCatalogCaches(
   domainCaches.get("browse")?.clear();
   domainCaches.get("search")?.clear();
 
+  import("@/lib/catalog-server-overlay.server").then((m) => {
+    m.invalidateCatalogIndex();
+  }).catch(() => {});
+
   const candidateDetailKeys = new Set<string>();
   const cleanId = animeId?.trim();
   if (cleanId) {
@@ -5394,8 +5398,8 @@ async function searchDirectFast(
   const shouldRankByRelevance =
     !params.sort || params.sort === "SEARCH_MATCH";
 
-  // 1. Consulta prioritariamente o AniList em paralelo com busca de prefixo MAL na página 1
-  const [aniSettled, malPrefixItems] = await Promise.all([
+  // 1. Consulta prioritariamente o AniList em paralelo com busca de prefixo MAL e catálogo local na página 1
+  const [aniSettled, malPrefixItems, localCatalogItems] = await Promise.all([
     searchAni(params).then(
       (value) => ({ ok: true as const, value }),
       () => ({ ok: false as const, value: null }),
@@ -5403,10 +5407,13 @@ async function searchDirectFast(
     isFirstPageTextSearch
       ? fetchMalPrefixItems(params.q!)
       : Promise.resolve([] as MalPrefixItem[]),
+    isFirstPageTextSearch && params.q
+      ? import("@/lib/catalog-server-overlay.server").then((m) => m.searchLocalCatalogAnime(params.q!)).catch(() => [])
+      : Promise.resolve([] as SlimAnime[]),
   ]);
 
   const aniResult = aniSettled.ok ? aniSettled.value : null;
-  const existingAniItems = aniResult?.items ?? [];
+  const existingAniItems = mergeSearchItems(aniResult?.items ?? [], localCatalogItems);
 
   // 2. Se o prefixo encontrou títulos ausentes no AniList (ex.: busca parcial "naru" -> "Naruto"),
   // resolve seus metadados completos e popularidade no AniList via idMal_in

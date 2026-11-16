@@ -3577,9 +3577,10 @@ export async function executeSearchUsers(
         from "user" u
         left join "profile" p on p."userId" = u."id"
         where (
-            coalesce(p."nick", '') ilike ${searchPattern} escape '\\'
-            or coalesce(p."displayName", '') ilike ${searchPattern} escape '\\'
-            or coalesce(u."name", '') ilike ${searchPattern} escape '\\'
+            p."nick" ilike ${searchPattern} escape '\\'
+            or p."displayName" ilike ${searchPattern} escape '\\'
+            or u."name" ilike ${searchPattern} escape '\\'
+            or u."id" ilike ${searchPattern} escape '\\'
             or lower(u."id") = lower(${cleanQuery})
           )
           and not exists (
@@ -3589,7 +3590,7 @@ export async function executeSearchUsers(
           )
         order by
           case
-            when lower(trim(coalesce(p."nick", ''))) = lower(${cleanQuery}) or lower(trim(u."id")) = lower(${cleanQuery}) then 0
+            when lower(trim(p."nick")) = lower(${cleanQuery}) or lower(trim(u."id")) = lower(${cleanQuery}) then 0
             else 1
           end asc,
           lower(coalesce(p."nick", u."name", u."id")) asc,
@@ -3619,14 +3620,15 @@ export async function executeSearchUsers(
         from "user" u
         left join "profile" p on p."userId" = u."id"
         where (
-            coalesce(p."nick", '') ilike ${searchPattern} escape '\\'
-            or coalesce(p."displayName", '') ilike ${searchPattern} escape '\\'
-            or coalesce(u."name", '') ilike ${searchPattern} escape '\\'
+            p."nick" ilike ${searchPattern} escape '\\'
+            or p."displayName" ilike ${searchPattern} escape '\\'
+            or u."name" ilike ${searchPattern} escape '\\'
+            or u."id" ilike ${searchPattern} escape '\\'
             or lower(u."id") = lower(${cleanQuery})
           )
         order by
           case
-            when lower(trim(coalesce(p."nick", ''))) = lower(${cleanQuery}) or lower(trim(u."id")) = lower(${cleanQuery}) then 0
+            when lower(trim(p."nick")) = lower(${cleanQuery}) or lower(trim(u."id")) = lower(${cleanQuery}) then 0
             else 1
           end asc,
           lower(coalesce(p."nick", u."name", u."id")) asc,
