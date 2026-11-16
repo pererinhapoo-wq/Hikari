@@ -11,6 +11,8 @@ interface ProfileOverviewSpaceProps {
   activityItems?: UserActivityItem[];
   comments?: MyProfileComment[];
   loading?: boolean;
+  trackingLoading?: boolean;
+  favoritesLoading?: boolean;
   onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
   onRemoveFavorite?: (item: ProfileFavoriteItem) => Promise<void> | void;
   profileNick?: string;
@@ -23,40 +25,43 @@ export function ProfileOverviewSpace({
   activityItems = [],
   comments = [],
   loading = false,
+  trackingLoading = false,
+  favoritesLoading = false,
   onUpdateItem,
   onRemoveFavorite,
   profileNick,
   isOwner = true,
 }: ProfileOverviewSpaceProps) {
-  if (loading) {
-    return (
-      <div className="space-y-8 animate-pulse">
-        {/* Placeholder para Anime Stats */}
-        <div className="h-64 rounded-3xl bg-white/[0.03] border border-white/[0.05]" />
-        {/* Placeholder para Seções de Favoritos */}
-        <div className="h-44 rounded-2xl bg-white/[0.03] border border-white/[0.05]" />
-        <div className="h-44 rounded-2xl bg-white/[0.03] border border-white/[0.05]" />
-        {/* Placeholder para Atividades Recentes */}
-        <div className="h-32 rounded-2xl bg-white/[0.03] border border-white/[0.05]" />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-10 sm:space-y-12">
       {/* Seção A: Anime Stats */}
-      <ProfileAnimeStats
-        items={trackingItems}
-        onUpdateItem={onUpdateItem}
-        profileNick={profileNick}
-      />
+      {trackingLoading && trackingItems.length === 0 ? (
+        <div className="h-64 sm:h-72 rounded-3xl bg-white/[0.03] border border-white/[0.05] animate-pulse" />
+      ) : (
+        <ProfileAnimeStats
+          items={trackingItems}
+          onUpdateItem={onUpdateItem}
+          profileNick={profileNick}
+        />
+      )}
 
       {/* Seções B, C, D, E: Favoritos (Animes, Personagens, Studios, People) */}
-      <ProfileOverviewFavorites
-        grouped={favoritesGrouped}
-        onRemoveFavorite={onRemoveFavorite}
-        isOwner={isOwner}
-      />
+      {favoritesLoading && Object.values(favoritesGrouped).every((arr) => arr.length === 0) ? (
+        <div className="space-y-4 animate-pulse">
+          <div className="h-6 w-36 rounded bg-white/[0.05]" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="aspect-[3/4] rounded-2xl bg-white/[0.03] border border-white/[0.05]" />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <ProfileOverviewFavorites
+          grouped={favoritesGrouped}
+          onRemoveFavorite={onRemoveFavorite}
+          isOwner={isOwner}
+        />
+      )}
 
       {/* Nova Seção Independente: Atividades recentes (exclusivamente no final da Visão Geral, abaixo da dobra) */}
       <div className="[content-visibility:auto] [contain-intrinsic-size:auto_360px]">

@@ -20,6 +20,7 @@ import {
   type UserProfile,
   type FollowRequestItem,
   getReceivedFollowRequests,
+  getReceivedFollowRequestsCount,
   acceptFollowRequest,
   rejectFollowRequest,
   removeFollower,
@@ -412,6 +413,7 @@ function AccountProfile() {
   const getFollowersFn = useServerFn(getProfileFollowers);
   const getFollowingFn = useServerFn(getProfileFollowing);
   const getRequestsFn = useServerFn(getReceivedFollowRequests);
+  const getRequestsCountFn = useServerFn(getReceivedFollowRequestsCount);
   const acceptRequestFn = useServerFn(acceptFollowRequest);
   const rejectRequestFn = useServerFn(rejectFollowRequest);
   const removeFollowerFn = useServerFn(removeFollower);
@@ -434,6 +436,13 @@ function AccountProfile() {
   getRequestsFnRef.current = getRequestsFn;
   const stableGetRequests = useCallback(
     (...args: Parameters<typeof getRequestsFn>) => getRequestsFnRef.current(...args),
+    [],
+  );
+
+  const getRequestsCountFnRef = useRef(getRequestsCountFn);
+  getRequestsCountFnRef.current = getRequestsCountFn;
+  const stableGetRequestsCount = useCallback(
+    (...args: Parameters<typeof getRequestsCountFn>) => getRequestsCountFnRef.current(...args),
     [],
   );
 
@@ -536,6 +545,7 @@ function AccountProfile() {
   const [followersList, setFollowersList] = useState<ProfileUser[]>([]);
   const [followingList, setFollowingList] = useState<ProfileUser[]>([]);
   const [requestsList, setRequestsList] = useState<FollowRequestItem[]>([]);
+  const [requestsCount, setRequestsCount] = useState<number>(0);
   const [connectionsLoading, setConnectionsLoading] = useState(false);
 
   // Abrir conexões (Seguidores / Seguindo / Solicitações)
@@ -555,6 +565,7 @@ function AccountProfile() {
         } else {
           const data = await getRequestsFnRef.current();
           setRequestsList(data);
+          setRequestsCount(data.length);
         }
       } catch (err) {
         console.warn("Erro ao buscar conexões:", err);
@@ -641,7 +652,7 @@ function AccountProfile() {
   }, [search.connections, handleOpenConnections]);
 
   // Carregamento inicial do perfil
-  // Carregamento inicial paralelo e otimizado do perfil, solicitações, tracking e favoritos
+  // Carregamento inicial paralelo e otimizado do perfil, contagem de solicitações, tracking e favoritos
   useEffect(() => {
     if (!user?.id) return;
     const reqId = ++profileRequestIdRef.current;
@@ -652,7 +663,7 @@ function AccountProfile() {
 
     void Promise.allSettled([
       stableGetProfile(),
-      stableGetRequests(),
+      stableGetRequestsCount(),
       stableGetTracking({ data: { minimal: true } }),
       stableGetFavorites({ data: {} }),
     ]).then(([profileRes, requestsRes, trackingRes, favoritesRes]) => {
@@ -664,7 +675,7 @@ function AccountProfile() {
       setProfileLoading(false);
 
       if (requestsRes.status === "fulfilled") {
-        setRequestsList(requestsRes.value);
+        setRequestsCount(requestsRes.value.count);
       }
       if (trackingRes.status === "fulfilled") {
         setTrackingItems(trackingRes.value);
@@ -679,7 +690,7 @@ function AccountProfile() {
       }
       setFavoritesLoading(false);
     });
-  }, [user?.id, stableGetProfile, stableGetRequests, stableGetTracking, stableGetFavorites]);
+  }, [user?.id, stableGetProfile, stableGetRequestsCount, stableGetTracking, stableGetFavorites]);
 
   // Carregamento sob demanda para a aba de Comentários ou Visão Geral (Cache por aba e trava contra cliques rápidos)
   useEffect(() => {
@@ -1324,7 +1335,8 @@ function AccountProfile() {
                 favoritesGrouped={favoritesGrouped}
                 activityItems={activityItems}
                 comments={comments}
-                loading={trackingLoading || favoritesLoading}
+                trackingLoading={trackingLoading}
+                favoritesLoading={favoritesLoading}
                 onUpdateItem={handleUpdateTrackingItem}
                 onRemoveFavorite={handleRemoveFavorite}
               />
@@ -1426,7 +1438,7 @@ function AccountProfile() {
             requests={requestsList}
             followersCount={followersCount}
             followingCount={followingCount}
-            requestsCount={requestsList.length}
+            requestsCount={requestsCount}
             loading={connectionsLoading}
             onClose={() => setConnectionsModalOpen(false)}
             onAcceptRequest={handleAcceptRequest}

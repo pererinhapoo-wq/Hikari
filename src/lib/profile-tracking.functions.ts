@@ -198,8 +198,6 @@ export const getMyAnimeTracking = createServerFn({
         data?.animeSnapshot,
       );
       rawCandidateIds.push(...resolved.candidateIds);
-    } else if (rawCandidateIds.length === 0) {
-      await consolidateUserTrackingDuplicates(sql, userId);
     }
 
     const uniqueCandidateIds = Array.from(new Set(rawCandidateIds));

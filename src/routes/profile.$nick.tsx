@@ -301,6 +301,16 @@ export const Route = createFileRoute("/profile/$nick")({
 
 const EMPTY_FAVORITES: string[] = [];
 
+const profileMemoryCache = new Map<
+  string,
+  { profile: any; tracking: any; favorites: any; timestamp: number }
+>();
+const CACHE_TTL_MS = 2 * 60 * 1000;
+
+function getProfileCacheKey(viewerId: string | null | undefined, nick: string): string {
+  return `${viewerId ?? "anon"}:${nick.trim().toLowerCase()}`;
+}
+
 function PublicProfile() {
   const { nick } = Route.useParams();
   const navigate = useNavigate();
@@ -370,6 +380,37 @@ function PublicProfile() {
   const blockUserFn = useServerFn(blockUser);
   const unblockUserFn = useServerFn(unblockUser);
   const setUserVerificationFn = useServerFn(setUserVerification);
+
+  // Estabilização de referências de Server Functions com useRef + useCallback
+  const getPublicProfileFnRef = useRef(getPublicProfileFn);
+  getPublicProfileFnRef.current = getPublicProfileFn;
+  const stableGetPublicProfile = useCallback(
+    (...args: Parameters<typeof getPublicProfileFn>) => getPublicProfileFnRef.current(...args),
+    [],
+  );
+
+  const getPublicFavoritesFnRef = useRef(getPublicFavoritesFn);
+  getPublicFavoritesFnRef.current = getPublicFavoritesFn;
+  const stableGetPublicFavorites = useCallback(
+    (...args: Parameters<typeof getPublicFavoritesFn>) => getPublicFavoritesFnRef.current(...args),
+    [],
+  );
+
+  const getPublicAnimeTrackingFnRef = useRef(getPublicAnimeTrackingFn);
+  getPublicAnimeTrackingFnRef.current = getPublicAnimeTrackingFn;
+  const stableGetPublicAnimeTracking = useCallback(
+    (...args: Parameters<typeof getPublicAnimeTrackingFn>) => getPublicAnimeTrackingFnRef.current(...args),
+    [],
+  );
+
+  const currentViewerId = currentUser?.id ?? "anon";
+  const prevViewerIdRef = useRef(currentViewerId);
+  useEffect(() => {
+    if (prevViewerIdRef.current !== currentViewerId) {
+      profileMemoryCache.clear();
+      prevViewerIdRef.current = currentViewerId;
+    }
+  }, [currentViewerId]);
 
   const [profile, setProfile] = useState<
     Awaited<ReturnType<typeof getPublicProfileFn>> | null
@@ -441,17 +482,12 @@ function PublicProfile() {
     else if (search.tab === "favorites") setActiveSpace("overview");
   }, [search.tab]);
 
-const profileMemoryCache = new Map<
-  string,
-  { profile: any; tracking: any; favorites: any; timestamp: number }
->();
-const CACHE_TTL_MS = 2 * 60 * 1000;
-
   // Carregamento inicial otimizado com cache em memória e requisições em paralelo
   useEffect(() => {
     let active = true;
+    const cacheKey = getProfileCacheKey(currentViewerId, nick);
 
-    const cached = profileMemoryCache.get(nick);
+    const cached = profileMemoryCache.get(cacheKey);
     const now = Date.now();
     if (cached && now - cached.timestamp < CACHE_TTL_MS) {
       setProfile(cached.profile);
@@ -496,7 +532,7 @@ const CACHE_TTL_MS = 2 * 60 * 1000;
     setActivityTotal(0);
     setActivityLoaded(false);
 
-    void getPublicProfileFn({
+    void stableGetPublicProfile({
       data: {
         nick,
       },
@@ -542,11 +578,11 @@ const CACHE_TTL_MS = 2 * 60 * 1000;
           if (result.canViewFavorites) setFavoritesLoading(true);
 
           const [trackingRes, favRes] = await Promise.all([
-            getPublicAnimeTrackingFn({
+            stableGetPublicAnimeTracking({
               data: { userId: result.userId, minimal: true },
             }).catch(() => []),
             result.canViewFavorites
-              ? getPublicFavoritesFn({ data: { userId: result.userId } }).catch(
+              ? stableGetPublicFavorites({ data: { userId: result.userId } }).catch(
                   () => ({
                     grouped: {
                       anime: [],
@@ -578,7 +614,7 @@ const CACHE_TTL_MS = 2 * 60 * 1000;
           setFavoritesLoading(false);
         }
 
-        profileMemoryCache.set(nick, {
+        profileMemoryCache.set(cacheKey, {
           profile: result,
           tracking: trackingResult,
           favorites: favoritesResult,
@@ -600,9 +636,10 @@ const CACHE_TTL_MS = 2 * 60 * 1000;
     };
   }, [
     nick,
-    getPublicProfileFn,
-    getPublicFavoritesFn,
-    getPublicAnimeTrackingFn,
+    currentViewerId,
+    stableGetPublicProfile,
+    stableGetPublicFavorites,
+    stableGetPublicAnimeTracking,
     navigate,
   ]);
 

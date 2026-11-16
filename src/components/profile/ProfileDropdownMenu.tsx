@@ -72,24 +72,40 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
     setOpen(false);
   }, [pathname]);
 
-  // Carrega avatar customizado e nick do perfil
+  // Carrega avatar customizado e nick do perfil (reutiliza session context quando disponível)
   useEffect(() => {
     if (!user.id) return;
     let active = true;
 
-    void getProfile()
-      .then((data) => {
-        if (!active || !data) return;
-        const nextImage = data.image ?? null;
-        const nextNick = data.nick ?? null;
-        profileMetaCache.set(user.id, { image: nextImage, nick: nextNick });
-        if (nextImage) {
-          setCustomAvatar(nextImage);
-          setImgError(false);
-        }
-        if (nextNick) setCustomNick(nextNick);
-      })
-      .catch(() => {});
+    const hasSsrMeta = Boolean(user.profileNick && user.profileImageUrl);
+    if (hasSsrMeta && !profileMetaCache.has(user.id)) {
+      profileMetaCache.set(user.id, {
+        image: user.profileImageUrl ?? null,
+        nick: user.profileNick ?? null,
+      });
+      if (user.profileImageUrl) {
+        setCustomAvatar(user.profileImageUrl);
+      }
+      if (user.profileNick) {
+        setCustomNick(user.profileNick);
+      }
+    }
+
+    if (!hasSsrMeta) {
+      void getProfile()
+        .then((data) => {
+          if (!active || !data) return;
+          const nextImage = data.image ?? null;
+          const nextNick = data.nick ?? null;
+          profileMetaCache.set(user.id, { image: nextImage, nick: nextNick });
+          if (nextImage) {
+            setCustomAvatar(nextImage);
+            setImgError(false);
+          }
+          if (nextNick) setCustomNick(nextNick);
+        })
+        .catch(() => {});
+    }
 
     const handleProfileUpdated = (event: Event) => {
       const customEvent = event as CustomEvent<{ image?: string | null; nick?: string }>;

@@ -13,6 +13,9 @@ export type AccountType = "public" | "private";
 export interface EvaluatedPrivacy {
   isOwner: boolean;
   isFollower: boolean;
+  isBlocked: boolean;
+  isBlockedByMe: boolean;
+  isBlockedByTarget: boolean;
   accountType: AccountType;
   allowFollowers: boolean;
   privacyLists: SectionPrivacyLevel;
@@ -321,6 +324,9 @@ export async function evaluateUserPrivacy(
     return {
       isOwner: true,
       isFollower: false,
+      isBlocked: false,
+      isBlockedByMe: false,
+      isBlockedByTarget: false,
       accountType,
       allowFollowers,
       privacyLists,
@@ -339,6 +345,8 @@ export async function evaluateUserPrivacy(
 
   let isFollower = false;
   let isBlocked = false;
+  let isBlockedByMe = false;
+  let isBlockedByTarget = false;
 
   if (viewerUserId) {
     const blockRows = await sql<{
@@ -357,7 +365,9 @@ export async function evaluateUserPrivacy(
     `;
 
     const b = blockRows[0];
-    isBlocked = Boolean(b?.isBlockedByOwner || b?.isBlockedByViewer);
+    isBlockedByTarget = Boolean(b?.isBlockedByOwner);
+    isBlockedByMe = Boolean(b?.isBlockedByViewer);
+    isBlocked = Boolean(isBlockedByTarget || isBlockedByMe);
 
     if (!isBlocked) {
       const followRows = await sql<{ count: string }>`
@@ -376,6 +386,9 @@ export async function evaluateUserPrivacy(
     return {
       isOwner: false,
       isFollower: false,
+      isBlocked,
+      isBlockedByMe,
+      isBlockedByTarget,
       accountType,
       allowFollowers,
       privacyLists,
@@ -397,6 +410,9 @@ export async function evaluateUserPrivacy(
     return {
       isOwner: false,
       isFollower: false,
+      isBlocked: false,
+      isBlockedByMe: false,
+      isBlockedByTarget: false,
       accountType,
       allowFollowers,
       privacyLists,
@@ -422,6 +438,9 @@ export async function evaluateUserPrivacy(
   return {
     isOwner: false,
     isFollower,
+    isBlocked: false,
+    isBlockedByMe: false,
+    isBlockedByTarget: false,
     accountType,
     allowFollowers,
     privacyLists,
@@ -670,7 +689,7 @@ export async function executeGetPublicProfile(
   // Avaliação estrita de privacidade no servidor
   const privacy = await evaluateUserPrivacy(sql, row.userId, viewerUserId);
 
-  const [commentRows, followerRows, followingRows, blockRows, reqRows, followedByRows] = await Promise.all([
+  const [commentRows, followerRows, followingRows, reqRows, followedByRows] = await Promise.all([
     privacy.canViewComments
       ? sql<{ count: string }>`select count(*)::text as count from "comment" where "userId" = ${row.userId}`
       : Promise.resolve([]),
@@ -679,19 +698,6 @@ export async function executeGetPublicProfile(
       : Promise.resolve([]),
     privacy.canViewFollowers
       ? sql<{ count: string }>`select count(*)::text as count from "user_follow" where "followerId" = ${row.userId}`
-      : Promise.resolve([]),
-    viewerUserId && viewerUserId !== row.userId
-      ? sql<{ isBlockedByMe: boolean; isBlockedByTarget: boolean }>`
-          select
-            exists (
-              select 1 from "user_block"
-              where "blockerId" = ${viewerUserId} and "blockedId" = ${row.userId}
-            ) as "isBlockedByMe",
-            exists (
-              select 1 from "user_block"
-              where "blockerId" = ${row.userId} and "blockedId" = ${viewerUserId}
-            ) as "isBlockedByTarget"
-        `
       : Promise.resolve([]),
     viewerUserId && !privacy.isOwner && !privacy.isFollower
       ? sql<{ count: string }>`
@@ -718,10 +724,9 @@ export async function executeGetPublicProfile(
   const followersCount = Number(followerRows[0]?.count ?? "0");
   const followingCount = Number(followingRows[0]?.count ?? "0");
 
-  const b = blockRows[0];
-  const isBlockedByMe = Boolean(b?.isBlockedByMe);
-  const isBlockedByTarget = Boolean(b?.isBlockedByTarget);
-  const isBlocked = isBlockedByMe || isBlockedByTarget;
+  const isBlockedByMe = privacy.isBlockedByMe;
+  const isBlockedByTarget = privacy.isBlockedByTarget;
+  const isBlocked = privacy.isBlocked;
 
   const hasPendingRequest = !isBlocked && Number(reqRows[0]?.count ?? "0") > 0;
   const isFollowedBy = !isBlocked && Number(followedByRows[0]?.count ?? "0") > 0;
@@ -3275,6 +3280,28 @@ export const setUserVerification = createServerFn({
       isVerified,
     };
   });
+
+/**
+ * Retornar apenas a quantidade de solicitações de acompanhamento recebidas (otimização de leitura inicial).
+ */
+export const getReceivedFollowRequestsCount = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const ownerId = context.userId;
+    const sql = await getSql();
+
+    const rows = await sql<{ count: string }>`
+      select count(*)::text as count
+      from "user_follow_request"
+      where "targetId" = ${ownerId}
+        and "status" = 'pending'
+    `;
+
+    return { count: Number(rows[0]?.count ?? "0") };
+  });
+
 
 
 
