@@ -64,6 +64,7 @@ import {
   type Episode,
   type Season,
 } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 function parseEpisodeNumber(epStr?: string): number {
   if (!epStr) return 1;
@@ -253,6 +254,7 @@ function WatchPage() {
 
   const [playerMounted, setPlayerMounted] = useState(false);
   const [triggeredPlayEpisodeId, setTriggeredPlayEpisodeId] = useState<string | null>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const currentEpisodeIdRef = useRef<string | undefined>(undefined);
 
   const handleActivatePlayer = useCallback(() => {
@@ -461,6 +463,7 @@ function WatchPage() {
     canonicalAnimeIdRef.current = null;
     sessionStartingRef.current = false;
     isPlayingRef.current = false;
+    setIsVideoPlaying(false);
     isBufferingRef.current = false;
     isSeekingRef.current = false;
     isCompletedRef.current = false;
@@ -631,6 +634,7 @@ function WatchPage() {
 
   const handlePlay = useCallback(() => {
     isPlayingRef.current = true;
+    setIsVideoPlaying(true);
     isBufferingRef.current = false;
     if (current?.id) {
       setTriggeredPlayEpisodeId((prevId) => (prevId === current.id ? prevId : current.id));
@@ -641,6 +645,7 @@ function WatchPage() {
 
   const handlePlaying = useCallback(() => {
     isPlayingRef.current = true;
+    setIsVideoPlaying(true);
     isBufferingRef.current = false;
     const curTime = livePlaybackRef.current.time;
     void ensureSessionAndSendHeartbeat(curTime, 0);
@@ -648,6 +653,7 @@ function WatchPage() {
 
   const handleSeeking = useCallback(() => {
     isSeekingRef.current = true;
+    setIsVideoPlaying(false);
   }, []);
 
   const handleSeeked = useCallback(() => {
@@ -656,6 +662,7 @@ function WatchPage() {
 
   const handleWaiting = useCallback(() => {
     isBufferingRef.current = true;
+    setIsVideoPlaying(false);
   }, []);
 
   const handleTimeUpdate = useCallback(
@@ -708,6 +715,7 @@ function WatchPage() {
   const handlePause = useCallback(
     (time: number, totalDuration: number) => {
       isPlayingRef.current = false;
+      setIsVideoPlaying(false);
       if (!current?.id || !progressStorageKey || totalDuration <= 0) return;
 
       if (time > 0) {
@@ -747,6 +755,8 @@ function WatchPage() {
   const handleSelectPlayer = useCallback(
     (targetId: string) => {
       if (targetId === selectedPlayerId) return;
+      isPlayingRef.current = false;
+      setIsVideoPlaying(false);
 
       const hasValidLiveTime =
         current?.id &&
@@ -790,6 +800,7 @@ function WatchPage() {
 
   const handleEnded = useCallback(() => {
     isPlayingRef.current = false;
+    setIsVideoPlaying(false);
     void ensureSessionAndSendHeartbeat(livePlaybackRef.current.time, 0, true);
     if (progressStorageKey) {
       try {
@@ -879,6 +890,8 @@ function WatchPage() {
   }, [current, file, title, playerPoster, anime?.synopsis, selectedPlayer?.name]);
 
   const handlePlayerError = useCallback(() => {
+    isPlayingRef.current = false;
+    setIsVideoPlaying(false);
     if (!selectedPlayer) return;
     const alt = playerSources.find((s) => s.id !== selectedPlayer.id);
     if (alt) {
@@ -1040,11 +1053,11 @@ function WatchPage() {
         {/* INFORMAÇÕES DO ANIME (ABAIXO DO PLAYER)           */}
         {/* ================================================== */}
 
-        <section className="mt-4 flex items-center gap-3.5 sm:gap-4 rounded-2xl border border-white/10 bg-[#121217]/90 p-3 sm:p-4 backdrop-blur-xl shadow-lg">
+        <section className="mt-4 flex items-center gap-3 sm:gap-3.5 rounded-none border border-white/10 bg-[#0e0c16]/95 p-2.5 sm:p-3 backdrop-blur-md shadow-sm">
           <Link
             to="/anime/$id"
             params={{ id: anime.id }}
-            className="group relative block aspect-[2/3] w-14 sm:w-16 shrink-0 overflow-hidden rounded-xl bg-elevated ring-1 ring-white/15 transition-transform hover:scale-[1.02]"
+            className="group relative block aspect-[2/3] w-14 sm:w-16 shrink-0 overflow-hidden rounded-none border border-white/15 bg-elevated transition-transform hover:scale-[1.02]"
             aria-label={title}
           >
             {anime.cover ? (() => {
@@ -1060,33 +1073,49 @@ function WatchPage() {
                   alt={title}
                   width={64}
                   height={96}
-                  className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
+                  className="size-full object-cover rounded-none transition-transform duration-200 group-hover:scale-105"
                   loading="lazy"
                   fetchPriority="low"
                   decoding="async"
                 />
               );
             })() : (
-              <div className="size-full bg-elevated flex items-center justify-center text-white/30 text-[10px]">
+              <div className="size-full bg-elevated rounded-none flex items-center justify-center text-white/30 text-[10px]">
                 Sem Capa
               </div>
             )}
           </Link>
 
           <div className="min-w-0 flex-1">
-            <h1 className="font-display text-base sm:text-xl font-bold leading-tight text-white truncate">
+            <h1 className="font-sans text-base sm:text-lg font-bold tracking-tight leading-snug text-white truncate">
               <Link
                 to="/anime/$id"
                 params={{ id: anime.id }}
-                className="transition hover:text-[#c084fc]"
+                className="transition-colors hover:text-[#c084fc]"
               >
                 {title}
               </Link>
             </h1>
 
-            <div className="mt-1 flex items-center gap-2 text-xs sm:text-sm text-white/60">
-              <span className="size-1.5 rounded-full bg-[#a855f7] shrink-0" />
-              <span className="truncate">
+            <div className="mt-1 flex items-center gap-2 text-xs sm:text-[13px] text-white/60">
+              <span
+                className="relative flex size-2 shrink-0 items-center justify-center"
+                aria-hidden="true"
+                title={isVideoPlaying ? "Em reprodução" : "Pausado"}
+              >
+                {isVideoPlaying && (
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                )}
+                <span
+                  className={cn(
+                    "relative inline-flex size-2 rounded-full transition-all duration-300",
+                    isVideoPlaying
+                      ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.85)] animate-pulse"
+                      : "bg-emerald-500/40 border border-emerald-400/30",
+                  )}
+                />
+              </span>
+              <span className="truncate font-medium">
                 {current
                   ? `Episódio ${current.number}${current.title ? ` · ${current.title}` : ""}`
                   : `Episódio ${targetEpNum}`}
