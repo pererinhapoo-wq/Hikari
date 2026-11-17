@@ -81,6 +81,7 @@ import { Route as ApiCommentsLikeRouteImport } from './routes/api/comments.like'
 import { Route as ApiCommentsModerationRouteImport } from './routes/api/comments.moderation'
 import { Route as ApiCommentsTypingRouteImport } from './routes/api/comments.typing'
 import { Route as ApiCommentsUpdatesRouteImport } from './routes/api/comments.updates'
+import { Route as ApiPlaybackHeartbeatRouteImport } from './routes/api/playback.heartbeat'
 import { Route as ApiProfileFollowRouteImport } from './routes/api/profile.follow'
 import { Route as WatchIdEpRouteImport } from './routes/watch_.$id.$ep'
 
@@ -444,6 +445,11 @@ const ApiCommentsUpdatesRoute = ApiCommentsUpdatesRouteImport.update({
   path: '/updates',
   getParentRoute: () => ApiCommentsRoute,
 } as any)
+const ApiPlaybackHeartbeatRoute = ApiPlaybackHeartbeatRouteImport.update({
+  id: '/api/playback/heartbeat',
+  path: '/api/playback/heartbeat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiProfileFollowRoute = ApiProfileFollowRouteImport.update({
   id: '/api/profile/follow',
   path: '/api/profile/follow',
@@ -528,6 +534,7 @@ export interface FileRoutesByFullPath {
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
   '/api/comments/typing': typeof ApiCommentsTypingRoute
   '/api/comments/updates': typeof ApiCommentsUpdatesRoute
+  '/api/playback/heartbeat': typeof ApiPlaybackHeartbeatRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
 }
@@ -602,6 +609,7 @@ export interface FileRoutesByTo {
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
   '/api/comments/typing': typeof ApiCommentsTypingRoute
   '/api/comments/updates': typeof ApiCommentsUpdatesRoute
+  '/api/playback/heartbeat': typeof ApiPlaybackHeartbeatRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
 }
@@ -679,6 +687,7 @@ export interface FileRoutesById {
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
   '/api/comments/typing': typeof ApiCommentsTypingRoute
   '/api/comments/updates': typeof ApiCommentsUpdatesRoute
+  '/api/playback/heartbeat': typeof ApiPlaybackHeartbeatRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/watch_/$id/$ep': typeof WatchIdEpRoute
 }
@@ -757,6 +766,7 @@ export interface FileRouteTypes {
     | '/api/comments/moderation'
     | '/api/comments/typing'
     | '/api/comments/updates'
+    | '/api/playback/heartbeat'
     | '/api/profile/follow'
     | '/watch/$id/$ep'
   fileRoutesByTo: FileRoutesByTo
@@ -831,6 +841,7 @@ export interface FileRouteTypes {
     | '/api/comments/moderation'
     | '/api/comments/typing'
     | '/api/comments/updates'
+    | '/api/playback/heartbeat'
     | '/api/profile/follow'
     | '/watch/$id/$ep'
   id:
@@ -907,6 +918,7 @@ export interface FileRouteTypes {
     | '/api/comments/moderation'
     | '/api/comments/typing'
     | '/api/comments/updates'
+    | '/api/playback/heartbeat'
     | '/api/profile/follow'
     | '/watch_/$id/$ep'
   fileRoutesById: FileRoutesById
@@ -964,6 +976,7 @@ export interface RootRouteChildren {
   ApiAdminUploadThumbnailRoute: typeof ApiAdminUploadThumbnailRoute
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiPlaybackHeartbeatRoute: typeof ApiPlaybackHeartbeatRoute
   ApiProfileFollowRoute: typeof ApiProfileFollowRoute
   WatchIdEpRoute: typeof WatchIdEpRoute
 }
@@ -1474,6 +1487,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCommentsUpdatesRouteImport
       parentRoute: typeof ApiCommentsRoute
     }
+    '/api/playback/heartbeat': {
+      id: '/api/playback/heartbeat'
+      path: '/api/playback/heartbeat'
+      fullPath: '/api/playback/heartbeat'
+      preLoaderRoute: typeof ApiPlaybackHeartbeatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/profile/follow': {
       id: '/api/profile/follow'
       path: '/api/profile/follow'
@@ -1610,6 +1630,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminUploadThumbnailRoute: ApiAdminUploadThumbnailRoute,
   ApiAdminUsersRoute: ApiAdminUsersRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiPlaybackHeartbeatRoute: ApiPlaybackHeartbeatRoute,
   ApiProfileFollowRoute: ApiProfileFollowRoute,
   WatchIdEpRoute: WatchIdEpRoute,
 }

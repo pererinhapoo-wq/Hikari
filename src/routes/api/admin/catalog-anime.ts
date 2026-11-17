@@ -183,7 +183,8 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             }
           }
 
-          const targetExists = existingRows.some((r) => r.id === targetId);
+          const previousRow = existingRows.find((r) => r.id === targetId) ?? null;
+          const targetExists = previousRow !== null;
           const mediaWrite = resolveCatalogAnimeMediaWrite({
             cover: data.cover,
             banner: data.banner,
@@ -346,10 +347,22 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             invalidateCatalogEpisodesCache(data.id);
           }
           invalidateHomePublicEpisodesCache();
+          const invalidationExtraIds: Array<string | number | null | undefined> = [
+            data.id !== canonicalSavedId ? data.id : null,
+            previousRow?.id,
+            previousRow?.anilistId,
+            previousRow?.malId ? `mal-${previousRow.malId}` : null,
+            previousRow?.kitsuId ? `kitsu-${previousRow.kitsuId}` : null,
+            data.anilistId,
+            data.malId ? `mal-${data.malId}` : null,
+            data.kitsuId ? `kitsu-${data.kitsuId}` : null,
+          ];
+
           invalidateServerCatalogCaches(canonicalSavedId, {
             anilistId: savedRow?.anilistId ?? data.anilistId,
             malId: savedRow?.malId ?? data.malId,
             kitsuId: savedRow?.kitsuId ?? data.kitsuId,
+            extraIds: invalidationExtraIds,
           });
 
           const rawUpdatedAt = savedRow?.updatedAt;

@@ -1,5 +1,13 @@
 import { getSql } from "@/lib/db";
-import { getRedisCatalogIndex, setRedisCatalogIndex, invalidateRedisCatalogIndex } from "@/lib/redis";
+import {
+  getRedisCatalogIndex,
+  setRedisCatalogIndex,
+  invalidateRedisCatalogIndex,
+  getRedisCatalogSearch,
+  setRedisCatalogSearch,
+  invalidateRedisCatalogSearch,
+  normalizeCatalogSearchQuery,
+} from "@/lib/redis";
 import { isCustomImageUrl, type Anime, type HomeCatalog, type Season, type SlimAnime } from "@/lib/types";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { loadAnimeRecentBadgesFromDb } from "@/lib/catalog-badges";
@@ -103,6 +111,7 @@ export function invalidateCatalogIndex(): void {
   cachedCatalogIndex = null;
   catalogIndexInFlightPromise = null;
   void invalidateRedisCatalogIndex().catch(() => {});
+  invalidateLocalCatalogSearchCache();
 }
 
 export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
@@ -239,6 +248,44 @@ function findMatchingRow(
   }
 
   return undefined;
+}
+
+export async function resolveCatalogDetailAliasesForId(
+  requestedId: string,
+): Promise<string[]> {
+  const cleanId = requestedId?.trim();
+  if (!cleanId) return [];
+
+  const aliases = new Set<string>([cleanId]);
+
+  try {
+    const index = await loadCatalogIndex();
+    if (!index) {
+      return Array.from(aliases);
+    }
+
+    const match = findMatchingRow(index, { id: cleanId }, cleanId);
+    if (!match) {
+      return Array.from(aliases);
+    }
+
+    if (match.id?.trim()) {
+      aliases.add(match.id.trim());
+    }
+    if (typeof match.anilistId === "number" && match.anilistId > 0) {
+      aliases.add(String(match.anilistId));
+    }
+    if (typeof match.malId === "number" && match.malId > 0) {
+      aliases.add(`mal-${match.malId}`);
+    }
+    if (typeof match.kitsuId === "number" && match.kitsuId > 0) {
+      aliases.add(`kitsu-${match.kitsuId}`);
+    }
+  } catch {
+    // Fail-open: retorna ao menos o próprio ID solicitado
+  }
+
+  return Array.from(aliases);
 }
 
 function mergeRowIntoSlim(item: SlimAnime, row: DbCatalogAnimeRow): SlimAnime {
@@ -519,61 +566,135 @@ export async function applyDbCatalogOverlayToDetail(
   };
 }
 
+interface LocalSearchCacheEntry {
+  data: SlimAnime[];
+  timestamp: number;
+}
+const LOCAL_SEARCH_CACHE_TTL_MS = 60 * 1000; // 60 segundos
+const MAX_LOCAL_SEARCH_ENTRIES = 200;
+
+const localSearchCache = new Map<string, LocalSearchCacheEntry>();
+const localSearchInFlightPromises = new Map<string, Promise<SlimAnime[]>>();
+
+function pruneLocalSearchCache(): void {
+  if (localSearchCache.size > MAX_LOCAL_SEARCH_ENTRIES) {
+    const firstKey = localSearchCache.keys().next().value;
+    if (firstKey !== undefined) {
+      localSearchCache.delete(firstKey);
+    }
+  }
+}
+
+export function invalidateLocalCatalogSearchCache(query?: string): void {
+  if (query) {
+    const clean = normalizeCatalogSearchQuery(query);
+    for (const key of localSearchCache.keys()) {
+      if (key.startsWith(`${clean}:`)) {
+        localSearchCache.delete(key);
+      }
+    }
+  } else {
+    localSearchCache.clear();
+  }
+  localSearchInFlightPromises.clear();
+  void invalidateRedisCatalogSearch(query).catch(() => {});
+}
+
 export async function searchLocalCatalogAnime(
   query: string,
   limit = 12,
 ): Promise<SlimAnime[]> {
-  const clean = query.trim().toLowerCase();
+  const clean = normalizeCatalogSearchQuery(query);
   if (!clean || clean.length < 2) return [];
 
-  try {
-    const sql = await getSql();
-    const escaped = clean.replace(/[\\%_]/g, "\\$&");
-    const pattern = `%${escaped}%`;
+  const safeLimit = Math.min(Math.max(1, Math.floor(limit) || 12), 50);
+  const cacheKey = `${clean}:${safeLimit}`;
+  const now = Date.now();
 
-    const rows = await sql.query<DbCatalogAnimeRow>(
-      `SELECT DISTINCT c.*
-       FROM "catalog_anime" c
-       LEFT JOIN "anime_alias" a ON a."anime_id" = c."id"
-       WHERE c."hidden" = false
-         AND (
-           c."search_blob" ILIKE ${pattern} ESCAPE '\\'
-           OR c."title_norm" ILIKE ${pattern} ESCAPE '\\'
-           OR a."alias_norm" ILIKE ${pattern} ESCAPE '\\'
-         )
-       ORDER BY c."updatedAt" DESC
-       LIMIT ${limit};`,
-    );
-
-    if (!rows || rows.length === 0) return [];
-
-    return rows.map((row) => ({
-      id: row.id,
-      anilistId: row.anilistId ?? undefined,
-      malId: row.malId ?? undefined,
-      kitsuId: row.kitsuId ?? undefined,
-      titles: {
-        romaji: row.titleRomaji?.trim() || row.title?.trim() || "",
-        english: row.titleEnglish?.trim() || "",
-        native: row.titleNative?.trim() || "",
-      },
-      cover: stripCatalogImageVersion(row.cover),
-      banner: stripCatalogImageVersion(row.banner),
-      synopsis: row.synopsis?.trim() || "",
-      format: row.format?.trim() || "TV",
-      status: row.status?.trim() || "FINISHED",
-      episodesCount: row.episodesCount ?? null,
-      season: row.season?.trim() || null,
-      year: row.year ?? null,
-      genres: Array.isArray(row.genres) ? row.genres : [],
-      score: row.score ?? null,
-      catalogUpdatedAt: toTimestampMs(row.updatedAt),
-      serverCatalogId: row.id,
-      source: "catalog" as const,
-    }));
-  } catch (err) {
-    console.warn("[catalog-server-overlay] Erro na busca local otimizada de catalog_anime:", err);
-    return [];
+  // 1. Consulta primeiro a memória local (cache hit)
+  const localEntry = localSearchCache.get(cacheKey);
+  if (localEntry && now - localEntry.timestamp < LOCAL_SEARCH_CACHE_TTL_MS) {
+    return localEntry.data;
   }
+
+  // 2. Proteção contra chamadas simultâneas duplicadas (singleflight)
+  const inFlight = localSearchInFlightPromises.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const flightPromise = (async (): Promise<SlimAnime[]> => {
+    try {
+      // 3. Consulta no Upstash Redis (cache compartilhado)
+      const redisResult = await getRedisCatalogSearch(clean, safeLimit);
+      if (Array.isArray(redisResult) && redisResult.length > 0) {
+        localSearchCache.set(cacheKey, { data: redisResult, timestamp: Date.now() });
+        pruneLocalSearchCache();
+        return redisResult;
+      }
+
+      // 4. Consulta no PostgreSQL
+      const sql = await getSql();
+      const escaped = clean.replace(/[\\%_]/g, "\\$&");
+      const pattern = `%${escaped}%`;
+
+      const rows = await sql.query<DbCatalogAnimeRow>(
+        `SELECT DISTINCT c.*
+         FROM "catalog_anime" c
+         LEFT JOIN "anime_alias" a ON a."anime_id" = c."id"
+         WHERE c."hidden" = false
+           AND (
+             c."search_blob" ILIKE ${pattern} ESCAPE '\\'
+             OR c."title_norm" ILIKE ${pattern} ESCAPE '\\'
+             OR a."alias_norm" ILIKE ${pattern} ESCAPE '\\'
+           )
+         ORDER BY c."updatedAt" DESC
+         LIMIT ${safeLimit};`,
+      );
+
+      if (!rows || rows.length === 0) return [];
+
+      const results = rows.map((row) => ({
+        id: row.id,
+        anilistId: row.anilistId ?? undefined,
+        malId: row.malId ?? undefined,
+        kitsuId: row.kitsuId ?? undefined,
+        titles: {
+          romaji: row.titleRomaji?.trim() || row.title?.trim() || "",
+          english: row.titleEnglish?.trim() || "",
+          native: row.titleNative?.trim() || "",
+        },
+        cover: stripCatalogImageVersion(row.cover),
+        banner: stripCatalogImageVersion(row.banner),
+        synopsis: row.synopsis?.trim() || "",
+        format: row.format?.trim() || "TV",
+        status: row.status?.trim() || "FINISHED",
+        episodesCount: row.episodesCount ?? null,
+        season: row.season?.trim() || null,
+        year: row.year ?? null,
+        genres: Array.isArray(row.genres) ? row.genres : [],
+        score: row.score ?? null,
+        trailerId: row.trailerId?.trim() || null,
+        catalogUpdatedAt: toTimestampMs(row.updatedAt),
+        serverCatalogId: row.id,
+        source: "local" as const,
+      }));
+
+      // 5. Salva no Redis e na memória local
+      void setRedisCatalogSearch(clean, safeLimit, results).catch(() => {});
+      localSearchCache.set(cacheKey, { data: results, timestamp: Date.now() });
+      pruneLocalSearchCache();
+
+      return results;
+    } catch (err) {
+      console.warn("[catalog-server-overlay] Erro na busca local otimizada de catalog_anime:", err);
+      return localSearchCache.get(cacheKey)?.data ?? [];
+    } finally {
+      localSearchInFlightPromises.delete(cacheKey);
+    }
+  })();
+
+  localSearchInFlightPromises.set(cacheKey, flightPromise);
+  return flightPromise;
 }
 

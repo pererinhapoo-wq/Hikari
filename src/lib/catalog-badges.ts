@@ -5,6 +5,7 @@ import {
   normalizeAnimeRecentBadges,
   type AnimeRecentBadges,
 } from "@/lib/types";
+export type { AnimeRecentBadges };
 
 export const ANIME_RECENT_BADGES_KEY_PREFIX = "anime_recent_badges:";
 

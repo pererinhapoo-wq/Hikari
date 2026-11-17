@@ -3,6 +3,7 @@ import { z } from "zod";
 import { adminMiddleware, bearerForwardMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import type { AnimeRecentBadges, Episode, Season } from "@/lib/types";
+import { getRedisCatalogEpisodes, setRedisCatalogEpisodes, invalidateRedisCatalogEpisodes } from "@/lib/redis";
 import {
   readTombstones,
   readTombstoneRecords,
@@ -76,6 +77,7 @@ export function invalidateCatalogEpisodesCache(...animeIds: (string | undefined)
     for (const id of ids) {
       clientCatalogEpisodesCache.delete(id);
       clientInFlightPromises.delete(id);
+      void invalidateRedisCatalogEpisodes(id).catch(() => {});
     }
   } else {
     clientCatalogEpisodesCache.clear();
@@ -110,6 +112,20 @@ export async function executeGetCatalogEpisodes(
     return { animeId: "", seasons: [], episodes: [] };
   }
 
+  const wantUnpublished = Boolean(options?.includeUnpublished);
+
+  // 1. Tentar consultar no Upstash Redis (cache compartilhado) se for consulta pública
+  if (!wantUnpublished) {
+    try {
+      const cached = await getRedisCatalogEpisodes(cleanId);
+      if (cached && typeof cached === "object" && Array.isArray(cached.episodes)) {
+        return cached;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   try {
     const sql = await getSql();
 
@@ -133,7 +149,7 @@ export async function executeGetCatalogEpisodes(
       // ignore
     }
 
-    const whereClause = options?.includeUnpublished
+    const whereClause = wantUnpublished
       ? `WHERE "animeId" = ANY($1::text[])`
       : `WHERE "animeId" = ANY($1::text[]) AND "published" = true`;
 
@@ -177,11 +193,17 @@ export async function executeGetCatalogEpisodes(
       [candidateIds],
     );
 
-    return {
+    const result: CatalogEpisodesResult = {
       animeId: cleanId,
       seasons: seasonRows,
       episodes: episodeRows,
     };
+
+    if (!wantUnpublished) {
+      void setRedisCatalogEpisodes(cleanId, result).catch(() => {});
+    }
+
+    return result;
   } catch (err) {
     console.warn("[Hikari] Falha segura ao consultar catalog_episode:", err);
     return {

@@ -42,6 +42,14 @@ import {
   searchScore,
 } from "@/lib/anime-search-ranking";
 
+import {
+  getRedisAnimeDetailWithFence,
+  setRedisAnimeDetail,
+  invalidateRedisAnimeDetail,
+  updateRedisAnimeDetailAtomic,
+  type RedisAnimeDetailFence,
+} from "@/lib/redis";
+
 const ANILIST = "https://graphql.anilist.co";
 const JIKAN = "https://api.jikan.moe/v4";
 const KITSU = "https://kitsu.io/api/edge";
@@ -369,9 +377,13 @@ export type CacheLookupResult<T> =
   | { status: "fresh"; data: T; at: number }
   | { status: "stale"; data: T; at: number };
 
+export type CacheFlightContext = {
+  isCurrentFlight: () => boolean;
+};
+
 export type WithCacheOptions<T> = {
   shouldCache?: (freshData: T, staleData?: T) => boolean;
-  fallback?: (error: unknown) => T | Promise<T>;
+  fallback?: (error: unknown, ctx?: CacheFlightContext) => T | Promise<T>;
   cacheFallback?: boolean;
   freshTtl?: number;
   swrWindow?: number;
@@ -478,6 +490,7 @@ export function invalidateServerCatalogCaches(
     anilistId?: number | null;
     malId?: number | null;
     kitsuId?: number | null;
+    extraIds?: Array<string | number | null | undefined>;
   },
 ): void {
   domainCaches.get("home")?.clear();
@@ -501,6 +514,15 @@ export function invalidateServerCatalogCaches(
   }
   if (typeof externalIds?.kitsuId === "number" && externalIds.kitsuId > 0) {
     candidateDetailKeys.add(`detail:v7:kitsu-${externalIds.kitsuId}`);
+  }
+  if (Array.isArray(externalIds?.extraIds)) {
+    for (const extra of externalIds.extraIds) {
+      if (typeof extra === "string" && extra.trim()) {
+        candidateDetailKeys.add(`detail:v7:${extra.trim()}`);
+      } else if (typeof extra === "number" && Number.isFinite(extra) && extra > 0) {
+        candidateDetailKeys.add(`detail:v7:${extra}`);
+      }
+    }
   }
 
   const detailCache = domainCaches.get("detail");
@@ -527,6 +549,8 @@ export function invalidateServerCatalogCaches(
       inFlight.delete(flightKey);
     }
   }
+
+  void invalidateRedisAnimeDetail(animeId, externalIds).catch(() => {});
 }
 
 export function getDomainTtlConfig(
@@ -639,7 +663,7 @@ export function toCache<T>(
 
 export function triggerBackgroundRevalidation<T>(
   key: string,
-  fetcher: () => Promise<T>,
+  fetcher: (ctx?: CacheFlightContext) => Promise<T>,
   options?: WithCacheOptions<T>,
   staleData?: T,
 ): void {
@@ -647,10 +671,15 @@ export function triggerBackgroundRevalidation<T>(
     return;
   }
 
+  const bgRef: { current?: Promise<T> } = {};
+  const bgCtx: CacheFlightContext = {
+    isCurrentFlight: () =>
+      bgRef.current !== undefined && inFlight.get(key) === bgRef.current,
+  };
   const bgPromise = (async () => {
     try {
       const freshData =
-        await fetcher();
+        await fetcher(bgCtx);
       const canCache =
         options?.shouldCache
           ? options.shouldCache(
@@ -660,7 +689,7 @@ export function triggerBackgroundRevalidation<T>(
           : freshData !== null &&
             freshData !== undefined;
 
-      if (canCache) {
+      if (bgCtx.isCurrentFlight() && canCache) {
         toCache(key, freshData);
       }
 
@@ -675,16 +704,19 @@ export function triggerBackgroundRevalidation<T>(
       );
       return staleData as T;
     } finally {
-      inFlight.delete(key);
+      if (inFlight.get(key) === bgRef.current) {
+        inFlight.delete(key);
+      }
     }
   })();
+  bgRef.current = bgPromise;
 
   inFlight.set(key, bgPromise);
 }
 
 export function fromCache<T>(
   key: string,
-  revalidate?: () => Promise<T>,
+  revalidate?: (ctx?: CacheFlightContext) => Promise<T>,
   options?: WithCacheOptions<T>,
 ): T | null {
   const lookup =
@@ -717,7 +749,7 @@ export function fromCache<T>(
 
 export async function withCache<T>(
   key: string,
-  fetcher: () => Promise<T>,
+  fetcher: (ctx?: CacheFlightContext) => Promise<T>,
   options?: WithCacheOptions<T>,
 ): Promise<T> {
   const lookup =
@@ -751,46 +783,55 @@ export async function withCache<T>(
     return existingFlight;
   }
 
-  const flightPromise =
-    (async (): Promise<T> => {
-      try {
-        const freshData =
-          await fetcher();
-        const canCache =
-          options?.shouldCache
-            ? options.shouldCache(
-                freshData,
-                undefined,
-              )
-            : freshData !== null &&
-              freshData !== undefined;
+  const flightRef: { current?: Promise<T> } = {};
+  const flightCtx: CacheFlightContext = {
+    isCurrentFlight: () =>
+      flightRef.current !== undefined && inFlight.get(key) === flightRef.current,
+  };
+  const flightPromise = (async (): Promise<T> => {
+    try {
+      const freshData =
+        await fetcher(flightCtx);
+      const canCache =
+        options?.shouldCache
+          ? options.shouldCache(
+              freshData,
+              undefined,
+            )
+          : freshData !== null &&
+            freshData !== undefined;
 
-        if (canCache) {
-          toCache(key, freshData);
-        }
+      if (flightCtx.isCurrentFlight() && canCache) {
+        toCache(key, freshData);
+      }
 
-        return freshData;
-      } catch (err) {
-        if (options?.fallback) {
-          const fallbackData =
-            await options.fallback(
-              err,
-            );
-          if (
-            options.cacheFallback
-          ) {
-            toCache(
-              key,
-              fallbackData,
-            );
-          }
-          return fallbackData;
+      return freshData;
+    } catch (err) {
+      if (options?.fallback) {
+        const fallbackData =
+          await options.fallback(
+            err,
+            flightCtx,
+          );
+        if (
+          flightCtx.isCurrentFlight() &&
+          options.cacheFallback
+        ) {
+          toCache(
+            key,
+            fallbackData,
+          );
         }
-        throw err;
-      } finally {
+        return fallbackData;
+      }
+      throw err;
+    } finally {
+      if (inFlight.get(key) === flightRef.current) {
         inFlight.delete(key);
       }
-    })();
+    }
+  })();
+  flightRef.current = flightPromise;
 
   inFlight.set(
     key,
@@ -1510,6 +1551,168 @@ async function jikanEpisodes(
   );
 }
 
+function isGenericAnimeEpisodeTitle(title: string | undefined, episodeNumber: number): boolean {
+  const clean = title?.trim() ?? "";
+  return !clean || clean === `Episódio ${episodeNumber}`;
+}
+
+function mergeEpisodeTitlesIntoAnime(
+  target: Anime,
+  titleMap: Map<number, { title: string; aired?: string }>,
+): Anime | null {
+  if (
+    (target.streamingEpisodes && target.streamingEpisodes.length > 0) ||
+    !target.seasons?.[0]?.episodes?.length
+  ) {
+    return null;
+  }
+
+  let changed = false;
+  const updatedEpisodes = target.seasons[0].episodes.map((ep) => {
+    const jikan = titleMap.get(ep.number);
+    if (!jikan) return ep;
+
+    const shouldUpdateTitle = isGenericAnimeEpisodeTitle(ep.title, ep.number);
+    const nextTitle = shouldUpdateTitle ? jikan.title : ep.title;
+    const nextAired = ep.aired ?? jikan.aired;
+
+    if (nextTitle !== ep.title || nextAired !== ep.aired) {
+      changed = true;
+      return {
+        ...ep,
+        title: nextTitle,
+        ...(nextAired !== undefined ? { aired: nextAired } : {}),
+      };
+    }
+
+    return ep;
+  });
+
+  if (!changed) {
+    return null;
+  }
+
+  return {
+    ...target,
+    seasons: [
+      {
+        ...target.seasons[0],
+        episodes: updatedEpisodes,
+      },
+      ...target.seasons.slice(1),
+    ],
+  };
+}
+
+function mergeCreditsIntoAnime(
+  target: Anime,
+  credits: AnimeCreditsResult,
+): Anime | null {
+  // Limitação conhecida e intencional:
+  // `Anime` e `AnimeCreditsResult` não registram a origem (AniList/Kitsu/Jikan/DB admin)
+  // e cada provedor usa IDs numéricos incompatíveis e formatos distintos (ex.: Jikan omite
+  // `name.native`, Kitsu filtra `voiceActors` por idioma e `studios` pode vir de edição manual
+  // no overlay do PostgreSQL). Como não há critério verificável e seguro para ranquear qualidade
+  // entre conjuntos não vazios sem risco de degradar dados completos ou sobrescrever curadoria,
+  // arrays já preenchidos são preservados e apenas categorias vazias são completadas.
+  const hasChar = (target.characters?.length ?? 0) > 0;
+  const hasStf = (target.staff?.length ?? 0) > 0;
+  const hasStd = (target.studios?.length ?? 0) > 0;
+
+  const updateChar = !hasChar && credits.characters.length > 0;
+  const updateStf = !hasStf && credits.staff.length > 0;
+  const updateStd = !hasStd && credits.studios.length > 0;
+
+  if (!updateChar && !updateStf && !updateStd) {
+    return null;
+  }
+
+  return {
+    ...target,
+    characters: updateChar ? credits.characters : target.characters,
+    staff: updateStf ? credits.staff : target.staff,
+    studios: updateStd ? credits.studios : target.studios,
+  };
+}
+
+function collectDetailAliasIds(
+  primaryId: string,
+  refs: {
+    serverCatalogId?: string | null;
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
+  },
+): string[] {
+  const seen = new Set<string>([primaryId.trim()]);
+  const aliases: string[] = [];
+
+  const pushAlias = (candidate?: string | null) => {
+    const clean = candidate?.trim();
+    if (!clean || seen.has(clean)) return;
+    seen.add(clean);
+    aliases.push(clean);
+  };
+
+  pushAlias(refs.serverCatalogId);
+  if (typeof refs.anilistId === "number" && refs.anilistId > 0) {
+    pushAlias(String(refs.anilistId));
+  }
+  if (typeof refs.malId === "number" && refs.malId > 0) {
+    pushAlias(`mal-${refs.malId}`);
+  }
+  if (typeof refs.kitsuId === "number" && refs.kitsuId > 0) {
+    pushAlias(`kitsu-${refs.kitsuId}`);
+  }
+
+  return aliases;
+}
+
+function syncLocalDetailCacheAliases(primaryId: string, detail: Anime): void {
+  const cleanPrimary = primaryId.trim();
+  if (!cleanPrimary) return;
+  toCache(`detail:v7:${cleanPrimary}`, detail);
+
+  const detailCache = domainCaches.get("detail");
+  if (!detailCache) return;
+
+  const aliases = collectDetailAliasIds(cleanPrimary, {
+    serverCatalogId: detail.serverCatalogId,
+    anilistId: detail.anilistId,
+    malId: detail.malId,
+    kitsuId: detail.kitsuId,
+  });
+
+  for (const aliasId of aliases) {
+    const aliasKey = `detail:v7:${aliasId}`;
+    if (detailCache.has(aliasKey)) {
+      toCache(aliasKey, detail);
+    }
+  }
+}
+
+function evictLocalDetailCacheAliases(primaryId: string, detail?: Anime | null): void {
+  const detailCache = domainCaches.get("detail");
+  if (!detailCache) return;
+
+  const cleanPrimary = primaryId.trim();
+  if (cleanPrimary) {
+    detailCache.delete(`detail:v7:${cleanPrimary}`);
+  }
+
+  if (detail) {
+    const aliases = collectDetailAliasIds(cleanPrimary, {
+      serverCatalogId: detail.serverCatalogId,
+      anilistId: detail.anilistId,
+      malId: detail.malId,
+      kitsuId: detail.kitsuId,
+    });
+    for (const aliasId of aliases) {
+      detailCache.delete(`detail:v7:${aliasId}`);
+    }
+  }
+}
+
 export const fetchAnimeEpisodes = createServerFn({
   method: "GET",
 })
@@ -1527,33 +1730,63 @@ export const fetchAnimeEpisodes = createServerFn({
 
     try {
       const seasons = await jikanEpisodes(malId);
-      if (animeId && seasons.length > 0 && seasons[0]?.episodes?.length) {
-        const detailKey = `detail:v7:${animeId}`;
-        const cached = fromCache<Anime>(detailKey);
-        if (cached && (!cached.streamingEpisodes || cached.streamingEpisodes.length === 0)) {
-          const titleMap = new Map<number, { title: string; aired?: string }>();
-          for (const ep of seasons[0].episodes) {
-            if (ep.title && ep.title !== `Episódio ${ep.number}`) {
-              titleMap.set(ep.number, { title: ep.title, aired: ep.aired });
-            }
+      const cleanAnimeId = animeId?.trim();
+      if (cleanAnimeId && seasons.length > 0 && seasons[0]?.episodes?.length) {
+        const titleMap = new Map<number, { title: string; aired?: string }>();
+        for (const ep of seasons[0].episodes) {
+          const cleanTitle = ep.title?.trim();
+          if (cleanTitle && cleanTitle !== `Episódio ${ep.number}`) {
+            titleMap.set(ep.number, { title: cleanTitle, aired: ep.aired });
           }
-          if (titleMap.size > 0 && cached.seasons?.[0]?.episodes) {
-            const updatedEpisodes = cached.seasons[0].episodes.map((ep) => {
-              const jikan = titleMap.get(ep.number);
-              return jikan
-                ? { ...ep, title: jikan.title, aired: jikan.aired ?? ep.aired }
-                : ep;
+        }
+
+        if (titleMap.size > 0) {
+          const detailKey = `detail:v7:${cleanAnimeId}`;
+          const localCached = fromCache<Anime>(detailKey);
+
+          const redisRes = await updateRedisAnimeDetailAtomic(
+            cleanAnimeId,
+            (current) => mergeEpisodeTitlesIntoAnime(current, titleMap),
+          );
+
+          if (redisRes.status === "fenced") {
+            evictLocalDetailCacheAliases(cleanAnimeId, localCached);
+          } else if (redisRes.status === "updated" || redisRes.status === "unchanged") {
+            const refDetail = redisRes.detail ?? localCached;
+            if (refDetail) {
+              syncLocalDetailCacheAliases(cleanAnimeId, refDetail);
+            }
+
+            const aliasIds = collectDetailAliasIds(cleanAnimeId, {
+              serverCatalogId: refDetail?.serverCatalogId,
+              anilistId: refDetail?.anilistId,
+              malId: refDetail?.malId ?? malId,
+              kitsuId: refDetail?.kitsuId,
             });
-            toCache(detailKey, {
-              ...cached,
-              seasons: [
-                {
-                  ...cached.seasons[0],
-                  episodes: updatedEpisodes,
-                },
-                ...cached.seasons.slice(1),
-              ],
-            });
+
+            if (aliasIds.length > 0) {
+              await Promise.all(
+                aliasIds.map(async (aliasId) => {
+                  const aliasRes = await updateRedisAnimeDetailAtomic(
+                    aliasId,
+                    (current) => mergeEpisodeTitlesIntoAnime(current, titleMap),
+                  );
+                  if (aliasRes.status === "fenced") {
+                    domainCaches.get("detail")?.delete(`detail:v7:${aliasId}`);
+                  } else if (
+                    aliasRes.detail &&
+                    (aliasRes.status === "updated" || aliasRes.status === "unchanged")
+                  ) {
+                    syncLocalDetailCacheAliases(aliasId, aliasRes.detail);
+                  }
+                }),
+              );
+            }
+          } else if (localCached) {
+            const mergedLocal = mergeEpisodeTitlesIntoAnime(localCached, titleMap);
+            if (mergedLocal) {
+              toCache(detailKey, mergedLocal);
+            }
           }
         }
       }
@@ -2870,32 +3103,59 @@ export const fetchAnimeCredits = createServerFn({
   )
   .handler(async ({ data }) => {
     const credits = await resolveAnimeCredits(data);
-    if (data.animeId && credits) {
-      const detailKey = `detail:v7:${data.animeId}`;
-      const cached = fromCache<Anime>(detailKey);
-      if (cached) {
-        const hasChar = (cached.characters?.length ?? 0) > 0;
-        const hasStf = (cached.staff?.length ?? 0) > 0;
-        const hasStd = (cached.studios?.length ?? 0) > 0;
-        if (!hasChar || !hasStf || !hasStd) {
-          toCache(detailKey, {
-            ...cached,
-            characters: hasChar
-              ? cached.characters
-              : credits.characters.length > 0
-                ? credits.characters
-                : cached.characters,
-            staff: hasStf
-              ? cached.staff
-              : credits.staff.length > 0
-                ? credits.staff
-                : cached.staff,
-            studios: hasStd
-              ? cached.studios
-              : credits.studios.length > 0
-                ? credits.studios
-                : cached.studios,
-          });
+    const cleanAnimeId = data.animeId?.trim();
+    if (
+      cleanAnimeId &&
+      credits &&
+      (credits.characters.length > 0 ||
+        credits.staff.length > 0 ||
+        credits.studios.length > 0)
+    ) {
+      const detailKey = `detail:v7:${cleanAnimeId}`;
+      const localCached = fromCache<Anime>(detailKey);
+
+      const redisRes = await updateRedisAnimeDetailAtomic(
+        cleanAnimeId,
+        (current) => mergeCreditsIntoAnime(current, credits),
+      );
+
+      if (redisRes.status === "fenced") {
+        evictLocalDetailCacheAliases(cleanAnimeId, localCached);
+      } else if (redisRes.status === "updated" || redisRes.status === "unchanged") {
+        const refDetail = redisRes.detail ?? localCached;
+        if (refDetail) {
+          syncLocalDetailCacheAliases(cleanAnimeId, refDetail);
+        }
+
+        const aliasIds = collectDetailAliasIds(cleanAnimeId, {
+          serverCatalogId: refDetail?.serverCatalogId,
+          anilistId: refDetail?.anilistId ?? credits.anilistId ?? data.anilistId,
+          malId: refDetail?.malId ?? credits.malId ?? data.malId,
+          kitsuId: refDetail?.kitsuId ?? credits.kitsuId ?? data.kitsuId,
+        });
+
+        if (aliasIds.length > 0) {
+          await Promise.all(
+            aliasIds.map(async (aliasId) => {
+              const aliasRes = await updateRedisAnimeDetailAtomic(
+                aliasId,
+                (current) => mergeCreditsIntoAnime(current, credits),
+              );
+              if (aliasRes.status === "fenced") {
+                domainCaches.get("detail")?.delete(`detail:v7:${aliasId}`);
+              } else if (
+                aliasRes.detail &&
+                (aliasRes.status === "updated" || aliasRes.status === "unchanged")
+              ) {
+                syncLocalDetailCacheAliases(aliasId, aliasRes.detail);
+              }
+            }),
+          );
+        }
+      } else if (localCached) {
+        const mergedLocal = mergeCreditsIntoAnime(localCached, credits);
+        if (mergedLocal) {
+          toCache(detailKey, mergedLocal);
         }
       }
     }
@@ -6375,34 +6635,105 @@ export const fetchAnimeDetail =
       async ({
         data,
       }) => {
-        const { id } =
-          data;
+        const id = data.id?.trim() || "";
+        if (!id) {
+          return null;
+        }
 
-        if (
-          id.startsWith(
-            "local-",
-          )
-        ) {
+        const key = `detail:v7:${id}`;
+
+        if (id.startsWith("local-")) {
+          const localHit = inspectCache<Anime | null>(key);
+          if (localHit.status === "fresh" && localHit.data) {
+            return localHit.data;
+          }
+
+          let preAliases: string[] = [id];
+          try {
+            const { resolveCatalogDetailAliasesForId } = await import(
+              "@/lib/catalog-server-overlay.server"
+            );
+            preAliases = await resolveCatalogDetailAliasesForId(id);
+          } catch {
+            preAliases = [id];
+          }
+
+          const redisRead = await getRedisAnimeDetailWithFence(id, preAliases);
+          if (redisRead.status === "hit" && redisRead.detail) {
+            toCache(key, redisRead.detail);
+            return redisRead.detail;
+          }
+
+          const localFence: RedisAnimeDetailFence | null | undefined =
+            redisRead.status === "miss"
+              ? redisRead.fence
+              : redisRead.status === "failed"
+                ? null
+                : undefined;
+
           try {
             const { applyDbCatalogOverlayToDetail } = await import(
               "@/lib/catalog-server-overlay.server"
             );
-            return await applyDbCatalogOverlayToDetail(null, id);
+            const localDetail = await applyDbCatalogOverlayToDetail(null, id);
+            if (localDetail) {
+              const writeStatus = await setRedisAnimeDetail(id, localDetail, localFence);
+              if (writeStatus === "fenced") {
+                evictLocalDetailCacheAliases(id, localDetail);
+              } else {
+                toCache(key, localDetail);
+              }
+            }
+            return localDetail;
           } catch {
             return null;
           }
         }
 
-        const key =
-          `detail:v7:${id}`;
+        // 1. Verifica cache local em memória (preserva TTL de 30m e janela SWR)
+        const localHit = inspectCache<Anime | null>(key);
+        if (localHit.status === "fresh" && localHit.data) {
+          return localHit.data;
+        }
 
-        const detail = await withCache<Anime | null>(
+        const flightState = { fenced: false };
+
+        return await withCache<Anime | null>(
           key,
-          async () => {
-            if (id.startsWith("kitsu-")) {
-              const kitsuId = Number(id.replace("kitsu-", ""));
-              return await fetchKitsuDetail(kitsuId);
+          async (ctx) => {
+            // 2. Captura de aliases + leitura Redis + fence composto dentro da Promise líder
+            //    ANTES de consultar APIs externas ou PostgreSQL, evitando mistura de fences no coalescing.
+            let preAliases: string[] = [id];
+            try {
+              const { resolveCatalogDetailAliasesForId } = await import(
+                "@/lib/catalog-server-overlay.server"
+              );
+              preAliases = await resolveCatalogDetailAliasesForId(id);
+            } catch {
+              preAliases = [id];
             }
+
+            const redisRead = await getRedisAnimeDetailWithFence(id, preAliases);
+            if (redisRead.status === "hit" && redisRead.detail) {
+              if (ctx && !ctx.isCurrentFlight()) {
+                flightState.fenced = true;
+                evictLocalDetailCacheAliases(id, redisRead.detail);
+              }
+              return redisRead.detail;
+            }
+
+            const activeFence: RedisAnimeDetailFence | null | undefined =
+              redisRead.status === "miss"
+                ? redisRead.fence
+                : redisRead.status === "failed"
+                  ? null
+                  : undefined;
+
+            const fresh = await (async (): Promise<Anime | null> => {
+              if (id.startsWith("kitsu-")) {
+                const kitsuId = Number(id.replace("kitsu-", ""));
+                return await fetchKitsuDetail(kitsuId);
+              }
 
         if (
           id.startsWith(
@@ -6943,9 +7274,71 @@ export const fetchAnimeDetail =
           }
 
           return mapped;
+            })();
+
+            if (!fresh) {
+              return null;
+            }
+
+            let finalDetail: Anime = fresh;
+            try {
+              const { applyDbCatalogOverlayToDetail } = await import(
+                "@/lib/catalog-server-overlay.server"
+              );
+              finalDetail =
+                (await applyDbCatalogOverlayToDetail(fresh, id)) ?? fresh;
+            } catch {
+              finalDetail = fresh;
+            }
+
+            if (ctx && !ctx.isCurrentFlight()) {
+              flightState.fenced = true;
+              evictLocalDetailCacheAliases(id, finalDetail);
+              return finalDetail;
+            }
+
+            const primaryWrite = await setRedisAnimeDetail(
+              id,
+              finalDetail,
+              activeFence,
+            );
+            if (primaryWrite === "fenced" || (ctx && !ctx.isCurrentFlight())) {
+              flightState.fenced = true;
+              evictLocalDetailCacheAliases(id, finalDetail);
+              return finalDetail;
+            }
+
+            const aliasId = finalDetail.serverCatalogId?.trim();
+            if (aliasId && aliasId !== id) {
+              // Apenas grava em serverCatalogId se o alias já estava protegido no fence composto
+              // (ou se o Redis estiver desabilitado/indisponível).
+              const aliasCoveredByFence =
+                activeFence === undefined ||
+                (activeFence !== null &&
+                  Object.prototype.hasOwnProperty.call(
+                    activeFence.idGens,
+                    aliasId,
+                  ));
+
+              if (aliasCoveredByFence) {
+                const aliasWrite = await setRedisAnimeDetail(
+                  aliasId,
+                  finalDetail,
+                  activeFence,
+                );
+                if (aliasWrite === "fenced" || (ctx && !ctx.isCurrentFlight())) {
+                  flightState.fenced = true;
+                  evictLocalDetailCacheAliases(id, finalDetail);
+                  return finalDetail;
+                }
+              }
+            }
+
+            return finalDetail;
         },
         {
           shouldCache: (detail, stale) => {
+            if (flightState.fenced) return false;
             if (!isValidAnimeDetail(detail)) return false;
             // Evita que uma resposta transitória vazia sobrescreva dados válidos já armazenados
             if (stale && isValidAnimeDetail(stale)) {
@@ -6957,7 +7350,7 @@ export const fetchAnimeDetail =
             }
             return true;
           },
-          fallback: async () => {
+          fallback: async (_err, ctx) => {
             if (id.startsWith("kitsu-")) {
               const kitsuId = Number(id.replace("kitsu-", ""));
               const fallback = FALLBACK_ANIMES.find((a) => a.id === id || a.kitsuId === kitsuId);
@@ -6971,7 +7364,7 @@ export const fetchAnimeDetail =
                   `credits:v1:${fallback.anilistId ?? 0}:${fallback.malId ?? 0}:${kitsuId}:0:${normalizeSearchText(cleanTitles[0] ?? "")}:${fallback.year ?? 0}`,
                 );
 
-                return {
+                const kitsuFallback: Anime = {
                   ...fallback,
                   id,
                   studios: cachedCredits?.studios ?? [],
@@ -7003,6 +7396,20 @@ export const fetchAnimeDetail =
                     ],
                   },
                 };
+                try {
+                  const { applyDbCatalogOverlayToDetail } = await import(
+                    "@/lib/catalog-server-overlay.server"
+                  );
+                  const overlaid =
+                    (await applyDbCatalogOverlayToDetail(kitsuFallback, id)) ??
+                    kitsuFallback;
+                  if ((!ctx || ctx.isCurrentFlight()) && !flightState.fenced) {
+                    toCache(key, overlaid);
+                  }
+                  return overlaid;
+                } catch {
+                  return kitsuFallback;
+                }
               }
               return null;
             }
@@ -7068,23 +7475,29 @@ export const fetchAnimeDetail =
                 },
               };
 
-              toCache(key, fallbackDetail);
-              return fallbackDetail;
+              try {
+                const { applyDbCatalogOverlayToDetail } = await import(
+                  "@/lib/catalog-server-overlay.server"
+                );
+                const overlaid =
+                  (await applyDbCatalogOverlayToDetail(fallbackDetail, id)) ??
+                  fallbackDetail;
+                if ((!ctx || ctx.isCurrentFlight()) && !flightState.fenced) {
+                  toCache(key, overlaid);
+                }
+                return overlaid;
+              } catch {
+                if ((!ctx || ctx.isCurrentFlight()) && !flightState.fenced) {
+                  toCache(key, fallbackDetail);
+                }
+                return fallbackDetail;
+              }
             }
 
             return null;
           },
         },
       );
-
-      try {
-        const { applyDbCatalogOverlayToDetail } = await import(
-          "@/lib/catalog-server-overlay.server"
-        );
-        return await applyDbCatalogOverlayToDetail(detail, id);
-      } catch {
-        return detail;
-      }
       },
     );
 
