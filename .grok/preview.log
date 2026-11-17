@@ -15,43 +15,18 @@ Current configuration:
  ╭────────── [Build Info] ─────────────╮
  │                                     │
  │  - Build Directory: .vercel/output  │
- │  - Date: 11/14/2026, 12:41:56 AM    │
+ │  - Date: 11/17/2026, 10:58:19 PM    │
  │  - Nitro Version: 3.0.260610-beta   │
  │  - Nitro Preset: vercel             │
  │                                     │
  ╰─────────────────────────────────────╯
 
   ➜  Local:   http://127.0.0.1:8081/
-[Hikari] Falha segura ao consultar episódios públicos do PostgreSQL: Error: ENOENT: no such file or directory, open '/app/applet/.vercel/output/functions/__server.func/_libs/pglite.data'
-    at async open (node:internal/fs/promises:639:25)
-    at async Module.readFile (node:internal/fs/promises:1252:14)
-    at async Object.w$4 (file:///app/applet/.vercel/output/functions/__server.func/_libs/electric-sql__pglite.mjs:118:16) {
-  errno: -2,
-  code: 'ENOENT',
-  syscall: 'open',
-  path: '/app/applet/.vercel/output/functions/__server.func/_libs/pglite.data'
-}
-[db] PGLite bootstrap failed: Error: ENOENT: no such file or directory, open '/app/applet/.vercel/output/functions/__server.func/_libs/pglite.data'
-    at async open (node:internal/fs/promises:639:25)
-    at async Module.readFile (node:internal/fs/promises:1252:14)
-    at async Object.w$4 (file:///app/applet/.vercel/output/functions/__server.func/_libs/electric-sql__pglite.mjs:118:16) {
-  errno: -2,
-  code: 'ENOENT',
-  syscall: 'open',
-  path: '/app/applet/.vercel/output/functions/__server.func/_libs/pglite.data'
-}
-node:internal/process/promises:394
-    triggerUncaughtException(err, true /* fromPromise */);
-    ^
+file:///app/applet/.vercel/output/functions/__server.func/_libs/electric-sql__pglite.mjs:6315
+		if (!t.existsSync(e)) throw new Error(`Extension bundle not found: ${e}`);
+		                            ^
 
-Error: ENOENT: no such file or directory, open '/app/applet/.vercel/output/functions/__server.func/_libs/pglite.data'
-    at async open (node:internal/fs/promises:639:25)
-    at async Module.readFile (node:internal/fs/promises:1252:14)
-    at async Object.w$4 (file:///app/applet/.vercel/output/functions/__server.func/_libs/electric-sql__pglite.mjs:118:16) {
-  errno: -2,
-  code: 'ENOENT',
-  syscall: 'open',
-  path: '/app/applet/.vercel/output/functions/__server.func/_libs/pglite.data'
-}
+Error: Extension bundle not found: file:///app/applet/.vercel/output/functions/__server.func/pg_trgm.tar.gz
+    at Fe (file:///app/applet/.vercel/output/functions/__server.func/_libs/electric-sql__pglite.mjs:6315:31)
 
 Node.js v22.23.2

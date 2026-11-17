@@ -972,6 +972,7 @@ function WatchPage() {
       : title;
 
     const mins = Math.floor(initialDuration / 60).toString().padStart(2, "0");
+    const secs = (initialDuration % 60).toString().padStart(2, "0");
     const possibleIframe =
       current.videoUrl2 ||
       current.videoUrl3 ||

@@ -50,30 +50,102 @@ export interface VideoMetadataUpdates {
   resolution?: VideoResolution;
 }
 
+type HlsLogStage =
+  | 'URL'
+  | 'INIT'
+  | 'MANIFEST'
+  | 'FRAGMENT'
+  | 'PLAYBACK'
+  | 'RECOVERY'
+  | 'FALLBACK'
+  | 'ERROR'
+  | 'FATAL';
+
+type HlsErrorCategory =
+  | 'url'
+  | 'manifest'
+  | 'segment'
+  | 'cors_auth'
+  | 'compat_decode';
+
+interface PlayerErrorState {
+  category: HlsErrorCategory;
+  title: string;
+  message: string;
+  detail: string;
+}
+
 function sanitizeStreamUrl(url: string): string {
   if (!url) return '';
   try {
-    const parsed = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    const parsed = new URL(url, base);
+    const maskedPath = parsed.pathname
+      .split('/')
+      .map((seg) => {
+        if (!seg) return seg;
+        if (/^(?:bcdn_token|token|sig|auth)=/i.test(seg) || seg.length > 40) {
+          return '***';
+        }
+        return seg;
+      })
+      .join('/');
+    parsed.pathname = maskedPath;
+
     const safeParams = new URLSearchParams();
-    for (const [key, val] of parsed.searchParams.entries()) {
-      if (/token|key|secret|sig|auth|pass/i.test(key)) {
-        safeParams.set(key, '***');
-      } else {
-        safeParams.set(key, val);
-      }
+    for (const [key] of parsed.searchParams.entries()) {
+      safeParams.set(key, '***');
     }
-    parsed.search = safeParams.toString() ? `?${safeParams.toString()}` : '';
-    return parsed.toString();
+    const qs = safeParams.toString();
+    return `${parsed.origin}${parsed.pathname}${qs ? `?${qs}` : ''}`;
   } catch {
-    return url.split('?')[0] || url;
+    return url.split('?')[0] || '[url-invalida]';
   }
 }
 
-function logHls(
-  stage: 'URL' | 'INIT' | 'MANIFEST' | 'FRAGMENT' | 'PLAYBACK' | 'RECOVERY' | 'FATAL',
-  msg: string,
-  data?: unknown,
-) {
+function isHlsStreamUrl(url: string): boolean {
+  if (!url) return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = new URL(trimmed, 'http://localhost');
+    const pathLower = parsed.pathname.toLowerCase();
+    const searchLower = parsed.search.toLowerCase();
+    return (
+      pathLower.endsWith('.m3u8') ||
+      pathLower.endsWith('.m3u') ||
+      /\.m3u8?(?:[?#&]|$)/i.test(trimmed) ||
+      searchLower.includes('.m3u8') ||
+      pathLower.includes('/hls/')
+    );
+  } catch {
+    return /\.m3u8?(?:[?#&]|$)/i.test(trimmed) || trimmed.toLowerCase().includes('/hls/');
+  }
+}
+
+function isValidDirectStreamUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === '#') return false;
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith('javascript:') ||
+    lower.startsWith('data:') ||
+    lower.startsWith('vbscript:')
+  ) {
+    return false;
+  }
+  if (lower.startsWith('blob:') || (trimmed.startsWith('/') && !trimmed.startsWith('//'))) {
+    return true;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+function logHls(stage: HlsLogStage, msg: string, data?: unknown) {
   const prefix = `[Hikari Player: HLS] [${stage}]`;
   if (data !== undefined) {
     console.log(`${prefix} ${msg}`, data);
@@ -82,11 +154,7 @@ function logHls(
   }
 }
 
-function warnHls(
-  stage: 'INIT' | 'MANIFEST' | 'FRAGMENT' | 'PLAYBACK' | 'RECOVERY',
-  msg: string,
-  data?: unknown,
-) {
+function warnHls(stage: HlsLogStage, msg: string, data?: unknown) {
   const prefix = `[Hikari Player: HLS] [${stage}]`;
   if (data !== undefined) {
     console.warn(`${prefix} ${msg}`, data);
@@ -95,11 +163,7 @@ function warnHls(
   }
 }
 
-function errorHls(
-  stage: 'INIT' | 'MANIFEST' | 'FRAGMENT' | 'PLAYBACK' | 'RECOVERY' | 'FATAL',
-  msg: string,
-  data?: unknown,
-) {
+function errorHls(stage: HlsLogStage, msg: string, data?: unknown) {
   const prefix = `[Hikari Player: HLS] [${stage}]`;
   if (data !== undefined) {
     console.error(`${prefix} ${msg}`, data);
@@ -170,21 +234,6 @@ function getSavedQualityPreference(): string {
   } catch {
     return 'Automática';
   }
-}
-
-function isMediaSourceSupported(): boolean {
-  if (typeof window === 'undefined') return false;
-  const mediaSource =
-    window.MediaSource ||
-    (window as unknown as { WebKitMediaSource?: typeof MediaSource }).WebKitMediaSource;
-  if (!mediaSource || typeof mediaSource.isTypeSupported !== 'function') {
-    return false;
-  }
-  return (
-    mediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E,mp4a.40.2"') ||
-    mediaSource.isTypeSupported('video/mp4; codecs="avc1.4d401f,mp4a.40.2"') ||
-    mediaSource.isTypeSupported('video/mp4')
-  );
 }
 
 type ControlsActionsHandle = {
@@ -435,7 +484,6 @@ interface HikariPlayerSurfaceProps {
   effectiveVideoUrl: string;
   effectivePosterUrl: string;
   isHls: boolean;
-  hasMseSupport: boolean;
   autoPlay: boolean;
   initialTime: number;
   onClose?: () => void;
@@ -460,7 +508,6 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   effectiveVideoUrl,
   effectivePosterUrl,
   isHls,
-  hasMseSupport,
   autoPlay,
   initialTime,
   onClose,
@@ -483,6 +530,8 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const media = useHikariMedia();
   const hlsRef = useRef<Hls | null>(null);
+  const playbackEngineRef = useRef<'idle' | 'native-hls' | 'hlsjs' | 'direct'>('idle');
+  const isTearingDownRef = useRef<boolean>(false);
   const initialTimeAppliedRef = useRef<boolean>(false);
   const initialRateAppliedRef = useRef<boolean>(false);
 
@@ -502,9 +551,11 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const sliderLockReleaseRef = useRef<(() => void) | null>(null);
 
   const [showSettingsMenu, setShowSettingsMenu] = useState<boolean>(false);
-  const [videoError, setVideoError] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState<PlayerErrorState | null>(null);
   const [doubleTapFeedback, setDoubleTapFeedback] = useState<'left' | 'right' | null>(null);
   const [hasPlaybackStarted, setHasPlaybackStarted] = useState<boolean>(() => Boolean(autoPlay));
+  const hasPlaybackStartedRef = useRef<boolean>(Boolean(autoPlay));
+  hasPlaybackStartedRef.current = hasPlaybackStarted;
   const [posterFailed, setPosterFailed] = useState<boolean>(false);
   const [isIframeMode, setIsIframeMode] = useState<boolean>(false);
   const [hlsRetryNonce, setHlsRetryNonce] = useState<number>(0);
@@ -690,7 +741,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const setMutedFn = volumeState?.setMuted;
   const playSafely = useCallback(
     (videoEl: HTMLVideoElement) => {
-      if (!autoPlay) return;
+      if (!autoPlay && !hasPlaybackStartedRef.current) return;
       const playPromise = playFn ? playFn() : videoEl.play();
       if (playPromise !== undefined) {
         Promise.resolve(playPromise).catch((err: unknown) => {
@@ -721,19 +772,37 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const playSafelyRef = useRef(playSafely);
   playSafelyRef.current = playSafely;
 
-  // Video.js <Video> source setup + Hls.js engine lifecycle
+  // Video.js <Video> source setup + Native HLS / Hls.js engine lifecycle
   useEffect(() => {
-    const videoEl = videoRef.current || (media as HTMLVideoElement | null);
-    if (!videoEl || !effectiveVideoUrl || isIframeMode) return;
+    const videoEl = videoRef.current;
+    if (!videoEl || isIframeMode) return;
+
+    const directUrl = effectiveVideoUrl.trim();
+    if (!directUrl || !isValidDirectStreamUrl(directUrl)) {
+      const urlErr: PlayerErrorState = {
+        category: 'url',
+        title: 'URL de Transmissão Inválida',
+        message: 'Não foi possível obter uma URL válida de transmissão para este episódio.',
+        detail: 'Verifique se o link da fonte cadastrada é um endereço HTTP/HTTPS válido.',
+      };
+      errorHls('URL', 'Falha na obtenção da URL da stream.', { hasUrl: Boolean(directUrl) });
+      setVideoError(urlErr);
+      onErrorRef.current?.(urlErr.message);
+      return;
+    }
 
     let isCancelled = false;
     let activeHls: Hls | null = null;
-    let currentStreamUrl = effectiveVideoUrl;
-    let hasTriedProxy = false;
-    let hasTriedNative = false;
+    isTearingDownRef.current = false;
+    playbackEngineRef.current = 'idle';
 
     if (hlsRef.current) {
-      hlsRef.current.destroy();
+      try {
+        hlsRef.current.detachMedia();
+        hlsRef.current.destroy();
+      } catch {
+        // Ignore teardown error
+      }
       hlsRef.current = null;
     }
 
@@ -741,33 +810,70 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     initialRateAppliedRef.current = false;
     setVideoError(null);
 
-    // a) Obtenção da URL da stream e inspeção de ambiente
     const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
     const isBrave =
       typeof navigator !== 'undefined' &&
       Boolean((navigator as unknown as { brave?: { isBrave?: () => Promise<boolean> } }).brave);
+    const canPlayNativeHls =
+      videoEl.canPlayType('application/vnd.apple.mpegurl') !== '' ||
+      videoEl.canPlayType('application/x-mpegurl') !== '';
+
     logHls(
       'URL',
-      `URL da stream obtida: ${sanitizeStreamUrl(currentStreamUrl)} (HLS=${isHls}, MSE=${hasMseSupport}, Android=${isAndroid}, Brave=${isBrave})`,
+      `URL direta obtida: ${sanitizeStreamUrl(directUrl)} (isHls=${isHls}, nativeHLS=${canPlayNativeHls}, Android=${isAndroid}, Brave=${isBrave})`,
     );
 
-    // Ouvintes de eventos de reprodução para log no videoEl
+    const reportFatalError = (errState: PlayerErrorState) => {
+      if (isCancelled) return;
+      if (hlsRef.current) {
+        try {
+          hlsRef.current.detachMedia();
+          hlsRef.current.destroy();
+        } catch {
+          // Ignore teardown error
+        }
+        hlsRef.current = null;
+      }
+      activeHls = null;
+      errorHls('FATAL', `[${errState.category}] ${errState.message}`, {
+        detail: errState.detail,
+        url: sanitizeStreamUrl(directUrl),
+      });
+      setVideoError(errState);
+      onErrorRef.current?.(errState.message);
+    };
+
     const onPlayLog = () => logHls('PLAYBACK', 'Evento play disparado no elemento HTMLVideoElement');
     const onPlayingLog = () => logHls('PLAYBACK', 'Transmissão em reprodução contínua ativa');
     const onWaitingLog = () => warnHls('PLAYBACK', 'Aguardando buffer de transmissão (buffering)...');
     const onPauseLog = () => logHls('PLAYBACK', 'Transmissão pausada');
     const onSeekedLog = () => {
-      if (videoEl) {
-        logHls('PLAYBACK', `Posição do vídeo ajustada para ${videoEl.currentTime.toFixed(1)}s`);
-      }
+      logHls('PLAYBACK', `Posição do vídeo ajustada para ${videoEl.currentTime.toFixed(1)}s`);
     };
+
     videoEl.addEventListener('play', onPlayLog);
     videoEl.addEventListener('playing', onPlayingLog);
     videoEl.addEventListener('waiting', onWaitingLog);
     videoEl.addEventListener('pause', onPauseLog);
     videoEl.addEventListener('seeked', onSeekedLog);
 
-    const cleanupVideoListeners = () => {
+    let nativeCanPlayHandler: (() => void) | null = null;
+    let nativeErrorHandler: (() => void) | null = null;
+
+    const removeNativeListeners = () => {
+      if (nativeCanPlayHandler) {
+        videoEl.removeEventListener('canplay', nativeCanPlayHandler);
+        videoEl.removeEventListener('loadedmetadata', nativeCanPlayHandler);
+        nativeCanPlayHandler = null;
+      }
+      if (nativeErrorHandler) {
+        videoEl.removeEventListener('error', nativeErrorHandler);
+        nativeErrorHandler = null;
+      }
+    };
+
+    const cleanupAll = () => {
+      removeNativeListeners();
       videoEl.removeEventListener('play', onPlayLog);
       videoEl.removeEventListener('playing', onPlayingLog);
       videoEl.removeEventListener('waiting', onWaitingLog);
@@ -775,73 +881,104 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
       videoEl.removeEventListener('seeked', onSeekedLog);
     };
 
-    if (isHls && hasMseSupport) {
+    const startHlsJsEngine = () => {
       import('hls.js')
         .then(({ default: HlsClass }) => {
           if (isCancelled) return;
 
-          // b) Inicialização da engine hls.js / player nativo
           if (!HlsClass.isSupported()) {
-            if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-              logHls('INIT', 'Hls.js não suportado pelo ambiente. Inicializando reprodutor nativo HLS do navegador.');
-              videoEl.src = currentStreamUrl;
-              playSafelyRef.current(videoEl);
-            } else {
-              const err = 'Nenhum mecanismo HLS (MSE ou nativo) suportado neste navegador.';
-              errorHls('INIT', err);
-              setVideoError(err);
-              onErrorRef.current?.(err);
+            if (canPlayNativeHls && playbackEngineRef.current !== 'native-hls') {
+              startNativeHlsEngine(false);
+              return;
             }
+            reportFatalError({
+              category: 'compat_decode',
+              title: 'Navegador Incompatível com HLS',
+              message: 'Este navegador não suporta reprodução HLS nativa nem Media Source Extensions (MSE).',
+              detail: 'Tente atualizar o navegador ou utilizar o player incorporado, se disponível.',
+            });
             return;
           }
 
-          logHls('INIT', `Inicializando motor HLS.js v${HlsClass.version} com aceleração por WebWorker e suporte Android/MSE.`);
+          playbackEngineRef.current = 'hlsjs';
+          logHls(
+            'INIT',
+            `Inicializando HLS.js v${HlsClass.version} (worker=${!isAndroid}, Android=${isAndroid}, Brave=${isBrave}).`,
+          );
 
           if (hlsRef.current) {
-            hlsRef.current.destroy();
+            try {
+              hlsRef.current.detachMedia();
+              hlsRef.current.destroy();
+            } catch {
+              // Ignore teardown error
+            }
             hlsRef.current = null;
           }
 
           const hls = new HlsClass({
-            enableWorker: true,
+            enableWorker: !isAndroid,
             lowLatencyMode: false,
             backBufferLength: 60,
             maxBufferLength: 30,
             maxMaxBufferLength: 600,
             maxBufferSize: 60 * 1000 * 1000,
             manifestLoadingTimeOut: 15000,
-            manifestLoadingMaxRetry: 3,
+            manifestLoadingMaxRetry: 2,
             levelLoadingTimeOut: 15000,
-            levelLoadingMaxRetry: 3,
+            levelLoadingMaxRetry: 2,
             fragLoadingTimeOut: 20000,
-            fragLoadingMaxRetry: 4,
-            xhrSetup: (xhr) => {
-              xhr.withCredentials = false;
+            fragLoadingMaxRetry: 3,
+            xhrSetup: (xhr, reqUrl) => {
+              try {
+                const sameOrigin =
+                  typeof window !== 'undefined' &&
+                  new URL(reqUrl, window.location.origin).origin === window.location.origin;
+                xhr.withCredentials = sameOrigin;
+              } catch {
+                xhr.withCredentials = false;
+              }
             },
             ...(initialTimeRef.current && initialTimeRef.current > 0
               ? { startPosition: initialTimeRef.current }
               : {}),
           });
+
           activeHls = hls;
           hlsRef.current = hls;
 
-          // c) Carregamento do manifesto
+          let networkRecoveryAttempts = 0;
+          let mediaRecoveryAttempts = 0;
+
+          hls.on(HlsClass.Events.MEDIA_ATTACHED, () => {
+            if (isCancelled) return;
+            logHls('INIT', 'Elemento de vídeo anexado ao HLS.js. Carregando manifesto...');
+            hls.loadSource(directUrl);
+          });
+
           hls.on(HlsClass.Events.MANIFEST_LOADING, (_event, data) => {
             if (isCancelled) return;
-            logHls('MANIFEST', `Iniciando download do manifesto: ${sanitizeStreamUrl(data.url || currentStreamUrl)}`);
+            logHls('MANIFEST', `Baixando manifesto: ${sanitizeStreamUrl(data.url || directUrl)}`);
           });
 
           hls.on(HlsClass.Events.MANIFEST_LOADED, (_event, data) => {
             if (isCancelled) return;
-            logHls('MANIFEST', `Manifesto baixado com sucesso. Níveis de qualidade: ${data.levels?.length || 0}, Áudios: ${data.audioTracks?.length || 0}`);
+            logHls(
+              'MANIFEST',
+              `Manifesto carregado (${data.levels?.length || 0} níveis, ${data.audioTracks?.length || 0} faixas de áudio).`,
+            );
           });
 
           hls.on(HlsClass.Events.MANIFEST_PARSED, (_event, data) => {
             if (isCancelled) return;
             const qualities = Array.isArray(data?.levels)
-              ? data.levels.map((lvl: { height?: number; bitrate?: number }) => `${lvl.height || 'auto'}p@${Math.round((lvl.bitrate || 0) / 1000)}k`).join(', ')
+              ? data.levels
+                  .map((lvl: { height?: number; bitrate?: number }) =>
+                    `${lvl.height || 'auto'}p@${Math.round((lvl.bitrate || 0) / 1000)}k`,
+                  )
+                  .join(', ')
               : 'padrão';
-            logHls('MANIFEST', `Manifesto analisado com sucesso. Resoluções disponíveis: [${qualities}]`);
+            logHls('MANIFEST', `Manifesto analisado. Qualidades: [${qualities}]`);
 
             const qualityPref = getSavedQualityPreference();
             if (qualityPref.includes('480p') && Array.isArray(data?.levels) && data.levels.length > 0) {
@@ -855,176 +992,320 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
             playSafelyRef.current(videoEl);
           });
 
-          // d) Download de fragmentos
           hls.on(HlsClass.Events.FRAG_LOADING, (_event, data) => {
             if (isCancelled) return;
-            logHls('FRAGMENT', `Baixando fragmento #${data.frag.sn} (nível ${data.frag.level})`);
+            logHls('FRAGMENT', `Baixando segmento #${data.frag.sn} (nível ${data.frag.level})`);
           });
 
           hls.on(HlsClass.Events.FRAG_LOADED, (_event, data) => {
             if (isCancelled) return;
             logHls(
               'FRAGMENT',
-              `Fragmento #${data.frag.sn} recebido (${data.frag.duration.toFixed(2)}s, ${data.payload?.byteLength || 0} bytes)`,
+              `Segmento #${data.frag.sn} recebido (${data.frag.duration.toFixed(2)}s, ${data.payload?.byteLength || 0} bytes)`,
             );
           });
 
           hls.on(HlsClass.Events.FRAG_PARSED, (_event, data) => {
             if (isCancelled) return;
-            logHls('FRAGMENT', `Fragmento #${data.frag.sn} decodificado e bufferizado no SourceBuffer.`);
+            logHls('FRAGMENT', `Segmento #${data.frag.sn} pronto no SourceBuffer.`);
           });
 
-          // e) Tratamento de erros técnicos e recuperação automática
-          let networkRecoveryAttempts = 0;
-          let mediaRecoveryAttempts = 0;
-
-          const handleFatalFailure = (friendlyMsg: string) => {
-            hls.destroy();
-            hlsRef.current = null;
-            errorHls('FATAL', `Falha irreversível na transmissão HLS: ${friendlyMsg}`);
-            setVideoError(friendlyMsg);
-            onErrorRef.current?.(friendlyMsg);
-          };
-
           hls.on(HlsClass.Events.ERROR, (_event, data) => {
-            if (isCancelled) return;
+            if (isCancelled || isTearingDownRef.current) return;
             const statusCode = data.response?.code;
             const httpStatusStr = typeof statusCode === 'number' ? String(statusCode) : 'N/A';
-            const errorMsg = data.error?.message || data.details || 'Erro desconhecido';
+            const reqUrl = data.context?.url || data.frag?.url || directUrl;
+            const detailStr = data.details || 'desconhecido';
+            const reasonStr = data.reason || data.error?.message || '';
 
-            errorHls(
-              'ERROR',
-              `Erro HLS detectado: tipo=${data.type}, detalhe=${data.details}, fatal=${data.fatal}, statusHTTP=${httpStatusStr}, mensagem=${errorMsg}`,
-            );
+            errorHls('ERROR', `Falha HLS (${data.type}/${detailStr}, fatal=${data.fatal}, HTTP=${httpStatusStr})`, {
+              url: sanitizeStreamUrl(reqUrl),
+              reason: reasonStr || undefined,
+            });
 
-            if (data.fatal) {
-              switch (data.type) {
-                case HlsClass.ErrorTypes.NETWORK_ERROR: {
-                  const isManifestError =
-                    data.details === HlsClass.ErrorDetails.MANIFEST_LOAD_ERROR ||
-                    data.details === HlsClass.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
-                    data.details === HlsClass.ErrorDetails.MANIFEST_PARSING_ERROR;
+            if (!data.fatal) return;
 
-                  const isForbiddenOrCors =
-                    statusCode === 403 ||
-                    statusCode === 0 ||
-                    (typeof statusCode === 'number' && statusCode >= 400);
+            const isManifestFailure =
+              detailStr === HlsClass.ErrorDetails.MANIFEST_LOAD_ERROR ||
+              detailStr === HlsClass.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
+              detailStr === HlsClass.ErrorDetails.MANIFEST_PARSING_ERROR ||
+              detailStr === HlsClass.ErrorDetails.LEVEL_LOAD_ERROR ||
+              detailStr === HlsClass.ErrorDetails.LEVEL_LOAD_TIMEOUT ||
+              detailStr === HlsClass.ErrorDetails.LEVEL_PARSING_ERROR ||
+              detailStr === HlsClass.ErrorDetails.LEVEL_EMPTY_ERROR;
 
-                  // 1ª Tentativa de Recuperação: Proxy do servidor (forjando Referer e liberando CORS)
-                  if (!hasTriedProxy && !currentStreamUrl.includes('/api/video-proxy') && currentStreamUrl.startsWith('http')) {
-                    hasTriedProxy = true;
-                    const proxied = `/api/video-proxy?url=${encodeURIComponent(currentStreamUrl)}`;
-                    warnHls(
-                      'RECOVERY',
-                      `Falha de rede direta ao CDN (HTTP ${httpStatusStr}). Tentando recuperação automática via proxy (/api/video-proxy)...`,
-                    );
-                    currentStreamUrl = proxied;
-                    hls.loadSource(proxied);
-                    hls.startLoad();
-                    return;
-                  }
+            const isSegmentFailure =
+              detailStr === HlsClass.ErrorDetails.FRAG_LOAD_ERROR ||
+              detailStr === HlsClass.ErrorDetails.FRAG_LOAD_TIMEOUT ||
+              detailStr === HlsClass.ErrorDetails.FRAG_DECRYPT_ERROR ||
+              detailStr === HlsClass.ErrorDetails.KEY_LOAD_ERROR ||
+              detailStr === HlsClass.ErrorDetails.KEY_LOAD_TIMEOUT;
 
-                  // 2ª Tentativa de Recuperação: Reprodução nativa HLS do navegador Android (<video src>)
-                  if (!hasTriedNative && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-                    hasTriedNative = true;
-                    warnHls('RECOVERY', 'Tentando recuperação via reprodução nativa HLS do navegador Android (<video src>)...');
-                    hls.destroy();
-                    hlsRef.current = null;
-                    videoEl.src = currentStreamUrl;
-                    videoEl.load();
-                    playSafelyRef.current(videoEl);
-                    return;
-                  }
+            const isTimeoutDetail =
+              detailStr === HlsClass.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
+              detailStr === HlsClass.ErrorDetails.LEVEL_LOAD_TIMEOUT ||
+              detailStr === HlsClass.ErrorDetails.FRAG_LOAD_TIMEOUT ||
+              detailStr === HlsClass.ErrorDetails.KEY_LOAD_TIMEOUT;
 
-                  // 3ª Tentativa de Recuperação: Retry padrão com startLoad
-                  if (networkRecoveryAttempts < 2 && !isManifestError) {
-                    networkRecoveryAttempts += 1;
-                    warnHls('RECOVERY', `Tentativa de reconexão de rede HLS (${networkRecoveryAttempts}/2)...`);
-                    hls.startLoad();
-                  } else {
-                    const finalMsg =
-                      isForbiddenOrCors || statusCode === 403
-                        ? 'Transmissão bloqueada pelo CDN de origem (HTTP 403 Forbidden / Verificação de Referer).'
-                        : 'Não foi possível carregar a transmissão HLS devido a falhas de rede.';
-                    handleFatalFailure(finalMsg);
-                  }
-                  break;
+            const isCorsOrAuthFailure =
+              statusCode === 401 ||
+              statusCode === 403 ||
+              (!isTimeoutDetail &&
+                statusCode === 0 &&
+                (typeof navigator === 'undefined' || navigator.onLine !== false));
+
+            switch (data.type) {
+              case HlsClass.ErrorTypes.NETWORK_ERROR: {
+                if (isCorsOrAuthFailure) {
+                  const statusInfo =
+                    statusCode === 401 || statusCode === 403
+                      ? `HTTP ${statusCode} (autorização ou Referer recusado pelo CDN)`
+                      : 'Bloqueio de CORS (Access-Control-Allow-Origin ausente) ou bloqueio de rede/Shields';
+                  reportFatalError({
+                    category: 'cors_auth',
+                    title: 'Acesso Bloqueado pelo CDN ou CORS',
+                    message: `O servidor de origem recusou o carregamento direto da transmissão (${statusInfo}).`,
+                    detail:
+                      statusCode === 401 || statusCode === 403
+                        ? 'O CDN exige cabeçalho Referer/autorização do provedor ou o token da URL expirou.'
+                        : 'O CDN precisa enviar cabeçalhos Access-Control-Allow-Origin válidos para reprodução direta via HLS.js.',
+                  });
+                  return;
                 }
 
-                case HlsClass.ErrorTypes.MEDIA_ERROR:
-                  if (mediaRecoveryAttempts === 0) {
-                    mediaRecoveryAttempts += 1;
-                    warnHls('RECOVERY', 'Tentando recuperação de erro de mídia (recoverMediaError)...');
-                    hls.recoverMediaError();
-                  } else if (mediaRecoveryAttempts === 1) {
-                    mediaRecoveryAttempts += 1;
-                    warnHls('RECOVERY', 'Tentando troca de codec de áudio (swapAudioCodec)...');
-                    hls.swapAudioCodec();
-                    hls.recoverMediaError();
-                  } else {
-                    handleFatalFailure('Não foi possível decodificar a transmissão HLS (erro de codec ou decodificação).');
-                  }
-                  break;
+                if (!isManifestFailure && networkRecoveryAttempts < 2) {
+                  networkRecoveryAttempts += 1;
+                  warnHls('RECOVERY', `Tentando retomar carregamento de segmentos (${networkRecoveryAttempts}/2)...`);
+                  hls.startLoad();
+                  return;
+                }
 
-                default:
-                  handleFatalFailure('Não foi possível carregar a transmissão HLS.');
-                  break;
+                if (isManifestFailure) {
+                  reportFatalError({
+                    category: 'manifest',
+                    title: 'Erro ao Carregar Manifesto HLS',
+                    message:
+                      statusCode === 404 || statusCode === 410
+                        ? `O arquivo de manifesto (.m3u8) não foi encontrado no servidor (HTTP ${statusCode}).`
+                        : detailStr === HlsClass.ErrorDetails.MANIFEST_PARSING_ERROR
+                          ? 'O manifesto (.m3u8) retornado pelo provedor é inválido ou não pôde ser interpretado.'
+                          : `Não foi possível carregar o manifesto HLS (.m3u8) (${detailStr}, HTTP ${httpStatusStr}).`,
+                    detail: reasonStr || 'Verifique se a URL .m3u8 está acessível e retornando uma playlist HLS válida.',
+                  });
+                  return;
+                }
+
+                if (isSegmentFailure) {
+                  reportFatalError({
+                    category: 'segment',
+                    title: 'Erro ao Baixar Segmentos do Vídeo',
+                    message: `Falha ao baixar os segmentos de mídia da transmissão HLS (${detailStr}, HTTP ${httpStatusStr}).`,
+                    detail: reasonStr || 'Os fragmentos de vídeo podem ter expirado ou o CDN interrompeu a entrega.',
+                  });
+                  return;
+                }
+
+                reportFatalError({
+                  category: 'manifest',
+                  title: 'Falha de Rede na Transmissão HLS',
+                  message: `Erro de rede ao carregar a transmissão HLS (${detailStr}, HTTP ${httpStatusStr}).`,
+                  detail: reasonStr || 'Verifique sua conexão ou a disponibilidade do servidor do provedor.',
+                });
+                break;
+              }
+
+              case HlsClass.ErrorTypes.MEDIA_ERROR: {
+                if (mediaRecoveryAttempts === 0) {
+                  mediaRecoveryAttempts += 1;
+                  warnHls('RECOVERY', 'Erro de mídia detectado. Executando recoverMediaError()...');
+                  hls.recoverMediaError();
+                  return;
+                }
+                if (mediaRecoveryAttempts === 1) {
+                  mediaRecoveryAttempts += 1;
+                  warnHls('RECOVERY', 'Alternando codec de áudio e executando recoverMediaError()...');
+                  hls.swapAudioCodec();
+                  hls.recoverMediaError();
+                  return;
+                }
+                reportFatalError({
+                  category: 'compat_decode',
+                  title: 'Erro de Decodificação ou Codec',
+                  message: `O navegador não conseguiu decodificar os segmentos de vídeo/áudio (${detailStr}).`,
+                  detail: reasonStr || 'Os codecs da transmissão podem ser incompatíveis com o MediaSource deste navegador.',
+                });
+                break;
+              }
+
+              case HlsClass.ErrorTypes.MUX_ERROR:
+              case HlsClass.ErrorTypes.KEY_SYSTEM_ERROR:
+              case HlsClass.ErrorTypes.OTHER_ERROR:
+              default: {
+                reportFatalError({
+                  category: 'compat_decode',
+                  title: 'Erro Interno ou Incompatibilidade HLS',
+                  message: `Falha no processamento da transmissão HLS (${data.type}: ${detailStr}).`,
+                  detail:
+                    reasonStr ||
+                    'Ocorreu uma incompatibilidade de MSE, demuxer ou DRM ao processar o fluxo neste navegador.',
+                });
+                break;
               }
             }
           });
 
-          hls.loadSource(currentStreamUrl);
           hls.attachMedia(videoEl);
         })
         .catch((err) => {
           if (isCancelled) return;
           errorHls('INIT', 'Falha ao importar biblioteca hls.js:', err);
-          if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-            warnHls('FALLBACK', 'Hls.js indisponível. Carregando transmissão diretamente no elemento de vídeo nativo.');
-            videoEl.src = currentStreamUrl;
-            playSafelyRef.current(videoEl);
+          if (canPlayNativeHls && playbackEngineRef.current !== 'native-hls') {
+            warnHls('FALLBACK', 'Hls.js indisponível. Tentando reprodução HLS nativa.');
+            startNativeHlsEngine(false);
           } else {
-            const msg = 'Falha ao inicializar o player HLS.';
-            setVideoError(msg);
-            onErrorRef.current?.(msg);
+            reportFatalError({
+              category: 'compat_decode',
+              title: 'Erro ao Inicializar Motor HLS',
+              message: 'Não foi possível carregar o módulo HLS.js neste navegador.',
+              detail: err instanceof Error ? err.message : 'Erro inesperado ao importar hls.js.',
+            });
           }
         });
-    } else if (isHls && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-      logHls('INIT', 'Utilizando suporte HLS nativo no Android / Safari.');
-      videoEl.src = currentStreamUrl;
-      playSafelyRef.current(videoEl);
+    };
+
+    const startNativeHlsEngine = (allowHlsJsFallback: boolean) => {
+      if (isCancelled) return;
+      playbackEngineRef.current = 'native-hls';
+      logHls('INIT', 'Utilizando reprodução HLS nativa do navegador com URL direta do provedor.');
+      removeNativeListeners();
+
+      let readyHandled = false;
+      nativeCanPlayHandler = () => {
+        if (isCancelled || readyHandled) return;
+        readyHandled = true;
+        logHls('MANIFEST', 'Manifesto HLS nativo carregado e metadados disponíveis.');
+        applySavedPlaybackRateRef.current(videoEl);
+        applyInitialTimeRef.current();
+        playSafelyRef.current(videoEl);
+      };
+
+      nativeErrorHandler = () => {
+        if (isCancelled || isTearingDownRef.current) return;
+        const mediaErr = videoEl.error;
+        const code = mediaErr?.code ?? 0;
+        if (code === 1) return; // MEDIA_ERR_ABORTED
+
+        const codeLabel =
+          code === 2
+            ? 'MEDIA_ERR_NETWORK'
+            : code === 3
+              ? 'MEDIA_ERR_DECODE'
+              : code === 4
+                ? 'MEDIA_ERR_SRC_NOT_SUPPORTED'
+                : `CODE_${code}`;
+
+        warnHls(
+          'ERROR',
+          `Erro no reprodutor HLS nativo (${codeLabel}): ${mediaErr?.message || 'sem detalhe adicional'}`,
+          { url: sanitizeStreamUrl(directUrl) },
+        );
+
+        if (allowHlsJsFallback) {
+          warnHls('FALLBACK', 'Tentando reprodução via HLS.js após falha do player nativo...');
+          removeNativeListeners();
+          isTearingDownRef.current = true;
+          try {
+            videoEl.pause();
+            videoEl.removeAttribute('src');
+            videoEl.load();
+          } catch {
+            // Ignore reset error
+          }
+          isTearingDownRef.current = false;
+          startHlsJsEngine();
+          return;
+        }
+
+        if (code === 2) {
+          reportFatalError({
+            category: 'manifest',
+            title: 'Erro de Rede no Player Nativo',
+            message: 'Falha de rede ao carregar a transmissão HLS nativa.',
+            detail: mediaErr?.message || 'O manifesto ou os segmentos não puderam ser baixados.',
+          });
+        } else if (code === 3) {
+          reportFatalError({
+            category: 'compat_decode',
+            title: 'Erro de Decodificação HLS',
+            message: 'O navegador não conseguiu decodificar o vídeo HLS nativamente (MEDIA_ERR_DECODE).',
+            detail: mediaErr?.message || 'Formato ou codec de vídeo/áudio incompatível.',
+          });
+        } else {
+          reportFatalError({
+            category: 'cors_auth',
+            title: 'Fonte HLS Recusada ou Não Suportada',
+            message: 'O player nativo não conseguiu carregar a URL .m3u8 (MEDIA_ERR_SRC_NOT_SUPPORTED).',
+            detail:
+              mediaErr?.message ||
+              'O provedor pode ter bloqueado a origem/Referer (HTTP 403), a URL expirou ou o formato é incompatível.',
+          });
+        }
+      };
+
+      videoEl.addEventListener('loadedmetadata', nativeCanPlayHandler);
+      videoEl.addEventListener('canplay', nativeCanPlayHandler);
+      videoEl.addEventListener('error', nativeErrorHandler);
+
+      videoEl.src = directUrl;
+      videoEl.load();
+    };
+
+    if (isHls) {
+      if (canPlayNativeHls) {
+        startNativeHlsEngine(true);
+      } else {
+        startHlsJsEngine();
+      }
     } else {
+      playbackEngineRef.current = 'direct';
       logHls('INIT', 'Carregando stream direta MP4 / WebM.');
-      if (videoEl.getAttribute('src') !== currentStreamUrl) {
-        videoEl.src = currentStreamUrl;
+      if (videoEl.getAttribute('src') !== directUrl) {
+        videoEl.src = directUrl;
       }
       if (videoEl.readyState >= 2) {
         applySavedPlaybackRateRef.current(videoEl);
         applyInitialTimeRef.current();
         playSafelyRef.current(videoEl);
       } else {
-        const handleCanPlayOnce = () => {
-          videoEl.removeEventListener('canplay', handleCanPlayOnce);
+        nativeCanPlayHandler = () => {
+          removeNativeListeners();
           if (isCancelled) return;
           applySavedPlaybackRateRef.current(videoEl);
           applyInitialTimeRef.current();
           playSafelyRef.current(videoEl);
         };
-        videoEl.addEventListener('canplay', handleCanPlayOnce);
+        videoEl.addEventListener('canplay', nativeCanPlayHandler);
       }
     }
 
     return () => {
       isCancelled = true;
-      cleanupVideoListeners();
-      if (activeHls) {
-        activeHls.destroy();
+      isTearingDownRef.current = true;
+      cleanupAll();
+
+      const hlsToDestroy = hlsRef.current || activeHls;
+      hlsRef.current = null;
+      activeHls = null;
+      if (hlsToDestroy) {
+        try {
+          hlsToDestroy.detachMedia();
+          hlsToDestroy.destroy();
+        } catch {
+          // Ignore teardown error
+        }
       }
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-      if (videoEl) {
+
+      if (isHls) {
         try {
           videoEl.pause();
           videoEl.removeAttribute('src');
@@ -1032,9 +1313,16 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
         } catch {
           // Ignore teardown error
         }
+      } else {
+        try {
+          videoEl.pause();
+        } catch {
+          // Ignore teardown error
+        }
       }
+      playbackEngineRef.current = 'idle';
     };
-  }, [effectiveVideoUrl, isHls, hasMseSupport, media, isIframeMode, hlsRetryNonce]);
+  }, [effectiveVideoUrl, isHls, isIframeMode, hlsRetryNonce]);
 
   const handleStartFromCover = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -1477,12 +1765,52 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   }, []);
 
   const handleMediaError = useCallback(() => {
-    const msg = video?.isLocalFile
-      ? 'O navegador não conseguiu decodificar o arquivo local.'
-      : 'Não foi possível reproduzir este vídeo no momento.';
-    setVideoError(msg);
-    onErrorRef.current?.(msg);
-  }, [video?.isLocalFile]);
+    if (isTearingDownRef.current) return;
+    // HLS streams manage errors via nativeErrorHandler or hls.js Events.ERROR
+    if (isHls && (playbackEngineRef.current === 'native-hls' || playbackEngineRef.current === 'hlsjs')) {
+      return;
+    }
+
+    const el = videoRef.current;
+    const mediaErr = el?.error;
+    const code = mediaErr?.code ?? 0;
+    if (code === 1) return; // MEDIA_ERR_ABORTED
+
+    const errState: PlayerErrorState = video?.isLocalFile
+      ? {
+          category: 'compat_decode',
+          title: 'Erro na Decodificação Local',
+          message: 'O navegador não conseguiu decodificar o arquivo local.',
+          detail: mediaErr?.message || 'Formato local não suportado.',
+        }
+      : code === 2
+        ? {
+            category: 'segment',
+            title: 'Erro de Rede na Reprodução',
+            message: 'A conexão foi interrompida durante o carregamento do vídeo.',
+            detail: mediaErr?.message || 'MEDIA_ERR_NETWORK',
+          }
+        : code === 3
+          ? {
+              category: 'compat_decode',
+              title: 'Erro de Decodificação',
+              message: 'O navegador não conseguiu decodificar o vídeo (MEDIA_ERR_DECODE).',
+              detail: mediaErr?.message || 'Codec incompatível ou arquivo corrompido.',
+            }
+          : {
+              category: 'cors_auth',
+              title: 'Vídeo Indisponível',
+              message: 'Não foi possível reproduzir este vídeo no momento (MEDIA_ERR_SRC_NOT_SUPPORTED).',
+              detail: mediaErr?.message || 'A URL pode estar indisponível, expirada ou bloqueada.',
+            };
+
+    errorHls('ERROR', `Erro no elemento <video> (code=${code})`, {
+      detail: errState.detail,
+      url: sanitizeStreamUrl(effectiveVideoUrl),
+    });
+    setVideoError(errState);
+    onErrorRef.current?.(errState.message);
+  }, [isHls, video?.isLocalFile, effectiveVideoUrl]);
 
   const timelineTrackStyle = useMemo<React.CSSProperties>(
     () => ({
@@ -1542,7 +1870,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
       <div data-video-shell className="absolute inset-0 w-full h-full">
         <Video
           ref={videoRef}
-          src={isHls && hasMseSupport ? undefined : effectiveVideoUrl || undefined}
+          src={isHls ? undefined : effectiveVideoUrl || undefined}
           poster={effectivePosterUrl || undefined}
           controls={false}
           controlsList="nodownload nopictureinpicture"
@@ -1838,11 +2166,11 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
             <Info className="w-6 h-6" />
           </div>
           <h4 className="text-base font-semibold text-white mb-1">
-            {video?.isLocalFile ? 'Erro na Decodificação Local' : 'Vídeo Indisponível no Player Próprio'}
+            {videoError.title}
           </h4>
-          <p className="text-xs text-slate-300 max-w-md mb-2 leading-relaxed">{videoError}</p>
+          <p className="text-xs text-slate-300 max-w-md mb-2 leading-relaxed">{videoError.message}</p>
           <p className="text-[11px] text-slate-400 max-w-md mb-5 leading-relaxed">
-            O servidor do provedor bloqueou a transmissão direta (Referer / CORS). Você pode continuar assistindo pelo player oficial incorporado sem perder o episódio.
+            {videoError.detail}
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-3">
@@ -1908,24 +2236,14 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const effectiveVideoUrl = useMemo(() => {
     if (!video) return '';
     if (video.isLocalFile) {
-      return getLocalVideoUrl(video.id) || video.videoUrl || video.url || '';
+      return (getLocalVideoUrl(video.id) || video.videoUrl || video.url || '').trim();
     }
-    return video.videoUrl || video.url || '';
+    return (video.videoUrl || video.url || '').trim();
   }, [video]);
 
   const effectivePosterUrl = video?.posterUrl || video?.thumbnailUrl || '';
 
-  const isHls = useMemo(() => {
-    if (!effectiveVideoUrl) return false;
-    const cleanUrl = effectiveVideoUrl.split('?')[0].toLowerCase();
-    return (
-      cleanUrl.endsWith('.m3u8') ||
-      effectiveVideoUrl.toLowerCase().includes('.m3u8') ||
-      effectiveVideoUrl.toLowerCase().includes('/hls/')
-    );
-  }, [effectiveVideoUrl]);
-
-  const hasMseSupport = useMemo(() => isMediaSourceSupported(), []);
+  const isHls = useMemo(() => isHlsStreamUrl(effectiveVideoUrl), [effectiveVideoUrl]);
 
   return (
     <HikariVideoPlayerRoot>
@@ -1934,7 +2252,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         effectiveVideoUrl={effectiveVideoUrl}
         effectivePosterUrl={effectivePosterUrl}
         isHls={isHls}
-        hasMseSupport={hasMseSupport}
         autoPlay={autoPlay}
         initialTime={initialTime}
         onClose={onClose}
