@@ -20,6 +20,7 @@ import {
 import { readOutbox, type OutboxOperation } from "@/lib/episode-writer";
 import {
   hasEpisodePlayableSource,
+  isHikariPlayableUrl,
   sanitizePlayableVideoUrl,
 } from "@/lib/published-episodes";
 
@@ -544,6 +545,418 @@ export const getPublicCatalogEpisodes = createServerFn({
   .handler(async ({ data }): Promise<PublicEpisodesResult> => {
     return executeGetPublicCatalogEpisodes(data);
   });
+
+export interface PaginatedPublicEpisodesInput {
+  page?: number;
+  pageSize?: number;
+  animeId?: string | null;
+  q?: string | null;
+}
+
+export interface PaginatedPublicEpisodesResult {
+  status: PublicEpisodesFetchStatus;
+  episodes: PublicEpisodeRow[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  error?: string;
+}
+
+export interface PublicCatalogAnimeOption {
+  id: string;
+  title: string;
+}
+
+const DEFAULT_PUBLIC_EPISODES_PAGE_SIZE = 24;
+const MAX_PUBLIC_EPISODES_PAGE_SIZE = 100;
+const PG_INT32_MAX = 2147483647;
+
+/**
+ * Lista espelhada de BLOCKED_STREAMING_HOSTS (`src/lib/published-episodes.ts`)
+ * para pré-filtragem SQL de URLs externas não reproduzíveis (YouTube, Crunchyroll, etc.).
+ * Qualquer alteração nos domínios bloqueados em `published-episodes.ts` deve ser mantida em sincronia.
+ */
+const BLOCKED_STREAMING_HOSTS_SQL_PATTERN =
+  "(?:^|\\.)(crunchyroll\\.com|funimation\\.com|vrv\\.co|netflix\\.com|hidive\\.com|hulu\\.com|tubitv\\.com|bilibili\\.tv|iq\\.com|iqiyi\\.com|disneyplus\\.com|primevideo\\.com|amazon\\.com|viz\\.com|adultswim\\.com|retrocrush\\.tv|starplus\\.com|max\\.com|hbomax\\.com|dailymotion\\.com|anilist\\.co|myanimelist\\.net|kitsu\\.io|youtu\\.be|youtube\\.com|youtube-nocookie\\.com|vimeo\\.com)$";
+
+const IPV4_OCTET_SQL = "(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})";
+const IPV4_ADDR_SQL = `(?:${IPV4_OCTET_SQL}\\.){3}${IPV4_OCTET_SQL}`;
+const IPV6_HOST_SQL_PATTERN =
+  "\\[(?:" +
+  "(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|" +
+  "(?:[0-9a-f]{1,4}:){1,7}:|" +
+  "(?:[0-9a-f]{1,4}:){1,6}:[0-9a-f]{1,4}|" +
+  "(?:[0-9a-f]{1,4}:){1,5}(?::[0-9a-f]{1,4}){1,2}|" +
+  "(?:[0-9a-f]{1,4}:){1,4}(?::[0-9a-f]{1,4}){1,3}|" +
+  "(?:[0-9a-f]{1,4}:){1,3}(?::[0-9a-f]{1,4}){1,4}|" +
+  "(?:[0-9a-f]{1,4}:){1,2}(?::[0-9a-f]{1,4}){1,5}|" +
+  "[0-9a-f]{1,4}:(?::[0-9a-f]{1,4}){1,6}|" +
+  ":(?:(?::[0-9a-f]{1,4}){1,7}|:)|" +
+  `(?:[0-9a-f]{1,4}:){6}${IPV4_ADDR_SQL}|` +
+  `(?:[0-9a-f]{1,4}:){1,4}:${IPV4_ADDR_SQL}|` +
+  `::(?:ffff(?::0{1,4})?:)?${IPV4_ADDR_SQL}` +
+  ")\\]";
+const URL_HOST_SQL_PATTERN = `(?:${IPV6_HOST_SQL_PATTERN}|${IPV4_ADDR_SQL}|[a-z0-9.-]+)`;
+
+/**
+ * Condição SQL equivalente à regra de `isHikariPlayableUrl` sobre os 5 slots de vídeo:
+ * - Exige protocolo http/https, host válido (incluindo IPv6 RFC-válido), porta opcional <= 65535
+ *   e ausência de domínios bloqueados.
+ * - Verifica todos os 5 slots (`videoUrl` a `videoUrl5`) para não descartar episódios cujo link válido
+ *   esteja em `videoUrl2`..`videoUrl5`.
+ * - Limitação conhecida: casos extremos da especificação WHATWG `new URL()` (ex.: IPv4 com octetos > 255
+ *   ou caracteres Unicode/punycode atípicos no host) não são reproduzíveis com 100% de fidelidade em
+ *   regex SQL pura; por isso, a função paginada também valida as linhas retornadas via `isHikariPlayableUrl` em JS.
+ */
+const PLAYABLE_EPISODE_SQL_CONDITION = `EXISTS (
+  SELECT 1
+  FROM unnest(ARRAY[e."videoUrl", e."videoUrl2", e."videoUrl3", e."videoUrl4", e."videoUrl5"]) AS u
+  WHERE u IS NOT NULL
+    AND BTRIM(u, E' \\t\\r\\n') <> ''
+    AND BTRIM(u, E' \\t\\r\\n') <> '#'
+    AND BTRIM(u, E' \\t\\r\\n') ~* '^https?://(?:[^/@#\\s]+@)?${URL_HOST_SQL_PATTERN}(?::[0-9]{1,5})?(?:[/?#].*)?$'
+    AND (
+      SUBSTRING(BTRIM(u, E' \\t\\r\\n') FROM '(?i)^https?://(?:[^/@#\\s]+@)?${URL_HOST_SQL_PATTERN}:([0-9]{1,5})(?:[/?#]|$)') IS NULL
+      OR SUBSTRING(BTRIM(u, E' \\t\\r\\n') FROM '(?i)^https?://(?:[^/@#\\s]+@)?${URL_HOST_SQL_PATTERN}:([0-9]{1,5})(?:[/?#]|$)')::integer <= 65535
+    )
+    AND LOWER(SUBSTRING(BTRIM(u, E' \\t\\r\\n') FROM '(?i)^https?://(?:[^/@#\\s]+@)?(${URL_HOST_SQL_PATTERN})')) !~ '${BLOCKED_STREAMING_HOSTS_SQL_PATTERN}'
+)`;
+
+export interface ParsedEpisodeSearchQuery {
+  hasQuery: boolean;
+  likePattern: string | null;
+  exactEpisodeNumber: number | null;
+}
+
+export function parsePublicEpisodeSearchQuery(
+  rawQuery?: string | null,
+): ParsedEpisodeSearchQuery {
+  const clean = typeof rawQuery === "string" ? rawQuery.trim() : "";
+  if (!clean) {
+    return {
+      hasQuery: false,
+      likePattern: null,
+      exactEpisodeNumber: null,
+    };
+  }
+
+  const escaped = clean.replace(/[\\%_]/g, "\\$&");
+  const likePattern = `%${escaped}%`;
+
+  const normalizedForNumber = clean
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  let exactEpisodeNumber: number | null = null;
+  const numMatch = normalizedForNumber.match(
+    /^(?:(?:episodio|ep)\.?\s*)?(\d+)$/i,
+  );
+  if (numMatch) {
+    const parsedNum = Number(numMatch[1]);
+    if (
+      Number.isSafeInteger(parsedNum) &&
+      parsedNum >= 0 &&
+      parsedNum <= PG_INT32_MAX
+    ) {
+      exactEpisodeNumber = parsedNum;
+    }
+  }
+
+  return {
+    hasQuery: true,
+    likePattern,
+    exactEpisodeNumber,
+  };
+}
+
+export function buildPaginatedPublicEpisodesWhereClause(filters?: {
+  animeId?: string | null;
+  q?: string | null;
+}): {
+  whereClause: string;
+  params: unknown[];
+} {
+  const conditions: string[] = [
+    `e."published" = true`,
+    PLAYABLE_EPISODE_SQL_CONDITION,
+  ];
+  const params: unknown[] = [];
+
+  const cleanAnimeId =
+    typeof filters?.animeId === "string" ? filters.animeId.trim() : "";
+  if (cleanAnimeId && cleanAnimeId.toLowerCase() !== "all") {
+    params.push(cleanAnimeId);
+    conditions.push(`e."animeId" = $${params.length}`);
+  }
+
+  const parsedSearch = parsePublicEpisodeSearchQuery(filters?.q);
+  if (parsedSearch.hasQuery && parsedSearch.likePattern) {
+    params.push(parsedSearch.likePattern);
+    const likeParamRef = `$${params.length}`;
+
+    const textConditions = [
+      `COALESCE(a."title", '') ILIKE ${likeParamRef} ESCAPE '\\'`,
+      `COALESCE(a."titleRomaji", '') ILIKE ${likeParamRef} ESCAPE '\\'`,
+      `COALESCE(a."titleEnglish", '') ILIKE ${likeParamRef} ESCAPE '\\'`,
+      `COALESCE(a."titleNative", '') ILIKE ${likeParamRef} ESCAPE '\\'`,
+      `COALESCE(a."search_blob", '') ILIKE ${likeParamRef} ESCAPE '\\'`,
+      `COALESCE(e."title", '') ILIKE ${likeParamRef} ESCAPE '\\'`,
+    ];
+
+    if (parsedSearch.exactEpisodeNumber !== null) {
+      params.push(parsedSearch.exactEpisodeNumber);
+      const numParamRef = `$${params.length}`;
+      textConditions.push(`e."number" = ${numParamRef}`);
+    }
+
+    conditions.push(`(${textConditions.join(" OR ")})`);
+  }
+
+  return {
+    whereClause: conditions.join(" AND "),
+    params,
+  };
+}
+
+function hasAnyPlayableSlot(row: {
+  videoUrl?: string | null;
+  videoUrl2?: string | null;
+  videoUrl3?: string | null;
+  videoUrl4?: string | null;
+  videoUrl5?: string | null;
+}): boolean {
+  return [
+    row.videoUrl,
+    row.videoUrl2,
+    row.videoUrl3,
+    row.videoUrl4,
+    row.videoUrl5,
+  ].some((url) => isHikariPlayableUrl(url));
+}
+
+/**
+ * Consulta paginada server-side de episódios públicos no PostgreSQL para futura
+ * integração com a rota `/episodes` (Etapa 8A).
+ *
+ * - Independente de `executeGetPublicCatalogEpisodes()` e sem conexão com Redis nesta etapa.
+ * - Suporta `page`, `pageSize` (máximo 100), `animeId` e `q` (busca segura parametrizada).
+ * - Preserva a ordenação determinística e a semântica de `isHikariPlayableUrl`.
+ */
+export async function executeGetPaginatedPublicCatalogEpisodes(
+  options?: PaginatedPublicEpisodesInput,
+): Promise<PaginatedPublicEpisodesResult> {
+  const page =
+    typeof options?.page === "number" &&
+    Number.isFinite(options.page) &&
+    options.page >= 1
+      ? Math.floor(options.page)
+      : 1;
+
+  const rawPageSize =
+    typeof options?.pageSize === "number" &&
+    Number.isFinite(options.pageSize) &&
+    options.pageSize >= 1
+      ? Math.floor(options.pageSize)
+      : DEFAULT_PUBLIC_EPISODES_PAGE_SIZE;
+  const pageSize = Math.min(rawPageSize, MAX_PUBLIC_EPISODES_PAGE_SIZE);
+  const offset = (page - 1) * pageSize;
+
+  try {
+    const sql = await getSql();
+    const {
+      loadAllAnimeRecentBadgesFromDb,
+      findAnimeRecentBadgesInLookup,
+    } = await import("@/lib/catalog-badges");
+
+    const { whereClause, params } = buildPaginatedPublicEpisodesWhereClause({
+      animeId: options?.animeId,
+      q: options?.q,
+    });
+
+    const countSql = `
+      SELECT COUNT(*)::integer AS "totalCount"
+      FROM "catalog_episode" e
+      LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
+      WHERE ${whereClause};
+    `;
+
+    const limitParamIdx = params.length + 1;
+    const offsetParamIdx = params.length + 2;
+    const listSql = `
+      SELECT
+        e."id",
+        e."animeId",
+        e."seasonNumber",
+        e."number",
+        e."title",
+        e."thumbnail",
+        e."duration",
+        e."synopsis",
+        e."videoUrl",
+        e."videoUrl2",
+        e."videoUrl3",
+        e."videoUrl4",
+        e."videoUrl5",
+        e."published",
+        e."publishedAt",
+        e."createdAt",
+        e."updatedAt",
+        COALESCE(NULLIF(a."title", ''), a."titleRomaji", a."titleEnglish", 'Anime') AS "animeTitle",
+        a."titleRomaji" AS "animeTitleRomaji",
+        a."titleEnglish" AS "animeTitleEnglish",
+        a."titleNative" AS "animeTitleNative",
+        a."cover" AS "animeCover",
+        a."banner" AS "animeBanner",
+        a."status" AS "animeStatus",
+        a."episodesCount" AS "animeEpisodesCount",
+        a."createdAt" AS "animeCreatedAt",
+        a."updatedAt" AS "animeUpdatedAt",
+        a."anilistId" AS "animeAnilistId",
+        a."malId" AS "animeMalId",
+        a."kitsuId" AS "animeKitsuId",
+        s."title" AS "seasonTitle"
+      FROM "catalog_episode" e
+      LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
+      LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
+      WHERE ${whereClause}
+      ORDER BY e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."seasonNumber" DESC, e."number" DESC, e."id" DESC
+      LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx};
+    `;
+
+    const [countRows, rawRows, badgeLookup] = await Promise.all([
+      sql.query<{ totalCount: number }>(countSql, params),
+      sql.query<PublicEpisodeRow>(listSql, [...params, pageSize, offset]),
+      loadAllAnimeRecentBadgesFromDb(),
+    ]);
+
+    const totalCount = Math.max(0, Number(countRows?.[0]?.totalCount ?? 0));
+    const totalPages = totalCount > 0 ? Math.ceil(totalCount / pageSize) : 0;
+
+    // Verificação dupla em JS para garantir aderência absoluta a `isHikariPlayableUrl`
+    // mesmo em casos de sintaxe de URL que escapem da regex SQL.
+    const verifiedRows: PublicEpisodeRow[] = [];
+    for (const row of Array.isArray(rawRows) ? rawRows : []) {
+      if (hasAnyPlayableSlot(row)) {
+        verifiedRows.push(row);
+      }
+    }
+
+    // Se alguma linha da página foi rejeitada pelo parser WHATWG `new URL()` em JS,
+    // completa os slots restantes da página a partir dos registros seguintes (máx. 2 rodadas).
+    let nextLookaheadOffset = offset + (Array.isArray(rawRows) ? rawRows.length : 0);
+    let lastBatchLength = Array.isArray(rawRows) ? rawRows.length : 0;
+    let lookaheadAttempts = 0;
+    while (
+      verifiedRows.length < pageSize &&
+      lastBatchLength === pageSize &&
+      lookaheadAttempts < 2
+    ) {
+      lookaheadAttempts += 1;
+      const missingCount = pageSize - verifiedRows.length;
+      const extraRows = await sql.query<PublicEpisodeRow>(listSql, [
+        ...params,
+        missingCount,
+        nextLookaheadOffset,
+      ]);
+      lastBatchLength = Array.isArray(extraRows) ? extraRows.length : 0;
+      nextLookaheadOffset += lastBatchLength;
+      if (lastBatchLength === 0) break;
+      for (const row of extraRows) {
+        if (hasAnyPlayableSlot(row)) {
+          verifiedRows.push(row);
+        }
+      }
+      if (lastBatchLength < missingCount) break;
+    }
+
+    const episodes = verifiedRows.map((row) => ({
+      ...row,
+      animeRecentBadges: findAnimeRecentBadgesInLookup(badgeLookup, {
+        id: row.animeId,
+        anilistId: row.animeAnilistId ?? null,
+        malId: row.animeMalId ?? null,
+        kitsuId: row.animeKitsuId ?? null,
+        allowExternalFallback: false,
+      }),
+    }));
+
+    return {
+      status: episodes.length > 0 ? "success" : "empty",
+      episodes,
+      totalCount,
+      page,
+      pageSize,
+      totalPages,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      "[Hikari] Falha segura ao consultar episódios públicos paginados no PostgreSQL:",
+      err,
+    );
+    return {
+      status: "error",
+      episodes: [],
+      totalCount: 0,
+      page,
+      pageSize,
+      totalPages: 0,
+      error: message,
+    };
+  }
+}
+
+/**
+ * Consulta leve e independente para obter apenas os animes que possuem ao menos
+ * um episódio publicado e reproduzível no catálogo público.
+ * Evita carregar milhares de episódios apenas para popular o seletor de filtro.
+ */
+export async function executeGetPublicCatalogAnimeOptions(): Promise<
+  PublicCatalogAnimeOption[]
+> {
+  try {
+    const sql = await getSql();
+    const rows = await sql.query<PublicCatalogAnimeOption>(
+      `SELECT
+         a."id",
+         COALESCE(
+           NULLIF(BTRIM(a."title"), ''),
+           NULLIF(BTRIM(a."titleRomaji"), ''),
+           NULLIF(BTRIM(a."titleEnglish"), ''),
+           NULLIF(BTRIM(a."titleNative"), ''),
+           'Anime'
+         ) AS "title"
+       FROM "catalog_anime" a
+       WHERE EXISTS (
+         SELECT 1
+         FROM "catalog_episode" e
+         WHERE e."animeId" = a."id"
+           AND e."published" = true
+           AND ${PLAYABLE_EPISODE_SQL_CONDITION}
+       )
+       ORDER BY LOWER(
+         COALESCE(
+           NULLIF(BTRIM(a."title"), ''),
+           NULLIF(BTRIM(a."titleRomaji"), ''),
+           NULLIF(BTRIM(a."titleEnglish"), ''),
+           NULLIF(BTRIM(a."titleNative"), ''),
+           'Anime'
+         )
+       ) ASC, a."id" ASC;`,
+    );
+    return Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    console.warn(
+      "[Hikari] Falha segura ao consultar opções de animes públicos:",
+      err,
+    );
+    return [];
+  }
+}
 
 /**
  * Constrói temporadas resolvidas a partir dos dados remotos e do fallback local.
