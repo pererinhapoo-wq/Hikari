@@ -1,0 +1,13 @@
+name = "hikari-hls"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+
+[vars.REFERERS]
+"maximaimg.online" = "https://animefire.plus/"
+
+[[kv_namespaces]]
+binding = "URL_CACHE"
+id = "PREENCHER_APOS_CREATE"
