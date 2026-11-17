@@ -50,6 +50,64 @@ export interface VideoMetadataUpdates {
   resolution?: VideoResolution;
 }
 
+function sanitizeStreamUrl(url: string): string {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+    const safeParams = new URLSearchParams();
+    for (const [key, val] of parsed.searchParams.entries()) {
+      if (/token|key|secret|sig|auth|pass/i.test(key)) {
+        safeParams.set(key, '***');
+      } else {
+        safeParams.set(key, val);
+      }
+    }
+    parsed.search = safeParams.toString() ? `?${safeParams.toString()}` : '';
+    return parsed.toString();
+  } catch {
+    return url.split('?')[0] || url;
+  }
+}
+
+function logHls(
+  stage: 'URL' | 'INIT' | 'MANIFEST' | 'FRAGMENT' | 'PLAYBACK' | 'RECOVERY' | 'FATAL',
+  msg: string,
+  data?: unknown,
+) {
+  const prefix = `[Hikari Player: HLS] [${stage}]`;
+  if (data !== undefined) {
+    console.log(`${prefix} ${msg}`, data);
+  } else {
+    console.log(`${prefix} ${msg}`);
+  }
+}
+
+function warnHls(
+  stage: 'INIT' | 'MANIFEST' | 'FRAGMENT' | 'PLAYBACK' | 'RECOVERY',
+  msg: string,
+  data?: unknown,
+) {
+  const prefix = `[Hikari Player: HLS] [${stage}]`;
+  if (data !== undefined) {
+    console.warn(`${prefix} ${msg}`, data);
+  } else {
+    console.warn(`${prefix} ${msg}`);
+  }
+}
+
+function errorHls(
+  stage: 'INIT' | 'MANIFEST' | 'FRAGMENT' | 'PLAYBACK' | 'RECOVERY' | 'FATAL',
+  msg: string,
+  data?: unknown,
+) {
+  const prefix = `[Hikari Player: HLS] [${stage}]`;
+  if (data !== undefined) {
+    console.error(`${prefix} ${msg}`, data);
+  } else {
+    console.error(`${prefix} ${msg}`);
+  }
+}
+
 export interface CustomVideoPlayerProps {
   video?: VideoItem | null;
   onClose?: () => void;
@@ -70,6 +128,8 @@ export interface CustomVideoPlayerProps {
   hasPrevEpisode?: boolean;
   hasNextEpisode?: boolean;
   className?: string;
+  iframeFallbackUrl?: string;
+  onFallbackToIframe?: () => void;
 }
 
 const SPEED_OPTIONS: PlaybackSpeed[] = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -391,6 +451,8 @@ interface HikariPlayerSurfaceProps {
   onEnded?: () => void;
   onError?: (error: Error | string) => void;
   className?: string;
+  iframeFallbackUrl?: string;
+  onFallbackToIframe?: () => void;
 }
 
 const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
@@ -414,6 +476,8 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   onEnded,
   onError,
   className,
+  iframeFallbackUrl,
+  onFallbackToIframe,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -442,8 +506,42 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const [doubleTapFeedback, setDoubleTapFeedback] = useState<'left' | 'right' | null>(null);
   const [hasPlaybackStarted, setHasPlaybackStarted] = useState<boolean>(() => Boolean(autoPlay));
   const [posterFailed, setPosterFailed] = useState<boolean>(false);
+  const [isIframeMode, setIsIframeMode] = useState<boolean>(false);
+  const [hlsRetryNonce, setHlsRetryNonce] = useState<number>(0);
 
-  const showInitialCover = !hasPlaybackStarted && !videoError;
+  const effectiveIframeUrl = useMemo(() => {
+    if (iframeFallbackUrl) return iframeFallbackUrl;
+    if (video?.iframeUrl) return video.iframeUrl;
+    const raw = video?.videoUrl || video?.url || '';
+    if (raw.includes('/embed/') || raw.includes('/video/') || raw.includes('animefire.plus/')) {
+      return raw;
+    }
+    const maximaMatch = raw.match(/\/stream\/[a-z]\/([^/]+)\/(\d+)\.mp4/i);
+    if (maximaMatch) {
+      const slug = maximaMatch[1];
+      const epNum = parseInt(maximaMatch[2], 10);
+      return `https://animefire.plus/video/${slug}/${epNum}`;
+    }
+    return null;
+  }, [iframeFallbackUrl, video?.iframeUrl, video?.videoUrl, video?.url]);
+
+  const handleSwitchToIframe = useCallback(() => {
+    if (onFallbackToIframe) {
+      onFallbackToIframe();
+    }
+    if (effectiveIframeUrl) {
+      setIsIframeMode(true);
+      setVideoError(null);
+    }
+  }, [effectiveIframeUrl, onFallbackToIframe]);
+
+  const handleRetryHls = useCallback(() => {
+    setVideoError(null);
+    setIsIframeMode(false);
+    setHlsRetryNonce((prev) => prev + 1);
+  }, []);
+
+  const showInitialCover = !hasPlaybackStarted && !videoError && !isIframeMode;
 
   useEffect(() => {
     setPosterFailed(false);
@@ -626,9 +724,13 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   // Video.js <Video> source setup + Hls.js engine lifecycle
   useEffect(() => {
     const videoEl = videoRef.current || (media as HTMLVideoElement | null);
-    if (!videoEl || !effectiveVideoUrl) return;
+    if (!videoEl || !effectiveVideoUrl || isIframeMode) return;
 
     let isCancelled = false;
+    let activeHls: Hls | null = null;
+    let currentStreamUrl = effectiveVideoUrl;
+    let hasTriedProxy = false;
+    let hasTriedNative = false;
 
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -639,18 +741,61 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     initialRateAppliedRef.current = false;
     setVideoError(null);
 
+    // a) Obtenção da URL da stream e inspeção de ambiente
+    const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+    const isBrave =
+      typeof navigator !== 'undefined' &&
+      Boolean((navigator as unknown as { brave?: { isBrave?: () => Promise<boolean> } }).brave);
+    logHls(
+      'URL',
+      `URL da stream obtida: ${sanitizeStreamUrl(currentStreamUrl)} (HLS=${isHls}, MSE=${hasMseSupport}, Android=${isAndroid}, Brave=${isBrave})`,
+    );
+
+    // Ouvintes de eventos de reprodução para log no videoEl
+    const onPlayLog = () => logHls('PLAYBACK', 'Evento play disparado no elemento HTMLVideoElement');
+    const onPlayingLog = () => logHls('PLAYBACK', 'Transmissão em reprodução contínua ativa');
+    const onWaitingLog = () => warnHls('PLAYBACK', 'Aguardando buffer de transmissão (buffering)...');
+    const onPauseLog = () => logHls('PLAYBACK', 'Transmissão pausada');
+    const onSeekedLog = () => {
+      if (videoEl) {
+        logHls('PLAYBACK', `Posição do vídeo ajustada para ${videoEl.currentTime.toFixed(1)}s`);
+      }
+    };
+    videoEl.addEventListener('play', onPlayLog);
+    videoEl.addEventListener('playing', onPlayingLog);
+    videoEl.addEventListener('waiting', onWaitingLog);
+    videoEl.addEventListener('pause', onPauseLog);
+    videoEl.addEventListener('seeked', onSeekedLog);
+
+    const cleanupVideoListeners = () => {
+      videoEl.removeEventListener('play', onPlayLog);
+      videoEl.removeEventListener('playing', onPlayingLog);
+      videoEl.removeEventListener('waiting', onWaitingLog);
+      videoEl.removeEventListener('pause', onPauseLog);
+      videoEl.removeEventListener('seeked', onSeekedLog);
+    };
+
     if (isHls && hasMseSupport) {
       import('hls.js')
         .then(({ default: HlsClass }) => {
           if (isCancelled) return;
 
+          // b) Inicialização da engine hls.js / player nativo
           if (!HlsClass.isSupported()) {
             if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-              videoEl.src = effectiveVideoUrl;
+              logHls('INIT', 'Hls.js não suportado pelo ambiente. Inicializando reprodutor nativo HLS do navegador.');
+              videoEl.src = currentStreamUrl;
               playSafelyRef.current(videoEl);
+            } else {
+              const err = 'Nenhum mecanismo HLS (MSE ou nativo) suportado neste navegador.';
+              errorHls('INIT', err);
+              setVideoError(err);
+              onErrorRef.current?.(err);
             }
             return;
           }
+
+          logHls('INIT', `Inicializando motor HLS.js v${HlsClass.version} com aceleração por WebWorker e suporte Android/MSE.`);
 
           if (hlsRef.current) {
             hlsRef.current.destroy();
@@ -661,16 +806,43 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
             enableWorker: true,
             lowLatencyMode: false,
             backBufferLength: 60,
+            maxBufferLength: 30,
+            maxMaxBufferLength: 600,
+            maxBufferSize: 60 * 1000 * 1000,
+            manifestLoadingTimeOut: 15000,
+            manifestLoadingMaxRetry: 3,
+            levelLoadingTimeOut: 15000,
+            levelLoadingMaxRetry: 3,
+            fragLoadingTimeOut: 20000,
+            fragLoadingMaxRetry: 4,
+            xhrSetup: (xhr) => {
+              xhr.withCredentials = false;
+            },
             ...(initialTimeRef.current && initialTimeRef.current > 0
               ? { startPosition: initialTimeRef.current }
               : {}),
           });
+          activeHls = hls;
           hlsRef.current = hls;
-          hls.loadSource(effectiveVideoUrl);
-          hls.attachMedia(videoEl);
+
+          // c) Carregamento do manifesto
+          hls.on(HlsClass.Events.MANIFEST_LOADING, (_event, data) => {
+            if (isCancelled) return;
+            logHls('MANIFEST', `Iniciando download do manifesto: ${sanitizeStreamUrl(data.url || currentStreamUrl)}`);
+          });
+
+          hls.on(HlsClass.Events.MANIFEST_LOADED, (_event, data) => {
+            if (isCancelled) return;
+            logHls('MANIFEST', `Manifesto baixado com sucesso. Níveis de qualidade: ${data.levels?.length || 0}, Áudios: ${data.audioTracks?.length || 0}`);
+          });
 
           hls.on(HlsClass.Events.MANIFEST_PARSED, (_event, data) => {
             if (isCancelled) return;
+            const qualities = Array.isArray(data?.levels)
+              ? data.levels.map((lvl: { height?: number; bitrate?: number }) => `${lvl.height || 'auto'}p@${Math.round((lvl.bitrate || 0) / 1000)}k`).join(', ')
+              : 'padrão';
+            logHls('MANIFEST', `Manifesto analisado com sucesso. Resoluções disponíveis: [${qualities}]`);
+
             const qualityPref = getSavedQualityPreference();
             if (qualityPref.includes('480p') && Array.isArray(data?.levels) && data.levels.length > 0) {
               const sdIdx = data.levels.findIndex((lvl) => (lvl.height ?? 0) <= 480);
@@ -683,77 +855,148 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
             playSafelyRef.current(videoEl);
           });
 
+          // d) Download de fragmentos
+          hls.on(HlsClass.Events.FRAG_LOADING, (_event, data) => {
+            if (isCancelled) return;
+            logHls('FRAGMENT', `Baixando fragmento #${data.frag.sn} (nível ${data.frag.level})`);
+          });
+
+          hls.on(HlsClass.Events.FRAG_LOADED, (_event, data) => {
+            if (isCancelled) return;
+            logHls(
+              'FRAGMENT',
+              `Fragmento #${data.frag.sn} recebido (${data.frag.duration.toFixed(2)}s, ${data.payload?.byteLength || 0} bytes)`,
+            );
+          });
+
+          hls.on(HlsClass.Events.FRAG_PARSED, (_event, data) => {
+            if (isCancelled) return;
+            logHls('FRAGMENT', `Fragmento #${data.frag.sn} decodificado e bufferizado no SourceBuffer.`);
+          });
+
+          // e) Tratamento de erros técnicos e recuperação automática
           let networkRecoveryAttempts = 0;
           let mediaRecoveryAttempts = 0;
 
+          const handleFatalFailure = (friendlyMsg: string) => {
+            hls.destroy();
+            hlsRef.current = null;
+            errorHls('FATAL', `Falha irreversível na transmissão HLS: ${friendlyMsg}`);
+            setVideoError(friendlyMsg);
+            onErrorRef.current?.(friendlyMsg);
+          };
+
           hls.on(HlsClass.Events.ERROR, (_event, data) => {
             if (isCancelled) return;
+            const statusCode = data.response?.code;
+            const httpStatusStr = typeof statusCode === 'number' ? String(statusCode) : 'N/A';
+            const errorMsg = data.error?.message || data.details || 'Erro desconhecido';
+
+            errorHls(
+              'ERROR',
+              `Erro HLS detectado: tipo=${data.type}, detalhe=${data.details}, fatal=${data.fatal}, statusHTTP=${httpStatusStr}, mensagem=${errorMsg}`,
+            );
+
             if (data.fatal) {
               switch (data.type) {
                 case HlsClass.ErrorTypes.NETWORK_ERROR: {
-                  const statusCode = data.response?.code;
                   const isManifestError =
                     data.details === HlsClass.ErrorDetails.MANIFEST_LOAD_ERROR ||
                     data.details === HlsClass.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
                     data.details === HlsClass.ErrorDetails.MANIFEST_PARSING_ERROR;
-                  if (
-                    isManifestError ||
-                    (typeof statusCode === 'number' && statusCode >= 400) ||
-                    networkRecoveryAttempts >= 1
-                  ) {
-                    hls.destroy();
-                    hlsRef.current = null;
-                    const msg = 'Não foi possível carregar a transmissão HLS.';
-                    setVideoError(msg);
-                    onErrorRef.current?.(msg);
-                  } else {
-                    networkRecoveryAttempts += 1;
+
+                  const isForbiddenOrCors =
+                    statusCode === 403 ||
+                    statusCode === 0 ||
+                    (typeof statusCode === 'number' && statusCode >= 400);
+
+                  // 1ª Tentativa de Recuperação: Proxy do servidor (forjando Referer e liberando CORS)
+                  if (!hasTriedProxy && !currentStreamUrl.includes('/api/video-proxy') && currentStreamUrl.startsWith('http')) {
+                    hasTriedProxy = true;
+                    const proxied = `/api/video-proxy?url=${encodeURIComponent(currentStreamUrl)}`;
+                    warnHls(
+                      'RECOVERY',
+                      `Falha de rede direta ao CDN (HTTP ${httpStatusStr}). Tentando recuperação automática via proxy (/api/video-proxy)...`,
+                    );
+                    currentStreamUrl = proxied;
+                    hls.loadSource(proxied);
                     hls.startLoad();
+                    return;
                   }
-                  break;
-                }
-                case HlsClass.ErrorTypes.MEDIA_ERROR:
-                  if (mediaRecoveryAttempts >= 2) {
+
+                  // 2ª Tentativa de Recuperação: Reprodução nativa HLS do navegador Android (<video src>)
+                  if (!hasTriedNative && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+                    hasTriedNative = true;
+                    warnHls('RECOVERY', 'Tentando recuperação via reprodução nativa HLS do navegador Android (<video src>)...');
                     hls.destroy();
                     hlsRef.current = null;
-                    const msg = 'Não foi possível decodificar a transmissão HLS.';
-                    setVideoError(msg);
-                    onErrorRef.current?.(msg);
+                    videoEl.src = currentStreamUrl;
+                    videoEl.load();
+                    playSafelyRef.current(videoEl);
+                    return;
+                  }
+
+                  // 3ª Tentativa de Recuperação: Retry padrão com startLoad
+                  if (networkRecoveryAttempts < 2 && !isManifestError) {
+                    networkRecoveryAttempts += 1;
+                    warnHls('RECOVERY', `Tentativa de reconexão de rede HLS (${networkRecoveryAttempts}/2)...`);
+                    hls.startLoad();
                   } else {
-                    mediaRecoveryAttempts += 1;
-                    hls.recoverMediaError();
+                    const finalMsg =
+                      isForbiddenOrCors || statusCode === 403
+                        ? 'Transmissão bloqueada pelo CDN de origem (HTTP 403 Forbidden / Verificação de Referer).'
+                        : 'Não foi possível carregar a transmissão HLS devido a falhas de rede.';
+                    handleFatalFailure(finalMsg);
                   }
                   break;
-                default: {
-                  hls.destroy();
-                  hlsRef.current = null;
-                  const msg = 'Não foi possível carregar a transmissão HLS.';
-                  setVideoError(msg);
-                  onErrorRef.current?.(msg);
-                  break;
                 }
+
+                case HlsClass.ErrorTypes.MEDIA_ERROR:
+                  if (mediaRecoveryAttempts === 0) {
+                    mediaRecoveryAttempts += 1;
+                    warnHls('RECOVERY', 'Tentando recuperação de erro de mídia (recoverMediaError)...');
+                    hls.recoverMediaError();
+                  } else if (mediaRecoveryAttempts === 1) {
+                    mediaRecoveryAttempts += 1;
+                    warnHls('RECOVERY', 'Tentando troca de codec de áudio (swapAudioCodec)...');
+                    hls.swapAudioCodec();
+                    hls.recoverMediaError();
+                  } else {
+                    handleFatalFailure('Não foi possível decodificar a transmissão HLS (erro de codec ou decodificação).');
+                  }
+                  break;
+
+                default:
+                  handleFatalFailure('Não foi possível carregar a transmissão HLS.');
+                  break;
               }
             }
           });
+
+          hls.loadSource(currentStreamUrl);
+          hls.attachMedia(videoEl);
         })
         .catch((err) => {
           if (isCancelled) return;
-          console.error('Failed to load hls.js:', err);
+          errorHls('INIT', 'Falha ao importar biblioteca hls.js:', err);
           if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-            videoEl.src = effectiveVideoUrl;
+            warnHls('FALLBACK', 'Hls.js indisponível. Carregando transmissão diretamente no elemento de vídeo nativo.');
+            videoEl.src = currentStreamUrl;
             playSafelyRef.current(videoEl);
           } else {
-            const msg = 'Falha ao carregar HLS.';
+            const msg = 'Falha ao inicializar o player HLS.';
             setVideoError(msg);
             onErrorRef.current?.(msg);
           }
         });
     } else if (isHls && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-      videoEl.src = effectiveVideoUrl;
+      logHls('INIT', 'Utilizando suporte HLS nativo no Android / Safari.');
+      videoEl.src = currentStreamUrl;
       playSafelyRef.current(videoEl);
     } else {
-      if (videoEl.getAttribute('src') !== effectiveVideoUrl) {
-        videoEl.src = effectiveVideoUrl;
+      logHls('INIT', 'Carregando stream direta MP4 / WebM.');
+      if (videoEl.getAttribute('src') !== currentStreamUrl) {
+        videoEl.src = currentStreamUrl;
       }
       if (videoEl.readyState >= 2) {
         applySavedPlaybackRateRef.current(videoEl);
@@ -773,6 +1016,10 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
 
     return () => {
       isCancelled = true;
+      cleanupVideoListeners();
+      if (activeHls) {
+        activeHls.destroy();
+      }
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -787,7 +1034,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
         }
       }
     };
-  }, [effectiveVideoUrl, isHls, hasMseSupport, media]);
+  }, [effectiveVideoUrl, isHls, hasMseSupport, media, isIframeMode, hlsRetryNonce]);
 
   const handleStartFromCover = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -1252,6 +1499,33 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     [volumePercent],
   );
 
+  if (isIframeMode && effectiveIframeUrl) {
+    return (
+      <div
+        ref={containerRef}
+        className={`hikari-video-player relative w-full aspect-video min-h-[240px] md:min-h-[520px] flex items-center justify-center select-none border border-white/10 shadow-[0_20px_70px_rgba(0,0,0,0.45)] outline-none rounded-2xl overflow-hidden bg-black ${className || ''}`}
+      >
+        <iframe
+          src={effectiveIframeUrl}
+          title={video?.title || 'Player do Provedor'}
+          className="size-full border-0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+        />
+        <div className="absolute top-3 right-3 z-30 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleRetryHls}
+            className="px-3 py-1.5 rounded-xl bg-black/80 hover:bg-black text-white text-xs font-medium backdrop-blur-md transition border border-white/20 flex items-center gap-1.5 shadow-lg cursor-pointer active:scale-95"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
+            Tentar Player Próprio (HLS)
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Container
       ref={containerRef}
@@ -1560,23 +1834,51 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
       {/* Error fallback screen */}
       {videoError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#08070d]/95 p-6 text-center z-40">
-          <div className="w-12 h-12 rounded-full bg-purple-950/80 border border-purple-700/50 flex items-center justify-center text-purple-400 mb-4">
+          <div className="w-12 h-12 rounded-full bg-purple-950/80 border border-purple-700/50 flex items-center justify-center text-purple-400 mb-3">
             <Info className="w-6 h-6" />
           </div>
           <h4 className="text-base font-semibold text-white mb-1">
-            {video?.isLocalFile ? 'Erro na Decodificação Local' : 'Vídeo Indisponível'}
+            {video?.isLocalFile ? 'Erro na Decodificação Local' : 'Vídeo Indisponível no Player Próprio'}
           </h4>
-          <p className="text-xs text-slate-300 max-w-md mb-5 leading-relaxed">{videoError}</p>
-          {onClose && (
+          <p className="text-xs text-slate-300 max-w-md mb-2 leading-relaxed">{videoError}</p>
+          <p className="text-[11px] text-slate-400 max-w-md mb-5 leading-relaxed">
+            O servidor do provedor bloqueou a transmissão direta (Referer / CORS). Você pode continuar assistindo pelo player oficial incorporado sem perder o episódio.
+          </p>
+
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {effectiveIframeUrl && (
+              <button
+                type="button"
+                data-controls-interactive="true"
+                onClick={handleSwitchToIframe}
+                className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-purple-600/30 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+              >
+                <Play className="w-4 h-4 fill-current" />
+                Assistir no Player do Provedor (Iframe)
+              </button>
+            )}
+
             <button
               type="button"
               data-controls-interactive="true"
-              onClick={onClose}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+              onClick={handleRetryHls}
+              className="px-3.5 py-2.5 bg-white/10 hover:bg-white/15 text-white/90 rounded-xl text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 active:scale-95"
             >
-              Voltar para a Biblioteca
+              <RotateCcw className="w-3.5 h-3.5" />
+              Tentar Novamente (HLS)
             </button>
-          )}
+
+            {onClose && (
+              <button
+                type="button"
+                data-controls-interactive="true"
+                onClick={onClose}
+                className="px-3.5 py-2.5 bg-transparent hover:bg-white/5 text-white/60 hover:text-white rounded-xl text-xs font-medium transition-colors cursor-pointer"
+              >
+                Voltar para a Biblioteca
+              </button>
+            )}
+          </div>
         </div>
       )}
     </Container>
@@ -1600,6 +1902,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   onEnded,
   onError,
   className,
+  iframeFallbackUrl,
+  onFallbackToIframe,
 }) => {
   const effectiveVideoUrl = useMemo(() => {
     if (!video) return '';
@@ -1646,6 +1950,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         onEnded={onEnded}
         onError={onError}
         className={className}
+        iframeFallbackUrl={iframeFallbackUrl}
+        onFallbackToIframe={onFallbackToIframe}
       />
     </HikariVideoPlayerRoot>
   );

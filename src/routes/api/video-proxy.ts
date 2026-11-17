@@ -5,6 +5,35 @@ const MAX_REDIRECTS = 3;
 const UPSTREAM_TIMEOUT_MS = 15000;
 const MAX_PLAYLIST_BYTES = 2 * 1024 * 1024; // 2 MB
 
+const PROXY_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
+const PROVIDER_REFERERS: Record<string, string> = {
+  "maximaimg.online": "https://animefire.plus/",
+  "animefire.plus": "https://animefire.plus/",
+  "animesonlinecc.to": "https://animesonlinecc.to/",
+  "betteranime.net": "https://betteranime.net/",
+};
+
+function getUpstreamReferer(targetUrl: URL, explicitRef?: string | null): string | null {
+  if (explicitRef) {
+    try {
+      const p = new URL(explicitRef);
+      if (p.protocol === "http:" || p.protocol === "https:") {
+        return p.toString();
+      }
+    } catch {
+      // ignore invalid
+    }
+  }
+  for (const [suffix, ref] of Object.entries(PROVIDER_REFERERS)) {
+    if (targetUrl.hostname === suffix || targetUrl.hostname.endsWith("." + suffix)) {
+      return ref;
+    }
+  }
+  return null;
+}
+
 function isBlockedHostnameOrIp(hostname: string): boolean {
   const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
   if (!host) return true;
@@ -82,11 +111,14 @@ function isM3u8Response(url: URL, contentType: string): boolean {
   return url.pathname.toLowerCase().endsWith(".m3u8");
 }
 
-function toProxyUrl(targetUrl: string): string {
-  return `/api/video-proxy?url=${encodeURIComponent(targetUrl)}`;
+function toProxyUrl(targetUrl: string, explicitRef?: string | null): string {
+  const enc = encodeURIComponent(targetUrl);
+  return explicitRef
+    ? `/api/video-proxy?url=${enc}&ref=${encodeURIComponent(explicitRef)}`
+    : `/api/video-proxy?url=${enc}`;
 }
 
-function rewriteHlsPlaylist(playlistText: string, baseUrl: URL): string {
+function rewriteHlsPlaylist(playlistText: string, baseUrl: URL, explicitRef?: string | null): string {
   const resolveAndProxy = (rawUri: string): string => {
     const trimmed = rawUri.trim();
     if (!trimmed) return rawUri;
@@ -95,7 +127,7 @@ function rewriteHlsPlaylist(playlistText: string, baseUrl: URL): string {
       if (!validateSafeMediaUrl(resolved)) {
         return rawUri;
       }
-      return toProxyUrl(resolved);
+      return toProxyUrl(resolved, explicitRef);
     } catch {
       return rawUri;
     }
@@ -120,6 +152,7 @@ function rewriteHlsPlaylist(playlistText: string, baseUrl: URL): string {
 async function fetchWithSafeRedirects(
   initialUrl: URL,
   rangeHeader: string | null,
+  explicitRef: string | null,
   signal: AbortSignal,
 ): Promise<{ response: Response; finalUrl: URL }> {
   let currentUrl = initialUrl;
@@ -130,6 +163,12 @@ async function fetchWithSafeRedirects(
       headers.set("Range", rangeHeader);
     }
     headers.set("Accept", "*/*");
+    headers.set("User-Agent", PROXY_USER_AGENT);
+
+    const ref = getUpstreamReferer(currentUrl, explicitRef);
+    if (ref) {
+      headers.set("Referer", ref);
+    }
 
     const res = await fetch(currentUrl.toString(), {
       method: "GET",
@@ -165,17 +204,34 @@ async function fetchWithSafeRedirects(
 export const Route = createFileRoute("/api/video-proxy")({
   server: {
     handlers: {
+      OPTIONS: async () => {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Access-Control-Allow-Headers": "Range, Accept, Content-Type, Authorization, X-Requested-With",
+            "Access-Control-Max-Age": "86400",
+          },
+        });
+      },
       GET: async ({ request }) => {
         try {
           assertSameSiteRequest();
 
           const reqUrl = new URL(request.url);
           const rawTarget = reqUrl.searchParams.get("url") || "";
+          const explicitRef = reqUrl.searchParams.get("ref");
           const targetUrl = validateSafeMediaUrl(rawTarget);
           if (!targetUrl) {
             return Response.json(
               { error: "URL de vídeo inválida ou não permitida para captura." },
-              { status: 400 },
+              {
+                status: 400,
+                headers: {
+                  "Access-Control-Allow-Origin": "*",
+                },
+              },
             );
           }
 
@@ -187,13 +243,23 @@ export const Route = createFileRoute("/api/video-proxy")({
             const { response: upstream, finalUrl } = await fetchWithSafeRedirects(
               targetUrl,
               rangeHeader,
+              explicitRef,
               controller.signal,
             );
 
             if (!upstream.ok && upstream.status !== 206) {
               return Response.json(
-                { error: `Fonte remota retornou status ${upstream.status}.` },
-                { status: upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502 },
+                {
+                  error: `Fonte remota retornou status ${upstream.status}.`,
+                  statusCode: upstream.status,
+                  upstreamHost: finalUrl.hostname,
+                },
+                {
+                  status: upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502,
+                  headers: {
+                    "Access-Control-Allow-Origin": "*",
+                  },
+                },
               );
             }
 
@@ -202,31 +268,44 @@ export const Route = createFileRoute("/api/video-proxy")({
 
             if (lowerCt.includes("text/html") || lowerCt.includes("application/xhtml")) {
               return Response.json(
-                { error: "O link informado aponta para uma página HTML, não para um fluxo de vídeo direto." },
-                { status: 415 },
+                {
+                  error: "O link informado aponta para uma página HTML, não para um fluxo de vídeo direto.",
+                  statusCode: 415,
+                  upstreamHost: finalUrl.hostname,
+                },
+                {
+                  status: 415,
+                  headers: {
+                    "Access-Control-Allow-Origin": "*",
+                  },
+                },
               );
             }
 
             const outHeaders = new Headers();
             outHeaders.set("X-Content-Type-Options", "nosniff");
             outHeaders.set("Cache-Control", "private, max-age=300");
+            outHeaders.set("Access-Control-Allow-Origin", "*");
+            outHeaders.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+            outHeaders.set("Access-Control-Allow-Headers", "Range, Accept, Content-Type, Authorization, X-Requested-With");
+            outHeaders.set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges");
 
             if (isM3u8Response(finalUrl, contentType)) {
               const contentLength = Number(upstream.headers.get("content-length") || "0");
               if (contentLength > MAX_PLAYLIST_BYTES) {
                 return Response.json(
                   { error: "Playlist HLS excede o tamanho máximo suportado." },
-                  { status: 413 },
+                  { status: 413, headers: { "Access-Control-Allow-Origin": "*" } },
                 );
               }
               const text = await upstream.text();
               if (text.length > MAX_PLAYLIST_BYTES) {
                 return Response.json(
                   { error: "Playlist HLS excede o tamanho máximo suportado." },
-                  { status: 413 },
+                  { status: 413, headers: { "Access-Control-Allow-Origin": "*" } },
                 );
               }
-              const rewritten = rewriteHlsPlaylist(text, finalUrl);
+              const rewritten = rewriteHlsPlaylist(text, finalUrl, explicitRef);
               outHeaders.set("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8");
               return new Response(rewritten, {
                 status: 200,
@@ -251,7 +330,10 @@ export const Route = createFileRoute("/api/video-proxy")({
           }
         } catch (err) {
           if (err instanceof CrossSiteRequestError) {
-            return Response.json({ error: "Origem cruzada não permitida." }, { status: 403 });
+            return Response.json(
+              { error: "Origem cruzada não permitida." },
+              { status: 403, headers: { "Access-Control-Allow-Origin": "*" } },
+            );
           }
           const isAbort = err instanceof Error && err.name === "AbortError";
           return Response.json(
@@ -262,7 +344,10 @@ export const Route = createFileRoute("/api/video-proxy")({
                   ? err.message
                   : "Falha ao acessar vídeo remoto.",
             },
-            { status: isAbort ? 504 : 502 },
+            {
+              status: isAbort ? 504 : 502,
+              headers: { "Access-Control-Allow-Origin": "*" },
+            },
           );
         }
       },

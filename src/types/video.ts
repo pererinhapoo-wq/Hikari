@@ -42,6 +42,7 @@ export interface VideoItem {
   episodeNumber?: number;
   episodeTitle?: string;
   playerLabel?: string;
+  iframeUrl?: string;
 }
 
 export type PlaybackSpeed = 0.5 | 0.75 | 1 | 1.25 | 1.5 | 2;

@@ -972,7 +972,16 @@ function WatchPage() {
       : title;
 
     const mins = Math.floor(initialDuration / 60).toString().padStart(2, "0");
-    const secs = (initialDuration % 60).toString().padStart(2, "0");
+    const possibleIframe =
+      current.videoUrl2 ||
+      current.videoUrl3 ||
+      current.videoUrl4 ||
+      (file && file.includes("maximaimg.online")
+        ? (() => {
+            const m = file.match(/\/stream\/[a-z]\/([^/]+)\/(\d+)\.mp4/i);
+            return m ? `https://animefire.plus/video/${m[1]}/${parseInt(m[2], 10)}` : undefined;
+          })()
+        : undefined);
 
     return {
       id: current.id,
@@ -985,6 +994,7 @@ function WatchPage() {
       posterUrl: playerPoster || "",
       videoUrl: file,
       url: file,
+      iframeUrl: possibleIframe,
       thumbnailUrl: playerPoster || undefined,
       episodeNumber: current.number,
       episodeTitle: current.title,
@@ -1089,6 +1099,13 @@ function WatchPage() {
                 onRestored={handleRestored}
                 onEnded={handleEnded}
                 onError={handlePlayerError}
+                iframeFallbackUrl={_currentVideoItem?.iframeUrl}
+                onFallbackToIframe={() => {
+                  const alt = playerSources.find((s) => s.id !== selectedPlayer.id);
+                  if (alt) {
+                    handleSelectPlayer(alt.id);
+                  }
+                }}
               />
             </Suspense>
           ) : (
