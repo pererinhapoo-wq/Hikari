@@ -9,7 +9,9 @@ const PROXY_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
 const PROVIDER_REFERERS: Record<string, string> = {
-  "maximaimg.online": "https://animefire.plus/",
+  "maximaimg.online": "https://api.anivideo.net/",
+  "animesdigital.org": "https://animesdigital.org/",
+  "api.anivideo.net": "https://animesdigital.org/",
   "animefire.plus": "https://animefire.plus/",
   "animesonlinecc.to": "https://animesonlinecc.to/",
   "betteranime.net": "https://betteranime.net/",
@@ -168,6 +170,11 @@ async function fetchWithSafeRedirects(
     const ref = getUpstreamReferer(currentUrl, explicitRef);
     if (ref) {
       headers.set("Referer", ref);
+      try {
+        headers.set("Origin", new URL(ref).origin);
+      } catch {
+        headers.set("Origin", ref.replace(/\/+$/, ""));
+      }
     }
 
     const res = await fetch(currentUrl.toString(), {

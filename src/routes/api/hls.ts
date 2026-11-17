@@ -2,7 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const ALLOWED = ["maximaimg.online"];
 const DEFAULT_REFERERS: Record<string, string> = {
-  "maximaimg.online": "https://animefire.plus/",
+  "maximaimg.online": "https://api.anivideo.net/",
+  "animesdigital.org": "https://animesdigital.org/",
+  "api.anivideo.net": "https://animesdigital.org/",
 };
 
 const DEFAULT_UA =
@@ -12,6 +14,9 @@ const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
   "access-control-expose-headers": "Content-Length, Content-Range, Accept-Ranges",
 };
+
+// Hosts confirmados em runtime como acessíveis sem Referer (403 com Referer -> 200 sem Referer)
+const noRefererHosts = new Set<string>();
 
 function fail(msg: string, status: number): Response {
   return new Response(msg, { status, headers: CORS });
@@ -31,7 +36,6 @@ function getReferers(): Record<string, string> {
       return parsed as Record<string, string>;
     }
   } catch {
-    // Caso REFERERS seja passado como string única, aplica ao host padrão
     return { "maximaimg.online": raw };
   }
   return DEFAULT_REFERERS;
@@ -48,20 +52,32 @@ function refererFor(host: string): string | null {
   return null;
 }
 
+function originFromReferer(ref: string): string {
+  try {
+    return new URL(ref).origin;
+  } catch {
+    return ref.replace(/\/+$/, "");
+  }
+}
+
 async function fetchUpstream(
   target: URL,
   extra: Record<string, string> = {},
   method = "GET",
+  refVal: string | null = null,
+  includeReferer = true,
 ): Promise<Response> {
-  const ref = refererFor(target.host);
-  if (!ref) {
-    throw new Error("referer não configurado para " + target.host);
-  }
   const h = new Headers(extra);
   const ua = (typeof process !== "undefined" ? process.env?.UA : undefined) || DEFAULT_UA;
   h.set("User-Agent", ua);
-  h.set("Referer", ref);
   h.set("Accept", "*/*");
+  if (includeReferer) {
+    if (!refVal) {
+      throw new Error("referer não configurado para " + target.host);
+    }
+    h.set("Referer", refVal);
+    h.set("Origin", originFromReferer(refVal));
+  }
   return fetch(target.href, {
     method,
     headers: h,
@@ -70,17 +86,40 @@ async function fetchUpstream(
   });
 }
 
-// Só rotacionar em 429 (sem cdn-sv02)
+// Só rotacionar em 429 (sem cdn-sv02 e sem hosts inexistentes)
 async function fetchWithHostRotation(
   target: URL,
   extra: Record<string, string> = {},
   method = "GET",
-): Promise<Response> {
-  let res = await fetchUpstream(target, extra, method);
+  refVal: string,
+): Promise<{ res: Response; noRefererStatus: number | null }> {
+  const hostKey = target.host.toLowerCase();
+  const useReferer = !noRefererHosts.has(hostKey);
+
+  let res = await fetchUpstream(target, extra, method, refVal, useReferer);
   if (res.status === 405 && method === "HEAD") {
-    res = await fetchUpstream(target, extra, "GET");
+    res = await fetchUpstream(target, extra, "GET", refVal, useReferer);
   }
-  if (res.status !== 429) return res;
+
+  // Passo 2: Diagnóstico detalhado em 403 — repete UMA vez sem Referer
+  if (res.status === 403 && useReferer) {
+    let noRefRes = await fetchUpstream(target, extra, method, refVal, false);
+    if (noRefRes.status === 405 && method === "HEAD") {
+      noRefRes = await fetchUpstream(target, extra, "GET", refVal, false);
+    }
+    if (noRefRes.status === 200 || noRefRes.status === 206) {
+      noRefererHosts.add(hostKey);
+      console.info(
+        `[HLS Proxy] Host ${hostKey} retornou 403 com Referer=${refVal} e ${noRefRes.status} sem Referer; usando sem Referer para este host.`,
+      );
+      return { res: noRefRes, noRefererStatus: noRefRes.status };
+    }
+    return { res, noRefererStatus: noRefRes.status };
+  }
+
+  if (res.status !== 429) {
+    return { res, noRefererStatus: null };
+  }
 
   const rawFallbacks =
     typeof process !== "undefined" ? process.env?.HOSTS_FALLBACK : undefined;
@@ -93,16 +132,18 @@ async function fetchWithHostRotation(
     const clone = new URL(target.href);
     clone.host = host;
     try {
-      res = await fetchUpstream(clone, extra, method);
+      res = await fetchUpstream(clone, extra, method, refVal, useReferer);
       if (res.status === 405 && method === "HEAD") {
-        res = await fetchUpstream(clone, extra, "GET");
+        res = await fetchUpstream(clone, extra, "GET", refVal, useReferer);
       }
-      if (res.status !== 429) return res;
+      if (res.status !== 429) {
+        return { res, noRefererStatus: null };
+      }
     } catch {
-      // ignora erro e tenta próximo host
+      // ignora erro de host fallback e tenta próximo
     }
   }
-  return res;
+  return { res, noRefererStatus: null };
 }
 
 function rewritePlaylist(
@@ -164,8 +205,11 @@ async function handleHlsProxy(req: Request): Promise<Response> {
 
   if (isPlaylist) {
     let res: Response;
+    let noRefererStatus: number | null = null;
     try {
-      res = await fetchWithHostRotation(target, {}, upstreamMethod);
+      const result = await fetchWithHostRotation(target, {}, upstreamMethod, refVal);
+      res = result.res;
+      noRefererStatus = result.noRefererStatus;
     } catch (err) {
       return fail(
         err instanceof Error ? err.message : "upstream fetch failed",
@@ -173,9 +217,18 @@ async function handleHlsProxy(req: Request): Promise<Response> {
       );
     }
 
-    if (res.status === 403 || res.status === 404) {
+    if (res.status === 403) {
+      const noRefNote =
+        noRefererStatus !== null ? " | testado sem referer: " + noRefererStatus : "";
       return fail(
-        "upstream " + res.status + " | referer=" + refVal + " | url=" + target.href,
+        "upstream 403 | referer=" + refVal + " | url=" + target.href + noRefNote,
+        502,
+      );
+    }
+
+    if (res.status === 404) {
+      return fail(
+        "upstream 404 | referer=" + refVal + " | url=" + target.href,
         502,
       );
     }
@@ -219,8 +272,11 @@ async function handleHlsProxy(req: Request): Promise<Response> {
   if (range) extra["Range"] = range;
 
   let res: Response;
+  let noRefererStatus: number | null = null;
   try {
-    res = await fetchWithHostRotation(target, extra, upstreamMethod);
+    const result = await fetchWithHostRotation(target, extra, upstreamMethod, refVal);
+    res = result.res;
+    noRefererStatus = result.noRefererStatus;
   } catch (err) {
     return fail(
       err instanceof Error ? err.message : "upstream fetch failed",
@@ -228,9 +284,18 @@ async function handleHlsProxy(req: Request): Promise<Response> {
     );
   }
 
-  if (res.status === 403 || res.status === 404) {
+  if (res.status === 403) {
+    const noRefNote =
+      noRefererStatus !== null ? " | testado sem referer: " + noRefererStatus : "";
     return fail(
-      "upstream " + res.status + " | referer=" + refVal + " | url=" + target.href,
+      "upstream 403 | referer=" + refVal + " | url=" + target.href + noRefNote,
+      502,
+    );
+  }
+
+  if (res.status === 404) {
+    return fail(
+      "upstream 404 | referer=" + refVal + " | url=" + target.href,
       502,
     );
   }

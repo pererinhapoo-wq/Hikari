@@ -6,7 +6,9 @@ compatibility_date = "2026-01-01"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
 
 [vars.REFERERS]
-"maximaimg.online" = "https://animefire.plus/"
+"maximaimg.online" = "https://api.anivideo.net/"
+"animesdigital.org" = "https://animesdigital.org/"
+"api.anivideo.net" = "https://animesdigital.org/"
 
 [[kv_namespaces]]
 binding = "URL_CACHE"

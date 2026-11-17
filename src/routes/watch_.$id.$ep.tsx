@@ -979,8 +979,13 @@ function WatchPage() {
       current.videoUrl4 ||
       (file && file.includes("maximaimg.online")
         ? (() => {
-            const m = file.match(/\/stream\/[a-z]\/([^/]+)\/(\d+)\.mp4/i);
-            return m ? `https://animefire.plus/video/${m[1]}/${parseInt(m[2], 10)}` : undefined;
+            try {
+              const parsed = new URL(file, "http://localhost");
+              const target = parsed.searchParams.get("u") || file;
+              return `https://api.anivideo.net/videohls.php?d=${encodeURIComponent(target)}`;
+            } catch {
+              return `https://api.anivideo.net/videohls.php?d=${encodeURIComponent(file)}`;
+            }
           })()
         : undefined);
 

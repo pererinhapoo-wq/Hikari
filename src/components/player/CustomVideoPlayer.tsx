@@ -659,14 +659,11 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     } catch {
       // Mantém URL original caso não seja possível parsear
     }
-    if (raw.includes('/embed/') || raw.includes('/video/') || raw.includes('animefire.plus/')) {
+    if (raw.includes('/embed/') || raw.includes('/video/') || raw.includes('animefire.plus/') || raw.includes('animesdigital.org/') || raw.includes('api.anivideo.net/')) {
       return raw;
     }
-    const maximaMatch = raw.match(/\/stream\/[a-z]\/([^/]+)\/(\d+)\.mp4/i);
-    if (maximaMatch) {
-      const slug = maximaMatch[1];
-      const epNum = parseInt(maximaMatch[2], 10);
-      return `https://animefire.plus/video/${slug}/${epNum}`;
+    if (raw.includes('maximaimg.online')) {
+      return `https://api.anivideo.net/videohls.php?d=${encodeURIComponent(raw)}`;
     }
     return null;
   }, [iframeFallbackUrl, video?.iframeUrl, video?.videoUrl, video?.url]);
