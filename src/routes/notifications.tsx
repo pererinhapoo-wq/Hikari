@@ -8,6 +8,15 @@ import {
 } from "@/components/notifications/notification-item-card";
 import { getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import {
+  emitNotificationsSummary,
+  fetchNotificationsSingleflight,
+  invalidateNotificationsSync,
+  isDocumentHidden,
+  markNotificationSyncActivity,
+  registerNotificationsPageMount,
+  shouldSkipFocusNotificationSync,
+} from "@/lib/notifications-client-sync";
 import { useNotificationsPresentationReady } from "@/lib/presentation-sync";
 import { useHikariStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -20,6 +29,7 @@ const PAGE_SIZE = 20;
 
 function NotificationsPage() {
   const { user, isPending } = useCurrentUserState();
+  const userId = user?.id ?? null;
   const notificationsPresentationReady = useNotificationsPresentationReady();
   const localAnimes = useHikariStore((s) => s.animes);
 
@@ -35,6 +45,17 @@ function NotificationsPage() {
   const filterRef = useRef<"all" | "unread">(filter);
   filterRef.current = filter;
 
+  const activeUserIdRef = useRef<string | null>(userId);
+  activeUserIdRef.current = userId;
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const offsetRef = useRef(0);
 
   const loadNotifications = useCallback(
@@ -43,10 +64,16 @@ function NotificationsPage() {
       append = false,
       showSpinner = false,
       forcedFilter?: "all" | "unread",
+      forceRefresh = false,
     ) => {
-      if (!user) {
+      const currentUserId = activeUserIdRef.current;
+      if (!currentUserId) {
         setNotifications([]);
         setLoading(false);
+        return;
+      }
+
+      if (!forceRefresh && offsetToFetch === 0 && !append && isDocumentHidden()) {
         return;
       }
 
@@ -60,27 +87,24 @@ function NotificationsPage() {
 
       try {
         const activeFilter = forcedFilter ?? filterRef.current;
-        const bearer = getBearerToken();
-        const params = new URLSearchParams({
-          limit: String(PAGE_SIZE),
-          offset: String(offsetToFetch),
+        if (offsetToFetch === 0 && !append) {
+          markNotificationSyncActivity();
+        }
+
+        const data = await fetchNotificationsSingleflight({
+          userId: currentUserId,
+          limit: PAGE_SIZE,
+          offset: offsetToFetch,
           filter: activeFilter,
         });
 
-        const response = await fetch(`/api/notifications?${params.toString()}`, {
-          method: "GET",
-          credentials: "include",
-          headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
-        });
-
-        if (!response.ok) return;
-
-        const data = (await response.json()) as {
-          notifications?: NotificationItem[];
-          unreadCount?: number;
-          totalCount?: number;
-          hasMore?: boolean;
-        };
+        if (
+          !data ||
+          !mountedRef.current ||
+          activeUserIdRef.current !== currentUserId
+        ) {
+          return;
+        }
 
         const incomingList = data.notifications ?? [];
         if (append) {
@@ -93,38 +117,90 @@ function NotificationsPage() {
           setNotifications(incomingList);
         }
 
+        const nextUnread = Number(data.unreadCount ?? 0) || 0;
         offsetRef.current = offsetToFetch;
         setHasMore(Boolean(data.hasMore));
-        setUnreadCount(Number(data.unreadCount ?? 0) || 0);
+        setUnreadCount(nextUnread);
         setTotalCount(Number(data.totalCount ?? 0) || 0);
+        emitNotificationsSummary({
+          userId: currentUserId,
+          unreadCount: nextUnread,
+        });
       } catch {
-        if (!append) {
+        if (mountedRef.current && !append) {
           setNotifications([]);
         }
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        if (mountedRef.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
-    [user],
+    [],
   );
 
   useEffect(() => {
     if (isPending) return;
-    if (!user) {
+    if (!userId) {
       setNotifications([]);
+      setUnreadCount(0);
+      setTotalCount(0);
+      setHasMore(false);
       setLoading(false);
       return;
     }
 
-    offsetRef.current = 0;
-    void loadNotifications(0, false, true, filter);
+    let cancelled = false;
+    let pendingVisibleLoad = false;
+    const unregisterPage = registerNotificationsPageMount();
 
-    const handleSync = () => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+    offsetRef.current = 0;
+    if (!isDocumentHidden()) {
+      void loadNotifications(0, false, true, filter, true);
+    } else {
+      pendingVisibleLoad = true;
+    }
+
+    const handleSync = (event?: Event) => {
+      if (cancelled) {
         return;
       }
-      void loadNotifications(0, false, false);
+
+      const isCustomUpdate = event?.type === "hikari:notifications-updated";
+      if (isCustomUpdate) {
+        const detail =
+          event instanceof CustomEvent &&
+          event.detail &&
+          typeof event.detail === "object"
+            ? (event.detail as { source?: string })
+            : undefined;
+
+        if (detail?.source === "notifications-page") {
+          return;
+        }
+
+        if (isDocumentHidden()) {
+          pendingVisibleLoad = true;
+          return;
+        }
+
+        pendingVisibleLoad = false;
+        void loadNotifications(0, false, false, undefined, true);
+        return;
+      }
+
+      if (isDocumentHidden()) {
+        return;
+      }
+
+      if (!pendingVisibleLoad && shouldSkipFocusNotificationSync()) {
+        return;
+      }
+
+      const showInitialSpinner = pendingVisibleLoad;
+      pendingVisibleLoad = false;
+      void loadNotifications(0, false, showInitialSpinner, undefined, true);
     };
 
     window.addEventListener("focus", handleSync);
@@ -132,34 +208,36 @@ function NotificationsPage() {
     window.addEventListener("hikari:notifications-updated", handleSync);
 
     return () => {
+      cancelled = true;
+      unregisterPage();
       window.removeEventListener("focus", handleSync);
       document.removeEventListener("visibilitychange", handleSync);
       window.removeEventListener("hikari:notifications-updated", handleSync);
     };
-  }, [user, isPending, filter, loadNotifications]);
+  }, [userId, isPending, filter, loadNotifications]);
 
   const handleFilterChange = (newFilter: "all" | "unread") => {
     if (filter === newFilter) return;
-    setFilter(newFilter);
     offsetRef.current = 0;
     setNotifications([]);
-    void loadNotifications(0, false, true, newFilter);
+    setFilter(newFilter);
   };
 
   const handleLoadMore = () => {
     if (loadingMore || !hasMore) return;
     const nextOffset = notifications.length;
-    void loadNotifications(nextOffset, true, true);
+    void loadNotifications(nextOffset, true, true, undefined, true);
   };
 
   const handleMarkAsRead = async (id: string) => {
-    if (!user) return;
+    if (!userId) return;
 
     const target = notifications.find((i) => i.id === id);
+    const optimisticUnread = Math.max(0, unreadCount - 1);
     setNotifications((prev) =>
       prev.map((item) => (item.id === id ? { ...item, read: true } : item)),
     );
-    setUnreadCount((c) => Math.max(0, c - 1));
+    setUnreadCount(optimisticUnread);
 
     try {
       const bearer = getBearerToken();
@@ -177,12 +255,21 @@ function NotificationsPage() {
         body: JSON.stringify(payload),
       });
 
+      invalidateNotificationsSync();
+
       if (response.ok) {
         const data = (await response.json()) as { unreadCount?: number };
-        if (typeof data.unreadCount === "number") {
-          setUnreadCount(data.unreadCount);
-        }
-        window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+        const nextUnread =
+          typeof data.unreadCount === "number"
+            ? data.unreadCount
+            : optimisticUnread;
+        setUnreadCount(nextUnread);
+        emitNotificationsSummary({ userId, unreadCount: nextUnread });
+        window.dispatchEvent(
+          new CustomEvent("hikari:notifications-updated", {
+            detail: { source: "notifications-page", unreadCount: nextUnread },
+          }),
+        );
       }
     } catch {
       // Falha não-bloqueante
@@ -190,7 +277,7 @@ function NotificationsPage() {
   };
 
   const handleMarkAllAsRead = async () => {
-    if (!user || unreadCount === 0) return;
+    if (!userId || unreadCount === 0) return;
 
     setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
     setUnreadCount(0);
@@ -207,25 +294,33 @@ function NotificationsPage() {
         body: JSON.stringify({ all: true }),
       });
 
+      invalidateNotificationsSync();
+
       if (response.ok) {
-        window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+        emitNotificationsSummary({ userId, unreadCount: 0 });
+        window.dispatchEvent(
+          new CustomEvent("hikari:notifications-updated", {
+            detail: { source: "notifications-page", unreadCount: 0 },
+          }),
+        );
       }
     } catch {
-      void loadNotifications(0, false, false);
+      void loadNotifications(0, false, false, undefined, true);
     }
   };
 
   const handleDeleteNotification = async (id: string) => {
-    if (!user) return;
+    if (!userId) return;
 
     const target = notifications.find((i) => i.id === id);
     const wasUnread = target ? !target.read : false;
     const removedCount = target?.groupedIds?.length || 1;
+    const optimisticUnread = wasUnread ? Math.max(0, unreadCount - 1) : unreadCount;
 
     setNotifications((prev) => prev.filter((item) => item.id !== id));
     setTotalCount((t) => Math.max(0, t - removedCount));
     if (wasUnread) {
-      setUnreadCount((c) => Math.max(0, c - 1));
+      setUnreadCount(optimisticUnread);
     }
 
     try {
@@ -246,20 +341,29 @@ function NotificationsPage() {
             headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
           });
 
+      invalidateNotificationsSync();
+
       if (response.ok) {
         const data = (await response.json()) as { unreadCount?: number };
-        if (typeof data.unreadCount === "number") {
-          setUnreadCount(data.unreadCount);
-        }
-        window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+        const nextUnread =
+          typeof data.unreadCount === "number"
+            ? data.unreadCount
+            : optimisticUnread;
+        setUnreadCount(nextUnread);
+        emitNotificationsSummary({ userId, unreadCount: nextUnread });
+        window.dispatchEvent(
+          new CustomEvent("hikari:notifications-updated", {
+            detail: { source: "notifications-page", unreadCount: nextUnread },
+          }),
+        );
       }
     } catch {
-      void loadNotifications(0, false, false);
+      void loadNotifications(0, false, false, undefined, true);
     }
   };
 
   const handleDeleteAllNotifications = async () => {
-    if (!user || notifications.length === 0) return;
+    if (!userId || notifications.length === 0) return;
 
     setNotifications([]);
     setUnreadCount(0);
@@ -275,11 +379,18 @@ function NotificationsPage() {
         headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
       });
 
+      invalidateNotificationsSync();
+
       if (response.ok) {
-        window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+        emitNotificationsSummary({ userId, unreadCount: 0 });
+        window.dispatchEvent(
+          new CustomEvent("hikari:notifications-updated", {
+            detail: { source: "notifications-page", unreadCount: 0 },
+          }),
+        );
       }
     } catch {
-      void loadNotifications(0, false, false);
+      void loadNotifications(0, false, false, undefined, true);
     }
   };
 

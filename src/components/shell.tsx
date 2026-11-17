@@ -43,6 +43,18 @@ import {
   useNotificationsPresentationReady,
 } from "@/lib/presentation-sync";
 import {
+  emitNotificationsSummary,
+  fetchNotificationsSingleflight,
+  invalidateNotificationsSync,
+  isDocumentHidden,
+  isNotificationsPageMounted,
+  markNotificationSyncActivity,
+  NOTIFICATION_POLL_INTERVAL_MS,
+  setActiveNotificationsSyncUser,
+  shouldSkipFocusNotificationSync,
+  subscribeNotificationsSummary,
+} from "@/lib/notifications-client-sync";
+import {
   lazy,
   memo,
   Suspense,
@@ -790,7 +802,45 @@ export function Shell() {
     [reconcileNotifications],
   );
 
+  const loadFirstNotificationsBatch = useCallback(
+    async (options?: {
+      force?: boolean;
+      isCancelled?: () => boolean;
+      expectedUserId?: string;
+    }) => {
+      const currentUserId = options?.expectedUserId ?? activeUserIdRef.current;
+      if (!currentUserId) {
+        return;
+      }
+      if (!options?.force && isDocumentHidden()) {
+        return;
+      }
+
+      markNotificationSyncActivity();
+      const data = await fetchNotificationsSingleflight({
+        userId: currentUserId,
+        limit: PANEL_BATCH_SIZE,
+        offset: 0,
+        filter: "all",
+      });
+
+      if (
+        !data ||
+        options?.isCancelled?.() ||
+        activeUserIdRef.current !== currentUserId
+      ) {
+        return;
+      }
+
+      hasLoadedNotificationsRef.current = true;
+      applyFirstBatchResponse(data);
+    },
+    [applyFirstBatchResponse],
+  );
+
   useEffect(() => {
+    setActiveNotificationsSyncUser(userId);
+
     if (!userId) {
       hasLoadedNotificationsRef.current = false;
       loadedExtraBatchesRef.current = false;
@@ -806,46 +856,15 @@ export function Shell() {
     }
 
     let cancelled = false;
-
-    const loadNotifications = async () => {
-      try {
-        const { getBearerToken } = await import("@/lib/auth/client");
-        const bearer = getBearerToken();
-        const response = await fetch(
-          `/api/notifications?limit=${PANEL_BATCH_SIZE}&offset=0`,
-          {
-            method: "GET",
-            credentials: "include",
-            headers: bearer
-              ? { Authorization: `Bearer ${bearer}` }
-              : undefined,
-          },
-        );
-
-        if (!response.ok) {
-          return;
-        }
-
-        const data = (await response.json()) as {
-          notifications?: NotificationItem[];
-          unreadCount?: number;
-          hasMore?: boolean;
-          nextOffset?: number;
-        };
-
-        if (cancelled) {
-          return;
-        }
-
-        hasLoadedNotificationsRef.current = true;
-        applyFirstBatchResponse(data);
-      } catch {
-        // Mantém o estado atual caso a API esteja indisponível.
-      }
-    };
-
-    const POLL_INTERVAL_MS = 120_000;
+    let pendingVisibleSync = false;
     let intervalId: number | null = null;
+
+    const unsubscribeSummary = subscribeNotificationsSummary((summary) => {
+      if (cancelled || summary.userId !== userId) {
+        return;
+      }
+      setUnreadCount(summary.unreadCount);
+    });
 
     const stopPolling = () => {
       if (intervalId !== null) {
@@ -855,7 +874,7 @@ export function Shell() {
     };
 
     const startPolling = () => {
-      if (typeof document !== "undefined" && document.hidden) {
+      if (isDocumentHidden()) {
         stopPolling();
         return;
       }
@@ -863,37 +882,94 @@ export function Shell() {
         return;
       }
       intervalId = window.setInterval(() => {
-        if (typeof document !== "undefined" && document.hidden) {
+        if (cancelled || isDocumentHidden()) {
           stopPolling();
           return;
         }
-        void loadNotifications();
-      }, POLL_INTERVAL_MS);
+        void loadFirstNotificationsBatch({
+          force: true,
+          isCancelled: () => cancelled,
+          expectedUserId: userId,
+        });
+      }, NOTIFICATION_POLL_INTERVAL_MS);
     };
 
-    if (typeof document === "undefined" || !document.hidden) {
-      void loadNotifications();
+    if (!isDocumentHidden()) {
+      void loadFirstNotificationsBatch({
+        isCancelled: () => cancelled,
+        expectedUserId: userId,
+      });
       startPolling();
+    } else {
+      pendingVisibleSync = true;
     }
 
     const handleVisibilityOrSync = (event?: Event) => {
-      if (
-        event instanceof CustomEvent &&
-        event.detail &&
-        typeof event.detail === "object" &&
-        (event.detail as { source?: string }).source === "shell-mark-read"
-      ) {
+      if (cancelled) {
         return;
       }
-      if (
-        typeof document !== "undefined" &&
-        (document.hidden || document.visibilityState === "hidden")
-      ) {
+
+      const isCustomUpdate = event?.type === "hikari:notifications-updated";
+      if (isCustomUpdate) {
+        const detail =
+          event instanceof CustomEvent &&
+          event.detail &&
+          typeof event.detail === "object"
+            ? (event.detail as { source?: string; unreadCount?: number })
+            : undefined;
+
+        if (
+          detail?.source === "shell-mark-read" ||
+          detail?.source === "shell-mark-all" ||
+          (detail?.source === "shell-delete" && !notificationsHasMoreRef.current)
+        ) {
+          return;
+        }
+
+        if (detail?.source === "notifications-page") {
+          if (typeof detail.unreadCount === "number") {
+            setUnreadCount(detail.unreadCount);
+          }
+          if (!notificationsOpenRef.current) {
+            return;
+          }
+        }
+
+        if (isDocumentHidden()) {
+          pendingVisibleSync = true;
+          stopPolling();
+          return;
+        }
+
+        pendingVisibleSync = false;
+        void loadFirstNotificationsBatch({
+          force: true,
+          isCancelled: () => cancelled,
+          expectedUserId: userId,
+        });
+        return;
+      }
+
+      if (isDocumentHidden()) {
         stopPolling();
         return;
       }
+
       startPolling();
-      void loadNotifications();
+
+      if (isNotificationsPageMounted() && !notificationsOpenRef.current) {
+        return;
+      }
+
+      if (!pendingVisibleSync && shouldSkipFocusNotificationSync()) {
+        return;
+      }
+
+      pendingVisibleSync = false;
+      void loadFirstNotificationsBatch({
+        isCancelled: () => cancelled,
+        expectedUserId: userId,
+      });
     };
 
     window.addEventListener("focus", handleVisibilityOrSync);
@@ -905,16 +981,17 @@ export function Shell() {
 
     return () => {
       cancelled = true;
-
       stopPolling();
+      unsubscribeSummary();
       window.removeEventListener("focus", handleVisibilityOrSync);
       document.removeEventListener("visibilitychange", handleVisibilityOrSync);
       window.removeEventListener(
         "hikari:notifications-updated",
         handleVisibilityOrSync,
       );
+      invalidateNotificationsSync();
     };
-  }, [userId, applyFirstBatchResponse]);
+  }, [userId, loadFirstNotificationsBatch]);
 
   const markNotificationsAsRead = useCallback(
     async (ids: string[]) => {
@@ -972,6 +1049,8 @@ export function Shell() {
           body: JSON.stringify({ ids: targetIds }),
         });
 
+        invalidateNotificationsSync();
+
         if (!response.ok) {
           for (const id of targetIds) {
             pendingReadTokensRef.current.delete(id);
@@ -991,13 +1070,19 @@ export function Shell() {
         }
 
         const otherPendingCount = pendingReadTokensRef.current.size;
-        setUnreadCount(
-          Math.max(0, Number(data.unreadCount ?? 0) - otherPendingCount),
+        const resolvedUnreadCount = Math.max(
+          0,
+          Number(data.unreadCount ?? 0) - otherPendingCount,
         );
+        setUnreadCount(resolvedUnreadCount);
+        emitNotificationsSummary({
+          userId: user.id,
+          unreadCount: resolvedUnreadCount,
+        });
 
         window.dispatchEvent(
           new CustomEvent("hikari:notifications-updated", {
-            detail: { source: "shell-mark-read" },
+            detail: { source: "shell-mark-read", unreadCount: resolvedUnreadCount },
           }),
         );
       } catch {
@@ -1016,7 +1101,7 @@ export function Shell() {
     try {
       const { getBearerToken } = await import("@/lib/auth/client");
       const bearer = getBearerToken();
-      await fetch("/api/notifications", {
+      const res = await fetch("/api/notifications", {
         method: "PATCH",
         credentials: "include",
         headers: {
@@ -1025,7 +1110,17 @@ export function Shell() {
         },
         body: JSON.stringify({ all: true }),
       });
-      window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+      invalidateNotificationsSync();
+      if (res.ok) {
+        emitNotificationsSummary({ userId: user.id, unreadCount: 0 });
+        window.dispatchEvent(
+          new CustomEvent("hikari:notifications-updated", {
+            detail: { source: "shell-mark-all", unreadCount: 0 },
+          }),
+        );
+      } else {
+        window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+      }
     } catch {
       // Falha não-bloqueante
     }
@@ -1059,12 +1154,20 @@ export function Shell() {
               credentials: "include",
               headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
             });
+        invalidateNotificationsSync();
         if (res.ok) {
           const data = (await res.json()) as { unreadCount?: number };
-          if (typeof data.unreadCount === "number") {
-            setUnreadCount(data.unreadCount);
+          const nextUnread =
+            typeof data.unreadCount === "number" ? data.unreadCount : undefined;
+          if (typeof nextUnread === "number") {
+            setUnreadCount(nextUnread);
+            emitNotificationsSummary({ userId: user.id, unreadCount: nextUnread });
           }
-          window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+          window.dispatchEvent(
+            new CustomEvent("hikari:notifications-updated", {
+              detail: { source: "shell-delete", unreadCount: nextUnread },
+            }),
+          );
         }
       } catch {
         // Falha não-bloqueante
@@ -1259,7 +1362,7 @@ export function Shell() {
       notificationsScrollRef.current.scrollTop = 0;
     }
 
-    if (!user) {
+    if (!user?.id) {
       return;
     }
 
@@ -1269,34 +1372,10 @@ export function Shell() {
     }
 
     try {
-      const { getBearerToken } = await import("@/lib/auth/client");
-      const bearer = getBearerToken();
-      const response = await fetch(
-        `/api/notifications?limit=${PANEL_BATCH_SIZE}&offset=0`,
-        {
-          method: "GET",
-          credentials: "include",
-          headers: bearer
-            ? { Authorization: `Bearer ${bearer}` }
-            : undefined,
-        },
-      );
-
-      if (!response.ok) {
-        return;
-      }
-
-      const data = (await response.json()) as {
-        notifications?: NotificationItem[];
-        unreadCount?: number;
-        hasMore?: boolean;
-        nextOffset?: number;
-      };
-
-      hasLoadedNotificationsRef.current = true;
-      applyFirstBatchResponse(data);
-    } catch {
-      // Mantém os dados atuais.
+      await loadFirstNotificationsBatch({
+        force: true,
+        expectedUserId: user.id,
+      });
     } finally {
       if (showInitialLoader) {
         setNotificationsLoading(false);
