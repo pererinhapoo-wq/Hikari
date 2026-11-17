@@ -71,6 +71,7 @@ type HlsErrorCategory =
 interface PlayerErrorState {
   category: HlsErrorCategory;
   title: string;
+  proxyReason?: string;
   message: string;
   detail: string;
 }
@@ -103,7 +104,85 @@ function sanitizeStreamUrl(url: string): string {
   }
 }
 
-function isHlsStreamUrl(url: string): boolean {
+function resolveHlsPlaybackUrl(url: string): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    const parsed = new URL(trimmed, base);
+    const pathLower = parsed.pathname.toLowerCase();
+    if (
+      (pathLower === '/api/hls' || pathLower === '/hls') &&
+      parsed.searchParams.has('u')
+    ) {
+      return trimmed;
+    }
+    const hostname = parsed.hostname.toLowerCase();
+    if (
+      (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+      (hostname === 'maximaimg.online' || hostname.endsWith('.maximaimg.online'))
+    ) {
+      return `/api/hls?u=${encodeURIComponent(trimmed)}`;
+    }
+  } catch {
+    // Keep original string if URL parsing fails
+  }
+  return trimmed;
+}
+
+function extractProxyErrorReason(data: unknown): string {
+  if (!data || typeof data !== 'object') return '';
+  const errData = data as {
+    response?: { data?: unknown };
+    networkDetails?: unknown;
+  };
+
+  let rawText = '';
+
+  const respData = errData.response?.data;
+  if (typeof respData === 'string') {
+    rawText = respData;
+  } else if (respData instanceof ArrayBuffer) {
+    try {
+      rawText = new TextDecoder('utf-8').decode(new Uint8Array(respData));
+    } catch {
+      rawText = '';
+    }
+  }
+
+  if (!rawText && errData.networkDetails && typeof errData.networkDetails === 'object') {
+    const xhr = errData.networkDetails as {
+      responseType?: string;
+      responseText?: string;
+      response?: unknown;
+    };
+    if (
+      (xhr.responseType === '' || xhr.responseType === 'text' || xhr.responseType === undefined) &&
+      typeof xhr.responseText === 'string'
+    ) {
+      rawText = xhr.responseText;
+    } else if (xhr.response instanceof ArrayBuffer) {
+      try {
+        rawText = new TextDecoder('utf-8').decode(new Uint8Array(xhr.response));
+      } catch {
+        rawText = '';
+      }
+    } else if (typeof xhr.response === 'string') {
+      rawText = xhr.response;
+    }
+  }
+
+  const trimmed = rawText.trim();
+  if (!trimmed) return '';
+  // Mask any signed query params on url= if present while keeping status and referer visible
+  const sanitized = trimmed.replace(/(\|\s*url=)(\S+)/i, (_m, prefix: string, targetUrl: string) => {
+    return `${prefix}${sanitizeStreamUrl(targetUrl)}`;
+  });
+  return sanitized.length > 220 ? `${sanitized.slice(0, 220)}...` : sanitized;
+}
+
+function isHlsStreamUrl(url: string, depth = 0): boolean {
   if (!url) return false;
   const trimmed = url.trim();
   if (!trimmed) return false;
@@ -111,11 +190,20 @@ function isHlsStreamUrl(url: string): boolean {
     const parsed = new URL(trimmed, 'http://localhost');
     const pathLower = parsed.pathname.toLowerCase();
     const searchLower = parsed.search.toLowerCase();
+    if (
+      depth === 0 &&
+      (pathLower === '/api/hls' || pathLower === '/hls') &&
+      parsed.searchParams.get('u')
+    ) {
+      const inner = parsed.searchParams.get('u') || '';
+      if (isHlsStreamUrl(inner, depth + 1)) return true;
+    }
     return (
       pathLower.endsWith('.m3u8') ||
       pathLower.endsWith('.m3u') ||
       /\.m3u8?(?:[?#&]|$)/i.test(trimmed) ||
       searchLower.includes('.m3u8') ||
+      searchLower.includes('.m3u') ||
       pathLower.includes('/hls/')
     );
   } catch {
@@ -563,7 +651,14 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const effectiveIframeUrl = useMemo(() => {
     if (iframeFallbackUrl) return iframeFallbackUrl;
     if (video?.iframeUrl) return video.iframeUrl;
-    const raw = video?.videoUrl || video?.url || '';
+    let raw = video?.videoUrl || video?.url || '';
+    try {
+      const parsed = new URL(raw, 'http://localhost');
+      const proxiedTarget = parsed.searchParams.get('u');
+      if (proxiedTarget) raw = proxiedTarget;
+    } catch {
+      // Mantém URL original caso não seja possível parsear
+    }
     if (raw.includes('/embed/') || raw.includes('/video/') || raw.includes('animefire.plus/')) {
       return raw;
     }
@@ -577,12 +672,13 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   }, [iframeFallbackUrl, video?.iframeUrl, video?.videoUrl, video?.url]);
 
   const handleSwitchToIframe = useCallback(() => {
-    if (onFallbackToIframe) {
-      onFallbackToIframe();
-    }
     if (effectiveIframeUrl) {
       setIsIframeMode(true);
       setVideoError(null);
+      return;
+    }
+    if (onFallbackToIframe) {
+      onFallbackToIframe();
     }
   }, [effectiveIframeUrl, onFallbackToIframe]);
 
@@ -1016,7 +1112,8 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
             const httpStatusStr = typeof statusCode === 'number' ? String(statusCode) : 'N/A';
             const reqUrl = data.context?.url || data.frag?.url || directUrl;
             const detailStr = data.details || 'desconhecido';
-            const reasonStr = data.reason || data.error?.message || '';
+            const proxyBodyReason = extractProxyErrorReason(data);
+            const reasonStr = proxyBodyReason || data.reason || data.error?.message || '';
 
             errorHls('ERROR', `Falha HLS (${data.type}/${detailStr}, fatal=${data.fatal}, HTTP=${httpStatusStr})`, {
               url: sanitizeStreamUrl(reqUrl),
@@ -1047,28 +1144,48 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
               detailStr === HlsClass.ErrorDetails.FRAG_LOAD_TIMEOUT ||
               detailStr === HlsClass.ErrorDetails.KEY_LOAD_TIMEOUT;
 
-            const isCorsOrAuthFailure =
+            const isPureCorsFailure =
+              !isTimeoutDetail &&
+              statusCode === 0 &&
+              (typeof navigator === 'undefined' || navigator.onLine !== false);
+
+            const isProxyOrUpstreamRejection =
               statusCode === 401 ||
               statusCode === 403 ||
-              (!isTimeoutDetail &&
-                statusCode === 0 &&
-                (typeof navigator === 'undefined' || navigator.onLine !== false));
+              statusCode === 502 ||
+              Boolean(proxyBodyReason);
 
             switch (data.type) {
               case HlsClass.ErrorTypes.NETWORK_ERROR: {
-                if (isCorsOrAuthFailure) {
-                  const statusInfo =
-                    statusCode === 401 || statusCode === 403
-                      ? `HTTP ${statusCode} (autorização ou Referer recusado pelo CDN)`
-                      : 'Bloqueio de CORS (Access-Control-Allow-Origin ausente) ou bloqueio de rede/Shields';
+                if (isPureCorsFailure) {
                   reportFatalError({
                     category: 'cors_auth',
-                    title: 'Acesso Bloqueado pelo CDN ou CORS',
-                    message: `O servidor de origem recusou o carregamento direto da transmissão (${statusInfo}).`,
-                    detail:
-                      statusCode === 401 || statusCode === 403
-                        ? 'O CDN exige cabeçalho Referer/autorização do provedor ou o token da URL expirou.'
-                        : 'O CDN precisa enviar cabeçalhos Access-Control-Allow-Origin válidos para reprodução direta via HLS.js.',
+                    title: 'Bloqueio de CORS na Transmissão',
+                    proxyReason: 'HTTP 0 — Access-Control-Allow-Origin ausente ou bloqueio de rede no navegador',
+                    message: 'O navegador impediu a leitura da transmissão por bloqueio de CORS.',
+                    detail: 'O proxy ou CDN precisa enviar cabeçalhos Access-Control-Allow-Origin válidos para o player HLS.',
+                  });
+                  return;
+                }
+
+                if (isProxyOrUpstreamRejection) {
+                  const formattedProxyReason = proxyBodyReason
+                    ? `HTTP ${httpStatusStr} — ${proxyBodyReason}`
+                    : `HTTP ${httpStatusStr} — Autorização ou Referer recusado pelo CDN`;
+                  const isUpstreamForbidden =
+                    statusCode === 401 ||
+                    statusCode === 403 ||
+                    /upstream\s+(?:401|403)|referer/i.test(proxyBodyReason);
+                  reportFatalError({
+                    category: 'cors_auth',
+                    title: isUpstreamForbidden
+                      ? 'Acesso Recusado pelo CDN (Referer / Origem)'
+                      : 'Falha no Proxy HLS',
+                    proxyReason: formattedProxyReason,
+                    message: isSegmentFailure
+                      ? 'O proxy HLS recebeu uma recusa do CDN ao baixar os segmentos do vídeo.'
+                      : 'O proxy HLS não conseguiu obter uma playlist HLS válida do servidor de origem.',
+                    detail: 'Você pode assistir pelo player do provedor (Iframe) ou tentar novamente.',
                   });
                   return;
                 }
@@ -1084,6 +1201,10 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
                   reportFatalError({
                     category: 'manifest',
                     title: 'Erro ao Carregar Manifesto HLS',
+                    proxyReason:
+                      typeof statusCode === 'number'
+                        ? `HTTP ${httpStatusStr}${reasonStr ? ` — ${reasonStr}` : ''}`
+                        : undefined,
                     message:
                       statusCode === 404 || statusCode === 410
                         ? `O arquivo de manifesto (.m3u8) não foi encontrado no servidor (HTTP ${statusCode}).`
@@ -1099,6 +1220,10 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
                   reportFatalError({
                     category: 'segment',
                     title: 'Erro ao Baixar Segmentos do Vídeo',
+                    proxyReason:
+                      typeof statusCode === 'number'
+                        ? `HTTP ${httpStatusStr}${reasonStr ? ` — ${reasonStr}` : ''}`
+                        : undefined,
                     message: `Falha ao baixar os segmentos de mídia da transmissão HLS (${detailStr}, HTTP ${httpStatusStr}).`,
                     detail: reasonStr || 'Os fragmentos de vídeo podem ter expirado ou o CDN interrompeu a entrega.',
                   });
@@ -1108,6 +1233,10 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
                 reportFatalError({
                   category: 'manifest',
                   title: 'Falha de Rede na Transmissão HLS',
+                  proxyReason:
+                    typeof statusCode === 'number'
+                      ? `HTTP ${httpStatusStr}${reasonStr ? ` — ${reasonStr}` : ''}`
+                      : undefined,
                   message: `Erro de rede ao carregar a transmissão HLS (${detailStr}, HTTP ${httpStatusStr}).`,
                   detail: reasonStr || 'Verifique sua conexão ou a disponibilidade do servidor do provedor.',
                 });
@@ -2168,6 +2297,14 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
           <h4 className="text-base font-semibold text-white mb-1">
             {videoError.title}
           </h4>
+          {videoError.proxyReason && (
+            <p
+              data-proxy-error-reason="true"
+              className="text-[11px] font-mono text-purple-200/80 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1 max-w-md mb-2 break-all leading-relaxed"
+            >
+              {videoError.proxyReason}
+            </p>
+          )}
           <p className="text-xs text-slate-300 max-w-md mb-2 leading-relaxed">{videoError.message}</p>
           <p className="text-[11px] text-slate-400 max-w-md mb-5 leading-relaxed">
             {videoError.detail}
@@ -2238,7 +2375,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     if (video.isLocalFile) {
       return (getLocalVideoUrl(video.id) || video.videoUrl || video.url || '').trim();
     }
-    return (video.videoUrl || video.url || '').trim();
+    const raw = (video.videoUrl || video.url || '').trim();
+    return resolveHlsPlaybackUrl(raw);
   }, [video]);
 
   const effectivePosterUrl = video?.posterUrl || video?.thumbnailUrl || '';

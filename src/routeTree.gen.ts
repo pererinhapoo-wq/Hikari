@@ -52,6 +52,7 @@ import { Route as AdultTagsRouteImport } from './routes/adult.tags'
 import { Route as AdultNewsRouteImport } from './routes/adult_.news'
 import { Route as AnimeIdRouteImport } from './routes/anime.$id'
 import { Route as ApiCommentsRouteImport } from './routes/api/comments'
+import { Route as ApiHlsRouteImport } from './routes/api/hls'
 import { Route as ApiNotificationsRouteImport } from './routes/api/notifications'
 import { Route as ApiUploadCommentImageRouteImport } from './routes/api/upload-comment-image'
 import { Route as ApiUploadImageRouteImport } from './routes/api/upload-image'
@@ -300,6 +301,11 @@ const ApiCommentsRoute = ApiCommentsRouteImport.update({
   path: '/api/comments',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiHlsRoute = ApiHlsRouteImport.update({
+  id: '/api/hls',
+  path: '/api/hls',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiNotificationsRoute = ApiNotificationsRouteImport.update({
   id: '/api/notifications',
   path: '/api/notifications',
@@ -503,6 +509,7 @@ export interface FileRoutesByFullPath {
   '/adult/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
   '/api/comments': typeof ApiCommentsRouteWithChildren
+  '/api/hls': typeof ApiHlsRoute
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-image': typeof ApiUploadImageRoute
@@ -578,6 +585,7 @@ export interface FileRoutesByTo {
   '/adult/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
   '/api/comments': typeof ApiCommentsRouteWithChildren
+  '/api/hls': typeof ApiHlsRoute
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-image': typeof ApiUploadImageRoute
@@ -656,6 +664,7 @@ export interface FileRoutesById {
   '/adult_/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
   '/api/comments': typeof ApiCommentsRouteWithChildren
+  '/api/hls': typeof ApiHlsRoute
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-image': typeof ApiUploadImageRoute
@@ -735,6 +744,7 @@ export interface FileRouteTypes {
     | '/adult/news'
     | '/anime/$id'
     | '/api/comments'
+    | '/api/hls'
     | '/api/notifications'
     | '/api/upload-comment-image'
     | '/api/upload-image'
@@ -810,6 +820,7 @@ export interface FileRouteTypes {
     | '/adult/news'
     | '/anime/$id'
     | '/api/comments'
+    | '/api/hls'
     | '/api/notifications'
     | '/api/upload-comment-image'
     | '/api/upload-image'
@@ -887,6 +898,7 @@ export interface FileRouteTypes {
     | '/adult_/news'
     | '/anime/$id'
     | '/api/comments'
+    | '/api/hls'
     | '/api/notifications'
     | '/api/upload-comment-image'
     | '/api/upload-image'
@@ -952,6 +964,7 @@ export interface RootRouteChildren {
   AdultNewsRoute: typeof AdultNewsRoute
   AnimeIdRoute: typeof AnimeIdRoute
   ApiCommentsRoute: typeof ApiCommentsRouteWithChildren
+  ApiHlsRoute: typeof ApiHlsRoute
   ApiNotificationsRoute: typeof ApiNotificationsRoute
   ApiUploadCommentImageRoute: typeof ApiUploadCommentImageRoute
   ApiUploadImageRoute: typeof ApiUploadImageRoute
@@ -1284,6 +1297,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCommentsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/hls': {
+      id: '/api/hls'
+      path: '/api/hls'
+      fullPath: '/api/hls'
+      preLoaderRoute: typeof ApiHlsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/notifications': {
       id: '/api/notifications'
       path: '/api/notifications'
@@ -1606,6 +1626,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdultNewsRoute: AdultNewsRoute,
   AnimeIdRoute: AnimeIdRoute,
   ApiCommentsRoute: ApiCommentsRouteWithChildren,
+  ApiHlsRoute: ApiHlsRoute,
   ApiNotificationsRoute: ApiNotificationsRoute,
   ApiUploadCommentImageRoute: ApiUploadCommentImageRoute,
   ApiUploadImageRoute: ApiUploadImageRoute,
