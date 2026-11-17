@@ -506,7 +506,7 @@ function WatchPage() {
   }, [current?.id, anime, playerSources]);
 
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const handleUnloadOrHide = () => {
       if (!current?.id || !progressStorageKey) return;
       const live = livePlaybackRef.current;
       if (live.episodeId === current.id && live.time > 0) {
@@ -518,16 +518,67 @@ function WatchPage() {
         } catch {
           /* ignore storage error */
         }
+        if (playbackSessionIdRef.current && user && anime) {
+          const dur = live.time > 0 ? Math.floor(live.time) : undefined;
+          const snap = {
+            title: displayTitle(anime),
+            titleRomaji: anime.titles?.romaji || null,
+            titleEnglish: anime.titles?.english || null,
+            titleNative: anime.titles?.native || null,
+            cover: current.thumbnail || anime.cover,
+            format: anime.format || null,
+            year: anime.year || anime.startDate?.year || null,
+            episodesCount:
+              anime.episodesCount || (anime.seasons?.[0]?.episodes?.length ?? null),
+            anilistId: anime.anilistId ?? null,
+            malId: anime.malId ?? null,
+            kitsuId: anime.kitsuId ?? null,
+            serverCatalogId: anime.serverCatalogId ?? null,
+          };
+          const targetAnimeId =
+            canonicalAnimeIdRef.current || anime.serverCatalogId || anime.id;
+          const payload = {
+            animeId: targetAnimeId,
+            episodeId: current.id,
+            playbackSessionId: playbackSessionIdRef.current,
+            currentTime: Math.floor(live.time),
+            duration: dur,
+            deltaMs: lastHeartbeatTimestampRef.current > 0 ? Math.max(0, Date.now() - lastHeartbeatTimestampRef.current) : 0,
+            isPlaying: false,
+            isBuffering: false,
+            isSeeking: false,
+            ended: false,
+            animeSnapshot: snap,
+          };
+          try {
+            fetch("/api/playback/heartbeat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+              keepalive: true,
+            }).catch(() => {});
+          } catch {
+            // ignore
+          }
+        }
       }
     };
 
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    window.addEventListener("pagehide", handleBeforeUnload);
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      window.removeEventListener("pagehide", handleBeforeUnload);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        handleUnloadOrHide();
+      }
     };
-  }, [current?.id, progressStorageKey]);
+
+    window.addEventListener("beforeunload", handleUnloadOrHide);
+    window.addEventListener("pagehide", handleUnloadOrHide);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", handleUnloadOrHide);
+      window.removeEventListener("pagehide", handleUnloadOrHide);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [current?.id, progressStorageKey, user, anime]);
 
 
 
@@ -543,7 +594,7 @@ function WatchPage() {
   );
 
   const ensureSessionAndSendHeartbeat = useCallback(
-    async (time: number, totalDuration: number, isEnding = false) => {
+    async (time: number, totalDuration: number, isEnding = false, forceSend = false) => {
       if (!user || !anime || !current) return;
 
       const dur = totalDuration > 0 ? Math.floor(totalDuration) : undefined;
@@ -630,12 +681,10 @@ function WatchPage() {
           ? Math.max(0, now - lastHeartbeatTimestampRef.current)
           : 0;
 
-      // Se for heartbeat normal de reprodução, exige ~4.5s de intervalo
-      if (!isEnding && deltaMs < 4500) {
+      // Se for heartbeat normal de reprodução, exige ~28s de intervalo
+      if (!isEnding && !forceSend && deltaMs < 28000) {
         return;
       }
-
-      lastHeartbeatTimestampRef.current = now;
 
       try {
         const hb = await heartbeatEpisodeProgress({
@@ -653,6 +702,7 @@ function WatchPage() {
             animeSnapshot: snap,
           },
         });
+        lastHeartbeatTimestampRef.current = now; // Update only on success!
         if (hb.animeId) {
           canonicalAnimeIdRef.current = hb.animeId;
           if (!trackingCandidateIds.includes(hb.animeId)) {
@@ -784,7 +834,7 @@ function WatchPage() {
         livePlaybackRef.current = { episodeId: current.id, time };
       }
 
-      void ensureSessionAndSendHeartbeat(time, totalDuration, false);
+      void ensureSessionAndSendHeartbeat(time, totalDuration, false, true);
 
       if (time / totalDuration > 0.95) {
         try {
@@ -863,7 +913,7 @@ function WatchPage() {
   const handleEnded = useCallback(() => {
     isPlayingRef.current = false;
     setIsVideoPlaying(false);
-    void ensureSessionAndSendHeartbeat(livePlaybackRef.current.time, 0, true);
+    void ensureSessionAndSendHeartbeat(livePlaybackRef.current.time, 0, true, true);
     if (progressStorageKey) {
       try {
         localStorage.removeItem(progressStorageKey);

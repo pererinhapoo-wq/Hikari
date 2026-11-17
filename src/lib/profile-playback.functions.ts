@@ -79,8 +79,8 @@ export async function executeStartEpisodeSession(
     SET
       "episodeNumber" = EXCLUDED."episodeNumber",
       "duration" = COALESCE(EXCLUDED."duration", "user_episode_progress"."duration"),
-      "accumulatedTime" = 0,
-      "accumulatedRemainderMs" = 0,
+      "accumulatedTime" = COALESCE("user_episode_progress"."accumulatedTime", 0),
+      "accumulatedRemainderMs" = COALESCE("user_episode_progress"."accumulatedRemainderMs", 0),
       "playbackSessionId" = EXCLUDED."playbackSessionId",
       "updatedAt" = CURRENT_TIMESTAMP,
       "currentTime" = CASE
@@ -155,29 +155,7 @@ export async function executeHeartbeatEpisodeProgress(
 
   const sql = await getSql();
 
-  const resolved = await resolveAndConsolidateTrackingTarget(
-    sql,
-    userId,
-    animeId,
-    animeSnapshot,
-  );
-  const targetAnimeId = resolved.canonicalAnimeId;
-  const cleanSnapshot = resolved.mergedSnapshot;
-
-  await sql.query(
-    `INSERT INTO "user_anime_tracking" (
-      "userId", "animeId", "status", "episodesWatched", "animeSnapshot", "startedAt", "createdAt", "updatedAt"
-    )
-    VALUES (
-      $1, $2, 'watching', 0, $3::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-    )
-    ON CONFLICT ("userId", "animeId") DO UPDATE
-    SET
-      "animeSnapshot" = COALESCE(EXCLUDED."animeSnapshot", "user_anime_tracking"."animeSnapshot"),
-      "updatedAt" = CURRENT_TIMESTAMP
-    RETURNING "userId", "animeId";`,
-    [userId, targetAnimeId, JSON.stringify(cleanSnapshot)],
-  );
+  const targetAnimeId = animeId;
 
   const roundCurrentTime = Math.max(0, Math.round(currentTime));
   const roundDuration = duration && duration > 0 ? Math.round(duration) : null;
@@ -229,14 +207,14 @@ export async function executeHeartbeatEpisodeProgress(
         pl."episodeNumber",
         pl."autoCompleteSuppressed",
         COALESCE($6, pl."duration") AS "effectiveDuration",
-        LEAST(GREATEST(0, FLOOR(pl."serverElapsedMs")::int), 15000) AS "serverAllowedMs",
+        LEAST(GREATEST(0, FLOOR(pl."serverElapsedMs")::int), 40000) AS "serverAllowedMs",
         CASE
           WHEN $8::boolean = true AND $9::boolean = false AND $10::boolean = false THEN
             CASE
               WHEN $7::int IS NOT NULL THEN
-                LEAST(GREATEST(0, $7::int), LEAST(GREATEST(0, FLOOR(pl."serverElapsedMs")::int), 15000))
+                LEAST(GREATEST(0, $7::int), LEAST(GREATEST(0, FLOOR(pl."serverElapsedMs")::int), 40000))
               ELSE
-                LEAST(GREATEST(0, FLOOR(pl."serverElapsedMs")::int), 15000)
+                LEAST(GREATEST(0, FLOOR(pl."serverElapsedMs")::int), 40000)
             END
           ELSE 0
         END AS "effectiveDeltaMs"
