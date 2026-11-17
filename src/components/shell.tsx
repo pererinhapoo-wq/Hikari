@@ -557,8 +557,9 @@ export function Shell() {
   }, []);
 
   useEffect(() => {
+    if (authPending) return;
     useHikariStore.getState().setCurrentUserId(user?.id ?? null);
-  }, [user?.id]);
+  }, [authPending, user?.id]);
 
   const [menuOpen, setMenuOpen] =
     useState(false);

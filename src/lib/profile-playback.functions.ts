@@ -558,9 +558,15 @@ export const getAnimeWatchedEpisodes = createServerFn({
   method: "GET",
 })
   .middleware([authMiddleware])
-  .validator((d: unknown): { animeId: string } => {
+  .validator((d: unknown): { animeId: string; candidateIds?: string[] } => {
     if (typeof d === "object" && d !== null && "animeId" in d && typeof (d as { animeId: unknown }).animeId === "string") {
-      return { animeId: (d as { animeId: string }).animeId };
+      const candidateIds =
+        "candidateIds" in d && Array.isArray((d as { candidateIds?: unknown }).candidateIds)
+          ? (d as { candidateIds: unknown[] }).candidateIds
+              .filter((x): x is string => typeof x === "string" && Boolean(x.trim()))
+              .slice(0, 20)
+          : undefined;
+      return { animeId: (d as { animeId: string }).animeId, candidateIds };
     }
     throw new Error("animeId é obrigatório");
   })
@@ -568,11 +574,14 @@ export const getAnimeWatchedEpisodes = createServerFn({
     try {
       const sql = await getSql();
       const resolved = await resolveAndConsolidateTrackingTarget(sql, context.userId, data.animeId);
+      const allIds = Array.from(
+        new Set([...resolved.candidateIds, ...(data.candidateIds ?? [])]),
+      );
       const rows = await sql.query<{ episodeId: string }>(
         `SELECT DISTINCT "episodeId"
          FROM "user_watched_episode"
          WHERE "userId" = $1 AND "animeId" = ANY($2::text[])`,
-        [context.userId, resolved.candidateIds],
+        [context.userId, allIds],
       );
       return rows.map((r) => r.episodeId);
     } catch (err) {

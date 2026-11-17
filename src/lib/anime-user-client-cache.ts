@@ -13,10 +13,20 @@ export type CachedAnimeUserState = {
   cachedAt?: number;
 };
 
+type PersistedAnimeUserCache = {
+  ownerUserId: string | null;
+  entries: Record<string, CachedAnimeUserState>;
+};
+
 const STORAGE_KEY = "hikari_anime_user_cache_v1";
 const MAX_CACHE_ENTRIES = 30;
 const memoryCache = new Map<string, CachedAnimeUserState>();
 let hasHydratedFromStorage = false;
+let currentOwnerUserId: string | null = null;
+
+function normalizeOwnerId(userId?: string | null): string | null {
+  return typeof userId === "string" && userId.trim() ? userId.trim() : null;
+}
 
 function enforceLruLimit(): void {
   if (memoryCache.size <= MAX_CACHE_ENTRIES) return;
@@ -34,6 +44,15 @@ function touchKey(key: string, val: CachedAnimeUserState): void {
   memoryCache.set(key, val);
 }
 
+function removeStorageSafely(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch (removeErr) {
+    console.warn("[anime-user-client-cache] Falha ao remover cache do localStorage:", removeErr);
+  }
+}
+
 function hydrateMemoryCache(): void {
   if (hasHydratedFromStorage) return;
   if (typeof window === "undefined") return;
@@ -41,56 +60,76 @@ function hydrateMemoryCache(): void {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      const entries = Object.entries(parsed)
-        .filter(([, val]) => val && typeof val === "object")
-        .sort((a, b) => {
-          const timeA = (a[1] as CachedAnimeUserState).cachedAt ?? 0;
-          const timeB = (b[1] as CachedAnimeUserState).cachedAt ?? 0;
-          return timeA - timeB;
-        });
+    const parsed = JSON.parse(raw) as Partial<PersistedAnimeUserCache> | null;
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !("ownerUserId" in parsed) ||
+      typeof parsed.ownerUserId !== "string" ||
+      !parsed.ownerUserId.trim() ||
+      !parsed.entries ||
+      typeof parsed.entries !== "object"
+    ) {
+      // Descarta payload legado sem dono ou de sessão anônima para evitar vazamento entre contas
+      removeStorageSafely();
+      return;
+    }
 
-      for (const [key, val] of entries) {
-        memoryCache.set(key, val as CachedAnimeUserState);
-      }
-      const initialSize = memoryCache.size;
-      enforceLruLimit();
-      if (memoryCache.size < initialSize) {
-        persistMemoryCache();
-      }
+    currentOwnerUserId = parsed.ownerUserId.trim();
+    const entries = Object.entries(parsed.entries)
+      .filter(([, val]) => val && typeof val === "object")
+      .sort((a, b) => {
+        const timeA = (a[1] as CachedAnimeUserState).cachedAt ?? 0;
+        const timeB = (b[1] as CachedAnimeUserState).cachedAt ?? 0;
+        return timeA - timeB;
+      });
+
+    for (const [key, val] of entries) {
+      memoryCache.set(key, val as CachedAnimeUserState);
+    }
+    const initialSize = memoryCache.size;
+    enforceLruLimit();
+    if (memoryCache.size < initialSize) {
+      persistMemoryCache();
     }
   } catch {
     // Trata JSON inválido ou localStorage indisponível removendo a chave corrompida com segurança
-    try {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } catch (removeErr) {
-      console.warn("[anime-user-client-cache] Falha ao limpar cache corrompido:", removeErr);
-    }
+    removeStorageSafely();
   }
 }
 
 function persistMemoryCache(): void {
   if (typeof window === "undefined") return;
+  if (!currentOwnerUserId) {
+    removeStorageSafely();
+    return;
+  }
   try {
     enforceLruLimit();
-    const obj: Record<string, CachedAnimeUserState> = {};
+    const entries: Record<string, CachedAnimeUserState> = {};
     for (const [key, val] of memoryCache.entries()) {
-      obj[key] = val;
+      entries[key] = val;
     }
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+    const payload: PersistedAnimeUserCache = {
+      ownerUserId: currentOwnerUserId,
+      entries,
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (err) {
     if (err instanceof DOMException && err.name === "QuotaExceededError") {
       try {
-        const entries = Array.from(memoryCache.entries());
-        const reduced = entries.slice(-15);
+        const reduced = Array.from(memoryCache.entries()).slice(-15);
         memoryCache.clear();
-        const obj: Record<string, CachedAnimeUserState> = {};
+        const entries: Record<string, CachedAnimeUserState> = {};
         for (const [key, val] of reduced) {
           memoryCache.set(key, val);
-          obj[key] = val;
+          entries[key] = val;
         }
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+        const payload: PersistedAnimeUserCache = {
+          ownerUserId: currentOwnerUserId,
+          entries,
+        };
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       } catch (quotaErr) {
         console.warn("[anime-user-client-cache] Falha ao reduzir cache após QuotaExceededError:", quotaErr);
       }
@@ -99,13 +138,59 @@ function persistMemoryCache(): void {
 }
 
 /**
- * Recupera o estado persistido em cache síncrono para qualquer ID candidato do anime.
+ * Define o usuário dono atual do cache síncrono de detalhes de anime.
+ * Limpa imediatamente qualquer cache pertencente a outro usuário ou sessão anterior.
+ */
+export function setAnimeUserClientCacheOwner(userId: string | null): void {
+  if (typeof window === "undefined") return;
+  hydrateMemoryCache();
+  const normalized = normalizeOwnerId(userId);
+  if (!normalized) {
+    memoryCache.clear();
+    currentOwnerUserId = null;
+    removeStorageSafely();
+    return;
+  }
+  if (currentOwnerUserId !== normalized) {
+    memoryCache.clear();
+    currentOwnerUserId = normalized;
+    removeStorageSafely();
+  }
+}
+
+/**
+ * Limpa todo o cache síncrono de detalhes de anime (usado no logout ou troca de conta).
+ */
+export function clearAllAnimeUserClientCache(): void {
+  if (typeof window === "undefined") return;
+  hasHydratedFromStorage = true;
+  memoryCache.clear();
+  currentOwnerUserId = null;
+  removeStorageSafely();
+}
+
+/**
+ * Recupera o estado persistido em cache síncrono para qualquer ID candidato do anime,
+ * garantindo estrito isolamento pelo usuário proprietário da sessão.
  */
 export function getAnimeUserClientCache(
   candidateIds: (string | null | undefined)[],
+  expectedUserId?: string | null,
 ): CachedAnimeUserState | null {
   if (typeof window === "undefined") return null;
   hydrateMemoryCache();
+
+  if (expectedUserId === null) {
+    return null;
+  }
+  const normalizedExpected = normalizeOwnerId(expectedUserId);
+  if (expectedUserId !== undefined) {
+    if (!normalizedExpected || currentOwnerUserId !== normalizedExpected) {
+      return null;
+    }
+  } else if (!currentOwnerUserId) {
+    return null;
+  }
 
   for (const raw of candidateIds) {
     if (!raw) continue;
@@ -126,9 +211,17 @@ export function getAnimeUserClientCache(
 export function saveAnimeUserClientCache(
   candidateIds: (string | null | undefined)[],
   partialState: Partial<CachedAnimeUserState>,
+  ownerUserId?: string | null,
 ): void {
   if (typeof window === "undefined") return;
   hydrateMemoryCache();
+
+  if (ownerUserId !== undefined) {
+    const normalizedOwner = normalizeOwnerId(ownerUserId);
+    if (!normalizedOwner) return;
+    setAnimeUserClientCacheOwner(normalizedOwner);
+  }
+  if (!currentOwnerUserId) return;
 
   const validKeys = Array.from(
     new Set(

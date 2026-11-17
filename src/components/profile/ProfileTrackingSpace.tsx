@@ -19,6 +19,17 @@ import {
   getPublicAnimeTrackingPaginated,
   upsertAnimeTracking,
 } from "@/lib/profile-tracking.functions";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { clearAnimeUserClientCache } from "@/lib/anime-user-client-cache";
+import { invalidateWatchedEpisodesCache } from "@/lib/store";
+import {
+  getCachedPaginatedTracking,
+  invalidatePaginatedTrackingCache,
+  markTrackingMutated,
+  seedAnimeTrackingCache,
+  setCachedPaginatedTracking,
+  fetchPaginatedTrackingSingleflight,
+} from "@/lib/tracking-client-cache";
 import {
   getKnownViewerId,
   invalidateAccountProfileCache,
@@ -400,6 +411,9 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     }
   }, [activeMobileCardId, isMobileOrTouch, isReadOnly]);
 
+  const { user: currentViewer } = useCurrentUserState();
+  const effectiveViewerId = currentViewer?.id ?? getKnownViewerId() ?? null;
+
   const upsertTrackingFn = useServerFn(upsertAnimeTracking);
   const getPaginatedTrackingFn = useServerFn(getMyAnimeTrackingPaginated);
   const getPublicPaginatedTrackingFn = useServerFn(getPublicAnimeTrackingPaginated);
@@ -413,10 +427,23 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
   const scopePrefix = targetUserId ?? "__self__";
   const cacheKey = `${scopePrefix}::${filter}`;
 
-  // Cache reativo por (usuário, filtro) para evitar flash de lista errada ou vazia ao trocar/abrir categorias
-  const [filterCache, setFilterCache] = useState<Record<string, FilterCacheEntry>>({});
+  // Cache reativo por (usuário, filtro) restaurado do cache compartilhado de sessão
+  const [filterCache, setFilterCache] = useState<Record<string, FilterCacheEntry>>(() => {
+    const cached = getCachedPaginatedTracking(effectiveViewerId, scopePrefix, filter);
+    if (!cached) return {};
+    return {
+      [cacheKey]: {
+        items: cached.items,
+        page: cached.page,
+        hasMore: cached.hasMore,
+      },
+    };
+  });
   const [loadingMore, setLoadingMore] = useState(false);
-  const [serverCounts, setServerCounts] = useState<Record<FilterOption, number> | null>(null);
+  const [serverCounts, setServerCounts] = useState<Record<FilterOption, number> | null>(() => {
+    const cached = getCachedPaginatedTracking(effectiveViewerId, scopePrefix, filter);
+    return cached?.counts ?? null;
+  });
 
   const fallbackCounts = useMemo<Record<FilterOption, number>>(() => {
     const base: Record<FilterOption, number> = {
@@ -451,45 +478,92 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
   // Índice em memória (Set) de IDs carregados por filtro para deduplicação O(1) sem alocação
   const loadedIdSetsRef = useRef<Map<string, Set<string>>>(new Map());
   const lastTargetUserIdRef = useRef<string | undefined>(targetUserId);
+  const lastViewerIdRef = useRef<string | null>(effectiveViewerId);
 
   const animeSentinelRef = useRef<HTMLDivElement>(null);
 
-  // Busca inicial (lote de 24) por filtro
+  // Busca inicial (lote de 24) por filtro, reaproveitando cache compartilhado e singleflight
   useEffect(() => {
     let active = true;
 
-    if (lastTargetUserIdRef.current !== targetUserId) {
+    if (
+      lastTargetUserIdRef.current !== targetUserId ||
+      lastViewerIdRef.current !== effectiveViewerId
+    ) {
       loadedIdSetsRef.current.clear();
+      setFilterCache({});
       setServerCounts(null);
       lastTargetUserIdRef.current = targetUserId;
+      lastViewerIdRef.current = effectiveViewerId;
     }
 
-    // Se já foi carregado para este filtro na sessão do componente, evita nova requisição
+    // Se já foi carregado para este filtro na sessão atual do componente, evita nova requisição
     if (activeCache) {
+      return;
+    }
+
+    // Verifica cache compartilhado entre abas/montagens antes de disparar consulta no servidor
+    const sharedCached = getCachedPaginatedTracking(
+      effectiveViewerId,
+      scopePrefix,
+      filter,
+    );
+    if (sharedCached) {
+      const idSet = new Set<string>();
+      for (let i = 0; i < sharedCached.items.length; i++) {
+        idSet.add(sharedCached.items[i].animeId);
+      }
+      loadedIdSetsRef.current.set(cacheKey, idSet);
+      if (sharedCached.counts) {
+        setServerCounts(sharedCached.counts);
+        onCountsChange?.(sharedCached.counts);
+      }
+      setFilterCache((prev) => ({
+        ...prev,
+        [cacheKey]: {
+          items: sharedCached.items,
+          page: sharedCached.page,
+          hasMore: sharedCached.hasMore,
+        },
+      }));
+      return;
+    }
+
+    if (!targetUserId && !effectiveViewerId) {
       return;
     }
 
     fetchingRef.current = true;
 
-    const requestPromise = targetUserId
-      ? getPublicPaginatedTrackingFn({
-          data: {
-            userId: targetUserId,
-            status: filter === "all" ? undefined : filter,
-            page: 1,
-            limit: PAGE_SIZE,
-          },
-        })
-      : getPaginatedTrackingFn({
-          data: {
-            status: filter === "all" ? undefined : filter,
-            page: 1,
-            limit: PAGE_SIZE,
-          },
-        });
+    const flightKey = `${effectiveViewerId ?? "anon"}::${cacheKey}::page1`;
+    const requestPromise = fetchPaginatedTrackingSingleflight(flightKey, () =>
+      targetUserId
+        ? getPublicPaginatedTrackingFn({
+            data: {
+              userId: targetUserId,
+              status: filter === "all" ? undefined : filter,
+              page: 1,
+              limit: PAGE_SIZE,
+            },
+          })
+        : getPaginatedTrackingFn({
+            data: {
+              status: filter === "all" ? undefined : filter,
+              page: 1,
+              limit: PAGE_SIZE,
+            },
+          }),
+    );
 
     void requestPromise
       .then((res) => {
+        setCachedPaginatedTracking(effectiveViewerId, scopePrefix, filter, {
+          items: res.items,
+          page: 1,
+          hasMore: res.hasMore,
+          counts: res.counts,
+        });
+
         if (!active) return;
 
         // Atualiza índice de IDs
@@ -524,6 +598,8 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     };
   }, [
     cacheKey,
+    scopePrefix,
+    effectiveViewerId,
     activeCache,
     filter,
     targetUserId,
@@ -540,24 +616,30 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     setLoadingMore(true);
 
     const requestCacheKey = cacheKey;
+    const requestScopePrefix = scopePrefix;
+    const requestFilter = filter;
+    const requestViewerId = effectiveViewerId;
     const nextPage = page + 1;
 
-    const requestPromise = targetUserId
-      ? getPublicPaginatedTrackingFn({
-          data: {
-            userId: targetUserId,
-            status: filter === "all" ? undefined : filter,
-            page: nextPage,
-            limit: PAGE_SIZE,
-          },
-        })
-      : getPaginatedTrackingFn({
-          data: {
-            status: filter === "all" ? undefined : filter,
-            page: nextPage,
-            limit: PAGE_SIZE,
-          },
-        });
+    const flightKey = `${requestViewerId ?? "anon"}::${requestCacheKey}::page${nextPage}`;
+    const requestPromise = fetchPaginatedTrackingSingleflight(flightKey, () =>
+      targetUserId
+        ? getPublicPaginatedTrackingFn({
+            data: {
+              userId: targetUserId,
+              status: requestFilter === "all" ? undefined : requestFilter,
+              page: nextPage,
+              limit: PAGE_SIZE,
+            },
+          })
+        : getPaginatedTrackingFn({
+            data: {
+              status: requestFilter === "all" ? undefined : requestFilter,
+              page: nextPage,
+              limit: PAGE_SIZE,
+            },
+          }),
+    );
 
     void requestPromise
       .then((res) => {
@@ -581,10 +663,18 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
             }
           }
 
+          const nextItems = [...prevItems, ...uniqueNew];
+          setCachedPaginatedTracking(requestViewerId, requestScopePrefix, requestFilter, {
+            items: nextItems,
+            page: nextPage,
+            hasMore: res.hasMore,
+            counts: res.counts,
+          });
+
           return {
             ...prev,
             [requestCacheKey]: {
-              items: [...prevItems, ...uniqueNew],
+              items: nextItems,
               page: nextPage,
               hasMore: res.hasMore,
             },
@@ -603,7 +693,9 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       });
   }, [
     cacheKey,
+    scopePrefix,
     filter,
+    effectiveViewerId,
     targetUserId,
     getPaginatedTrackingFn,
     getPublicPaginatedTrackingFn,
@@ -787,9 +879,42 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
       applyItemMutationToCache(finalItem, updatedItem.status, item.animeId);
       onUpdateItem?.(finalItem, item.animeId);
-      const ownerId = targetUserId ?? getKnownViewerId();
-      invalidateAccountProfileCache(ownerId ?? undefined);
-      if (ownerId) invalidatePublicProfileCacheByUserId(ownerId);
+      const ownerId = targetUserId ?? effectiveViewerId ?? getKnownViewerId();
+      const affectedIds = Array.from(
+        new Set(
+          [
+            item.animeId,
+            finalItem.animeId,
+            finalItem.animeSnapshot?.serverCatalogId,
+            finalItem.animeSnapshot?.anilistId != null
+              ? String(finalItem.animeSnapshot.anilistId)
+              : null,
+            finalItem.animeSnapshot?.malId != null
+              ? `mal-${finalItem.animeSnapshot.malId}`
+              : null,
+            finalItem.animeSnapshot?.malId != null
+              ? String(finalItem.animeSnapshot.malId)
+              : null,
+            finalItem.animeSnapshot?.kitsuId != null
+              ? `kitsu-${finalItem.animeSnapshot.kitsuId}`
+              : null,
+            finalItem.animeSnapshot?.kitsuId != null
+              ? String(finalItem.animeSnapshot.kitsuId)
+              : null,
+          ].filter((x): x is string => typeof x === "string" && Boolean(x.trim())),
+        ),
+      );
+      if (ownerId) {
+        seedAnimeTrackingCache(ownerId, affectedIds, finalItem);
+        markTrackingMutated(ownerId, affectedIds);
+        invalidateWatchedEpisodesCache(ownerId, affectedIds);
+        invalidatePaginatedTrackingCache(ownerId, scopePrefix);
+        invalidateAccountProfileCache(ownerId);
+        invalidatePublicProfileCacheByUserId(ownerId);
+      } else {
+        invalidateAccountProfileCache(undefined);
+      }
+      clearAnimeUserClientCache(affectedIds);
       toast.success(`Episódio ${finalItem.episodesWatched}${maxEps ? ` de ${maxEps}` : ""} marcado!`);
     } catch (err) {
       applyItemMutationToCache(previousItem, updatedItem.status, item.animeId);
@@ -799,7 +924,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       updatingIdsRef.current.delete(item.animeId);
       setUpdatingId((curr) => (curr === item.animeId ? null : curr));
     }
-  }, [applyItemMutationToCache, isReadOnly, onUpdateItem, upsertTrackingFn]);
+  }, [applyItemMutationToCache, effectiveViewerId, isReadOnly, onUpdateItem, scopePrefix, targetUserId, upsertTrackingFn]);
 
   // Callback estável para salvar edição completa
   const handleSaveEdit = useCallback(async (data: {
@@ -853,16 +978,49 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
       applyItemMutationToCache(finalItem, optimisticItem.status, targetItem.animeId);
       onUpdateItem?.(finalItem, targetItem.animeId);
-      const ownerId = targetUserId ?? getKnownViewerId();
-      invalidateAccountProfileCache(ownerId ?? undefined);
-      if (ownerId) invalidatePublicProfileCacheByUserId(ownerId);
+      const ownerId = targetUserId ?? effectiveViewerId ?? getKnownViewerId();
+      const affectedIds = Array.from(
+        new Set(
+          [
+            targetItem.animeId,
+            finalItem.animeId,
+            finalItem.animeSnapshot?.serverCatalogId,
+            finalItem.animeSnapshot?.anilistId != null
+              ? String(finalItem.animeSnapshot.anilistId)
+              : null,
+            finalItem.animeSnapshot?.malId != null
+              ? `mal-${finalItem.animeSnapshot.malId}`
+              : null,
+            finalItem.animeSnapshot?.malId != null
+              ? String(finalItem.animeSnapshot.malId)
+              : null,
+            finalItem.animeSnapshot?.kitsuId != null
+              ? `kitsu-${finalItem.animeSnapshot.kitsuId}`
+              : null,
+            finalItem.animeSnapshot?.kitsuId != null
+              ? String(finalItem.animeSnapshot.kitsuId)
+              : null,
+          ].filter((x): x is string => typeof x === "string" && Boolean(x.trim())),
+        ),
+      );
+      if (ownerId) {
+        seedAnimeTrackingCache(ownerId, affectedIds, finalItem);
+        markTrackingMutated(ownerId, affectedIds);
+        invalidateWatchedEpisodesCache(ownerId, affectedIds);
+        invalidatePaginatedTrackingCache(ownerId, scopePrefix);
+        invalidateAccountProfileCache(ownerId);
+        invalidatePublicProfileCacheByUserId(ownerId);
+      } else {
+        invalidateAccountProfileCache(undefined);
+      }
+      clearAnimeUserClientCache(affectedIds);
       toast.success("Coleção atualizada com sucesso!");
     } catch (err) {
       applyItemMutationToCache(previousItem, optimisticItem.status, targetItem.animeId);
       onUpdateItem?.(previousItem, targetItem.animeId);
       throw err;
     }
-  }, [applyItemMutationToCache, editingItem, isReadOnly, onUpdateItem, upsertTrackingFn]);
+  }, [applyItemMutationToCache, editingItem, effectiveViewerId, isReadOnly, onUpdateItem, scopePrefix, targetUserId, upsertTrackingFn]);
 
   // Estrutura de busca e ordenação em memória otimizada com useDeferredValue
   const processedItems = useMemo(() => {

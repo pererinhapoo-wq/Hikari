@@ -2,6 +2,14 @@ import type {
   AccountProfileBundle,
   PublicProfileBundle,
 } from "@/lib/profile.functions";
+import {
+  clearAllAnimeUserClientCache,
+  setAnimeUserClientCacheOwner,
+} from "@/lib/anime-user-client-cache";
+import {
+  clearAllTrackingClientCaches,
+  setActiveTrackingCacheUser,
+} from "@/lib/tracking-client-cache";
 
 export const PROFILE_CACHE_TTL_MS = 2 * 60 * 1000;
 
@@ -46,6 +54,8 @@ export function setKnownViewerId(viewerId: string | null): void {
     accountProfileBundleCache.clear();
     profileMetaCache.clear();
     inFlightProfileMeta.clear();
+    setAnimeUserClientCacheOwner(normalized);
+    setActiveTrackingCacheUser(normalized);
     knownViewerId = normalized;
   }
 }
@@ -230,5 +240,7 @@ export function invalidateAllProfileCaches(): void {
   accountProfileBundleCache.clear();
   profileMetaCache.clear();
   inFlightProfileMeta.clear();
+  clearAllAnimeUserClientCache();
+  clearAllTrackingClientCaches();
   knownViewerId = null;
 }

@@ -59,6 +59,13 @@ import {
   startEpisodeSession,
   heartbeatEpisodeProgress,
 } from "@/lib/profile-playback.functions";
+import { invalidateWatchedEpisodesCache } from "@/lib/store";
+import { saveAnimeUserClientCache } from "@/lib/anime-user-client-cache";
+import { invalidateAccountProfileCache } from "@/lib/profile-client-cache";
+import {
+  invalidateAnimeTrackingCache,
+  invalidatePaginatedTrackingCache,
+} from "@/lib/tracking-client-cache";
 import {
   displayTitle,
   type Episode,
@@ -558,6 +565,22 @@ function WatchPage() {
       const targetAnimeId =
         canonicalAnimeIdRef.current || anime.serverCatalogId || anime.id;
 
+      const trackingCandidateIds = Array.from(
+        new Set(
+          [
+            id,
+            anime.id,
+            anime.serverCatalogId,
+            canonicalAnimeIdRef.current,
+            anime.anilistId != null ? String(anime.anilistId) : null,
+            anime.malId != null ? `mal-${anime.malId}` : null,
+            anime.malId != null ? String(anime.malId) : null,
+            anime.kitsuId != null ? `kitsu-${anime.kitsuId}` : null,
+            anime.kitsuId != null ? String(anime.kitsuId) : null,
+          ].filter((val): val is string => typeof val === "string" && Boolean(val.trim())),
+        ),
+      );
+
       // 1. Inicia a sessão se ainda não tiver sido iniciada
       if (!playbackSessionIdRef.current) {
         if (sessionStartingRef.current) return;
@@ -575,7 +598,21 @@ function WatchPage() {
           playbackSessionIdRef.current = session.playbackSessionId;
           if (session.animeId) {
             canonicalAnimeIdRef.current = session.animeId;
+            if (!trackingCandidateIds.includes(session.animeId)) {
+              trackingCandidateIds.push(session.animeId);
+            }
           }
+          invalidateAnimeTrackingCache(user.id, trackingCandidateIds);
+          invalidatePaginatedTrackingCache(user.id);
+          invalidateAccountProfileCache(user.id);
+          saveAnimeUserClientCache(
+            trackingCandidateIds,
+            {
+              continueEpisode: { id: current.id, number: current.number },
+              ...(session.animeId ? { dbAnimeId: session.animeId } : {}),
+            },
+            user.id,
+          );
           lastHeartbeatTimestampRef.current = Date.now();
         } catch {
           // Preserva a reprodução mesmo se o servidor estiver temporariamente indisponível
@@ -618,9 +655,34 @@ function WatchPage() {
         });
         if (hb.animeId) {
           canonicalAnimeIdRef.current = hb.animeId;
+          if (!trackingCandidateIds.includes(hb.animeId)) {
+            trackingCandidateIds.push(hb.animeId);
+          }
         }
         if (hb.completed) {
           isCompletedRef.current = true;
+          const storeState = useHikariStore.getState();
+          storeState.markEpisodeWatched(anime.id, current.id);
+          if (hb.animeId && hb.animeId !== anime.id) {
+            storeState.markEpisodeWatched(hb.animeId, current.id);
+          }
+          if (id !== anime.id && id !== hb.animeId) {
+            storeState.markEpisodeWatched(id, current.id);
+          }
+          invalidateWatchedEpisodesCache(user.id, trackingCandidateIds);
+          invalidateAnimeTrackingCache(user.id, trackingCandidateIds);
+          invalidatePaginatedTrackingCache(user.id);
+          invalidateAccountProfileCache(user.id);
+          saveAnimeUserClientCache(
+            trackingCandidateIds,
+            {
+              ...(hb.episodesWatched !== undefined
+                ? { episodesWatched: hb.episodesWatched }
+                : {}),
+              ...(hb.animeId ? { dbAnimeId: hb.animeId } : {}),
+            },
+            user.id,
+          );
         }
       } catch (err: unknown) {
         const msg = (err as Error)?.message || "";
@@ -629,7 +691,7 @@ function WatchPage() {
         }
       }
     },
-    [user, anime, current],
+    [id, user, anime, current],
   );
 
   const handlePlay = useCallback(() => {
