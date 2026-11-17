@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import { getRedisCatalogIndex, setRedisCatalogIndex, invalidateRedisCatalogIndex } from "@/lib/redis";
 import { isCustomImageUrl, type Anime, type HomeCatalog, type Season, type SlimAnime } from "@/lib/types";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { loadAnimeRecentBadgesFromDb } from "@/lib/catalog-badges";
@@ -65,10 +66,43 @@ let catalogIndexInFlightPromise: Promise<CatalogIndex | null> | null = null;
 let catalogIndexCacheEpoch = 0;
 const CATALOG_INDEX_TTL_MS = 3 * 60 * 1000; // 3 minutos
 
+function buildCatalogIndexFromRows(rows: DbCatalogAnimeRow[]): CatalogIndex {
+  const byId = new Map<string, DbCatalogAnimeRow>();
+  const byAnilistId = new Map<number, DbCatalogAnimeRow>();
+  const byMalId = new Map<number, DbCatalogAnimeRow>();
+  const byKitsuId = new Map<number, DbCatalogAnimeRow>();
+
+  for (const row of rows) {
+    if (row.hidden) {
+      continue;
+    }
+    if (!byId.has(row.id)) {
+      byId.set(row.id, row);
+    }
+
+    if (isDubbedCatalogRow(row)) {
+      continue;
+    }
+
+    if (typeof row.anilistId === "number" && row.anilistId > 0 && !byAnilistId.has(row.anilistId)) {
+      byAnilistId.set(row.anilistId, row);
+    }
+    if (typeof row.malId === "number" && row.malId > 0 && !byMalId.has(row.malId)) {
+      byMalId.set(row.malId, row);
+    }
+    if (typeof row.kitsuId === "number" && row.kitsuId > 0 && !byKitsuId.has(row.kitsuId)) {
+      byKitsuId.set(row.kitsuId, row);
+    }
+  }
+
+  return { byId, byAnilistId, byMalId, byKitsuId };
+}
+
 export function invalidateCatalogIndex(): void {
   catalogIndexCacheEpoch += 1;
   cachedCatalogIndex = null;
   catalogIndexInFlightPromise = null;
+  void invalidateRedisCatalogIndex().catch(() => {});
 }
 
 export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
@@ -86,6 +120,17 @@ export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
 
   const currentFlight = (async (): Promise<CatalogIndex | null> => {
     try {
+      // 1. Tentar consultar no Upstash Redis (cache compartilhado)
+      const redisRows = await getRedisCatalogIndex();
+      if (Array.isArray(redisRows) && redisRows.length > 0) {
+        const index = buildCatalogIndexFromRows(redisRows);
+        if (requestEpoch === catalogIndexCacheEpoch) {
+          cachedCatalogIndex = { data: index, timestamp: Date.now() };
+        }
+        return index;
+      }
+
+      // 2. Se miss no Redis, consultar o PostgreSQL
       const sql = await getSql();
       const rows = await sql.query<DbCatalogAnimeRow>(
         `SELECT
@@ -118,35 +163,10 @@ export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
         return null;
       }
 
-      const byId = new Map<string, DbCatalogAnimeRow>();
-      const byAnilistId = new Map<number, DbCatalogAnimeRow>();
-      const byMalId = new Map<number, DbCatalogAnimeRow>();
-      const byKitsuId = new Map<number, DbCatalogAnimeRow>();
+      // Salvar de forma assíncrona no Redis (sem bloquear a resposta)
+      void setRedisCatalogIndex(rows).catch(() => {});
 
-      for (const row of rows) {
-        if (row.hidden) {
-          continue;
-        }
-        if (!byId.has(row.id)) {
-          byId.set(row.id, row);
-        }
-
-        if (isDubbedCatalogRow(row)) {
-          continue;
-        }
-
-        if (typeof row.anilistId === "number" && row.anilistId > 0 && !byAnilistId.has(row.anilistId)) {
-          byAnilistId.set(row.anilistId, row);
-        }
-        if (typeof row.malId === "number" && row.malId > 0 && !byMalId.has(row.malId)) {
-          byMalId.set(row.malId, row);
-        }
-        if (typeof row.kitsuId === "number" && row.kitsuId > 0 && !byKitsuId.has(row.kitsuId)) {
-          byKitsuId.set(row.kitsuId, row);
-        }
-      }
-
-      const index = { byId, byAnilistId, byMalId, byKitsuId };
+      const index = buildCatalogIndexFromRows(rows);
       if (requestEpoch === catalogIndexCacheEpoch) {
         cachedCatalogIndex = { data: index, timestamp: Date.now() };
       }

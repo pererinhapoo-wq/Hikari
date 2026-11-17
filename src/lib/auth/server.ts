@@ -208,7 +208,12 @@ const grokUserInfoUrl = `${issuerBase}/api/auth/oauth2/userinfo`;
 // schema from `migrations/auth/0001_auth.sql`, copied into `migrations/` when
 // the app turns sign-in on.
 const database = databaseUrl
-  ? new Pool({ connectionString: databaseUrl })
+  ? new Pool({
+      connectionString: databaseUrl,
+      max: 2,
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+    })
   : {
       dialect: pgliteDialect(() => getPglite()),
       type: "postgres" as const,

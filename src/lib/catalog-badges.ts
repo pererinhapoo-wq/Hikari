@@ -1,5 +1,6 @@
 import { getSql } from "@/lib/db";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
+import { getRedisCatalogBadges, setRedisCatalogBadges, invalidateRedisCatalogBadges } from "@/lib/redis";
 import {
   normalizeAnimeRecentBadges,
   type AnimeRecentBadges,
@@ -88,10 +89,31 @@ let cachedBadgesResult: { data: AnimeRecentBadgesLookup; timestamp: number } | n
 let badgesInFlightPromise: Promise<AnimeRecentBadgesLookup> | null = null;
 const BADGES_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutos
 
+function buildBadgesLookupFromRows(rows: Array<{ key: string; value: string }>): AnimeRecentBadgesLookup {
+  const lookup = createEmptyLookup();
+  for (const row of rows ?? []) {
+    const record = parseStoredRecord(row.key, row.value);
+    if (!record) continue;
+    const badges = normalizeAnimeRecentBadges(record);
+    lookup.byId.set(record.animeId, badges);
+    if (record.anilistId && record.anilistId > 0 && !lookup.byAnilistId.has(record.anilistId)) {
+      lookup.byAnilistId.set(record.anilistId, badges);
+    }
+    if (record.malId && record.malId > 0 && !lookup.byMalId.has(record.malId)) {
+      lookup.byMalId.set(record.malId, badges);
+    }
+    if (record.kitsuId && record.kitsuId > 0 && !lookup.byKitsuId.has(record.kitsuId)) {
+      lookup.byKitsuId.set(record.kitsuId, badges);
+    }
+  }
+  return lookup;
+}
+
 export function invalidateAnimeRecentBadgesCache(): void {
   cachedBadgesResult = null;
   badgesInFlightPromise = null;
   invalidateHomePublicEpisodesCache();
+  void invalidateRedisCatalogBadges().catch(() => {});
 }
 
 export async function loadAllAnimeRecentBadgesFromDb(): Promise<AnimeRecentBadgesLookup> {
@@ -105,8 +127,19 @@ export async function loadAllAnimeRecentBadgesFromDb(): Promise<AnimeRecentBadge
   }
 
   badgesInFlightPromise = (async () => {
-    const lookup = createEmptyLookup();
     try {
+      // 1. Tentar consultar no Upstash Redis (cache compartilhado)
+      const redisRows = await getRedisCatalogBadges();
+      if (Array.isArray(redisRows) && redisRows.length > 0) {
+        const lookup = buildBadgesLookupFromRows(redisRows);
+        cachedBadgesResult = {
+          data: lookup,
+          timestamp: Date.now(),
+        };
+        return lookup;
+      }
+
+      // 2. Se miss no Redis, consultar o PostgreSQL
       const sql = await getSql();
       const rows = await sql.query<{ key: string; value: string }>(
         `SELECT "key", "value"
@@ -115,32 +148,22 @@ export async function loadAllAnimeRecentBadgesFromDb(): Promise<AnimeRecentBadge
         [`${ANIME_RECENT_BADGES_KEY_PREFIX}%`],
       );
 
-      for (const row of rows ?? []) {
-        const record = parseStoredRecord(row.key, row.value);
-        if (!record) continue;
-        const badges = normalizeAnimeRecentBadges(record);
-        lookup.byId.set(record.animeId, badges);
-        if (record.anilistId && record.anilistId > 0 && !lookup.byAnilistId.has(record.anilistId)) {
-          lookup.byAnilistId.set(record.anilistId, badges);
-        }
-        if (record.malId && record.malId > 0 && !lookup.byMalId.has(record.malId)) {
-          lookup.byMalId.set(record.malId, badges);
-        }
-        if (record.kitsuId && record.kitsuId > 0 && !lookup.byKitsuId.has(record.kitsuId)) {
-          lookup.byKitsuId.set(record.kitsuId, badges);
-        }
-      }
+      const validRows = rows ?? [];
+      // Salvar de forma assíncrona no Redis (sem bloquear a resposta)
+      void setRedisCatalogBadges(validRows).catch(() => {});
 
+      const lookup = buildBadgesLookupFromRows(validRows);
       cachedBadgesResult = {
         data: lookup,
         timestamp: Date.now(),
       };
+      return lookup;
     } catch (err) {
-      console.warn("[catalog-badges] Falha segura ao carregar selos de admin_settings:", err);
+      console.warn("[catalog-badges] Falha segura ao carregar selos:", err);
+      return cachedBadgesResult?.data ?? createEmptyLookup();
     } finally {
       badgesInFlightPromise = null;
     }
-    return cachedBadgesResult ? cachedBadgesResult.data : lookup;
   })();
 
   return badgesInFlightPromise;
