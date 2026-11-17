@@ -47,6 +47,12 @@ import {
   setRedisAnimeDetail,
   invalidateRedisAnimeDetail,
   updateRedisAnimeDetailAtomic,
+  getRedisHomeCatalog,
+  setRedisHomeCatalog,
+  getRedisHomeTodayRaw,
+  setRedisHomeTodayRaw,
+  getRedisHomeSeason,
+  setRedisHomeSeason,
   type RedisAnimeDetailFence,
 } from "@/lib/redis";
 
@@ -4328,6 +4334,12 @@ async function fetchRawTodaySchedulesFromAni(
   return withCache<RawTodayScheduleEntry[]>(
     rawCacheKey,
     async () => {
+      // 2. Consulta Redis compartilhado antes de chamar a API do AniList
+      const redisRaw = await getRedisHomeTodayRaw<RawTodayScheduleEntry>(todayKey);
+      if (redisRaw && redisRaw.length > 0) {
+        return redisRaw;
+      }
+
       type TodayScheduleResponse = {
         Page: {
           pageInfo?: {
@@ -4366,6 +4378,7 @@ async function fetchRawTodaySchedulesFromAni(
         }
       `;
 
+      const fetchStartedAt = Date.now();
       const schedules: RawTodayScheduleEntry[] = [];
 
       for (let page = 1; page <= 3; page += 1) {
@@ -4394,6 +4407,12 @@ async function fetchRawTodaySchedulesFromAni(
       }
 
       schedules.sort((a, b) => a.airingAt - b.airingAt);
+
+      // 3. Persiste no Redis somente se houver registros válidos do AniList
+      if (schedules.length > 0) {
+        await setRedisHomeTodayRaw(todayKey, schedules, fetchStartedAt);
+      }
+
       return schedules;
     },
     {
@@ -4480,6 +4499,83 @@ function filterUpcomingTodayAnimes(
   );
 
   return items;
+}
+
+function pruneUpcomingTodayScheduleList(
+  items: SlimAnime[],
+  todayKey: string,
+  nowSeconds: number,
+): SlimAnime[] {
+  if (!Array.isArray(items) || items.length === 0) {
+    return items;
+  }
+
+  let changed = false;
+  const filtered: SlimAnime[] = [];
+
+  for (const item of items) {
+    const candidates =
+      Array.isArray(item.todayUpcomingEpisodes) && item.todayUpcomingEpisodes.length > 0
+        ? item.todayUpcomingEpisodes
+        : item.todayEpisode
+          ? [item.todayEpisode]
+          : [];
+
+    const remaining = candidates
+      .filter(
+        (ep) =>
+          typeof ep?.airingAt === "number" &&
+          Number.isFinite(ep.airingAt) &&
+          ep.airingAt > nowSeconds &&
+          getDayKeyRecife(ep.airingAt) === todayKey,
+      )
+      .sort((a, b) => a.airingAt - b.airingAt);
+
+    if (remaining.length === 0) {
+      changed = true;
+      continue;
+    }
+
+    const nextEp = remaining[0];
+    if (
+      remaining.length !== candidates.length ||
+      item.todayEpisode?.airingAt !== nextEp.airingAt ||
+      item.todayEpisode?.number !== nextEp.number
+    ) {
+      changed = true;
+      filtered.push({
+        ...item,
+        todayEpisode: nextEp,
+        todayUpcomingEpisodes: remaining,
+      });
+    } else {
+      filtered.push(item);
+    }
+  }
+
+  return changed ? filtered : items;
+}
+
+function pruneUpcomingTodayScheduleFromCatalog(
+  catalog: HomeCatalog,
+  todayKey: string,
+): HomeCatalog {
+  if (!catalog.todaySchedule || catalog.todaySchedule.length === 0) {
+    return catalog;
+  }
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const pruned = pruneUpcomingTodayScheduleList(
+    catalog.todaySchedule,
+    todayKey,
+    nowSeconds,
+  );
+  if (pruned === catalog.todaySchedule) {
+    return catalog;
+  }
+  return {
+    ...catalog,
+    todaySchedule: pruned,
+  };
 }
 
 async function fetchTodayScheduleFromAni(): Promise<SlimAnime[]> {
@@ -4831,8 +4927,15 @@ export const fetchSeasonSection = createServerFn({
   const items = await withCache<SlimAnime[]>(
     cacheKey,
     async () => {
-      // 1. Tenta AniList
+      // 2. Tenta Redis compartilhado (somente lista válida do AniList)
+      const redisItems = await getRedisHomeSeason(year, season);
+      if (redisItems && redisItems.length > 0) {
+        return redisItems;
+      }
+
+      // 3. Tenta AniList (fonte principal)
       try {
+        const fetchStartedAt = Date.now();
         const data = await anilistGraphQL<{
           season: {
             media: AniMedia[];
@@ -4855,13 +4958,14 @@ export const fetchSeasonSection = createServerFn({
           .map(mapAniSlim);
 
         if (items.length > 0) {
+          await setRedisHomeSeason(year, season, items, fetchStartedAt);
           return items;
         }
       } catch (err) {
         console.warn("[Hikari] Falha ao carregar animes da temporada de AniList:", err);
       }
 
-      // 2. Tenta Jikan
+      // 4. Fallback Jikan / Kitsu / estático (nunca gravados no Redis)
       try {
         const jikanRes = await jikanFetch<{ data?: JikanAnime[] }>(
           "/seasons/now?limit=18",
@@ -4874,7 +4978,6 @@ export const fetchSeasonSection = createServerFn({
         console.warn("[Hikari] Falha ao carregar animes da temporada de Jikan:", err);
       }
 
-      // 3. Tenta Kitsu
       try {
         const kitsuRes = await kitsuFetch<{ data?: KitsuAnimeItem[] }>(
           `/anime?filter[season]=${season.toLowerCase()}&filter[seasonYear]=${year}&sort=-userCount&page[limit]=18`,
@@ -4998,12 +5101,41 @@ export const fetchHomeCatalog =
       const { todayKey } = getTodayRangeRecife();
       const key = `home:${todayKey}`;
 
-      const catalog = await withCache<HomeCatalog>(
+      const rawCatalog = await withCache<HomeCatalog>(
         key,
         async () => {
-          // 1. Tenta AniList (fonte primária do Hikari)
+          // 2. Tenta Redis compartilhado (somente dados base válidos do AniList)
+          const redisCatalog = await getRedisHomeCatalog(todayKey);
+          if (redisCatalog) {
+            // Mantém filterUpcomingTodayAnimes executando com o horário atual a partir de today-raw
+            // (RAM/Redis) ou filtrando os horários já carregados sem congelar episódios exibidos.
+            const refreshedToday = await fetchTodayScheduleFromAni().catch(() => null);
+            const nowSeconds = Math.floor(Date.now() / 1000);
+            return {
+              ...redisCatalog,
+              todaySchedule:
+                refreshedToday !== null
+                  ? refreshedToday
+                  : pruneUpcomingTodayScheduleList(
+                      redisCatalog.todaySchedule,
+                      todayKey,
+                      nowSeconds,
+                    ),
+            };
+          }
+
+          // 3. Tenta AniList (fonte primária do Hikari)
           try {
+            const fetchStartedAt = Date.now();
             const aniData = await fetchHomeFromAni();
+            if (
+              aniData?.source === "anilist" &&
+              aniData.trending.length > 0 &&
+              aniData.popular.length > 0 &&
+              aniData.season.length > 0
+            ) {
+              await setRedisHomeCatalog(todayKey, aniData, fetchStartedAt);
+            }
             if (aniData?.trending?.length > 0) {
               return aniData;
             }
@@ -5014,7 +5146,7 @@ export const fetchHomeCatalog =
             );
           }
 
-          // 2. Tenta MyAnimeList / Jikan (reserva secundária)
+          // 4. Tenta MyAnimeList / Jikan (reserva secundária — não gravada no Redis)
           try {
             const jikanData = await fetchHomeFromJikan();
             if (jikanData?.trending?.length > 0) {
@@ -5027,7 +5159,7 @@ export const fetchHomeCatalog =
             );
           }
 
-          // 3. Tenta Kitsu (reserva resiliente contra quedas de AniList e Jikan)
+          // 5. Tenta Kitsu (reserva terciária — não gravada no Redis)
           try {
             const kitsuData = await fetchHomeFromKitsu();
             if (kitsuData?.trending?.length > 0) {
@@ -5051,6 +5183,9 @@ export const fetchHomeCatalog =
           cacheFallback: false,
         },
       );
+
+      // Mesmo em hit de RAM local, remove episódios cujo horário já passou em America/Recife
+      const catalog = pruneUpcomingTodayScheduleFromCatalog(rawCatalog, todayKey);
 
       try {
         const { applyDbCatalogOverlayToHome } = await import(

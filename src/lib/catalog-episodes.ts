@@ -3,7 +3,14 @@ import { z } from "zod";
 import { adminMiddleware, bearerForwardMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import type { AnimeRecentBadges, Episode, Season } from "@/lib/types";
-import { getRedisCatalogEpisodes, setRedisCatalogEpisodes, invalidateRedisCatalogEpisodes } from "@/lib/redis";
+import {
+  getRedisCatalogEpisodes,
+  setRedisCatalogEpisodes,
+  invalidateRedisCatalogEpisodes,
+  getRedisPublicCatalogEpisodesWithFence,
+  setRedisPublicCatalogEpisodes,
+  invalidateRedisPublicCatalogEpisodes,
+} from "@/lib/redis";
 import {
   readTombstones,
   readTombstoneRecords,
@@ -301,36 +308,55 @@ export interface PublicEpisodesResult {
   error?: string;
 }
 
-/**
- * Consulta server-side direta dos episódios publicados no PostgreSQL para exibição pública
- * na Home e na página /episodes.
- * 
- * Regras da Etapa 4:
- * 1. Recupera apenas episódios marcados com published = true.
- * 2. Exclui rascunhos.
- * 3. Une metadados de anime e temporada canônicos.
- * 4. Ordena temporalmente de forma decrescente (mais recentes primeiro).
- * 5. Não executa escritas, mutações ou exclusões no banco de dados (leitura pura).
- * 6. Em caso de falha de conexão, retorna status = "error" com erro detalhado.
- */
-export async function executeGetPublicCatalogEpisodes(options?: {
-  limit?: number;
-  offset?: number;
-}): Promise<PublicEpisodesResult> {
+const PUBLIC_CATALOG_EPISODES_CACHE_TTL_MS = 180 * 1000; // 180 segundos
+const PUBLIC_CATALOG_EPISODES_MAX_RAM_ENTRIES = 20;
+
+const publicCatalogEpisodesCache = new Map<
+  string,
+  { data: PublicEpisodesResult; timestamp: number }
+>();
+const publicCatalogEpisodesInFlight = new Map<
+  string,
+  Promise<PublicEpisodesResult>
+>();
+let publicCatalogEpisodesCacheEpoch = 0;
+
+export function invalidatePublicCatalogEpisodesCache(): void {
+  publicCatalogEpisodesCacheEpoch += 1;
+  publicCatalogEpisodesCache.clear();
+  publicCatalogEpisodesInFlight.clear();
+  void invalidateRedisPublicCatalogEpisodes().catch(() => {});
+}
+
+function setPublicCatalogEpisodesRamCache(
+  cacheKey: string,
+  data: PublicEpisodesResult,
+): void {
+  if (
+    !publicCatalogEpisodesCache.has(cacheKey) &&
+    publicCatalogEpisodesCache.size >= PUBLIC_CATALOG_EPISODES_MAX_RAM_ENTRIES
+  ) {
+    const oldestKey = publicCatalogEpisodesCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      publicCatalogEpisodesCache.delete(oldestKey);
+    }
+  }
+  publicCatalogEpisodesCache.set(cacheKey, {
+    data,
+    timestamp: Date.now(),
+  });
+}
+
+async function queryPublicCatalogEpisodesFromDb(
+  limit: number,
+  offset: number,
+): Promise<PublicEpisodesResult> {
   try {
     const sql = await getSql();
     const {
       loadAllAnimeRecentBadgesFromDb,
       findAnimeRecentBadgesInLookup,
     } = await import("@/lib/catalog-badges");
-    const limit =
-      typeof options?.limit === "number" && options.limit > 0
-        ? options.limit
-        : 10000;
-    const offset =
-      typeof options?.offset === "number" && options.offset >= 0
-        ? options.offset
-        : 0;
 
     const [rows, badgeLookup] = await Promise.all([
       sql.query<PublicEpisodeRow>(
@@ -402,6 +428,102 @@ export async function executeGetPublicCatalogEpisodes(options?: {
       error: err?.message || String(err),
     };
   }
+}
+
+/**
+ * Consulta server-side direta dos episódios publicados no PostgreSQL para exibição pública
+ * na Home e na página /episodes.
+ * 
+ * Regras da Etapa 4 + Etapa 7:
+ * 1. Recupera apenas episódios marcados com published = true.
+ * 2. Exclui rascunhos.
+ * 3. Une metadados de anime e temporada canônicos.
+ * 4. Ordena temporalmente de forma decrescente (mais recentes primeiro).
+ * 5. Não executa escritas, mutações ou exclusões no banco de dados (leitura pura).
+ * 6. Em caso de falha de conexão, retorna status = "error" com erro detalhado.
+ * 7. Utiliza cache em RAM (180s) + singleflight + cache compartilhado Redis (180s) com fence.
+ */
+export async function executeGetPublicCatalogEpisodes(options?: {
+  limit?: number;
+  offset?: number;
+}): Promise<PublicEpisodesResult> {
+  const rawLimit =
+    typeof options?.limit === "number" &&
+    Number.isFinite(options.limit) &&
+    options.limit > 0
+      ? Math.floor(options.limit)
+      : 10000;
+  const limit = rawLimit > 0 ? rawLimit : 10000;
+  const offset =
+    typeof options?.offset === "number" &&
+    Number.isFinite(options.offset) &&
+    options.offset >= 0
+      ? Math.floor(options.offset)
+      : 0;
+
+  const cacheKey = limit === 10000 && offset === 0 ? "default" : `${limit}:${offset}`;
+
+  // 1. Primeira camada: cache local em memória (180s)
+  const now = Date.now();
+  const cached = publicCatalogEpisodesCache.get(cacheKey);
+  if (
+    cached &&
+    now - cached.timestamp < PUBLIC_CATALOG_EPISODES_CACHE_TTL_MS
+  ) {
+    return cached.data;
+  }
+
+  // Deduplicação singleflight por chave (limit/offset)
+  const existingFlight = publicCatalogEpisodesInFlight.get(cacheKey);
+  if (existingFlight) {
+    return existingFlight;
+  }
+
+  const requestEpoch = publicCatalogEpisodesCacheEpoch;
+  let flightRef: Promise<PublicEpisodesResult> | null = null;
+  const currentFlight = (async (): Promise<PublicEpisodesResult> => {
+    try {
+      // 2. Segunda camada: Redis compartilhado com verificação de geração (fence)
+      const redisRead = await getRedisPublicCatalogEpisodesWithFence(
+        limit,
+        offset,
+      );
+      if (redisRead.status === "hit" && redisRead.data) {
+        if (requestEpoch === publicCatalogEpisodesCacheEpoch) {
+          setPublicCatalogEpisodesRamCache(cacheKey, redisRead.data);
+        }
+        return redisRead.data;
+      }
+
+      // 3. Terceira camada: PostgreSQL em miss de RAM + Redis
+      const fetchStartedAt = Date.now();
+      const result = await queryPublicCatalogEpisodesFromDb(limit, offset);
+      if (
+        result.status !== "error" &&
+        requestEpoch === publicCatalogEpisodesCacheEpoch
+      ) {
+        setPublicCatalogEpisodesRamCache(cacheKey, result);
+        if (redisRead.fence) {
+          await setRedisPublicCatalogEpisodes(
+            result,
+            limit,
+            offset,
+            redisRead.fence,
+            fetchStartedAt,
+          );
+        }
+      }
+      return result;
+    } finally {
+      if (publicCatalogEpisodesInFlight.get(cacheKey) === flightRef) {
+        publicCatalogEpisodesInFlight.delete(cacheKey);
+      }
+    }
+  })();
+
+  flightRef = currentFlight;
+  publicCatalogEpisodesInFlight.set(cacheKey, currentFlight);
+  return currentFlight;
 }
 
 export const getPublicCatalogEpisodesSchema = z

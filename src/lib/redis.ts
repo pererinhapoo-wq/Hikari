@@ -1,7 +1,8 @@
 import { Redis } from "@upstash/redis";
 import type { DbCatalogAnimeRow } from "@/lib/catalog-server-overlay.server";
-import type { CatalogEpisodesResult } from "@/lib/catalog-episodes";
-import type { Anime, Episode, SlimAnime } from "@/lib/types";
+import type { CatalogEpisodesResult, PublicEpisodesResult } from "@/lib/catalog-episodes";
+import type { HomeEpisodesResult } from "@/lib/home-episodes";
+import type { Anime, Episode, HomeCatalog, SlimAnime } from "@/lib/types";
 
 const restUrl = typeof process !== "undefined" ? process.env.UPSTASH_REDIS_REST_URL?.trim() : undefined;
 const restToken = typeof process !== "undefined" ? process.env.UPSTASH_REDIS_REST_TOKEN?.trim() : undefined;
@@ -932,5 +933,675 @@ export async function invalidateRedisAnimeDetail(
     console.warn("[redis] Aviso ao invalidar detalhe do anime no Redis:", err instanceof Error ? err.message : err);
   }
 }
+
+const HOME_CATALOG_REDIS_KEY_PREFIX = "hikari:home:catalog:v1:";
+const HOME_CATALOG_REDIS_TTL_SEC = 600; // 10 minutos
+
+const HOME_TODAY_RAW_REDIS_KEY_PREFIX = "hikari:home:today-raw:v1:";
+const HOME_TODAY_RAW_REDIS_TTL_SEC = 900; // 15 minutos
+
+const HOME_SEASON_REDIS_KEY_PREFIX = "hikari:home:season:v1:";
+const HOME_SEASON_REDIS_TTL_SEC = 1800; // 30 minutos
+
+const HOME_ENVELOPE_PREFIX = "v1|";
+
+export type HomeTodayRawEntryShape = {
+  id: number;
+  airingAt: number;
+  episode: number;
+  media?: unknown;
+};
+
+export type RedisHomeWriteStatus =
+  | "inserted"
+  | "updated"
+  | "kept"
+  | "skipped"
+  | "unavailable"
+  | "failed";
+
+const GET_HOME_CACHE_SCRIPT = `
+local v = redis.call("GET", KEYS[1])
+if not v then
+  return nil
+end
+return ":" .. v
+`;
+
+// Grava somente se a chave não existir ou se o novo dado foi buscado mais recentemente
+// que o atualmente armazenado, evitando que voos concorrentes mais antigos ou lentos
+// sobrescrevam dados válidos mais novos.
+const SET_NEWER_HOME_CACHE_SCRIPT = `
+local cur = redis.call("GET", KEYS[1])
+if not cur then
+  redis.call("SET", KEYS[1], ARGV[1], "EX", tonumber(ARGV[3]))
+  return {"inserted"}
+end
+local curTs = tonumber(string.match(cur, "^v1|(%d+)|"))
+local nextTs = tonumber(ARGV[2])
+if curTs and nextTs and nextTs <= curTs then
+  return {"kept"}
+end
+redis.call("SET", KEYS[1], ARGV[1], "EX", tonumber(ARGV[3]))
+return {"updated"}
+`;
+
+function encodeHomeEnvelope(fetchedAt: number, data: unknown): string {
+  const safeTs =
+    typeof fetchedAt === "number" && Number.isFinite(fetchedAt) && fetchedAt > 0
+      ? Math.floor(fetchedAt)
+      : Date.now();
+  return `${HOME_ENVELOPE_PREFIX}${safeTs}|${JSON.stringify(data)}`;
+}
+
+function decodeHomeEnvelope<T>(raw: string): T | null {
+  try {
+    let jsonPayload = raw;
+    if (raw.startsWith(HOME_ENVELOPE_PREFIX)) {
+      const secondSep = raw.indexOf("|", HOME_ENVELOPE_PREFIX.length);
+      if (secondSep === -1) return null;
+      jsonPayload = raw.slice(secondSep + 1);
+    }
+    return JSON.parse(jsonPayload) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function readHomeRedisEnvelope<T>(key: string): Promise<T | null> {
+  if (!redisClient || typeof window !== "undefined") return null;
+  const res = await withRedisTimeout(
+    redisClient.eval<never[], unknown>(GET_HOME_CACHE_SCRIPT, [key], []),
+  );
+  const raw = extractPrefixedRaw(res);
+  if (!raw) return null;
+  return decodeHomeEnvelope<T>(raw);
+}
+
+async function writeHomeRedisEnvelope(
+  key: string,
+  ttlSec: number,
+  fetchedAt: number,
+  data: unknown,
+): Promise<RedisHomeWriteStatus> {
+  if (!redisClient || typeof window !== "undefined") {
+    return "unavailable";
+  }
+  const safeTs =
+    typeof fetchedAt === "number" && Number.isFinite(fetchedAt) && fetchedAt > 0
+      ? Math.floor(fetchedAt)
+      : Date.now();
+  const payload = encodeHomeEnvelope(safeTs, data);
+  const res = await withRedisTimeout(
+    redisClient.eval<string[], unknown[]>(
+      SET_NEWER_HOME_CACHE_SCRIPT,
+      [key],
+      [payload, String(safeTs), String(ttlSec)],
+    ),
+  );
+  if (!Array.isArray(res)) return "failed";
+  if (res[0] === "inserted") return "inserted";
+  if (res[0] === "updated") return "updated";
+  if (res[0] === "kept") return "kept";
+  return "failed";
+}
+
+function isValidAniListHomeCatalog(value: unknown): value is HomeCatalog {
+  if (!value || typeof value !== "object") return false;
+  const cat = value as Partial<HomeCatalog>;
+  return (
+    cat.source === "anilist" &&
+    Array.isArray(cat.trending) &&
+    cat.trending.length > 0 &&
+    Array.isArray(cat.popular) &&
+    cat.popular.length > 0 &&
+    Array.isArray(cat.season) &&
+    cat.season.length > 0 &&
+    Array.isArray(cat.todaySchedule) &&
+    typeof cat.seasonYear === "number" &&
+    typeof cat.seasonName === "string"
+  );
+}
+
+function isValidTodayRawEntry(entry: unknown): boolean {
+  if (!entry || typeof entry !== "object") return false;
+  const item = entry as Partial<HomeTodayRawEntryShape>;
+  return (
+    typeof item.id === "number" &&
+    Number.isFinite(item.id) &&
+    typeof item.airingAt === "number" &&
+    Number.isFinite(item.airingAt) &&
+    item.airingAt > 0 &&
+    typeof item.episode === "number" &&
+    Number.isFinite(item.episode)
+  );
+}
+
+function isValidAniListSlimList(items: unknown): items is SlimAnime[] {
+  if (!Array.isArray(items) || items.length === 0) return false;
+  return items.every(
+    (item) =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      typeof (item as SlimAnime).id === "string" &&
+      (item as SlimAnime).id.length > 0 &&
+      (item as SlimAnime).source === "anilist",
+  );
+}
+
+export async function getRedisHomeCatalog(
+  todayKey: string,
+): Promise<HomeCatalog | null> {
+  if (!redisClient || typeof window !== "undefined") return null;
+  const cleanDay = todayKey?.trim();
+  if (!cleanDay) return null;
+
+  const key = `${HOME_CATALOG_REDIS_KEY_PREFIX}${cleanDay}`;
+  try {
+    const parsed = await readHomeRedisEnvelope<HomeCatalog>(key);
+    return isValidAniListHomeCatalog(parsed) ? parsed : null;
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao buscar catálogo da Home no Redis (fallback para AniList):",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+export async function setRedisHomeCatalog(
+  todayKey: string,
+  catalog: HomeCatalog,
+  fetchedAt: number,
+): Promise<RedisHomeWriteStatus> {
+  if (!redisClient || typeof window !== "undefined") return "unavailable";
+  const cleanDay = todayKey?.trim();
+  if (!cleanDay || !isValidAniListHomeCatalog(catalog)) {
+    return "skipped";
+  }
+
+  const key = `${HOME_CATALOG_REDIS_KEY_PREFIX}${cleanDay}`;
+  try {
+    return await writeHomeRedisEnvelope(
+      key,
+      HOME_CATALOG_REDIS_TTL_SEC,
+      fetchedAt,
+      catalog,
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao salvar catálogo da Home no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+    return "failed";
+  }
+}
+
+export async function getRedisHomeTodayRaw<T extends HomeTodayRawEntryShape>(
+  todayKey: string,
+): Promise<T[] | null> {
+  if (!redisClient || typeof window !== "undefined") return null;
+  const cleanDay = todayKey?.trim();
+  if (!cleanDay) return null;
+
+  const key = `${HOME_TODAY_RAW_REDIS_KEY_PREFIX}${cleanDay}`;
+  try {
+    const parsed = await readHomeRedisEnvelope<unknown[]>(key);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    const valid = parsed.filter(isValidTodayRawEntry) as T[];
+    return valid.length > 0 ? valid : null;
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao buscar grade bruta de hoje no Redis (fallback para AniList):",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+export async function setRedisHomeTodayRaw<T extends HomeTodayRawEntryShape>(
+  todayKey: string,
+  entries: T[],
+  fetchedAt: number,
+): Promise<RedisHomeWriteStatus> {
+  if (!redisClient || typeof window !== "undefined") return "unavailable";
+  const cleanDay = todayKey?.trim();
+  if (!cleanDay || !Array.isArray(entries) || entries.length === 0) {
+    return "skipped";
+  }
+  const valid = entries.filter(isValidTodayRawEntry);
+  if (valid.length === 0) {
+    return "skipped";
+  }
+
+  const key = `${HOME_TODAY_RAW_REDIS_KEY_PREFIX}${cleanDay}`;
+  try {
+    return await writeHomeRedisEnvelope(
+      key,
+      HOME_TODAY_RAW_REDIS_TTL_SEC,
+      fetchedAt,
+      valid,
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao salvar grade bruta de hoje no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+    return "failed";
+  }
+}
+
+export async function getRedisHomeSeason(
+  year: number,
+  season: string,
+): Promise<SlimAnime[] | null> {
+  if (!redisClient || typeof window !== "undefined") return null;
+  const cleanSeason = season?.trim().toUpperCase();
+  if (!Number.isFinite(year) || year <= 0 || !cleanSeason) return null;
+
+  const key = `${HOME_SEASON_REDIS_KEY_PREFIX}${Math.floor(year)}:${cleanSeason}`;
+  try {
+    const parsed = await readHomeRedisEnvelope<SlimAnime[]>(key);
+    return isValidAniListSlimList(parsed) ? parsed : null;
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao buscar temporada da Home no Redis (fallback para AniList):",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+export async function setRedisHomeSeason(
+  year: number,
+  season: string,
+  items: SlimAnime[],
+  fetchedAt: number,
+): Promise<RedisHomeWriteStatus> {
+  if (!redisClient || typeof window !== "undefined") return "unavailable";
+  const cleanSeason = season?.trim().toUpperCase();
+  if (
+    !Number.isFinite(year) ||
+    year <= 0 ||
+    !cleanSeason ||
+    !isValidAniListSlimList(items)
+  ) {
+    return "skipped";
+  }
+
+  const key = `${HOME_SEASON_REDIS_KEY_PREFIX}${Math.floor(year)}:${cleanSeason}`;
+  try {
+    return await writeHomeRedisEnvelope(
+      key,
+      HOME_SEASON_REDIS_TTL_SEC,
+      fetchedAt,
+      items,
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao salvar temporada da Home no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+    return "failed";
+  }
+}
+
+const HOME_EPISODES_REDIS_KEY = "hikari:home:episodes:v1";
+const HOME_EPISODES_GEN_KEY = "hikari:home:episodes:gen:v1";
+const HOME_EPISODES_REDIS_TTL_SEC = 180; // 180 segundos
+
+const PUBLIC_CATALOG_EPISODES_REDIS_KEY = "hikari:catalog:episodes:public:v1";
+const PUBLIC_CATALOG_EPISODES_GEN_KEY = "hikari:catalog:episodes:public:gen:v1";
+const PUBLIC_CATALOG_EPISODES_REDIS_TTL_SEC = 180; // 180 segundos
+
+const PUBLIC_EPISODES_ENVELOPE_PREFIX = "v1|";
+const PUBLIC_EPISODES_MAX_REDIS_BYTES = 950_000;
+
+export type RedisPublicEpisodesReadResult<T> = {
+  status: "hit" | "miss" | "unavailable" | "failed";
+  data: T | null;
+  fence: string | null;
+};
+
+export type RedisPublicEpisodesWriteStatus =
+  | "inserted"
+  | "updated"
+  | "kept"
+  | "fenced"
+  | "skipped"
+  | "unavailable"
+  | "failed";
+
+// Lê a chave verificando atomicamente se a geração embutida no valor bate com a geração atual.
+// Em hit válido, devolve prefixado com ":" para evitar JSON.parse automático do @upstash/redis.
+const GET_PUBLIC_EPISODES_OR_FENCE_SCRIPT = `
+local curGen = tostring(redis.call("GET", KEYS[2]) or "0")
+local v = redis.call("GET", KEYS[1])
+if v then
+  local storedGen = string.match(v, "^v1|(%d+)|")
+  if storedGen and storedGen == curGen then
+    return {"hit", ":" .. v}
+  end
+end
+return {"miss", ":" .. curGen}
+`;
+
+// Grava somente se a geração não mudou desde o início da consulta (fence) e, quando já existir
+// dado válido na mesma geração, preserva o registro mais recente (por fetchedAt).
+const SET_PUBLIC_EPISODES_WITH_FENCE_SCRIPT = `
+local curGen = tostring(redis.call("GET", KEYS[2]) or "0")
+if curGen ~= tostring(ARGV[2]) then
+  return {"fenced"}
+end
+local cur = redis.call("GET", KEYS[1])
+if not cur then
+  redis.call("SET", KEYS[1], ARGV[1], "EX", tonumber(ARGV[4]))
+  return {"inserted"}
+end
+local curGenInVal, curTsStr = string.match(cur, "^v1|(%d+)|(%d+)|")
+local curTs = tonumber(curTsStr)
+local nextTs = tonumber(ARGV[3])
+if curGenInVal == curGen and curTs and nextTs and nextTs <= curTs then
+  return {"kept"}
+end
+redis.call("SET", KEYS[1], ARGV[1], "EX", tonumber(ARGV[4]))
+return {"updated"}
+`;
+
+const INVALIDATE_PUBLIC_EPISODES_SCRIPT = `
+local newGen = redis.call("INCR", KEYS[1])
+redis.call("DEL", KEYS[2])
+return ":" .. tostring(newGen)
+`;
+
+function getUtf8ByteLength(value: string): number {
+  if (typeof TextEncoder !== "undefined") {
+    return new TextEncoder().encode(value).length;
+  }
+  return value.length;
+}
+
+function encodePublicEpisodesEnvelope(
+  gen: string,
+  fetchedAt: number,
+  data: unknown,
+): string {
+  const safeGen = /^\d+$/.test(gen) ? gen : "0";
+  const safeTs =
+    typeof fetchedAt === "number" && Number.isFinite(fetchedAt) && fetchedAt > 0
+      ? Math.floor(fetchedAt)
+      : Date.now();
+  return `${PUBLIC_EPISODES_ENVELOPE_PREFIX}${safeGen}|${safeTs}|${JSON.stringify(data)}`;
+}
+
+function decodePublicEpisodesEnvelope<T>(raw: string): T | null {
+  try {
+    if (!raw.startsWith(PUBLIC_EPISODES_ENVELOPE_PREFIX)) return null;
+    const genStart = PUBLIC_EPISODES_ENVELOPE_PREFIX.length;
+    const secondSep = raw.indexOf("|", genStart);
+    if (secondSep === -1) return null;
+    const thirdSep = raw.indexOf("|", secondSep + 1);
+    if (thirdSep === -1) return null;
+    const jsonPayload = raw.slice(thirdSep + 1);
+    return JSON.parse(jsonPayload) as T;
+  } catch {
+    return null;
+  }
+}
+
+function isValidPublicEpisodeShape(ep: unknown): boolean {
+  if (!ep || typeof ep !== "object") return false;
+  const row = ep as Record<string, unknown>;
+  return (
+    typeof row.id === "string" &&
+    row.id.length > 0 &&
+    typeof row.animeId === "string" &&
+    row.animeId.length > 0 &&
+    typeof row.seasonNumber === "number" &&
+    Number.isFinite(row.seasonNumber) &&
+    typeof row.number === "number" &&
+    Number.isFinite(row.number) &&
+    row.published === true
+  );
+}
+
+function isValidPublicEpisodesPayload(
+  value: unknown,
+): value is HomeEpisodesResult | PublicEpisodesResult {
+  if (!value || typeof value !== "object") return false;
+  const res = value as Partial<HomeEpisodesResult | PublicEpisodesResult>;
+  if (res.status !== "success" && res.status !== "empty") return false;
+  if (!Array.isArray(res.episodes)) return false;
+  if (
+    typeof res.total !== "number" ||
+    !Number.isFinite(res.total) ||
+    res.total !== res.episodes.length
+  ) {
+    return false;
+  }
+  if (res.status === "empty" && res.episodes.length !== 0) return false;
+  if (res.status === "success" && res.episodes.length === 0) return false;
+  return res.episodes.every(isValidPublicEpisodeShape);
+}
+
+async function readPublicEpisodesWithFence<T extends HomeEpisodesResult | PublicEpisodesResult>(
+  valueKey: string,
+  genKey: string,
+  logLabel: string,
+): Promise<RedisPublicEpisodesReadResult<T>> {
+  if (!redisClient || typeof window !== "undefined") {
+    return { status: "unavailable", data: null, fence: null };
+  }
+
+  try {
+    const res = await withRedisTimeout(
+      redisClient.eval<never[], unknown[]>(
+        GET_PUBLIC_EPISODES_OR_FENCE_SCRIPT,
+        [valueKey, genKey],
+        [],
+      ),
+    );
+
+    if (!Array.isArray(res) || res.length < 2) {
+      return { status: "failed", data: null, fence: null };
+    }
+
+    if (res[0] === "hit") {
+      const raw = extractPrefixedRaw(res[1]);
+      const parsed = raw ? decodePublicEpisodesEnvelope<T>(raw) : null;
+      if (parsed && isValidPublicEpisodesPayload(parsed)) {
+        return { status: "hit", data: parsed, fence: null };
+      }
+      // Payload inválido ou corrompido: captura fence atual e trata como miss
+      const genRes = await withRedisTimeout(
+        redisClient.eval<never[], unknown[]>(
+          CAPTURE_FENCE_SCRIPT,
+          [genKey],
+          [],
+        ),
+      );
+      const genToken = Array.isArray(genRes) ? extractGenToken(genRes[0]) : null;
+      if (!genToken) {
+        return { status: "failed", data: null, fence: null };
+      }
+      return { status: "miss", data: null, fence: genToken };
+    }
+
+    if (res[0] === "miss") {
+      const genToken = extractGenToken(res[1]);
+      if (!genToken) {
+        return { status: "failed", data: null, fence: null };
+      }
+      return { status: "miss", data: null, fence: genToken };
+    }
+
+    return { status: "failed", data: null, fence: null };
+  } catch (err) {
+    console.warn(
+      `[redis] Aviso ao buscar ${logLabel} no Redis (fallback para DB):`,
+      err instanceof Error ? err.message : err,
+    );
+    return { status: "failed", data: null, fence: null };
+  }
+}
+
+async function writePublicEpisodesWithFence(
+  valueKey: string,
+  genKey: string,
+  ttlSec: number,
+  data: HomeEpisodesResult | PublicEpisodesResult,
+  fence: string | null,
+  fetchedAt: number,
+  logLabel: string,
+): Promise<RedisPublicEpisodesWriteStatus> {
+  if (!redisClient || typeof window !== "undefined") {
+    return "unavailable";
+  }
+  if (!fence) {
+    return "failed";
+  }
+  if (!isValidPublicEpisodesPayload(data)) {
+    return "skipped";
+  }
+
+  try {
+    const safeTs =
+      typeof fetchedAt === "number" && Number.isFinite(fetchedAt) && fetchedAt > 0
+        ? Math.floor(fetchedAt)
+        : Date.now();
+    const payload = encodePublicEpisodesEnvelope(fence, safeTs, data);
+    if (getUtf8ByteLength(payload) > PUBLIC_EPISODES_MAX_REDIS_BYTES) {
+      console.warn(
+        `[redis] Payload de ${logLabel} excede limite seguro para Redis (${PUBLIC_EPISODES_MAX_REDIS_BYTES} bytes); mantendo somente DB/RAM.`,
+      );
+      return "skipped";
+    }
+
+    const res = await withRedisTimeout(
+      redisClient.eval<string[], unknown[]>(
+        SET_PUBLIC_EPISODES_WITH_FENCE_SCRIPT,
+        [valueKey, genKey],
+        [payload, fence, String(safeTs), String(ttlSec)],
+      ),
+    );
+
+    if (!Array.isArray(res)) return "failed";
+    if (res[0] === "inserted") return "inserted";
+    if (res[0] === "updated") return "updated";
+    if (res[0] === "kept") return "kept";
+    if (res[0] === "fenced") return "fenced";
+    return "failed";
+  } catch (err) {
+    console.warn(
+      `[redis] Aviso ao salvar ${logLabel} no Redis:`,
+      err instanceof Error ? err.message : err,
+    );
+    return "failed";
+  }
+}
+
+export async function getRedisHomePublicEpisodesWithFence(): Promise<
+  RedisPublicEpisodesReadResult<HomeEpisodesResult>
+> {
+  return readPublicEpisodesWithFence<HomeEpisodesResult>(
+    HOME_EPISODES_REDIS_KEY,
+    HOME_EPISODES_GEN_KEY,
+    "episódios públicos da Home",
+  );
+}
+
+export async function setRedisHomePublicEpisodes(
+  result: HomeEpisodesResult,
+  fence: string | null,
+  fetchedAt: number,
+): Promise<RedisPublicEpisodesWriteStatus> {
+  return writePublicEpisodesWithFence(
+    HOME_EPISODES_REDIS_KEY,
+    HOME_EPISODES_GEN_KEY,
+    HOME_EPISODES_REDIS_TTL_SEC,
+    result,
+    fence,
+    fetchedAt,
+    "episódios públicos da Home",
+  );
+}
+
+export async function invalidateRedisHomePublicEpisodes(): Promise<void> {
+  if (!redisClient || typeof window !== "undefined") return;
+  try {
+    await withRedisTimeout(
+      redisClient.eval<never[], unknown>(
+        INVALIDATE_PUBLIC_EPISODES_SCRIPT,
+        [HOME_EPISODES_GEN_KEY, HOME_EPISODES_REDIS_KEY],
+        [],
+      ),
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao invalidar episódios públicos da Home no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+function buildPublicCatalogEpisodesRedisKey(
+  limit: number,
+  offset: number,
+): string {
+  if (limit === 10000 && offset === 0) {
+    return PUBLIC_CATALOG_EPISODES_REDIS_KEY;
+  }
+  return `${PUBLIC_CATALOG_EPISODES_REDIS_KEY}:${limit}:${offset}`;
+}
+
+export async function getRedisPublicCatalogEpisodesWithFence(
+  limit: number,
+  offset: number,
+): Promise<RedisPublicEpisodesReadResult<PublicEpisodesResult>> {
+  const valueKey = buildPublicCatalogEpisodesRedisKey(limit, offset);
+  return readPublicEpisodesWithFence<PublicEpisodesResult>(
+    valueKey,
+    PUBLIC_CATALOG_EPISODES_GEN_KEY,
+    "listagem pública /episodes",
+  );
+}
+
+export async function setRedisPublicCatalogEpisodes(
+  result: PublicEpisodesResult,
+  limit: number,
+  offset: number,
+  fence: string | null,
+  fetchedAt: number,
+): Promise<RedisPublicEpisodesWriteStatus> {
+  const valueKey = buildPublicCatalogEpisodesRedisKey(limit, offset);
+  return writePublicEpisodesWithFence(
+    valueKey,
+    PUBLIC_CATALOG_EPISODES_GEN_KEY,
+    PUBLIC_CATALOG_EPISODES_REDIS_TTL_SEC,
+    result,
+    fence,
+    fetchedAt,
+    "listagem pública /episodes",
+  );
+}
+
+export async function invalidateRedisPublicCatalogEpisodes(): Promise<void> {
+  if (!redisClient || typeof window !== "undefined") return;
+  try {
+    await withRedisTimeout(
+      redisClient.eval<never[], unknown>(
+        INVALIDATE_PUBLIC_EPISODES_SCRIPT,
+        [PUBLIC_CATALOG_EPISODES_GEN_KEY, PUBLIC_CATALOG_EPISODES_REDIS_KEY],
+        [],
+      ),
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao invalidar listagem pública /episodes no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 
 

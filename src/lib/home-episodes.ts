@@ -1,5 +1,11 @@
 import { getSql } from "@/lib/db";
 import type { AnimeRecentBadges } from "@/lib/catalog-badges";
+import { invalidatePublicCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import {
+  getRedisHomePublicEpisodesWithFence,
+  setRedisHomePublicEpisodes,
+  invalidateRedisHomePublicEpisodes,
+} from "@/lib/redis";
 
 export interface HomeEpisodeRow {
   id: string;
@@ -56,6 +62,8 @@ export function invalidateHomePublicEpisodesCache(): void {
   homePublicEpisodesCacheEpoch += 1;
   cachedHomePublicEpisodesResult = null;
   homePublicEpisodesInFlightPromise = null;
+  void invalidateRedisHomePublicEpisodes().catch(() => {});
+  invalidatePublicCatalogEpisodesCache();
 }
 
 async function queryHomePublicEpisodesFromDb(
@@ -184,12 +192,33 @@ export async function executeGetHomePublicEpisodes(options?: {
   let flightRef: Promise<HomeEpisodesResult> | null = null;
   const currentFlight = (async (): Promise<HomeEpisodesResult> => {
     try {
+      // 2. Segunda camada: Redis compartilhado com verificação de geração (fence)
+      const redisRead = await getRedisHomePublicEpisodesWithFence();
+      if (redisRead.status === "hit" && redisRead.data) {
+        if (requestEpoch === homePublicEpisodesCacheEpoch) {
+          cachedHomePublicEpisodesResult = {
+            data: redisRead.data,
+            timestamp: Date.now(),
+          };
+        }
+        return redisRead.data;
+      }
+
+      // 3. Terceira camada: PostgreSQL em miss de RAM + Redis
+      const fetchStartedAt = Date.now();
       const result = await queryHomePublicEpisodesFromDb(limit, offset);
       if (result.status !== "error" && requestEpoch === homePublicEpisodesCacheEpoch) {
         cachedHomePublicEpisodesResult = {
           data: result,
           timestamp: Date.now(),
         };
+        if (redisRead.fence) {
+          await setRedisHomePublicEpisodes(
+            result,
+            redisRead.fence,
+            fetchStartedAt,
+          );
+        }
       }
       return result;
     } finally {
