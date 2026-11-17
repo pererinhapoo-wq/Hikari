@@ -43,30 +43,31 @@ export interface HomeEpisodesResult {
   error?: string;
 }
 
-/**
- * Consulta otimizada e exclusiva para a Home, projetando somente as colunas
- * necessárias para a vitrine de episódios recentes e removendo campos inativos
- * (videoUrl2-5, synopsis, duration, animeCreatedAt, animeUpdatedAt) para
- * otimizar o payload de transferência entre Neon e Vercel e o JSON de hidratação SSR.
- */
-export async function executeGetHomePublicEpisodes(options?: {
-  limit?: number;
-  offset?: number;
-}): Promise<HomeEpisodesResult> {
+const HOME_PUBLIC_EPISODES_CACHE_TTL_MS = 180 * 1000; // 180 segundos
+
+let cachedHomePublicEpisodesResult: {
+  data: HomeEpisodesResult;
+  timestamp: number;
+} | null = null;
+let homePublicEpisodesInFlightPromise: Promise<HomeEpisodesResult> | null = null;
+let homePublicEpisodesCacheEpoch = 0;
+
+export function invalidateHomePublicEpisodesCache(): void {
+  homePublicEpisodesCacheEpoch += 1;
+  cachedHomePublicEpisodesResult = null;
+  homePublicEpisodesInFlightPromise = null;
+}
+
+async function queryHomePublicEpisodesFromDb(
+  limit: number,
+  offset: number,
+): Promise<HomeEpisodesResult> {
   try {
     const sql = await getSql();
     const {
       loadAllAnimeRecentBadgesFromDb,
       findAnimeRecentBadgesInLookup,
     } = await import("@/lib/catalog-badges");
-    const limit =
-      typeof options?.limit === "number" && options.limit > 0
-        ? options.limit
-        : 10000;
-    const offset =
-      typeof options?.offset === "number" && options.offset >= 0
-        ? options.offset
-        : 0;
 
     const [rows, badgeLookup] = await Promise.all([
       sql.query<HomeEpisodeRow>(
@@ -138,4 +139,67 @@ export async function executeGetHomePublicEpisodes(options?: {
       error: err?.message || String(err),
     };
   }
+}
+
+/**
+ * Consulta otimizada e exclusiva para a Home, projetando somente as colunas
+ * necessárias para a vitrine de episódios recentes e removendo campos inativos
+ * (videoUrl2-5, synopsis, duration, animeCreatedAt, animeUpdatedAt) para
+ * otimizar o payload de transferência entre Neon e Vercel e o JSON de hidratação SSR.
+ *
+ * Para a chamada padrão da Home (limit === 10000 e offset === 0), utiliza cache
+ * em memória por instância (TTL de 180s) com singleflight para evitar consultas
+ * duplicadas ao Neon em acessos simultâneos.
+ */
+export async function executeGetHomePublicEpisodes(options?: {
+  limit?: number;
+  offset?: number;
+}): Promise<HomeEpisodesResult> {
+  const limit =
+    typeof options?.limit === "number" && options.limit > 0
+      ? options.limit
+      : 10000;
+  const offset =
+    typeof options?.offset === "number" && options.offset >= 0
+      ? options.offset
+      : 0;
+
+  if (limit !== 10000 || offset !== 0) {
+    return queryHomePublicEpisodesFromDb(limit, offset);
+  }
+
+  const now = Date.now();
+  if (
+    cachedHomePublicEpisodesResult &&
+    now - cachedHomePublicEpisodesResult.timestamp < HOME_PUBLIC_EPISODES_CACHE_TTL_MS
+  ) {
+    return cachedHomePublicEpisodesResult.data;
+  }
+
+  if (homePublicEpisodesInFlightPromise) {
+    return homePublicEpisodesInFlightPromise;
+  }
+
+  const requestEpoch = homePublicEpisodesCacheEpoch;
+  let flightRef: Promise<HomeEpisodesResult> | null = null;
+  const currentFlight = (async (): Promise<HomeEpisodesResult> => {
+    try {
+      const result = await queryHomePublicEpisodesFromDb(limit, offset);
+      if (result.status !== "error" && requestEpoch === homePublicEpisodesCacheEpoch) {
+        cachedHomePublicEpisodesResult = {
+          data: result,
+          timestamp: Date.now(),
+        };
+      }
+      return result;
+    } finally {
+      if (homePublicEpisodesInFlightPromise === flightRef) {
+        homePublicEpisodesInFlightPromise = null;
+      }
+    }
+  })();
+
+  flightRef = currentFlight;
+  homePublicEpisodesInFlightPromise = currentFlight;
+  return currentFlight;
 }

@@ -53,7 +53,7 @@ function isDubbedCatalogRow(row: {
   );
 }
 
-interface CatalogIndex {
+export interface CatalogIndex {
   byId: Map<string, DbCatalogAnimeRow>;
   byAnilistId: Map<number, DbCatalogAnimeRow>;
   byMalId: Map<number, DbCatalogAnimeRow>;
@@ -61,86 +61,109 @@ interface CatalogIndex {
 }
 
 let cachedCatalogIndex: { data: CatalogIndex; timestamp: number } | null = null;
+let catalogIndexInFlightPromise: Promise<CatalogIndex | null> | null = null;
+let catalogIndexCacheEpoch = 0;
 const CATALOG_INDEX_TTL_MS = 3 * 60 * 1000; // 3 minutos
 
 export function invalidateCatalogIndex(): void {
+  catalogIndexCacheEpoch += 1;
   cachedCatalogIndex = null;
+  catalogIndexInFlightPromise = null;
 }
 
-async function loadCatalogIndex(): Promise<CatalogIndex | null> {
+export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
   const now = Date.now();
   if (cachedCatalogIndex && now - cachedCatalogIndex.timestamp < CATALOG_INDEX_TTL_MS) {
     return cachedCatalogIndex.data;
   }
 
-  try {
-    const sql = await getSql();
-    const rows = await sql.query<DbCatalogAnimeRow>(
-      `SELECT
-         "id",
-         "title",
-         "anilistId",
-         "malId",
-         "kitsuId",
-         "titleRomaji",
-         "titleEnglish",
-         "titleNative",
-         "cover",
-         "banner",
-         "synopsis",
-         "format",
-         "status",
-         "episodesCount",
-         "year",
-         "season",
-         "genres",
-         "trailerId",
-         "hidden",
-         "score",
-         "updatedAt"
-       FROM "catalog_anime"
-       ORDER BY "updatedAt" DESC;`,
-    );
-
-    if (!rows || rows.length === 0) {
-      return null;
-    }
-
-    const byId = new Map<string, DbCatalogAnimeRow>();
-    const byAnilistId = new Map<number, DbCatalogAnimeRow>();
-    const byMalId = new Map<number, DbCatalogAnimeRow>();
-    const byKitsuId = new Map<number, DbCatalogAnimeRow>();
-
-    for (const row of rows) {
-      if (row.hidden) {
-        continue;
-      }
-      if (!byId.has(row.id)) {
-        byId.set(row.id, row);
-      }
-
-      if (isDubbedCatalogRow(row)) {
-        continue;
-      }
-
-      if (typeof row.anilistId === "number" && row.anilistId > 0 && !byAnilistId.has(row.anilistId)) {
-        byAnilistId.set(row.anilistId, row);
-      }
-      if (typeof row.malId === "number" && row.malId > 0 && !byMalId.has(row.malId)) {
-        byMalId.set(row.malId, row);
-      }
-      if (typeof row.kitsuId === "number" && row.kitsuId > 0 && !byKitsuId.has(row.kitsuId)) {
-        byKitsuId.set(row.kitsuId, row);
-      }
-    }
-
-    const index = { byId, byAnilistId, byMalId, byKitsuId };
-    cachedCatalogIndex = { data: index, timestamp: now };
-    return index;
-  } catch (err) {
-    console.warn("[catalog-server-overlay] Falha ao consultar catalog_anime:", err);
-    return cachedCatalogIndex?.data ?? null;
+  if (catalogIndexInFlightPromise) {
+    return catalogIndexInFlightPromise;
   }
+
+  const requestEpoch = catalogIndexCacheEpoch;
+  let flightRef: Promise<CatalogIndex | null> | null = null;
+
+  const currentFlight = (async (): Promise<CatalogIndex | null> => {
+    try {
+      const sql = await getSql();
+      const rows = await sql.query<DbCatalogAnimeRow>(
+        `SELECT
+           "id",
+           "title",
+           "anilistId",
+           "malId",
+           "kitsuId",
+           "titleRomaji",
+           "titleEnglish",
+           "titleNative",
+           "cover",
+           "banner",
+           "synopsis",
+           "format",
+           "status",
+           "episodesCount",
+           "year",
+           "season",
+           "genres",
+           "trailerId",
+           "hidden",
+           "score",
+           "updatedAt"
+         FROM "catalog_anime"
+         ORDER BY "updatedAt" DESC;`,
+      );
+
+      if (!rows || rows.length === 0) {
+        return null;
+      }
+
+      const byId = new Map<string, DbCatalogAnimeRow>();
+      const byAnilistId = new Map<number, DbCatalogAnimeRow>();
+      const byMalId = new Map<number, DbCatalogAnimeRow>();
+      const byKitsuId = new Map<number, DbCatalogAnimeRow>();
+
+      for (const row of rows) {
+        if (row.hidden) {
+          continue;
+        }
+        if (!byId.has(row.id)) {
+          byId.set(row.id, row);
+        }
+
+        if (isDubbedCatalogRow(row)) {
+          continue;
+        }
+
+        if (typeof row.anilistId === "number" && row.anilistId > 0 && !byAnilistId.has(row.anilistId)) {
+          byAnilistId.set(row.anilistId, row);
+        }
+        if (typeof row.malId === "number" && row.malId > 0 && !byMalId.has(row.malId)) {
+          byMalId.set(row.malId, row);
+        }
+        if (typeof row.kitsuId === "number" && row.kitsuId > 0 && !byKitsuId.has(row.kitsuId)) {
+          byKitsuId.set(row.kitsuId, row);
+        }
+      }
+
+      const index = { byId, byAnilistId, byMalId, byKitsuId };
+      if (requestEpoch === catalogIndexCacheEpoch) {
+        cachedCatalogIndex = { data: index, timestamp: Date.now() };
+      }
+      return index;
+    } catch (err) {
+      console.warn("[catalog-server-overlay] Falha ao consultar catalog_anime:", err);
+      return cachedCatalogIndex?.data ?? null;
+    } finally {
+      if (catalogIndexInFlightPromise === flightRef) {
+        catalogIndexInFlightPromise = null;
+      }
+    }
+  })();
+
+  flightRef = currentFlight;
+  catalogIndexInFlightPromise = currentFlight;
+  return currentFlight;
 }
 
 function findMatchingRow(

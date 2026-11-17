@@ -5,6 +5,7 @@ import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 import { invalidateServerCatalogCaches } from "@/lib/api";
 
 function sanitizeVideoUrl(url?: string | null): string | null {
@@ -312,6 +313,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
           for (const aId of affectedAnimeIds) {
             invalidateCatalogEpisodesCache(aId);
           }
+          invalidateHomePublicEpisodesCache();
           invalidateServerCatalogCaches();
 
           return Response.json({

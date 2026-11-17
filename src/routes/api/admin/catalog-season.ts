@@ -4,6 +4,7 @@ import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolati
 import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 
 const seasonDeleteSchema = z.object({
   animeId: z.string().trim().min(1, "animeId é obrigatório").max(128),
@@ -55,6 +56,7 @@ export const Route = createFileRoute("/api/admin/catalog-season")({
           );
 
           invalidateCatalogEpisodesCache(animeId);
+          invalidateHomePublicEpisodesCache();
 
           return Response.json({
             ok: true,
@@ -133,6 +135,9 @@ export const Route = createFileRoute("/api/admin/catalog-season")({
           );
 
           invalidateCatalogEpisodesCache(animeId);
+          if (seasonResult.length > 0 || episodeResult.length > 0) {
+            invalidateHomePublicEpisodesCache();
+          }
 
           return Response.json({
             ok: true,

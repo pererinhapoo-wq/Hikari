@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 import {
   normalizeAnimeRecentBadges,
   type AnimeRecentBadges,
@@ -90,6 +91,7 @@ const BADGES_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutos
 export function invalidateAnimeRecentBadgesCache(): void {
   cachedBadgesResult = null;
   badgesInFlightPromise = null;
+  invalidateHomePublicEpisodesCache();
 }
 
 export async function loadAllAnimeRecentBadgesFromDb(): Promise<AnimeRecentBadgesLookup> {

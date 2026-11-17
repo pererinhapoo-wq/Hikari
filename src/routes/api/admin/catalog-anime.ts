@@ -4,6 +4,7 @@ import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolati
 import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 import { invalidateServerCatalogCaches } from "@/lib/api";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import {
@@ -344,6 +345,7 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
           if (data.id !== canonicalSavedId) {
             invalidateCatalogEpisodesCache(data.id);
           }
+          invalidateHomePublicEpisodesCache();
           invalidateServerCatalogCaches(canonicalSavedId, {
             anilistId: savedRow?.anilistId ?? data.anilistId,
             malId: savedRow?.malId ?? data.malId,
@@ -443,6 +445,9 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             );
 
             invalidateCatalogEpisodesCache(animeId);
+            if (sRes.length > 0 || epRes.length > 0) {
+              invalidateHomePublicEpisodesCache();
+            }
 
             return Response.json({
               ok: true,
@@ -469,6 +474,9 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
 
           await deleteAnimeRecentBadgesFromDb(animeId);
           invalidateCatalogEpisodesCache(animeId);
+          if (result.length > 0) {
+            invalidateHomePublicEpisodesCache();
+          }
           invalidateServerCatalogCaches(animeId, result[0]);
 
           return Response.json({

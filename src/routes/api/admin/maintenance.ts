@@ -9,6 +9,7 @@ import {
   invalidatePublicSettingsCache,
 } from "@/lib/settings/settings.server";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 import { invalidateServerCatalogCaches } from "@/lib/api";
 
 const updateMaintenanceSchema = z.object({
@@ -245,6 +246,7 @@ export const Route = createFileRoute("/api/admin/maintenance")({
 
             if (payload.target === "episodes" || payload.target === "all") {
               invalidateCatalogEpisodesCache();
+              invalidateHomePublicEpisodesCache();
               cleared.push("Cache de Episódios em Memória");
             }
 

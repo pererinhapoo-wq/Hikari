@@ -6,13 +6,11 @@ import {
   resolvePublicRecentEpisodes,
   type PublishedEpisode,
 } from "@/lib/published-episodes";
-import {
-  getPublicCatalogEpisodes,
-  type PublicEpisodesResult,
-} from "@/lib/catalog-episodes";
+import { getHomePublicEpisodes } from "@/lib/home-episodes.functions";
+import type { PublicEpisodesResult } from "@/lib/catalog-episodes";
 import { EpisodeCard } from "@/components/episode-card";
 
-const FOCUS_REFRESH_THROTTLE_MS = 15_000;
+const FOCUS_REFRESH_THROTTLE_MS = 180_000;
 
 function EpisodeCardSkeleton() {
   return (
@@ -41,7 +39,7 @@ export function RecentEpisodesSection({
   const [liveServerResult, setLiveServerResult] =
     useState<PublicEpisodesResult | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const lastFetchAtRef = useRef<number>(0);
+  const lastFetchAtRef = useRef<number>(Date.now());
   const inFlightRef = useRef<boolean>(false);
 
   // Sincroniza quando o loader da rota entrega novo serverResult
@@ -63,7 +61,7 @@ export function RecentEpisodesSection({
     lastFetchAtRef.current = now;
     setIsSyncing(true);
     try {
-      const fresh = await getPublicCatalogEpisodes();
+      const fresh = await getHomePublicEpisodes();
       if (fresh && fresh.status !== "error") {
         setLiveServerResult(fresh);
       }
@@ -75,13 +73,12 @@ export function RecentEpisodesSection({
     }
   }, []);
 
-  // Recupera automaticamente no cliente caso SSR tenha falhado ou retornado vazio
+  // Recupera automaticamente no cliente apenas caso SSR não tenha entregue dados ou tenha falhado
   useEffect(() => {
     if (
       serverResult === undefined ||
       serverResult === null ||
-      serverResult.status === "error" ||
-      serverResult.status === "empty"
+      serverResult.status === "error"
     ) {
       void refreshPublicEpisodes(true);
     }

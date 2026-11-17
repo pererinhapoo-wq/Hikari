@@ -9,6 +9,7 @@ import {
   invalidatePublicSettingsCache,
 } from "@/lib/settings/settings.server";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 import { invalidateServerCatalogCaches } from "@/lib/api";
 import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 
@@ -524,6 +525,7 @@ export const Route = createFileRoute("/api/admin/backup")({
 
             // Invalidação geral de caches
             invalidateCatalogEpisodesCache();
+            invalidateHomePublicEpisodesCache();
             invalidateServerCatalogCaches();
             invalidatePublicSettingsCache();
 

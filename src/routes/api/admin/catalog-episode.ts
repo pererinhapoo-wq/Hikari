@@ -8,6 +8,7 @@ import {
 } from "@/lib/published-episodes";
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 
 const episodePostSchema = z.object({
   id: z.string().trim().min(1, "id é obrigatório").max(128, "id muito longo"),
@@ -404,8 +405,9 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             }
           }
 
-          // Invalida cache em memória do anime para refletir as alterações
+          // Invalida cache em memória do anime e da Home para refletir as alterações
           invalidateCatalogEpisodesCache(data.animeId);
+          invalidateHomePublicEpisodesCache();
 
           return Response.json({
             ok: true,
@@ -483,6 +485,9 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           const targetAnimeId = animeId || deleted?.animeId;
           if (targetAnimeId) {
             invalidateCatalogEpisodesCache(targetAnimeId);
+          }
+          if (deleted) {
+            invalidateHomePublicEpisodesCache();
           }
 
           return Response.json({
