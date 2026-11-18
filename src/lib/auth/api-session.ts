@@ -1,4 +1,5 @@
 import { auth, authConfigured } from "@/lib/auth/server";
+import { gateIdentityEnabled } from "@/lib/auth/gate-identity.server";
 import { type Sql } from "@/lib/db";
 
 export type ApiUser = {
@@ -10,36 +11,20 @@ export type ApiUser = {
 
 /**
  * Resolves the authenticated user for API route handlers (/api/*).
- * Supports standard cookies, Authorization Bearer headers (preview iframe),
+ * Supports standard cookies, Authorization Bearer headers (handled natively by
+ * Better Auth's `bearer()` plugin inside `auth.api.getSession`),
  * and dev fallback (when auth is off in sandbox).
  */
 export async function resolveApiUser(
   request: Request,
   sql?: Sql,
 ): Promise<ApiUser | null> {
-  // 1. Try Better Auth with request headers
-  try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-    if (session?.user?.id) {
-      return {
-        id: session.user.id,
-        name: session.user.name || "Usuário",
-        email: session.user.email ?? null,
-        image: session.user.image ?? null,
-      };
-    }
-  } catch (err) {
-    console.warn("[api-session] getSession error:", err);
-  }
-
-  // 2. Explicit Bearer token header handling
-  const authHeader = request.headers.get("authorization");
-  if (authHeader?.startsWith("Bearer ")) {
+  // 1. Try Better Auth with request headers (handles both cookies and Bearer tokens via bearer() plugin)
+  if (authConfigured || gateIdentityEnabled()) {
     try {
-      const headers = new Headers(request.headers);
-      const session = await auth.api.getSession({ headers });
+      const session = await auth.api.getSession({
+        headers: request.headers,
+      });
       if (session?.user?.id) {
         return {
           id: session.user.id,
@@ -48,12 +33,12 @@ export async function resolveApiUser(
           image: session.user.image ?? null,
         };
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.warn("[api-session] getSession error:", err);
     }
   }
 
-  // 3. Fallback when auth is disabled in dev / preview (VITE_AUTH_ENABLED=false)
+  // 2. Fallback when auth is disabled in dev / preview (VITE_AUTH_ENABLED=false)
   const isAuthDisabled =
     process.env.VITE_AUTH_ENABLED === "false" || !authConfigured;
 

@@ -325,6 +325,12 @@ export const auth = betterAuth({
     },
   },
 
+  // Use native SQL LEFT JOIN in Kysely adapter so session + user lookups on
+  // cookieCache miss or Bearer auth execute 1 DB round-trip instead of 2.
+  experimental: {
+    joins: true,
+  },
+
   // Local email/password — toggled only via `./email-password` (not a plugin).
   ...(emailAndPasswordEnabled
     ? { emailAndPassword: { enabled: true } }

@@ -135,6 +135,23 @@ export const startEpisodeSession = createServerFn({
 
 /**
  * Executa o heartbeat de progresso de reprodução para um usuário autenticado.
+ *
+ * Otimização em 3 caminhos equivalentes semanticamente à query atômica original:
+ * 1. Fast path ativo (`!mightComplete && willAdvanceTime`):
+ *    - Quando `roundDuration` é conhecido e `10 * roundCurrentTime < 9 * roundDuration`,
+ *      é matematicamente impossível atingir o critério de 90% (`shouldComplete = false`).
+ *    - Executa um único `UPDATE ... FROM "user_anime_tracking" RETURNING` sem CTEs,
+ *      sem `FOR UPDATE` em `user_anime_tracking`, sem consulta a `user_watched_episode`
+ *      e sem segunda leitura PK em `user_episode_progress` ou `user_anime_tracking`.
+ * 2. Fast path estático (`!mightComplete && !willAdvanceTime`):
+ *    - Para pausas, buffering, seek ou `deltaMs = 0` abaixo de 90%, `effectiveDeltaMs = 0`.
+ *    - Mantém `FOR UPDATE OF uep` (sem bloquear `user_anime_tracking`) e só executa
+ *      `UPDATE` se `currentTime` ou `duration` mudaram, evitando escrita/dead tuples no-op.
+ * 3. Caminho com avaliação de conclusão (`mightComplete`):
+ *    - Preserva a ordem global de bloqueios (`1. user_anime_tracking FOR UPDATE`,
+ *      `2. user_episode_progress FOR UPDATE`), elimina self-join entre CTEs,
+ *      só consulta `user_watched_episode` quando `shouldComplete = true`, evita
+ *      `UPDATE` no-op e reutiliza `prevEpisodesWatched` sem leitura duplicada.
  */
 export async function executeHeartbeatEpisodeProgress(
   userId: string,
@@ -150,7 +167,6 @@ export async function executeHeartbeatEpisodeProgress(
     isPlaying = true,
     isBuffering = false,
     isSeeking = false,
-    animeSnapshot,
   } = data;
 
   const sql = await getSql();
@@ -158,192 +174,314 @@ export async function executeHeartbeatEpisodeProgress(
   const targetAnimeId = animeId;
 
   const roundCurrentTime = Math.max(0, Math.round(currentTime));
-  const roundDuration = duration && duration > 0 ? Math.round(duration) : null;
-  const cleanDeltaMs = deltaMs !== undefined && deltaMs !== null ? Math.max(0, Math.round(deltaMs)) : null;
+  const roundedDuration = duration && duration > 0 ? Math.round(duration) : null;
+  const roundDuration = roundedDuration && roundedDuration > 0 ? roundedDuration : null;
+  const cleanDeltaMs =
+    deltaMs !== undefined && deltaMs !== null ? Math.max(0, Math.round(deltaMs)) : null;
 
-  // Ordem estrita de bloqueios:
-  // 1. user_anime_tracking FOR UPDATE
-  // 2. user_episode_progress FOR UPDATE (validando playbackSessionId)
-  // 3. user_watched_episode INSERT (somente se critérios de 90% forem atendidos)
-  // 4. user_anime_tracking e user_episode_progress UPDATE
-  const atomicHeartbeatQuery = `
-    WITH tracking_lock AS (
-      SELECT "userId", "animeId", "episodesWatched"
-      FROM "user_anime_tracking"
-      WHERE "userId" = $1 AND "animeId" = $2
-      FOR UPDATE
-    ),
-    existing_ep AS (
-      SELECT exists (
-        SELECT 1 FROM "user_watched_episode"
-        WHERE "userId" = $1 AND "animeId" = $2 AND "episodeId" = $3
-      ) AS "wasWatched"
-    ),
-    progress_lock AS (
-      SELECT
-        uep."userId",
-        uep."animeId",
-        uep."episodeId",
-        uep."episodeNumber",
-        uep."currentTime",
-        uep."duration",
-        uep."accumulatedTime",
-        uep."accumulatedRemainderMs",
-        uep."autoCompleteSuppressed",
-        uep."playbackSessionId",
-        uep."updatedAt",
-        EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - uep."updatedAt")) * 1000 AS "serverElapsedMs"
-      FROM "user_episode_progress" uep
-      JOIN tracking_lock tl ON tl."userId" = uep."userId" AND tl."animeId" = uep."animeId"
-      WHERE uep."episodeId" = $3
-        AND uep."playbackSessionId" = $4
-      FOR UPDATE
-    ),
-    computed_progress AS (
-      SELECT
-        pl."userId",
-        pl."animeId",
-        pl."episodeId",
-        pl."episodeNumber",
-        pl."autoCompleteSuppressed",
-        COALESCE($6, pl."duration") AS "effectiveDuration",
-        LEAST(GREATEST(0, FLOOR(pl."serverElapsedMs")::int), 40000) AS "serverAllowedMs",
-        CASE
-          WHEN $8::boolean = true AND $9::boolean = false AND $10::boolean = false THEN
-            CASE
-              WHEN $7::int IS NOT NULL THEN
-                LEAST(GREATEST(0, $7::int), LEAST(GREATEST(0, FLOOR(pl."serverElapsedMs")::int), 40000))
-              ELSE
-                LEAST(GREATEST(0, FLOOR(pl."serverElapsedMs")::int), 40000)
-            END
-          ELSE 0
-        END AS "effectiveDeltaMs"
-      FROM progress_lock pl
-    ),
-    accum_calc AS (
-      SELECT
-        cp.*,
-        (pl."accumulatedRemainderMs" + cp."effectiveDeltaMs") AS "totalMs",
-        FLOOR((pl."accumulatedRemainderMs" + cp."effectiveDeltaMs") / 1000)::int AS "addedSec",
-        ((pl."accumulatedRemainderMs" + cp."effectiveDeltaMs") % 1000)::int AS "newRemainderMs",
-        CASE
-          WHEN cp."effectiveDuration" IS NOT NULL AND cp."effectiveDuration" > 0 THEN
-            LEAST(pl."accumulatedTime" + FLOOR((pl."accumulatedRemainderMs" + cp."effectiveDeltaMs") / 1000)::int, cp."effectiveDuration")
-          ELSE
-            pl."accumulatedTime" + FLOOR((pl."accumulatedRemainderMs" + cp."effectiveDeltaMs") / 1000)::int
-        END AS "newAccumulatedTime",
-        CASE
-          WHEN cp."effectiveDuration" IS NOT NULL AND cp."effectiveDuration" > 0 THEN
-            LEAST(GREATEST(0, $5::int), cp."effectiveDuration")
-          ELSE
-            GREATEST(0, $5::int)
-        END AS "newCurrentTime"
-      FROM computed_progress cp
-      JOIN progress_lock pl ON pl."userId" = cp."userId" AND pl."animeId" = cp."animeId" AND pl."episodeId" = cp."episodeId"
-    ),
-    completion_check AS (
-      SELECT
-        ac.*,
-        CASE
-          WHEN ac."effectiveDuration" IS NOT NULL
-            AND ac."effectiveDuration" > 0
-            AND ac."autoCompleteSuppressed" = false
-            AND ac."newCurrentTime" >= (0.9 * ac."effectiveDuration")
-            AND ac."newAccumulatedTime" >= (0.9 * ac."effectiveDuration")
-          THEN true
-          ELSE false
-        END AS "shouldComplete"
-      FROM accum_calc ac
-    ),
-    progress_update AS (
-      UPDATE "user_episode_progress" uep
-      SET
-        "currentTime" = cc."newCurrentTime",
-        "duration" = cc."effectiveDuration",
-        "accumulatedTime" = cc."newAccumulatedTime",
-        "accumulatedRemainderMs" = cc."newRemainderMs",
-        "autoCompleteSuppressed" = CASE
-          WHEN cc."shouldComplete" = true THEN true
-          ELSE uep."autoCompleteSuppressed"
-        END,
-        "updatedAt" = CURRENT_TIMESTAMP
-      FROM completion_check cc
-      WHERE uep."userId" = cc."userId"
-        AND uep."animeId" = cc."animeId"
-        AND uep."episodeId" = cc."episodeId"
-      RETURNING uep."currentTime", uep."duration", uep."accumulatedTime"
-    ),
-    watched_insert AS (
-      INSERT INTO "user_watched_episode" (
-        "userId", "animeId", "episodeId", "episodeNumber", "origin", "watchedAt"
-      )
-      SELECT
-        cc."userId", cc."animeId", cc."episodeId", cc."episodeNumber", 'playback', CURRENT_TIMESTAMP
-      FROM completion_check cc
-      WHERE cc."shouldComplete" = true
-      ON CONFLICT ("userId", "animeId", "episodeId") DO UPDATE
-      SET "watchedAt" = "user_watched_episode"."watchedAt"
-      RETURNING "episodeId"
-    ),
-    ep_count AS (
-      SELECT (count(*)::int + 1) AS total
-      FROM "user_watched_episode"
-      WHERE "userId" = $1 AND "animeId" = $2 AND "episodeId" != $3
-    ),
-    tracking_update AS (
-      UPDATE "user_anime_tracking" uat
-      SET
-        "episodesWatched" = GREATEST(
-          ec.total,
-          CASE
-            WHEN ee."wasWatched" = false AND (cc."episodeNumber" <= 0 OR cc."episodeNumber" > tl."episodesWatched")
-              THEN tl."episodesWatched" + 1
-            ELSE tl."episodesWatched"
-          END
-        ),
-        "status" = CASE WHEN uat."status" = 'planning' THEN 'watching' ELSE uat."status" END,
-        "startedAt" = COALESCE(uat."startedAt", CURRENT_TIMESTAMP),
-        "updatedAt" = CURRENT_TIMESTAMP
-      FROM ep_count ec, completion_check cc, tracking_lock tl, existing_ep ee
-      WHERE uat."userId" = cc."userId"
-        AND uat."animeId" = cc."animeId"
-        AND cc."shouldComplete" = true
-      RETURNING uat."episodesWatched"
-    )
-    SELECT
-      cc."userId",
-      cc."animeId",
-      cc."episodeId",
-      pu."currentTime",
-      pu."duration",
-      pu."accumulatedTime",
-      cc."shouldComplete" AS "completed",
-      COALESCE(
-        (SELECT "episodesWatched" FROM tracking_update),
-        (SELECT "episodesWatched" FROM "user_anime_tracking" WHERE "userId" = cc."userId" AND "animeId" = cc."animeId")
-      ) AS "episodesWatched"
-    FROM completion_check cc
-    JOIN progress_update pu ON true;
-  `;
+  const mightComplete =
+    roundDuration === null || 10 * roundCurrentTime >= 9 * roundDuration;
+  const willAdvanceTime =
+    isPlaying === true &&
+    isBuffering === false &&
+    isSeeking === false &&
+    (cleanDeltaMs === null || cleanDeltaMs > 0);
 
-  const rows = await sql.query<{
+  type HeartbeatRow = {
     currentTime: number;
     duration: number | null;
     accumulatedTime: number;
     completed: boolean;
     episodesWatched: number | null;
-  }>(atomicHeartbeatQuery, [
-    userId,
-    targetAnimeId,
-    episodeId,
-    playbackSessionId,
-    roundCurrentTime,
-    roundDuration,
-    cleanDeltaMs,
-    isPlaying,
-    isBuffering,
-    isSeeking,
-  ]);
+  };
+
+  let rows: HeartbeatRow[];
+
+  if (!mightComplete && willAdvanceTime && roundDuration !== null) {
+    const fastActiveHeartbeatQuery = `
+      UPDATE "user_episode_progress" uep
+      SET
+        "currentTime" = LEAST(GREATEST(0, $5::int), $6::int),
+        "duration" = $6::int,
+        "accumulatedTime" = LEAST(
+          uep."accumulatedTime" + FLOOR((
+            uep."accumulatedRemainderMs" +
+            CASE
+              WHEN $7::int IS NOT NULL THEN
+                LEAST(
+                  GREATEST(0, $7::int),
+                  LEAST(GREATEST(0::bigint, FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - uep."updatedAt")) * 1000)::bigint), 40000::bigint)::int
+                )
+              ELSE
+                LEAST(GREATEST(0::bigint, FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - uep."updatedAt")) * 1000)::bigint), 40000::bigint)::int
+            END
+          ) / 1000)::int,
+          $6::int
+        ),
+        "accumulatedRemainderMs" = ((
+          uep."accumulatedRemainderMs" +
+          CASE
+            WHEN $7::int IS NOT NULL THEN
+              LEAST(
+                GREATEST(0, $7::int),
+                LEAST(GREATEST(0::bigint, FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - uep."updatedAt")) * 1000)::bigint), 40000::bigint)::int
+              )
+            ELSE
+              LEAST(GREATEST(0::bigint, FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - uep."updatedAt")) * 1000)::bigint), 40000::bigint)::int
+          END
+        ) % 1000)::int,
+        "updatedAt" = CURRENT_TIMESTAMP
+      FROM "user_anime_tracking" uat
+      WHERE uep."userId" = $1
+        AND uep."animeId" = $2
+        AND uep."episodeId" = $3
+        AND uep."playbackSessionId" = $4
+        AND uat."userId" = uep."userId"
+        AND uat."animeId" = uep."animeId"
+      RETURNING
+        uep."currentTime",
+        uep."duration",
+        uep."accumulatedTime",
+        false AS "completed",
+        uat."episodesWatched";
+    `;
+
+    rows = await sql.query<HeartbeatRow>(fastActiveHeartbeatQuery, [
+      userId,
+      targetAnimeId,
+      episodeId,
+      playbackSessionId,
+      roundCurrentTime,
+      roundDuration,
+      cleanDeltaMs,
+    ]);
+  } else if (!mightComplete && roundDuration !== null) {
+    const fastStaticHeartbeatQuery = `
+      WITH progress_lock AS (
+        SELECT
+          uep."userId",
+          uep."animeId",
+          uep."episodeId",
+          uep."currentTime" AS "oldCurrentTime",
+          uep."duration" AS "oldDuration",
+          uep."accumulatedTime" AS "oldAccumulatedTime",
+          uat."episodesWatched",
+          LEAST(GREATEST(0, $5::int), $6::int) AS "newCurrentTime"
+        FROM "user_episode_progress" uep
+        INNER JOIN "user_anime_tracking" uat
+          ON uat."userId" = uep."userId" AND uat."animeId" = uep."animeId"
+        WHERE uep."userId" = $1
+          AND uep."animeId" = $2
+          AND uep."episodeId" = $3
+          AND uep."playbackSessionId" = $4
+        FOR UPDATE OF uep
+      ),
+      progress_update AS (
+        UPDATE "user_episode_progress" uep
+        SET
+          "currentTime" = pl."newCurrentTime",
+          "duration" = $6::int,
+          "updatedAt" = CURRENT_TIMESTAMP
+        FROM progress_lock pl
+        WHERE uep."userId" = pl."userId"
+          AND uep."animeId" = pl."animeId"
+          AND uep."episodeId" = pl."episodeId"
+          AND (
+            uep."currentTime" IS DISTINCT FROM pl."newCurrentTime"
+            OR uep."duration" IS DISTINCT FROM $6::int
+          )
+        RETURNING uep."currentTime", uep."duration", uep."accumulatedTime"
+      )
+      SELECT
+        COALESCE(pu."currentTime", pl."oldCurrentTime") AS "currentTime",
+        COALESCE(pu."duration", pl."oldDuration") AS "duration",
+        COALESCE(pu."accumulatedTime", pl."oldAccumulatedTime") AS "accumulatedTime",
+        false AS "completed",
+        pl."episodesWatched"
+      FROM progress_lock pl
+      LEFT JOIN progress_update pu ON true;
+    `;
+
+    rows = await sql.query<HeartbeatRow>(fastStaticHeartbeatQuery, [
+      userId,
+      targetAnimeId,
+      episodeId,
+      playbackSessionId,
+      roundCurrentTime,
+      roundDuration,
+    ]);
+  } else {
+    // Ordem estrita de bloqueios:
+    // 1. user_anime_tracking FOR UPDATE
+    // 2. user_episode_progress FOR UPDATE (validando playbackSessionId)
+    // 3. user_watched_episode INSERT (somente se critérios de 90% forem atendidos)
+    // 4. user_anime_tracking e user_episode_progress UPDATE (apenas quando necessário)
+    const atomicHeartbeatQuery = `
+      WITH tracking_lock AS (
+        SELECT "userId", "animeId", "episodesWatched"
+        FROM "user_anime_tracking"
+        WHERE "userId" = $1 AND "animeId" = $2
+        FOR UPDATE
+      ),
+      progress_calc AS (
+        SELECT
+          uep."userId",
+          uep."animeId",
+          uep."episodeId",
+          uep."episodeNumber",
+          uep."currentTime" AS "oldCurrentTime",
+          uep."duration" AS "oldDuration",
+          uep."accumulatedTime" AS "oldAccumulatedTime",
+          uep."accumulatedRemainderMs" AS "oldRemainderMs",
+          uep."autoCompleteSuppressed",
+          tl."episodesWatched" AS "prevEpisodesWatched",
+          COALESCE($6::int, uep."duration") AS "effectiveDuration",
+          CASE
+            WHEN COALESCE($6::int, uep."duration") IS NOT NULL AND COALESCE($6::int, uep."duration") > 0 THEN
+              LEAST(GREATEST(0, $5::int), COALESCE($6::int, uep."duration"))
+            ELSE
+              GREATEST(0, $5::int)
+          END AS "newCurrentTime",
+          CASE
+            WHEN $8::boolean = true AND $9::boolean = false AND $10::boolean = false THEN
+              CASE
+                WHEN $7::int IS NOT NULL THEN
+                  LEAST(
+                    GREATEST(0, $7::int),
+                    LEAST(GREATEST(0::bigint, FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - uep."updatedAt")) * 1000)::bigint), 40000::bigint)::int
+                  )
+                ELSE
+                  LEAST(GREATEST(0::bigint, FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - uep."updatedAt")) * 1000)::bigint), 40000::bigint)::int
+              END
+            ELSE 0
+          END AS "effectiveDeltaMs"
+        FROM "user_episode_progress" uep
+        INNER JOIN tracking_lock tl
+          ON tl."userId" = uep."userId" AND tl."animeId" = uep."animeId"
+        WHERE uep."episodeId" = $3
+          AND uep."playbackSessionId" = $4
+        FOR UPDATE OF uep
+      ),
+      completion_check AS (
+        SELECT
+          pc.*,
+          ((pc."oldRemainderMs" + pc."effectiveDeltaMs") % 1000)::int AS "newRemainderMs",
+          CASE
+            WHEN pc."effectiveDuration" IS NOT NULL AND pc."effectiveDuration" > 0 THEN
+              LEAST(
+                pc."oldAccumulatedTime" + FLOOR((pc."oldRemainderMs" + pc."effectiveDeltaMs") / 1000)::int,
+                pc."effectiveDuration"
+              )
+            ELSE
+              pc."oldAccumulatedTime" + FLOOR((pc."oldRemainderMs" + pc."effectiveDeltaMs") / 1000)::int
+          END AS "newAccumulatedTime",
+          (
+            pc."effectiveDuration" IS NOT NULL
+            AND pc."effectiveDuration" > 0
+            AND pc."autoCompleteSuppressed" = false
+            AND pc."newCurrentTime" >= (0.9 * pc."effectiveDuration")
+            AND (
+              CASE
+                WHEN pc."effectiveDuration" IS NOT NULL AND pc."effectiveDuration" > 0 THEN
+                  LEAST(
+                    pc."oldAccumulatedTime" + FLOOR((pc."oldRemainderMs" + pc."effectiveDeltaMs") / 1000)::int,
+                    pc."effectiveDuration"
+                  )
+                ELSE
+                  pc."oldAccumulatedTime" + FLOOR((pc."oldRemainderMs" + pc."effectiveDeltaMs") / 1000)::int
+              END
+            ) >= (0.9 * pc."effectiveDuration")
+          ) AS "shouldComplete"
+        FROM progress_calc pc
+      ),
+      progress_update AS (
+        UPDATE "user_episode_progress" uep
+        SET
+          "currentTime" = cc."newCurrentTime",
+          "duration" = cc."effectiveDuration",
+          "accumulatedTime" = cc."newAccumulatedTime",
+          "accumulatedRemainderMs" = cc."newRemainderMs",
+          "autoCompleteSuppressed" = CASE
+            WHEN cc."shouldComplete" THEN true
+            ELSE uep."autoCompleteSuppressed"
+          END,
+          "updatedAt" = CURRENT_TIMESTAMP
+        FROM completion_check cc
+        WHERE uep."userId" = cc."userId"
+          AND uep."animeId" = cc."animeId"
+          AND uep."episodeId" = cc."episodeId"
+          AND (
+            cc."shouldComplete"
+            OR uep."currentTime" IS DISTINCT FROM cc."newCurrentTime"
+            OR uep."duration" IS DISTINCT FROM cc."effectiveDuration"
+            OR uep."accumulatedTime" IS DISTINCT FROM cc."newAccumulatedTime"
+            OR uep."accumulatedRemainderMs" IS DISTINCT FROM cc."newRemainderMs"
+          )
+        RETURNING uep."currentTime", uep."duration", uep."accumulatedTime"
+      ),
+      watched_insert AS (
+        INSERT INTO "user_watched_episode" (
+          "userId", "animeId", "episodeId", "episodeNumber", "origin", "watchedAt"
+        )
+        SELECT
+          cc."userId", cc."animeId", cc."episodeId", cc."episodeNumber", 'playback', CURRENT_TIMESTAMP
+        FROM completion_check cc
+        WHERE cc."shouldComplete" = true
+        ON CONFLICT ("userId", "animeId", "episodeId") DO NOTHING
+        RETURNING "episodeId"
+      ),
+      tracking_update AS (
+        UPDATE "user_anime_tracking" uat
+        SET
+          "episodesWatched" = (
+            SELECT GREATEST(
+              (count(*) FILTER (WHERE uwe."episodeId" != cc."episodeId"))::int + 1,
+              CASE
+                WHEN NOT COALESCE(bool_or(uwe."episodeId" = cc."episodeId"), false)
+                  AND (cc."episodeNumber" <= 0 OR cc."episodeNumber" > cc."prevEpisodesWatched")
+                  THEN cc."prevEpisodesWatched" + 1
+                ELSE cc."prevEpisodesWatched"
+              END
+            )
+            FROM "user_watched_episode" uwe
+            WHERE uwe."userId" = cc."userId"
+              AND uwe."animeId" = cc."animeId"
+          ),
+          "status" = CASE WHEN uat."status" = 'planning' THEN 'watching' ELSE uat."status" END,
+          "startedAt" = COALESCE(uat."startedAt", CURRENT_TIMESTAMP),
+          "updatedAt" = CURRENT_TIMESTAMP
+        FROM completion_check cc
+        WHERE uat."userId" = cc."userId"
+          AND uat."animeId" = cc."animeId"
+          AND cc."shouldComplete" = true
+        RETURNING uat."episodesWatched"
+      )
+      SELECT
+        COALESCE(pu."currentTime", cc."oldCurrentTime") AS "currentTime",
+        COALESCE(pu."duration", cc."oldDuration") AS "duration",
+        COALESCE(pu."accumulatedTime", cc."oldAccumulatedTime") AS "accumulatedTime",
+        cc."shouldComplete" AS "completed",
+        COALESCE(
+          (SELECT "episodesWatched" FROM tracking_update),
+          cc."prevEpisodesWatched"
+        ) AS "episodesWatched"
+      FROM completion_check cc
+      LEFT JOIN progress_update pu ON true;
+    `;
+
+    rows = await sql.query<HeartbeatRow>(atomicHeartbeatQuery, [
+      userId,
+      targetAnimeId,
+      episodeId,
+      playbackSessionId,
+      roundCurrentTime,
+      roundDuration,
+      cleanDeltaMs,
+      isPlaying,
+      isBuffering,
+      isSeeking,
+    ]);
+  }
 
   const result = rows[0];
   if (!result) {
