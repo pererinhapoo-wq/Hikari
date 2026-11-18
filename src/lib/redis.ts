@@ -1932,6 +1932,216 @@ export async function setRedisEpisodeSourceWithFence(
   }
 }
 
+export type ProgressRecordPayload = {
+  userKey: string;
+  episodeId: string;
+  position: number;
+  duration: number;
+  event: "interval" | "pause" | "seek" | "hide";
+  updated_at?: string;
+};
+
+const inMemoryProgressStore = new Map<
+  string,
+  { position: string; duration: string; event: string; updated_at: string }
+>();
+const inMemoryProgressQueue: string[] = [];
+const inMemoryRateLimit = new Map<string, number>();
+
+export async function recordProgressInRedis(
+  payload: ProgressRecordPayload,
+): Promise<{ accepted: boolean }> {
+  const { userKey, episodeId, position, duration, event } = payload;
+  const nowIso = new Date().toISOString();
+  const rlKey = `prog:rl:${userKey}`;
+  const hashKey = `prog:${userKey}:${episodeId}`;
+  const queueVal = `${userKey}|${episodeId}`;
+
+  if (redisClient && typeof window === "undefined") {
+    try {
+      const acquired = await withRedisTimeout(
+        redisClient.set(rlKey, "1", { ex: 5, nx: true }),
+      );
+      if (!acquired) {
+        return { accepted: false };
+      }
+
+      await withRedisTimeout(
+        redisClient.hset(hashKey, {
+          position: String(position),
+          duration: String(duration),
+          event,
+          updated_at: nowIso,
+        }),
+      );
+      await withRedisTimeout(redisClient.expire(hashKey, 604800));
+      await withRedisTimeout(redisClient.lpush("prog:queue", queueVal));
+      await withRedisTimeout(redisClient.ltrim("prog:queue", 0, 4999));
+      return { accepted: true };
+    } catch (err) {
+      console.warn("[redis] Falha ao gravar progresso no Redis:", err);
+    }
+  }
+
+  const nowMs = Date.now();
+  const lastTime = inMemoryRateLimit.get(userKey) || 0;
+  if (nowMs - lastTime < 5000) {
+    return { accepted: false };
+  }
+  inMemoryRateLimit.set(userKey, nowMs);
+  inMemoryProgressStore.set(hashKey, {
+    position: String(position),
+    duration: String(duration),
+    event,
+    updated_at: nowIso,
+  });
+  inMemoryProgressQueue.unshift(queueVal);
+  if (inMemoryProgressQueue.length > 5000) {
+    inMemoryProgressQueue.length = 5000;
+  }
+  return { accepted: true };
+}
+
+export async function getProgressFromRedis(
+  userKey: string,
+  episodeId: string,
+): Promise<{ position: number; duration: number } | null> {
+  const hashKey = `prog:${userKey}:${episodeId}`;
+
+  if (redisClient && typeof window === "undefined") {
+    try {
+      const data = await withRedisTimeout(
+        redisClient.hgetall<Record<string, string>>(hashKey),
+      );
+      if (data && data.position) {
+        return {
+          position: Math.max(0, parseInt(data.position, 10) || 0),
+          duration: Math.max(0, parseInt(data.duration, 10) || 0),
+        };
+      }
+    } catch (err) {
+      console.warn("[redis] Falha ao ler progresso do Redis:", err);
+    }
+  }
+
+  const mem = inMemoryProgressStore.get(hashKey);
+  if (mem && mem.position) {
+    return {
+      position: Math.max(0, parseInt(mem.position, 10) || 0),
+      duration: Math.max(0, parseInt(mem.duration, 10) || 0),
+    };
+  }
+  return null;
+}
+
+export async function drainProgressFromQueue(
+  limit = 500,
+): Promise<
+  Array<{
+    userKey: string;
+    episodeId: string;
+    position: number;
+    duration: number;
+    updated_at: string;
+  }>
+> {
+  const rawItems: string[] = [];
+
+  if (redisClient && typeof window !== "undefined") {
+    return [];
+  }
+
+  if (redisClient) {
+    try {
+      for (let i = 0; i < limit; i++) {
+        const item = await withRedisTimeout(
+          redisClient.rpop<string>("prog:queue"),
+        );
+        if (!item) break;
+        rawItems.push(item);
+      }
+    } catch (err) {
+      console.warn("[redis] Falha ao drenar fila de progresso:", err);
+    }
+  } else {
+    for (let i = 0; i < limit; i++) {
+      const item = inMemoryProgressQueue.pop();
+      if (!item) break;
+      rawItems.push(item);
+    }
+  }
+
+  if (rawItems.length === 0) return [];
+
+  const uniqueKeys = Array.from(new Set(rawItems));
+  const dedupedMap = new Map<
+    string,
+    {
+      userKey: string;
+      episodeId: string;
+      position: number;
+      duration: number;
+      updated_at: string;
+    }
+  >();
+
+  for (const item of uniqueKeys) {
+    const [userKey, episodeId] = item.split("|");
+    if (!userKey || !episodeId) continue;
+    const hashKey = `prog:${userKey}:${episodeId}`;
+
+    let data: Record<string, string> | null = null;
+    if (redisClient) {
+      try {
+        data = await withRedisTimeout(
+          redisClient.hgetall<Record<string, string>>(hashKey),
+        );
+      } catch {}
+    } else {
+      data = inMemoryProgressStore.get(hashKey) ?? null;
+    }
+
+    if (data && data.position) {
+      const position = Math.max(0, parseInt(data.position, 10) || 0);
+      const duration = Math.max(0, parseInt(data.duration, 10) || 0);
+      const updated_at = data.updated_at || new Date().toISOString();
+      dedupedMap.set(item, {
+        userKey,
+        episodeId,
+        position,
+        duration,
+        updated_at,
+      });
+    }
+  }
+
+  return Array.from(dedupedMap.values());
+}
+
+export async function cleanupDrainedProgressHashes(
+  drained: Array<{ userKey: string; episodeId: string; updated_at: string }>,
+): Promise<void> {
+  for (const item of drained) {
+    const hashKey = `prog:${item.userKey}:${item.episodeId}`;
+    if (redisClient) {
+      try {
+        const currentUpdated = await withRedisTimeout(
+          redisClient.hget<string>(hashKey, "updated_at"),
+        );
+        if (!currentUpdated || currentUpdated === item.updated_at) {
+          await withRedisTimeout(redisClient.del(hashKey));
+        }
+      } catch {}
+    } else {
+      const mem = inMemoryProgressStore.get(hashKey);
+      if (!mem || mem.updated_at === item.updated_at) {
+        inMemoryProgressStore.delete(hashKey);
+      }
+    }
+  }
+}
+
+
 
 
 
