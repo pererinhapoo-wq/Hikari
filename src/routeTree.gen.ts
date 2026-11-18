@@ -73,6 +73,7 @@ import { Route as ApiAdminCommentReportsRouteImport } from './routes/api/admin/c
 import { Route as ApiAdminCommentsRouteImport } from './routes/api/admin/comments'
 import { Route as ApiAdminHealthRouteImport } from './routes/api/admin/health'
 import { Route as ApiAdminImagesRouteImport } from './routes/api/admin/images'
+import { Route as ApiAdminKitsuImageSearchRouteImport } from './routes/api/admin/kitsu-image-search'
 import { Route as ApiAdminMaintenanceRouteImport } from './routes/api/admin/maintenance'
 import { Route as ApiAdminSettingsRouteImport } from './routes/api/admin/settings'
 import { Route as ApiAdminUploadThumbnailRouteImport } from './routes/api/admin/upload-thumbnail'
@@ -409,6 +410,12 @@ const ApiAdminImagesRoute = ApiAdminImagesRouteImport.update({
   path: '/api/admin/images',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminKitsuImageSearchRoute =
+  ApiAdminKitsuImageSearchRouteImport.update({
+    id: '/api/admin/kitsu-image-search',
+    path: '/api/admin/kitsu-image-search',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiAdminMaintenanceRoute = ApiAdminMaintenanceRouteImport.update({
   id: '/api/admin/maintenance',
   path: '/api/admin/maintenance',
@@ -550,6 +557,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/comments': typeof ApiAdminCommentsRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/images': typeof ApiAdminImagesRoute
+  '/api/admin/kitsu-image-search': typeof ApiAdminKitsuImageSearchRoute
   '/api/admin/maintenance': typeof ApiAdminMaintenanceRoute
   '/api/admin/settings': typeof ApiAdminSettingsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
@@ -629,6 +637,7 @@ export interface FileRoutesByTo {
   '/api/admin/comments': typeof ApiAdminCommentsRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/images': typeof ApiAdminImagesRoute
+  '/api/admin/kitsu-image-search': typeof ApiAdminKitsuImageSearchRoute
   '/api/admin/maintenance': typeof ApiAdminMaintenanceRoute
   '/api/admin/settings': typeof ApiAdminSettingsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
@@ -711,6 +720,7 @@ export interface FileRoutesById {
   '/api/admin/comments': typeof ApiAdminCommentsRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/images': typeof ApiAdminImagesRoute
+  '/api/admin/kitsu-image-search': typeof ApiAdminKitsuImageSearchRoute
   '/api/admin/maintenance': typeof ApiAdminMaintenanceRoute
   '/api/admin/settings': typeof ApiAdminSettingsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
@@ -794,6 +804,7 @@ export interface FileRouteTypes {
     | '/api/admin/comments'
     | '/api/admin/health'
     | '/api/admin/images'
+    | '/api/admin/kitsu-image-search'
     | '/api/admin/maintenance'
     | '/api/admin/settings'
     | '/api/admin/upload-thumbnail'
@@ -873,6 +884,7 @@ export interface FileRouteTypes {
     | '/api/admin/comments'
     | '/api/admin/health'
     | '/api/admin/images'
+    | '/api/admin/kitsu-image-search'
     | '/api/admin/maintenance'
     | '/api/admin/settings'
     | '/api/admin/upload-thumbnail'
@@ -954,6 +966,7 @@ export interface FileRouteTypes {
     | '/api/admin/comments'
     | '/api/admin/health'
     | '/api/admin/images'
+    | '/api/admin/kitsu-image-search'
     | '/api/admin/maintenance'
     | '/api/admin/settings'
     | '/api/admin/upload-thumbnail'
@@ -1021,6 +1034,7 @@ export interface RootRouteChildren {
   ApiAdminCommentsRoute: typeof ApiAdminCommentsRoute
   ApiAdminHealthRoute: typeof ApiAdminHealthRoute
   ApiAdminImagesRoute: typeof ApiAdminImagesRoute
+  ApiAdminKitsuImageSearchRoute: typeof ApiAdminKitsuImageSearchRoute
   ApiAdminMaintenanceRoute: typeof ApiAdminMaintenanceRoute
   ApiAdminSettingsRoute: typeof ApiAdminSettingsRoute
   ApiAdminUploadThumbnailRoute: typeof ApiAdminUploadThumbnailRoute
@@ -1483,6 +1497,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/kitsu-image-search': {
+      id: '/api/admin/kitsu-image-search'
+      path: '/api/admin/kitsu-image-search'
+      fullPath: '/api/admin/kitsu-image-search'
+      preLoaderRoute: typeof ApiAdminKitsuImageSearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/maintenance': {
       id: '/api/admin/maintenance'
       path: '/api/admin/maintenance'
@@ -1707,6 +1728,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminCommentsRoute: ApiAdminCommentsRoute,
   ApiAdminHealthRoute: ApiAdminHealthRoute,
   ApiAdminImagesRoute: ApiAdminImagesRoute,
+  ApiAdminKitsuImageSearchRoute: ApiAdminKitsuImageSearchRoute,
   ApiAdminMaintenanceRoute: ApiAdminMaintenanceRoute,
   ApiAdminSettingsRoute: ApiAdminSettingsRoute,
   ApiAdminUploadThumbnailRoute: ApiAdminUploadThumbnailRoute,
@@ -1721,12 +1743,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

@@ -21,6 +21,10 @@ if (restUrl && restToken) {
   }
 }
 
+export function getRedisClient(): Redis | null {
+  return redisClient;
+}
+
 const CATALOG_REDIS_KEY = "hikari:catalog:index:v1";
 const CATALOG_REDIS_TTL_SEC = 900; // 15 minutos
 

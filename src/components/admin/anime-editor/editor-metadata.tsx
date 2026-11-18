@@ -9,6 +9,7 @@ import {
   X,
   Globe,
   Loader2,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { FORMAT_PT, STATUS_PT, SEASON_PT, GENRE_PT } from "@/lib/labels";
+import { getBearerToken } from "@/lib/auth/client";
 import {
   uploadImageFile,
   isPersistentStorageUrl,
@@ -55,6 +63,63 @@ export function EditorMetadata({
 
   const coverInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+
+  const [kitsuModalOpen, setKitsuModalOpen] = useState(false);
+  const [kitsuQuery, setKitsuQuery] = useState("");
+  const [kitsuLoading, setKitsuLoading] = useState(false);
+  const [kitsuResults, setKitsuResults] = useState<
+    Array<{
+      id: string;
+      title: string;
+      coverUrl: string | null;
+      bannerUrl: string | null;
+    }>
+  >([]);
+
+  const handleOpenKitsuSearch = () => {
+    const defaultTerm =
+      form.titleRomaji?.trim() ||
+      form.titleEnglish?.trim() ||
+      form.titleNative?.trim() ||
+      "";
+    setKitsuQuery(defaultTerm);
+    setKitsuModalOpen(true);
+    if (defaultTerm) {
+      void runKitsuSearch(defaultTerm);
+    }
+  };
+
+  const runKitsuSearch = async (term: string) => {
+    const clean = term.trim();
+    if (!clean) {
+      toast.error("Digite um termo para pesquisar no Kitsu.");
+      return;
+    }
+    setKitsuLoading(true);
+    try {
+      const token = await getBearerToken();
+      const res = await fetch(
+        `/api/admin/kitsu-image-search?q=${encodeURIComponent(clean)}`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao consultar imagens no Kitsu.");
+      }
+      setKitsuResults(data.items || []);
+      if (!data.items || data.items.length === 0) {
+        toast.info("Nenhuma imagem encontrada no Kitsu para este termo.");
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Falha na busca do Kitsu.",
+      );
+    } finally {
+      setKitsuLoading(false);
+    }
+  };
 
   const currentGenres = genreText
     .split(",")
@@ -475,11 +540,23 @@ export function EditorMetadata({
       {/* Coluna Secundária: Imagens e Identificadores Externos */}
       <div className="space-y-6 xl:col-span-5">
         <section className="studio-panel rounded-xl p-5 sm:p-6">
-          <div className="mb-5 flex items-center gap-2.5 border-b border-[var(--studio-line)] pb-3.5">
-            <ImageIcon className="size-4 text-violet-400" />
-            <h2 className="font-display text-base font-semibold text-[var(--color-fg)]">
-              Imagens Oficiais (Capa &amp; Banner)
-            </h2>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--studio-line)] pb-3.5">
+            <div className="flex items-center gap-2.5">
+              <ImageIcon className="size-4 text-violet-400" />
+              <h2 className="font-display text-base font-semibold text-[var(--color-fg)]">
+                Imagens Oficiais (Capa &amp; Banner)
+              </h2>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleOpenKitsuSearch}
+              className="h-8 border-violet-500/30 bg-violet-500/10 text-xs text-violet-300 hover:bg-violet-500/20 hover:text-white"
+            >
+              <Search className="mr-1.5 size-3.5" />
+              <span>Buscar no Kitsu</span>
+            </Button>
           </div>
 
           <div className="space-y-6">
@@ -807,6 +884,177 @@ export function EditorMetadata({
           </div>
         </section>
       </div>
+
+      {/* Modal de Busca e Pré-visualização de Imagens no Kitsu */}
+      <Dialog open={kitsuModalOpen} onOpenChange={setKitsuModalOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto w-[min(100%-1.5rem,42rem)] border-white/10 bg-[#0f0d18] p-5 text-[#f4f4f1]">
+          <DialogTitle className="flex items-center gap-2 font-display text-lg font-semibold text-white">
+            <Search className="size-4 text-violet-400" />
+            <span>Buscar Imagens no Kitsu</span>
+          </DialogTitle>
+          <DialogDescription className="text-xs text-zinc-400">
+            Pesquise o anime no Kitsu para visualizar e selecionar manualmente capa e banner oficiais para o catálogo próprio do Hikari.
+          </DialogDescription>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void runKitsuSearch(kitsuQuery);
+            }}
+            className="mt-4 flex gap-2"
+          >
+            <Input
+              value={kitsuQuery}
+              onChange={(e) => setKitsuQuery(e.target.value)}
+              placeholder="Digite o título do anime no Kitsu..."
+              className="h-9 flex-1 border-white/10 bg-black/40 text-xs text-white"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={kitsuLoading}
+              className="h-9 bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-500"
+            >
+              {kitsuLoading ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                "Pesquisar"
+              )}
+            </Button>
+          </form>
+
+          <div className="mt-4 space-y-4">
+            {kitsuLoading && (
+              <div className="flex flex-col items-center justify-center py-8 text-center text-zinc-400">
+                <Loader2 className="mb-2 size-6 animate-spin text-violet-400" />
+                <p className="text-xs">Consultando o acervo do Kitsu...</p>
+              </div>
+            )}
+
+            {!kitsuLoading && kitsuResults.length === 0 && (
+              <div className="rounded-xl border border-white/5 bg-black/20 p-6 text-center text-xs text-zinc-400">
+                {kitsuQuery.trim()
+                  ? "Nenhum resultado retornado. Tente pesquisar pelo nome em inglês ou romaji."
+                  : "Digite o título acima e clique em Pesquisar."}
+              </div>
+            )}
+
+            {!kitsuLoading &&
+              kitsuResults.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-xl border border-white/10 bg-black/30 p-3.5 transition hover:border-violet-500/30"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-2">
+                    <span className="text-xs font-semibold text-white">
+                      {item.title}
+                    </span>
+                    <span className="studio-mono text-[10px] text-zinc-500">
+                      ID Kitsu: #{item.id}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {/* Pré-visualização da Capa */}
+                    <div className="flex gap-3 rounded-lg border border-white/5 bg-black/20 p-2">
+                      <div className="relative aspect-2/3 w-16 shrink-0 overflow-hidden rounded bg-black/60">
+                        {item.coverUrl ? (
+                          <img
+                            src={item.coverUrl}
+                            alt="Capa Kitsu"
+                            className="size-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex size-full items-center justify-center text-[10px] text-zinc-500">
+                            Sem capa
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-1 flex-col justify-between py-0.5">
+                        <span className="text-[11px] font-medium text-zinc-300">
+                          Capa Vertical
+                        </span>
+                        {item.coverUrl && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              onChange("cover", item.coverUrl!);
+                              setCoverLoadError(false);
+                              toast.success("Capa do Kitsu aplicada!");
+                            }}
+                            className="h-7 border-violet-500/30 bg-violet-500/10 text-[11px] text-violet-300 hover:bg-violet-500/20"
+                          >
+                            Usar como Capa
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Pré-visualização do Banner */}
+                    <div className="flex flex-col justify-between gap-2 rounded-lg border border-white/5 bg-black/20 p-2">
+                      <div className="relative aspect-21/9 w-full overflow-hidden rounded bg-black/60">
+                        {item.bannerUrl ? (
+                          <img
+                            src={item.bannerUrl}
+                            alt="Banner Kitsu"
+                            className="size-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex size-full items-center justify-center text-[10px] text-zinc-500">
+                            Sem banner
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-zinc-300">
+                          Banner Panorâmico
+                        </span>
+                        {item.bannerUrl && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              onChange("banner", item.bannerUrl!);
+                              setBannerLoadError(false);
+                              toast.success("Banner do Kitsu aplicado!");
+                            }}
+                            className="h-7 border-violet-500/30 bg-violet-500/10 text-[11px] text-violet-300 hover:bg-violet-500/20"
+                          >
+                            Usar como Banner
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ação Aplicar Ambos */}
+                  {item.coverUrl && item.bannerUrl && (
+                    <div className="mt-2.5 flex justify-end border-t border-white/5 pt-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          onChange("cover", item.coverUrl!);
+                          onChange("banner", item.bannerUrl!);
+                          setCoverLoadError(false);
+                          setBannerLoadError(false);
+                          setKitsuModalOpen(false);
+                          toast.success("Capa e Banner do Kitsu aplicados com sucesso!");
+                        }}
+                        className="h-7.5 bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-500"
+                      >
+                        Aplicar Ambos e Fechar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
