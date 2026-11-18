@@ -63,6 +63,7 @@ import { Route as NewsIdRouteImport } from './routes/news_.$id'
 import { Route as NewsSearchRouteImport } from './routes/news_.search'
 import { Route as ProfileNickRouteImport } from './routes/profile.$nick'
 import { Route as WatchIdRouteImport } from './routes/watch.$id'
+import { Route as ApiAdminAnilistSyncRouteImport } from './routes/api/admin/anilist-sync'
 import { Route as ApiAdminBackupRouteImport } from './routes/api/admin/backup'
 import { Route as ApiAdminBansRouteImport } from './routes/api/admin/bans'
 import { Route as ApiAdminCatalogAnimeRouteImport } from './routes/api/admin/catalog-anime'
@@ -360,6 +361,11 @@ const WatchIdRoute = WatchIdRouteImport.update({
   path: '/watch/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminAnilistSyncRoute = ApiAdminAnilistSyncRouteImport.update({
+  id: '/api/admin/anilist-sync',
+  path: '/api/admin/anilist-sync',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminBackupRoute = ApiAdminBackupRouteImport.update({
   id: '/api/admin/backup',
   path: '/api/admin/backup',
@@ -547,6 +553,7 @@ export interface FileRoutesByFullPath {
   '/watch/$id': typeof WatchIdRoute
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
+  '/api/admin/anilist-sync': typeof ApiAdminAnilistSyncRoute
   '/api/admin/backup': typeof ApiAdminBackupRoute
   '/api/admin/bans': typeof ApiAdminBansRoute
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
@@ -627,6 +634,7 @@ export interface FileRoutesByTo {
   '/watch/$id': typeof WatchIdRoute
   '/admin': typeof AdminIndexRoute
   '/adult': typeof AdultIndexRoute
+  '/api/admin/anilist-sync': typeof ApiAdminAnilistSyncRoute
   '/api/admin/backup': typeof ApiAdminBackupRoute
   '/api/admin/bans': typeof ApiAdminBansRoute
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
@@ -710,6 +718,7 @@ export interface FileRoutesById {
   '/watch/$id': typeof WatchIdRoute
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
+  '/api/admin/anilist-sync': typeof ApiAdminAnilistSyncRoute
   '/api/admin/backup': typeof ApiAdminBackupRoute
   '/api/admin/bans': typeof ApiAdminBansRoute
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
@@ -794,6 +803,7 @@ export interface FileRouteTypes {
     | '/watch/$id'
     | '/admin/'
     | '/adult/'
+    | '/api/admin/anilist-sync'
     | '/api/admin/backup'
     | '/api/admin/bans'
     | '/api/admin/catalog-anime'
@@ -874,6 +884,7 @@ export interface FileRouteTypes {
     | '/watch/$id'
     | '/admin'
     | '/adult'
+    | '/api/admin/anilist-sync'
     | '/api/admin/backup'
     | '/api/admin/bans'
     | '/api/admin/catalog-anime'
@@ -956,6 +967,7 @@ export interface FileRouteTypes {
     | '/watch/$id'
     | '/admin/'
     | '/adult/'
+    | '/api/admin/anilist-sync'
     | '/api/admin/backup'
     | '/api/admin/bans'
     | '/api/admin/catalog-anime'
@@ -1024,6 +1036,7 @@ export interface RootRouteChildren {
   NewsSearchRoute: typeof NewsSearchRoute
   ProfileNickRoute: typeof ProfileNickRoute
   WatchIdRoute: typeof WatchIdRoute
+  ApiAdminAnilistSyncRoute: typeof ApiAdminAnilistSyncRoute
   ApiAdminBackupRoute: typeof ApiAdminBackupRoute
   ApiAdminBansRoute: typeof ApiAdminBansRoute
   ApiAdminCatalogAnimeRoute: typeof ApiAdminCatalogAnimeRoute
@@ -1427,6 +1440,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WatchIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/anilist-sync': {
+      id: '/api/admin/anilist-sync'
+      path: '/api/admin/anilist-sync'
+      fullPath: '/api/admin/anilist-sync'
+      preLoaderRoute: typeof ApiAdminAnilistSyncRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/backup': {
       id: '/api/admin/backup'
       path: '/api/admin/backup'
@@ -1718,6 +1738,7 @@ const rootRouteChildren: RootRouteChildren = {
   NewsSearchRoute: NewsSearchRoute,
   ProfileNickRoute: ProfileNickRoute,
   WatchIdRoute: WatchIdRoute,
+  ApiAdminAnilistSyncRoute: ApiAdminAnilistSyncRoute,
   ApiAdminBackupRoute: ApiAdminBackupRoute,
   ApiAdminBansRoute: ApiAdminBansRoute,
   ApiAdminCatalogAnimeRoute: ApiAdminCatalogAnimeRoute,

@@ -10,8 +10,12 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { withCache } from "@/lib/api";
 import { getResponsiveCoverAttrs } from "@/lib/image-utils";
+import { getSql } from "@/lib/db";
+import {
+  getRedisCalendarSchedule,
+  setRedisCalendarSchedule,
+} from "@/lib/redis";
 
 /* =========================================================
    CONFIGURAÇÃO DE FUSO HORÁRIO: AMÉRICA/RECIFE (UTC-3)
@@ -212,114 +216,112 @@ function getWeekInfoRecife(offsetWeeks = 0): {
 }
 
 /* =========================================================
-   QUERY GRAPHQL PARA LANÇAMENTOS SEMANAIS (ANILIST)
-========================================================= */
-
-const AIRING_SCHEDULE_QUERY = `
-  query ($start: Int, $end: Int, $page: Int) {
-    Page(page: $page, perPage: 50) {
-      pageInfo {
-        hasNextPage
-      }
-      airingSchedules(
-        airingAt_greater: $start
-        airingAt_lesser: $end
-        sort: TIME
-      ) {
-        id
-        airingAt
-        timeUntilAiring
-        episode
-        media {
-          id
-          idMal
-          isAdult
-          format
-          title {
-            romaji
-            english
-            native
-          }
-          coverImage {
-            extraLarge
-            large
-            medium
-            color
-          }
-          bannerImage
-          genres
-          status
-        }
-      }
-    }
-  }
-`;
-
-/* =========================================================
-   SERVER FUNCTION COM CACHE (SINGLEFLIGHT, SWR 15M/3H, LRU)
+   SERVER FUNCTION COM CACHE (UPSTASH REDIS E NEON POSTGRESQL)
 ========================================================= */
 
 export const fetchWeeklyScheduleFn = createServerFn({ method: "GET" })
   .validator((d: { start: number; end: number; weekKey?: string }) => d)
   .handler(async ({ data }): Promise<AiringScheduleItem[]> => {
     const { start, end, weekKey } = data;
-    // Chave de cache específica para o calendário semanal
-    const cacheKey = `calendar:week:${weekKey || `${start}:${end}`}`;
+    const effectiveWeekKey = weekKey || `${start}:${end}`;
 
-    return withCache<AiringScheduleItem[]>(
-      cacheKey,
-      async () => {
-        const fetchPage = async (page: number): Promise<AiringScheduleItem[]> => {
-          const res = await fetch("https://graphql.anilist.co", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "application/json",
-              "User-Agent": "Hikari/1.0 (anime streaming platform)",
+    // 1. Tenta recuperar do cache compartilhado no Redis (com validação de geração atômica)
+    const cachedRedis = await getRedisCalendarSchedule<AiringScheduleItem[]>(effectiveWeekKey);
+    if (cachedRedis && Array.isArray(cachedRedis) && cachedRedis.length > 0) {
+      return cachedRedis;
+    }
+
+    // 2. Consulta tabela dedicada catalog_airing_schedule no PostgreSQL (Neon / PGLite local)
+    try {
+      const sql = await getSql();
+      const rows = await sql.query<{
+        scheduleId: string;
+        anilistId: number;
+        animeId: string;
+        episode: number;
+        airingAt: string | Date | number;
+        timeUntilAiring: number | null;
+        title: string;
+        titleRomaji: string | null;
+        titleEnglish: string | null;
+        titleNative: string | null;
+        cover: string | null;
+        banner: string | null;
+        format: string | null;
+        status: string | null;
+        genres: string[] | null;
+      }>(
+        `SELECT
+           s."id" as "scheduleId",
+           s."anilistId",
+           s."animeId",
+           s."episode",
+           s."airingAt",
+           s."timeUntilAiring",
+           a."title",
+           a."titleRomaji",
+           a."titleEnglish",
+           a."titleNative",
+           a."cover",
+           a."banner",
+           a."format",
+           a."status",
+           a."genres"
+         FROM "catalog_airing_schedule" s
+         JOIN "catalog_anime" a ON s."animeId" = a."id"
+         WHERE s."airingAt" >= to_timestamp($1)
+           AND s."airingAt" <= to_timestamp($2)
+           AND (a."hidden" IS NOT TRUE)
+         ORDER BY s."airingAt" ASC;`,
+        [start, end],
+      );
+
+      if (Array.isArray(rows) && rows.length > 0) {
+        const dbItems: AiringScheduleItem[] = rows.map((r) => {
+          let airingAtSec = 0;
+          if (typeof r.airingAt === "number") {
+            airingAtSec = Math.floor(r.airingAt > 1e11 ? r.airingAt / 1000 : r.airingAt);
+          } else if (r.airingAt instanceof Date) {
+            airingAtSec = Math.floor(r.airingAt.getTime() / 1000);
+          } else if (typeof r.airingAt === "string") {
+            airingAtSec = Math.floor(new Date(r.airingAt).getTime() / 1000);
+          }
+
+          return {
+            id: r.anilistId * 10000 + r.episode,
+            airingAt: airingAtSec,
+            timeUntilAiring: r.timeUntilAiring ?? undefined,
+            episode: r.episode,
+            media: {
+              id: r.anilistId,
+              format: r.format,
+              status: r.status,
+              title: {
+                romaji: r.titleRomaji || r.title,
+                english: r.titleEnglish || r.title,
+                native: r.titleNative || r.title,
+              },
+              coverImage: {
+                extraLarge: r.cover,
+                large: r.cover,
+                medium: r.cover,
+                color: null,
+              },
+              bannerImage: r.banner,
+              genres: r.genres || [],
             },
-            body: JSON.stringify({
-              query: AIRING_SCHEDULE_QUERY,
-              variables: { start, end, page },
-            }),
-            signal: AbortSignal.timeout(10000),
-          });
+          };
+        });
 
-          if (!res.ok) {
-            throw new Error(`AniList returned HTTP ${res.status}`);
-          }
-
-          const json = await res.json();
-          return json?.data?.Page?.airingSchedules || [];
-        };
-
-        const pages = await Promise.all([
-          fetchPage(1),
-          fetchPage(2),
-          fetchPage(3),
-        ]);
-        const flat = pages.flat();
-
-        // Deduplica por id e exclui estritamente conteúdo adulto (+18)
-        const uniqueMap = new Map<number, AiringScheduleItem>();
-        for (const item of flat) {
-          if (!item || !item.id || item.media?.isAdult) continue;
-          if (!uniqueMap.has(item.id)) {
-            uniqueMap.set(item.id, item);
-          }
-        }
-        return Array.from(uniqueMap.values());
-      },
-      {
-        freshTtl: 15 * 60 * 1000, // 15 minutos fresco
-        swrWindow: 3 * 60 * 60 * 1000, // +3 horas janela SWR (total 3h15m)
-        shouldCache: (items, staleItems) =>
-          items.length > 0 || !staleItems || staleItems.length === 0,
-        fallback: (err) => {
-          console.warn("[Hikari] Erro ao carregar calendário semanal no AniList:", err);
-          return [];
-        },
-      },
-    );
+        // Grava no Redis para requisições subsequentes
+        await setRedisCalendarSchedule(effectiveWeekKey, dbItems);
+        return dbItems;
+      }
+      return [];
+    } catch (dbErr) {
+      console.error("[Hikari] Erro ao consultar catalog_airing_schedule no banco:", dbErr);
+      throw dbErr;
+    }
   });
 
 /* =========================================================
@@ -507,7 +509,7 @@ function CalendarPage() {
     }
   }, [initialSchedules, weekOffset]);
 
-  // Busca os lançamentos semanais com segurança (Server Fn + Fallback)
+  // Busca os lançamentos semanais exclusivamente via Server Function (Neon + Upstash Redis)
   const loadScheduleData = async (targetOffset = weekOffset) => {
     setLoading(true);
     setError(null);
@@ -516,46 +518,17 @@ function CalendarPage() {
     const { startTimestamp, endTimestamp, days } = targetWeekInfo;
 
     try {
-      let data: AiringScheduleItem[] = [];
+      const data = await fetchWeeklyScheduleFn({
+        data: {
+          start: startTimestamp,
+          end: endTimestamp,
+          weekKey: days[0]?.dateKey,
+        },
+      });
 
-      // 1. Tenta a Server Function primeiro (com Singleflight, SWR e LRU)
-      try {
-        data = await fetchWeeklyScheduleFn({
-          data: {
-            start: startTimestamp,
-            end: endTimestamp,
-            weekKey: days[0]?.dateKey,
-          },
-        });
-      } catch {
-        data = [];
-      }
-
-      // 2. Fallback via /api-anilist se necessário
       if (!data || data.length === 0) {
-        const fetchProxyPage = async (page: number) => {
-          const res = await fetch("/api-anilist", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              query: AIRING_SCHEDULE_QUERY,
-              variables: {
-                start: startTimestamp,
-                end: endTimestamp,
-                page,
-              },
-            }),
-          });
-          const json = await res.json();
-          return json?.data?.Page?.airingSchedules || [];
-        };
-
-        const pages = await Promise.all([
-          fetchProxyPage(1),
-          fetchProxyPage(2),
-          fetchProxyPage(3),
-        ]);
-        data = pages.flat();
+        setSchedules([]);
+        return;
       }
 
       // Deduplica por id e exclui estritamente conteúdo adulto (+18)

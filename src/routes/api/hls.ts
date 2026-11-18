@@ -139,7 +139,9 @@ async function fetchWithHostRotation(
       if (res.status !== 429) {
         return { res, noRefererStatus: null };
       }
-    } catch {}
+    } catch {
+      // ignore upstream fetch error in fallback
+    }
   }
   return { res, noRefererStatus: null };
 }

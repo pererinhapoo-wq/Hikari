@@ -1716,7 +1716,9 @@ export async function setRedisSegMode(
     await withRedisTimeout(
       redisClient.set(`segmode:${clean}`, mode, { ex: ttl }),
     );
-  } catch {}
+  } catch {
+    // fail-open
+  }
 }
 
 export async function getRedisPlaylistCache(
@@ -1744,7 +1746,9 @@ export async function setRedisPlaylistCache(
     await withRedisTimeout(
       redisClient.set(`p:${clean}`, content, { ex: ttl }),
     );
-  } catch {}
+  } catch {
+    // fail-open
+  }
 }
 
 export async function getRedisCircuitBreaker(
@@ -1789,7 +1793,9 @@ export async function resetRedisCircuitBreaker(
   if (!clean) return;
   try {
     await withRedisTimeout(redisClient.del(`cb:${clean}`));
-  } catch {}
+  } catch {
+    // fail-open
+  }
 }
 
 
@@ -2256,6 +2262,85 @@ export async function cleanupDrainedProgressHashes(
     }
   }
 }
+
+/* ============================================================================
+ * CALENDÁRIO SEMANAL: Cache e Invalidação com Shared Generation Counter
+ * Chaves:
+ *   - hikari:calendar:gen:v1 (contador atômico de geração)
+ *   - hikari:calendar:week:v1:<weekKey> (dados da semana serializados com geração)
+ * ============================================================================ */
+
+const CALENDAR_WEEK_REDIS_KEY_PREFIX = "hikari:calendar:week:v1:";
+const CALENDAR_GEN_KEY = "hikari:calendar:gen:v1";
+const CALENDAR_REDIS_TTL_SEC = 1800; // 30 minutos
+
+export async function getRedisCalendarGen(): Promise<string> {
+  if (!redisClient || typeof window !== "undefined") return "0";
+  try {
+    const gen = await withRedisTimeout(redisClient.get<string | number>(CALENDAR_GEN_KEY));
+    return gen !== null && gen !== undefined ? String(gen) : "0";
+  } catch (err) {
+    console.warn("[redis] Falha ao ler geração do calendário:", err instanceof Error ? err.message : err);
+    return "0";
+  }
+}
+
+export async function getRedisCalendarSchedule<T = unknown>(weekKey: string): Promise<T | null> {
+  if (!redisClient || typeof window !== "undefined" || !weekKey) return null;
+  const key = `${CALENDAR_WEEK_REDIS_KEY_PREFIX}${weekKey}`;
+  try {
+    const pipe = redisClient.pipeline();
+    pipe.get<string | number>(CALENDAR_GEN_KEY);
+    pipe.get<{ gen: string; data: T } | string>(key);
+    const results = await withRedisTimeout(pipe.exec<[string | number | null, unknown]>());
+
+    const curGen = results[0] !== null && results[0] !== undefined ? String(results[0]) : "0";
+    const cached = results[1];
+
+    if (!cached) return null;
+
+    let envelope: { gen?: string; data?: T } | null = null;
+    if (typeof cached === "string") {
+      try {
+        envelope = JSON.parse(cached);
+      } catch {
+        return null;
+      }
+    } else if (typeof cached === "object" && cached !== null) {
+      envelope = cached as { gen?: string; data?: T };
+    }
+
+    if (envelope && envelope.gen === curGen && envelope.data) {
+      return envelope.data;
+    }
+    return null;
+  } catch (err) {
+    console.warn("[redis] Falha ao buscar calendário no Redis:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+export async function setRedisCalendarSchedule<T = unknown>(weekKey: string, data: T): Promise<void> {
+  if (!redisClient || typeof window !== "undefined" || !weekKey || !data) return;
+  const key = `${CALENDAR_WEEK_REDIS_KEY_PREFIX}${weekKey}`;
+  try {
+    const curGen = await getRedisCalendarGen();
+    const payload = JSON.stringify({ gen: curGen, data });
+    await withRedisTimeout(redisClient.set(key, payload, { ex: CALENDAR_REDIS_TTL_SEC }));
+  } catch (err) {
+    console.warn("[redis] Falha ao salvar calendário no Redis:", err instanceof Error ? err.message : err);
+  }
+}
+
+export async function invalidateRedisCalendar(): Promise<void> {
+  if (!redisClient || typeof window !== "undefined") return;
+  try {
+    await withRedisTimeout(redisClient.incr(CALENDAR_GEN_KEY));
+  } catch (err) {
+    console.warn("[redis] Falha ao incrementar geração do calendário:", err instanceof Error ? err.message : err);
+  }
+}
+
 
 
 

@@ -197,6 +197,29 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
           const hiddenProvided = data.hidden !== undefined && data.hidden !== null;
           const scoreProvided = data.score !== undefined && data.score !== null;
 
+          const manualFields: string[] = [];
+          if (data.title !== undefined && data.title !== null && data.title.trim() !== "") {
+            manualFields.push("title");
+          }
+          if (data.synopsis !== undefined && data.synopsis !== null && data.synopsis.trim() !== "") {
+            manualFields.push("synopsis");
+          }
+          if (data.titleRomaji !== undefined && data.titleRomaji !== null && data.titleRomaji.trim() !== "") {
+            manualFields.push("titleRomaji");
+          }
+          if (data.titleEnglish !== undefined && data.titleEnglish !== null && data.titleEnglish.trim() !== "") {
+            manualFields.push("titleEnglish");
+          }
+          if (data.titleNative !== undefined && data.titleNative !== null && data.titleNative.trim() !== "") {
+            manualFields.push("titleNative");
+          }
+          if (data.coverExplicitlyEdited) {
+            manualFields.push("cover");
+          }
+          if (data.bannerExplicitlyEdited) {
+            manualFields.push("banner");
+          }
+
           // 4. Execução para garantir consistência entre anime e temporadas
           const result = await sql.query<{
             id: string;
@@ -212,7 +235,7 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
                "titleRomaji", "titleEnglish", "titleNative",
                "cover", "banner", "synopsis", "format", "status",
                "episodesCount", "year", "season", "genres", "trailerId",
-               "hidden", "score",
+               "hidden", "score", "manual_fields",
                "createdAt", "updatedAt"
              )
              VALUES (
@@ -223,6 +246,7 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
                COALESCE($17::text[], '{}'::text[]),
                $18,
                $21, $22,
+               COALESCE($25::text[], '{}'::text[]),
                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
              )
              ON CONFLICT ("id") DO UPDATE
@@ -264,6 +288,15 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
                  WHEN $24::boolean THEN EXCLUDED."score"
                  ELSE "catalog_anime"."score"
                END,
+               "manual_fields" = array(
+                 SELECT DISTINCT u
+                 FROM unnest(
+                   array_cat(
+                     COALESCE("catalog_anime"."manual_fields", '{}'::text[]),
+                     COALESCE($25::text[], '{}'::text[])
+                   )
+                 ) AS u
+               ),
                "updatedAt" = CURRENT_TIMESTAMP
              RETURNING "id", "cover", "banner", "anilistId", "malId", "kitsuId", "updatedAt";`,
             [
@@ -291,6 +324,7 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
               data.score ?? null,
               hiddenProvided,
               scoreProvided,
+              manualFields,
             ],
           );
 
