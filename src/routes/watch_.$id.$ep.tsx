@@ -39,7 +39,6 @@ import { anilistImage, getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { mergeDetail } from "@/lib/overlay";
 import { buildCleanCanonical, buildWatchJsonLd, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { useHikariStore } from "@/lib/store";
-import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import {
   buildResolvedSeasons,
   executeGetCatalogEpisodes,
@@ -55,17 +54,6 @@ import {
   resolvePlayableStreamUrl,
   selectEpisodeForWatch,
 } from "@/lib/published-episodes";
-import {
-  startEpisodeSession,
-  heartbeatEpisodeProgress,
-} from "@/lib/profile-playback.functions";
-import { invalidateWatchedEpisodesCache } from "@/lib/store";
-import { saveAnimeUserClientCache } from "@/lib/anime-user-client-cache";
-import { invalidateAccountProfileCache } from "@/lib/profile-client-cache";
-import {
-  invalidateAnimeTrackingCache,
-  invalidatePaginatedTrackingCache,
-} from "@/lib/tracking-client-cache";
 import {
   displayTitle,
   type Episode,
@@ -429,8 +417,6 @@ function WatchPage() {
     [current],
   );
 
-  const { user } = useCurrentUserState();
-
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>("player-1");
   const lastEpisodeIdRef = useRef<string | undefined>(current?.id);
   const livePlaybackRef = useRef<{ episodeId: string; time: number }>({
@@ -442,16 +428,7 @@ function WatchPage() {
     time: number;
   } | null>(null);
 
-  const playbackSessionIdRef = useRef<string | null>(null);
-  const canonicalAnimeIdRef = useRef<string | null>(null);
-  const sessionStartingRef = useRef<boolean>(false);
-  const isPlayingRef = useRef<boolean>(false);
-  const isBufferingRef = useRef<boolean>(false);
-  const isSeekingRef = useRef<boolean>(false);
-  const lastHeartbeatTimestampRef = useRef<number>(0);
-  const isCompletedRef = useRef<boolean>(false);
-
-  // Chave de armazenamento para salvar progresso sem retomar posição anterior ao abrir/recarregar
+  // Chave de armazenamento para troca de player sem bloquear abertura
   const progressStorageKey =
     anime && current
       ? `hikari_progress_${anime.id}_${current.id}`
@@ -466,15 +443,7 @@ function WatchPage() {
   const lastSavedTimeRef = useRef<number>(0);
 
   useEffect(() => {
-    playbackSessionIdRef.current = null;
-    canonicalAnimeIdRef.current = null;
-    sessionStartingRef.current = false;
-    isPlayingRef.current = false;
     setIsVideoPlaying(false);
-    isBufferingRef.current = false;
-    isSeekingRef.current = false;
-    isCompletedRef.current = false;
-    lastHeartbeatTimestampRef.current = 0;
   }, [current?.id, anime?.id]);
 
   useEffect(() => {
@@ -518,49 +487,6 @@ function WatchPage() {
         } catch {
           /* ignore storage error */
         }
-        if (playbackSessionIdRef.current && user && anime) {
-          const dur = live.time > 0 ? Math.floor(live.time) : undefined;
-          const snap = {
-            title: displayTitle(anime),
-            titleRomaji: anime.titles?.romaji || null,
-            titleEnglish: anime.titles?.english || null,
-            titleNative: anime.titles?.native || null,
-            cover: current.thumbnail || anime.cover,
-            format: anime.format || null,
-            year: anime.year || anime.startDate?.year || null,
-            episodesCount:
-              anime.episodesCount || (anime.seasons?.[0]?.episodes?.length ?? null),
-            anilistId: anime.anilistId ?? null,
-            malId: anime.malId ?? null,
-            kitsuId: anime.kitsuId ?? null,
-            serverCatalogId: anime.serverCatalogId ?? null,
-          };
-          const targetAnimeId =
-            canonicalAnimeIdRef.current || anime.serverCatalogId || anime.id;
-          const payload = {
-            animeId: targetAnimeId,
-            episodeId: current.id,
-            playbackSessionId: playbackSessionIdRef.current,
-            currentTime: Math.floor(live.time),
-            duration: dur,
-            deltaMs: lastHeartbeatTimestampRef.current > 0 ? Math.max(0, Date.now() - lastHeartbeatTimestampRef.current) : 0,
-            isPlaying: false,
-            isBuffering: false,
-            isSeeking: false,
-            ended: false,
-            animeSnapshot: snap,
-          };
-          try {
-            fetch("/api/playback/heartbeat", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-              keepalive: true,
-            }).catch(() => {});
-          } catch {
-            // ignore
-          }
-        }
       }
     };
 
@@ -578,9 +504,7 @@ function WatchPage() {
       window.removeEventListener("pagehide", handleUnloadOrHide);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [current?.id, progressStorageKey, user, anime]);
-
-
+  }, [current?.id, progressStorageKey]);
 
   const handleRestored = useCallback(
     (time: number) => {
@@ -593,187 +517,24 @@ function WatchPage() {
     [current?.id],
   );
 
-  const ensureSessionAndSendHeartbeat = useCallback(
-    async (time: number, totalDuration: number, isEnding = false, forceSend = false) => {
-      if (!user || !anime || !current) return;
-
-      const dur = totalDuration > 0 ? Math.floor(totalDuration) : undefined;
-      const snap = {
-        title: displayTitle(anime),
-        titleRomaji: anime.titles?.romaji || null,
-        titleEnglish: anime.titles?.english || null,
-        titleNative: anime.titles?.native || null,
-        cover: current.thumbnail || anime.cover,
-        format: anime.format || null,
-        year: anime.year || anime.startDate?.year || null,
-        episodesCount:
-          anime.episodesCount || (anime.seasons?.[0]?.episodes?.length ?? null),
-        anilistId: anime.anilistId ?? null,
-        malId: anime.malId ?? null,
-        kitsuId: anime.kitsuId ?? null,
-        serverCatalogId: anime.serverCatalogId ?? null,
-      };
-      const targetAnimeId =
-        canonicalAnimeIdRef.current || anime.serverCatalogId || anime.id;
-
-      const trackingCandidateIds = Array.from(
-        new Set(
-          [
-            id,
-            anime.id,
-            anime.serverCatalogId,
-            canonicalAnimeIdRef.current,
-            anime.anilistId != null ? String(anime.anilistId) : null,
-            anime.malId != null ? `mal-${anime.malId}` : null,
-            anime.malId != null ? String(anime.malId) : null,
-            anime.kitsuId != null ? `kitsu-${anime.kitsuId}` : null,
-            anime.kitsuId != null ? String(anime.kitsuId) : null,
-          ].filter((val): val is string => typeof val === "string" && Boolean(val.trim())),
-        ),
-      );
-
-      // 1. Inicia a sessão se ainda não tiver sido iniciada
-      if (!playbackSessionIdRef.current) {
-        if (sessionStartingRef.current) return;
-        sessionStartingRef.current = true;
-        try {
-          const session = await startEpisodeSession({
-            data: {
-              animeId: targetAnimeId,
-              episodeId: current.id,
-              episodeNumber: current.number,
-              duration: dur,
-              animeSnapshot: snap,
-            },
-          });
-          playbackSessionIdRef.current = session.playbackSessionId;
-          if (session.animeId) {
-            canonicalAnimeIdRef.current = session.animeId;
-            if (!trackingCandidateIds.includes(session.animeId)) {
-              trackingCandidateIds.push(session.animeId);
-            }
-          }
-          invalidateAnimeTrackingCache(user.id, trackingCandidateIds);
-          invalidatePaginatedTrackingCache(user.id);
-          invalidateAccountProfileCache(user.id);
-          saveAnimeUserClientCache(
-            trackingCandidateIds,
-            {
-              continueEpisode: { id: current.id, number: current.number },
-              ...(session.animeId ? { dbAnimeId: session.animeId } : {}),
-            },
-            user.id,
-          );
-          lastHeartbeatTimestampRef.current = Date.now();
-        } catch {
-          // Preserva a reprodução mesmo se o servidor estiver temporariamente indisponível
-        } finally {
-          sessionStartingRef.current = false;
-        }
-        return;
-      }
-
-      // 2. Heartbeat se sessão estiver ativa
-      const sessionId = playbackSessionIdRef.current;
-      const now = Date.now();
-      const deltaMs =
-        lastHeartbeatTimestampRef.current > 0
-          ? Math.max(0, now - lastHeartbeatTimestampRef.current)
-          : 0;
-
-      // Se for heartbeat normal de reprodução, exige ~28s de intervalo
-      if (!isEnding && !forceSend && deltaMs < 28000) {
-        return;
-      }
-
-      try {
-        const hb = await heartbeatEpisodeProgress({
-          data: {
-            animeId: canonicalAnimeIdRef.current || targetAnimeId,
-            episodeId: current.id,
-            playbackSessionId: sessionId,
-            currentTime: Math.floor(time),
-            duration: dur,
-            deltaMs,
-            isPlaying: isEnding ? false : isPlayingRef.current,
-            isBuffering: isBufferingRef.current,
-            isSeeking: isSeekingRef.current,
-            ended: isEnding,
-            animeSnapshot: snap,
-          },
-        });
-        lastHeartbeatTimestampRef.current = now; // Update only on success!
-        if (hb.animeId) {
-          canonicalAnimeIdRef.current = hb.animeId;
-          if (!trackingCandidateIds.includes(hb.animeId)) {
-            trackingCandidateIds.push(hb.animeId);
-          }
-        }
-        if (hb.completed) {
-          isCompletedRef.current = true;
-          const storeState = useHikariStore.getState();
-          storeState.markEpisodeWatched(anime.id, current.id);
-          if (hb.animeId && hb.animeId !== anime.id) {
-            storeState.markEpisodeWatched(hb.animeId, current.id);
-          }
-          if (id !== anime.id && id !== hb.animeId) {
-            storeState.markEpisodeWatched(id, current.id);
-          }
-          invalidateWatchedEpisodesCache(user.id, trackingCandidateIds);
-          invalidateAnimeTrackingCache(user.id, trackingCandidateIds);
-          invalidatePaginatedTrackingCache(user.id);
-          invalidateAccountProfileCache(user.id);
-          saveAnimeUserClientCache(
-            trackingCandidateIds,
-            {
-              ...(hb.episodesWatched !== undefined
-                ? { episodesWatched: hb.episodesWatched }
-                : {}),
-              ...(hb.animeId ? { dbAnimeId: hb.animeId } : {}),
-            },
-            user.id,
-          );
-        }
-      } catch (err: unknown) {
-        const msg = (err as Error)?.message || "";
-        if (msg.includes("expirada") || msg.includes("inválida")) {
-          playbackSessionIdRef.current = null;
-        }
-      }
-    },
-    [id, user, anime, current],
-  );
-
   const handlePlay = useCallback(() => {
-    isPlayingRef.current = true;
     setIsVideoPlaying(true);
-    isBufferingRef.current = false;
     if (current?.id) {
       setTriggeredPlayEpisodeId((prevId) => (prevId === current.id ? prevId : current.id));
     }
-    const curTime = livePlaybackRef.current.time;
-    void ensureSessionAndSendHeartbeat(curTime, 0);
-  }, [current?.id, ensureSessionAndSendHeartbeat]);
+  }, [current?.id]);
 
   const handlePlaying = useCallback(() => {
-    isPlayingRef.current = true;
     setIsVideoPlaying(true);
-    isBufferingRef.current = false;
-    const curTime = livePlaybackRef.current.time;
-    void ensureSessionAndSendHeartbeat(curTime, 0);
-  }, [ensureSessionAndSendHeartbeat]);
+  }, []);
 
   const handleSeeking = useCallback(() => {
-    isSeekingRef.current = true;
     setIsVideoPlaying(false);
   }, []);
 
-  const handleSeeked = useCallback(() => {
-    isSeekingRef.current = false;
-  }, []);
+  const handleSeeked = useCallback(() => {}, []);
 
   const handleWaiting = useCallback(() => {
-    isBufferingRef.current = true;
     setIsVideoPlaying(false);
   }, []);
 
@@ -796,78 +557,25 @@ function WatchPage() {
       if (time > 0) {
         livePlaybackRef.current = { episodeId: current.id, time };
       }
-
-      // Envia heartbeat com throttled timing para o servidor
-      void ensureSessionAndSendHeartbeat(time, totalDuration, false);
-
-      if (time / totalDuration > 0.95) {
-        try {
-          localStorage.removeItem(progressStorageKey);
-        } catch (err) {
-          void err;
-        }
-        return;
-      }
-
-      if (Math.abs(time - lastSavedTimeRef.current) >= 4) {
-        lastSavedTimeRef.current = time;
-        try {
-          localStorage.setItem(
-            progressStorageKey,
-            String(Math.floor(time)),
-          );
-        } catch (err) {
-          void err;
-        }
-      }
     },
-    [progressStorageKey, current?.id, effectiveInitialTime, ensureSessionAndSendHeartbeat],
+    [progressStorageKey, current?.id, effectiveInitialTime],
   );
 
   const handlePause = useCallback(
     (time: number, totalDuration: number) => {
-      isPlayingRef.current = false;
       setIsVideoPlaying(false);
       if (!current?.id || !progressStorageKey || totalDuration <= 0) return;
 
       if (time > 0) {
         livePlaybackRef.current = { episodeId: current.id, time };
       }
-
-      void ensureSessionAndSendHeartbeat(time, totalDuration, false, true);
-
-      if (time / totalDuration > 0.95) {
-        try {
-          localStorage.removeItem(progressStorageKey);
-        } catch {
-          /* ignore storage error */
-        }
-        return;
-      }
-
-      if (
-        hasRestoredRef.current ||
-        effectiveInitialTime <= 0 ||
-        Math.abs(time - effectiveInitialTime) <= 2
-      ) {
-        lastSavedTimeRef.current = time;
-        try {
-          localStorage.setItem(
-            progressStorageKey,
-            String(Math.floor(time)),
-          );
-        } catch {
-          /* ignore storage error */
-        }
-      }
     },
-    [current?.id, progressStorageKey, effectiveInitialTime, ensureSessionAndSendHeartbeat],
+    [current?.id, progressStorageKey],
   );
 
   const handleSelectPlayer = useCallback(
     (targetId: string) => {
       if (targetId === selectedPlayerId) return;
-      isPlayingRef.current = false;
       setIsVideoPlaying(false);
 
       const hasValidLiveTime =
@@ -911,9 +619,7 @@ function WatchPage() {
   }, [next, navigate, anime]);
 
   const handleEnded = useCallback(() => {
-    isPlayingRef.current = false;
     setIsVideoPlaying(false);
-    void ensureSessionAndSendHeartbeat(livePlaybackRef.current.time, 0, true, true);
     if (progressStorageKey) {
       try {
         localStorage.removeItem(progressStorageKey);
@@ -924,7 +630,7 @@ function WatchPage() {
     livePlaybackRef.current = { episodeId: "", time: 0 };
     setSessionTime(null);
     handleNextEpisode();
-  }, [progressStorageKey, handleNextEpisode, ensureSessionAndSendHeartbeat]);
+  }, [progressStorageKey, handleNextEpisode]);
 
   const selectedPlayer =
     playerSources.find((s) => s.id === selectedPlayerId) ??
@@ -1018,7 +724,6 @@ function WatchPage() {
   }, [current, file, title, playerPoster, anime?.synopsis, selectedPlayer?.name]);
 
   const handlePlayerError = useCallback(() => {
-    isPlayingRef.current = false;
     setIsVideoPlaying(false);
     if (!selectedPlayer) return;
     const alt = playerSources.find((s) => s.id !== selectedPlayer.id);

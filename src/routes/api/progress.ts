@@ -6,6 +6,47 @@ import {
   getProgressFromRedis,
 } from "@/lib/redis";
 
+const MAX_PROGRESS_BODY_BYTES = 1024;
+const VALID_PROGRESS_EVENTS = new Set(["interval", "pause", "seek", "hide"]);
+
+function hasSessionCredentials(request: Request): boolean {
+  const authHeader = request.headers.get("authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    return true;
+  }
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) {
+    return false;
+  }
+  return (
+    cookieHeader.includes("session_token=") ||
+    cookieHeader.includes("session_data=")
+  );
+}
+
+async function resolveProgressUserKey(
+  request: Request,
+  sessionId?: string,
+): Promise<string> {
+  const cleanSessionId = sessionId?.trim();
+  const fallbackKey = cleanSessionId ? `anon:${cleanSessionId}` : "anon:default";
+
+  if (!hasSessionCredentials(request)) {
+    return fallbackKey;
+  }
+
+  try {
+    const apiUser = await resolveApiUser(request);
+    if (apiUser?.id && apiUser.id !== "dev-user") {
+      return apiUser.id;
+    }
+  } catch {
+    // Fallback anônimo seguro sem tocar no banco
+  }
+
+  return fallbackKey;
+}
+
 export const Route = createFileRoute("/api/progress")({
   server: {
     handlers: {
@@ -15,21 +56,22 @@ export const Route = createFileRoute("/api/progress")({
           const episodeId = url.searchParams.get("episodeId")?.trim();
           const sessionId = url.searchParams.get("sessionId")?.trim();
 
-          if (!episodeId) {
+          if (!episodeId || episodeId.length > 128 || episodeId.includes("|")) {
             return Response.json(
-              { error: "episodeId é obrigatório" },
+              { error: "episodeId inválido" },
+              { status: 400 },
+            );
+          }
+
+          if (sessionId && (sessionId.length > 128 || sessionId.includes("|"))) {
+            return Response.json(
+              { error: "sessionId inválido" },
               { status: 400 },
             );
           }
 
           // Resolver chave de sessão: userId se autenticado, senão anon:<sessionId>
-          let userKey = sessionId ? `anon:${sessionId}` : "anon:default";
-          try {
-            const apiUser = await resolveApiUser(request);
-            if (apiUser?.id) {
-              userKey = apiUser.id;
-            }
-          } catch {}
+          const userKey = await resolveProgressUserKey(request, sessionId);
 
           // 1. Tentar ler do Redis
           const cached = await getProgressFromRedis(userKey, episodeId);
@@ -77,7 +119,7 @@ export const Route = createFileRoute("/api/progress")({
               },
             },
           );
-        } catch (err) {
+        } catch {
           return Response.json(
             { error: "Falha ao consultar progresso" },
             { status: 500 },
@@ -87,20 +129,27 @@ export const Route = createFileRoute("/api/progress")({
 
       POST: async ({ request }) => {
         try {
-          // Limite de 1KB
+          // Limite estrito de 1KB
           const contentLength = request.headers.get("content-length");
-          if (contentLength && parseInt(contentLength, 10) > 1024) {
-            return new Response("Payload too large", { status: 413 });
+          if (contentLength) {
+            const declaredBytes = Number.parseInt(contentLength, 10);
+            if (Number.isFinite(declaredBytes) && declaredBytes > MAX_PROGRESS_BODY_BYTES) {
+              return new Response("Payload too large", { status: 413 });
+            }
           }
 
           const rawText = await request.text();
-          if (rawText.length > 1024) {
+          if (Buffer.byteLength(rawText, "utf8") > MAX_PROGRESS_BODY_BYTES) {
             return new Response("Payload too large", { status: 413 });
           }
 
           let body: Record<string, unknown>;
           try {
-            body = JSON.parse(rawText);
+            const parsed = JSON.parse(rawText);
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+              return Response.json({ error: "JSON inválido" }, { status: 400 });
+            }
+            body = parsed as Record<string, unknown>;
           } catch {
             return Response.json({ error: "JSON inválido" }, { status: 400 });
           }
@@ -110,16 +159,20 @@ export const Route = createFileRoute("/api/progress")({
           if (
             typeof episodeId !== "string" ||
             !episodeId.trim() ||
+            episodeId.trim().length > 128 ||
+            episodeId.includes("|") ||
             typeof position !== "number" ||
-            Number.isNaN(position) ||
+            !Number.isFinite(position) ||
             position < 0 ||
             typeof duration !== "number" ||
-            Number.isNaN(duration) ||
+            !Number.isFinite(duration) ||
             duration <= 0 ||
             typeof sessionId !== "string" ||
             !sessionId.trim() ||
+            sessionId.trim().length > 128 ||
+            sessionId.includes("|") ||
             typeof event !== "string" ||
-            !["interval", "pause", "seek", "hide"].includes(event)
+            !VALID_PROGRESS_EVENTS.has(event)
           ) {
             return Response.json(
               { error: "Dados inválidos" },
@@ -136,13 +189,7 @@ export const Route = createFileRoute("/api/progress")({
           }
 
           // Chave de sessão: userId se autenticado, senão anon:<sessionId>
-          let userKey = `anon:${sessionId.trim()}`;
-          try {
-            const apiUser = await resolveApiUser(request);
-            if (apiUser?.id) {
-              userKey = apiUser.id;
-            }
-          } catch {}
+          const userKey = await resolveProgressUserKey(request, sessionId);
 
           // Gravar no Redis sem tocar no Postgres (com rate limit de max 1 aceite a cada 5s)
           const result = await recordProgressInRedis({

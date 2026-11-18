@@ -9,5 +9,15 @@
         }
       ]
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/drain-progress",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-progress",
+      "schedule": "0 3 * * *"
+    }
   ]
 }

@@ -108,7 +108,7 @@ export function Player({
     };
   }, [effectiveMode, src]);
 
-  // Manipuladores de progresso e eventos do video
+  // Manipuladores de progresso e eventos do video (sem envio direto em timeupdate)
   const handleTimeUpdate = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -116,13 +116,8 @@ export function Player({
     const dur = video.duration || 0;
     setCurrentTime(cur);
     setDuration(dur);
-
-    // Progresso: debounce 10s, só se mudou mais de 5s
-    const now = Date.now();
-    if (now - lastProgressSaveRef.current > 10000 && Math.abs(cur - (onProgress ? cur : 0)) >= 5) {
-      lastProgressSaveRef.current = now;
-      onProgress?.(cur, dur);
-    }
+    void lastProgressSaveRef;
+    void onProgress;
   };
 
   const handleVideoError = () => {

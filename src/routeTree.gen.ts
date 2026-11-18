@@ -54,6 +54,7 @@ import { Route as AnimeIdRouteImport } from './routes/anime.$id'
 import { Route as ApiCommentsRouteImport } from './routes/api/comments'
 import { Route as ApiHlsRouteImport } from './routes/api/hls'
 import { Route as ApiNotificationsRouteImport } from './routes/api/notifications'
+import { Route as ApiProgressRouteImport } from './routes/api/progress'
 import { Route as ApiUploadCommentImageRouteImport } from './routes/api/upload-comment-image'
 import { Route as ApiUploadImageRouteImport } from './routes/api/upload-image'
 import { Route as ApiVideoProxyRouteImport } from './routes/api/video-proxy'
@@ -82,6 +83,8 @@ import { Route as ApiCommentsLikeRouteImport } from './routes/api/comments.like'
 import { Route as ApiCommentsModerationRouteImport } from './routes/api/comments.moderation'
 import { Route as ApiCommentsTypingRouteImport } from './routes/api/comments.typing'
 import { Route as ApiCommentsUpdatesRouteImport } from './routes/api/comments.updates'
+import { Route as ApiCronCleanupProgressRouteImport } from './routes/api/cron.cleanup-progress'
+import { Route as ApiCronDrainProgressRouteImport } from './routes/api/cron.drain-progress'
 import { Route as ApiPlaybackHeartbeatRouteImport } from './routes/api/playback.heartbeat'
 import { Route as ApiProfileFollowRouteImport } from './routes/api/profile.follow'
 import { Route as WatchIdEpRouteImport } from './routes/watch_.$id.$ep'
@@ -311,6 +314,11 @@ const ApiNotificationsRoute = ApiNotificationsRouteImport.update({
   path: '/api/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiProgressRoute = ApiProgressRouteImport.update({
+  id: '/api/progress',
+  path: '/api/progress',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiUploadCommentImageRoute = ApiUploadCommentImageRouteImport.update({
   id: '/api/upload-comment-image',
   path: '/api/upload-comment-image',
@@ -451,6 +459,16 @@ const ApiCommentsUpdatesRoute = ApiCommentsUpdatesRouteImport.update({
   path: '/updates',
   getParentRoute: () => ApiCommentsRoute,
 } as any)
+const ApiCronCleanupProgressRoute = ApiCronCleanupProgressRouteImport.update({
+  id: '/api/cron/cleanup-progress',
+  path: '/api/cron/cleanup-progress',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCronDrainProgressRoute = ApiCronDrainProgressRouteImport.update({
+  id: '/api/cron/drain-progress',
+  path: '/api/cron/drain-progress',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPlaybackHeartbeatRoute = ApiPlaybackHeartbeatRouteImport.update({
   id: '/api/playback/heartbeat',
   path: '/api/playback/heartbeat',
@@ -511,6 +529,7 @@ export interface FileRoutesByFullPath {
   '/api/comments': typeof ApiCommentsRouteWithChildren
   '/api/hls': typeof ApiHlsRoute
   '/api/notifications': typeof ApiNotificationsRoute
+  '/api/progress': typeof ApiProgressRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-image': typeof ApiUploadImageRoute
   '/api/video-proxy': typeof ApiVideoProxyRoute
@@ -541,6 +560,8 @@ export interface FileRoutesByFullPath {
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
   '/api/comments/typing': typeof ApiCommentsTypingRoute
   '/api/comments/updates': typeof ApiCommentsUpdatesRoute
+  '/api/cron/cleanup-progress': typeof ApiCronCleanupProgressRoute
+  '/api/cron/drain-progress': typeof ApiCronDrainProgressRoute
   '/api/playback/heartbeat': typeof ApiPlaybackHeartbeatRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
@@ -587,6 +608,7 @@ export interface FileRoutesByTo {
   '/api/comments': typeof ApiCommentsRouteWithChildren
   '/api/hls': typeof ApiHlsRoute
   '/api/notifications': typeof ApiNotificationsRoute
+  '/api/progress': typeof ApiProgressRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-image': typeof ApiUploadImageRoute
   '/api/video-proxy': typeof ApiVideoProxyRoute
@@ -617,6 +639,8 @@ export interface FileRoutesByTo {
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
   '/api/comments/typing': typeof ApiCommentsTypingRoute
   '/api/comments/updates': typeof ApiCommentsUpdatesRoute
+  '/api/cron/cleanup-progress': typeof ApiCronCleanupProgressRoute
+  '/api/cron/drain-progress': typeof ApiCronDrainProgressRoute
   '/api/playback/heartbeat': typeof ApiPlaybackHeartbeatRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
@@ -666,6 +690,7 @@ export interface FileRoutesById {
   '/api/comments': typeof ApiCommentsRouteWithChildren
   '/api/hls': typeof ApiHlsRoute
   '/api/notifications': typeof ApiNotificationsRoute
+  '/api/progress': typeof ApiProgressRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-image': typeof ApiUploadImageRoute
   '/api/video-proxy': typeof ApiVideoProxyRoute
@@ -696,6 +721,8 @@ export interface FileRoutesById {
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
   '/api/comments/typing': typeof ApiCommentsTypingRoute
   '/api/comments/updates': typeof ApiCommentsUpdatesRoute
+  '/api/cron/cleanup-progress': typeof ApiCronCleanupProgressRoute
+  '/api/cron/drain-progress': typeof ApiCronDrainProgressRoute
   '/api/playback/heartbeat': typeof ApiPlaybackHeartbeatRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/watch_/$id/$ep': typeof WatchIdEpRoute
@@ -746,6 +773,7 @@ export interface FileRouteTypes {
     | '/api/comments'
     | '/api/hls'
     | '/api/notifications'
+    | '/api/progress'
     | '/api/upload-comment-image'
     | '/api/upload-image'
     | '/api/video-proxy'
@@ -776,6 +804,8 @@ export interface FileRouteTypes {
     | '/api/comments/moderation'
     | '/api/comments/typing'
     | '/api/comments/updates'
+    | '/api/cron/cleanup-progress'
+    | '/api/cron/drain-progress'
     | '/api/playback/heartbeat'
     | '/api/profile/follow'
     | '/watch/$id/$ep'
@@ -822,6 +852,7 @@ export interface FileRouteTypes {
     | '/api/comments'
     | '/api/hls'
     | '/api/notifications'
+    | '/api/progress'
     | '/api/upload-comment-image'
     | '/api/upload-image'
     | '/api/video-proxy'
@@ -852,6 +883,8 @@ export interface FileRouteTypes {
     | '/api/comments/moderation'
     | '/api/comments/typing'
     | '/api/comments/updates'
+    | '/api/cron/cleanup-progress'
+    | '/api/cron/drain-progress'
     | '/api/playback/heartbeat'
     | '/api/profile/follow'
     | '/watch/$id/$ep'
@@ -900,6 +933,7 @@ export interface FileRouteTypes {
     | '/api/comments'
     | '/api/hls'
     | '/api/notifications'
+    | '/api/progress'
     | '/api/upload-comment-image'
     | '/api/upload-image'
     | '/api/video-proxy'
@@ -930,6 +964,8 @@ export interface FileRouteTypes {
     | '/api/comments/moderation'
     | '/api/comments/typing'
     | '/api/comments/updates'
+    | '/api/cron/cleanup-progress'
+    | '/api/cron/drain-progress'
     | '/api/playback/heartbeat'
     | '/api/profile/follow'
     | '/watch_/$id/$ep'
@@ -966,6 +1002,7 @@ export interface RootRouteChildren {
   ApiCommentsRoute: typeof ApiCommentsRouteWithChildren
   ApiHlsRoute: typeof ApiHlsRoute
   ApiNotificationsRoute: typeof ApiNotificationsRoute
+  ApiProgressRoute: typeof ApiProgressRoute
   ApiUploadCommentImageRoute: typeof ApiUploadCommentImageRoute
   ApiUploadImageRoute: typeof ApiUploadImageRoute
   ApiVideoProxyRoute: typeof ApiVideoProxyRoute
@@ -989,6 +1026,8 @@ export interface RootRouteChildren {
   ApiAdminUploadThumbnailRoute: typeof ApiAdminUploadThumbnailRoute
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiCronCleanupProgressRoute: typeof ApiCronCleanupProgressRoute
+  ApiCronDrainProgressRoute: typeof ApiCronDrainProgressRoute
   ApiPlaybackHeartbeatRoute: typeof ApiPlaybackHeartbeatRoute
   ApiProfileFollowRoute: typeof ApiProfileFollowRoute
   WatchIdEpRoute: typeof WatchIdEpRoute
@@ -1311,6 +1350,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiNotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/progress': {
+      id: '/api/progress'
+      path: '/api/progress'
+      fullPath: '/api/progress'
+      preLoaderRoute: typeof ApiProgressRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/upload-comment-image': {
       id: '/api/upload-comment-image'
       path: '/api/upload-comment-image'
@@ -1507,6 +1553,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCommentsUpdatesRouteImport
       parentRoute: typeof ApiCommentsRoute
     }
+    '/api/cron/cleanup-progress': {
+      id: '/api/cron/cleanup-progress'
+      path: '/api/cron/cleanup-progress'
+      fullPath: '/api/cron/cleanup-progress'
+      preLoaderRoute: typeof ApiCronCleanupProgressRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/drain-progress': {
+      id: '/api/cron/drain-progress'
+      path: '/api/cron/drain-progress'
+      fullPath: '/api/cron/drain-progress'
+      preLoaderRoute: typeof ApiCronDrainProgressRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/playback/heartbeat': {
       id: '/api/playback/heartbeat'
       path: '/api/playback/heartbeat'
@@ -1628,6 +1688,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCommentsRoute: ApiCommentsRouteWithChildren,
   ApiHlsRoute: ApiHlsRoute,
   ApiNotificationsRoute: ApiNotificationsRoute,
+  ApiProgressRoute: ApiProgressRoute,
   ApiUploadCommentImageRoute: ApiUploadCommentImageRoute,
   ApiUploadImageRoute: ApiUploadImageRoute,
   ApiVideoProxyRoute: ApiVideoProxyRoute,
@@ -1651,6 +1712,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminUploadThumbnailRoute: ApiAdminUploadThumbnailRoute,
   ApiAdminUsersRoute: ApiAdminUsersRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiCronCleanupProgressRoute: ApiCronCleanupProgressRoute,
+  ApiCronDrainProgressRoute: ApiCronDrainProgressRoute,
   ApiPlaybackHeartbeatRoute: ApiPlaybackHeartbeatRoute,
   ApiProfileFollowRoute: ApiProfileFollowRoute,
   WatchIdEpRoute: WatchIdEpRoute,

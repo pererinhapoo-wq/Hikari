@@ -1941,6 +1941,43 @@ export type ProgressRecordPayload = {
   updated_at?: string;
 };
 
+const PROGRESS_TTL_SEC = 604800; // 7 dias
+const PROGRESS_QUEUE_KEY = "prog:queue";
+const PROGRESS_QUEUE_MAX_INDEX = 4999; // LTRIM 0 4999 (máximo 5000 itens)
+
+const RECORD_PROGRESS_SCRIPT = `
+local rl = redis.call("SET", KEYS[1], "1", "EX", tonumber(ARGV[1]), "NX")
+if not rl then
+  return 0
+end
+redis.call("HSET", KEYS[2], "position", ARGV[2], "duration", ARGV[3], "event", ARGV[4], "updated_at", ARGV[5])
+redis.call("EXPIRE", KEYS[2], tonumber(ARGV[6]))
+redis.call("LPUSH", KEYS[3], ARGV[7])
+redis.call("LTRIM", KEYS[3], 0, tonumber(ARGV[8]))
+return 1
+`;
+
+const DRAIN_PROGRESS_QUEUE_SCRIPT = `
+local out = {}
+local count = tonumber(ARGV[1]) or 500
+for i = 1, count do
+  local item = redis.call("RPOP", KEYS[1])
+  if not item then
+    break
+  end
+  out[#out + 1] = item
+end
+return out
+`;
+
+const CLEANUP_DRAINED_HASH_SCRIPT = `
+local cur = redis.call("HGET", KEYS[1], "updated_at")
+if not cur or cur == ARGV[1] then
+  return redis.call("HDEL", KEYS[1], "position", "duration", "event", "updated_at")
+end
+return 0
+`;
+
 const inMemoryProgressStore = new Map<
   string,
   { position: string; duration: string; event: string; updated_at: string }
@@ -1948,36 +1985,45 @@ const inMemoryProgressStore = new Map<
 const inMemoryProgressQueue: string[] = [];
 const inMemoryRateLimit = new Map<string, number>();
 
+export function splitProgressQueueEntry(
+  entry: string,
+): { userKey: string; episodeId: string } | null {
+  const sepIdx = entry.lastIndexOf("|");
+  if (sepIdx <= 0 || sepIdx >= entry.length - 1) return null;
+  return {
+    userKey: entry.slice(0, sepIdx),
+    episodeId: entry.slice(sepIdx + 1),
+  };
+}
+
 export async function recordProgressInRedis(
   payload: ProgressRecordPayload,
 ): Promise<{ accepted: boolean }> {
   const { userKey, episodeId, position, duration, event } = payload;
-  const nowIso = new Date().toISOString();
+  const nowIso = payload.updated_at || new Date().toISOString();
   const rlKey = `prog:rl:${userKey}`;
   const hashKey = `prog:${userKey}:${episodeId}`;
   const queueVal = `${userKey}|${episodeId}`;
 
   if (redisClient && typeof window === "undefined") {
     try {
-      const acquired = await withRedisTimeout(
-        redisClient.set(rlKey, "1", { ex: 5, nx: true }),
+      const res = await withRedisTimeout(
+        redisClient.eval<string[], number>(
+          RECORD_PROGRESS_SCRIPT,
+          [rlKey, hashKey, PROGRESS_QUEUE_KEY],
+          [
+            "5",
+            String(position),
+            String(duration),
+            event,
+            nowIso,
+            String(PROGRESS_TTL_SEC),
+            queueVal,
+            String(PROGRESS_QUEUE_MAX_INDEX),
+          ],
+        ),
       );
-      if (!acquired) {
-        return { accepted: false };
-      }
-
-      await withRedisTimeout(
-        redisClient.hset(hashKey, {
-          position: String(position),
-          duration: String(duration),
-          event,
-          updated_at: nowIso,
-        }),
-      );
-      await withRedisTimeout(redisClient.expire(hashKey, 604800));
-      await withRedisTimeout(redisClient.lpush("prog:queue", queueVal));
-      await withRedisTimeout(redisClient.ltrim("prog:queue", 0, 4999));
-      return { accepted: true };
+      return { accepted: Number(res) === 1 };
     } catch (err) {
       console.warn("[redis] Falha ao gravar progresso no Redis:", err);
     }
@@ -2013,10 +2059,10 @@ export async function getProgressFromRedis(
       const data = await withRedisTimeout(
         redisClient.hgetall<Record<string, string>>(hashKey),
       );
-      if (data && data.position) {
+      if (data && data.position !== undefined) {
         return {
-          position: Math.max(0, parseInt(data.position, 10) || 0),
-          duration: Math.max(0, parseInt(data.duration, 10) || 0),
+          position: Math.max(0, parseInt(String(data.position), 10) || 0),
+          duration: Math.max(0, parseInt(String(data.duration), 10) || 0),
         };
       }
     } catch (err) {
@@ -2045,26 +2091,34 @@ export async function drainProgressFromQueue(
     updated_at: string;
   }>
 > {
-  const rawItems: string[] = [];
-
-  if (redisClient && typeof window !== "undefined") {
+  if (typeof window !== "undefined") {
     return [];
   }
 
+  const safeLimit = Math.min(Math.max(1, Math.floor(limit)), 500);
+  const rawItems: string[] = [];
+
   if (redisClient) {
     try {
-      for (let i = 0; i < limit; i++) {
-        const item = await withRedisTimeout(
-          redisClient.rpop<string>("prog:queue"),
-        );
-        if (!item) break;
-        rawItems.push(item);
+      const popped = await withRedisTimeout(
+        redisClient.eval<string[], string[]>(
+          DRAIN_PROGRESS_QUEUE_SCRIPT,
+          [PROGRESS_QUEUE_KEY],
+          [String(safeLimit)],
+        ),
+      );
+      if (Array.isArray(popped)) {
+        for (const item of popped) {
+          if (typeof item === "string" && item) {
+            rawItems.push(item);
+          }
+        }
       }
     } catch (err) {
       console.warn("[redis] Falha ao drenar fila de progresso:", err);
     }
   } else {
-    for (let i = 0; i < limit; i++) {
+    for (let i = 0; i < safeLimit; i++) {
       const item = inMemoryProgressQueue.pop();
       if (!item) break;
       rawItems.push(item);
@@ -2073,7 +2127,38 @@ export async function drainProgressFromQueue(
 
   if (rawItems.length === 0) return [];
 
-  const uniqueKeys = Array.from(new Set(rawItems));
+  // Deduplica mantendo a ocorrência mais recente do lote
+  const orderedUniqueKeys: string[] = [];
+  const seen = new Set<string>();
+  for (let i = rawItems.length - 1; i >= 0; i--) {
+    const key = rawItems[i];
+    if (!seen.has(key)) {
+      seen.add(key);
+      orderedUniqueKeys.push(key);
+    }
+  }
+  orderedUniqueKeys.reverse();
+
+  const parsedEntries: Array<{
+    raw: string;
+    userKey: string;
+    episodeId: string;
+    hashKey: string;
+  }> = [];
+
+  for (const item of orderedUniqueKeys) {
+    const split = splitProgressQueueEntry(item);
+    if (!split) continue;
+    parsedEntries.push({
+      raw: item,
+      userKey: split.userKey,
+      episodeId: split.episodeId,
+      hashKey: `prog:${split.userKey}:${split.episodeId}`,
+    });
+  }
+
+  if (parsedEntries.length === 0) return [];
+
   const dedupedMap = new Map<
     string,
     {
@@ -2085,29 +2170,51 @@ export async function drainProgressFromQueue(
     }
   >();
 
-  for (const item of uniqueKeys) {
-    const [userKey, episodeId] = item.split("|");
-    if (!userKey || !episodeId) continue;
-    const hashKey = `prog:${userKey}:${episodeId}`;
+  if (redisClient) {
+    try {
+      const pipe = redisClient.pipeline();
+      for (const entry of parsedEntries) {
+        pipe.hgetall<Record<string, string>>(entry.hashKey);
+      }
+      const results = await withRedisTimeout(
+        pipe.exec<Array<Record<string, string> | null>>(),
+      );
 
-    let data: Record<string, string> | null = null;
-    if (redisClient) {
-      try {
-        data = await withRedisTimeout(
-          redisClient.hgetall<Record<string, string>>(hashKey),
-        );
-      } catch {}
-    } else {
-      data = inMemoryProgressStore.get(hashKey) ?? null;
+      for (let i = 0; i < parsedEntries.length; i++) {
+        const entry = parsedEntries[i];
+        const data = results[i];
+        if (!data || data.position === undefined) continue;
+        const position = Math.max(0, parseInt(String(data.position), 10) || 0);
+        const duration = Math.max(0, parseInt(String(data.duration), 10) || 0);
+        const updated_at =
+          typeof data.updated_at === "string" && data.updated_at
+            ? data.updated_at
+            : new Date().toISOString();
+
+        const existing = dedupedMap.get(entry.raw);
+        if (!existing || existing.updated_at < updated_at) {
+          dedupedMap.set(entry.raw, {
+            userKey: entry.userKey,
+            episodeId: entry.episodeId,
+            position,
+            duration,
+            updated_at,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("[redis] Falha ao ler hashes de progresso no dreno:", err);
     }
-
-    if (data && data.position) {
+  } else {
+    for (const entry of parsedEntries) {
+      const data = inMemoryProgressStore.get(entry.hashKey) ?? null;
+      if (!data || data.position === undefined) continue;
       const position = Math.max(0, parseInt(data.position, 10) || 0);
       const duration = Math.max(0, parseInt(data.duration, 10) || 0);
       const updated_at = data.updated_at || new Date().toISOString();
-      dedupedMap.set(item, {
-        userKey,
-        episodeId,
+      dedupedMap.set(entry.raw, {
+        userKey: entry.userKey,
+        episodeId: entry.episodeId,
         position,
         duration,
         updated_at,
@@ -2121,25 +2228,31 @@ export async function drainProgressFromQueue(
 export async function cleanupDrainedProgressHashes(
   drained: Array<{ userKey: string; episodeId: string; updated_at: string }>,
 ): Promise<void> {
+  if (drained.length === 0) return;
+
+  if (redisClient) {
+    try {
+      const pipe = redisClient.pipeline();
+      for (const item of drained) {
+        const hashKey = `prog:${item.userKey}:${item.episodeId}`;
+        pipe.eval(CLEANUP_DRAINED_HASH_SCRIPT, [hashKey], [item.updated_at]);
+      }
+      await withRedisTimeout(pipe.exec());
+    } catch (err) {
+      console.warn("[redis] Falha ao limpar hashes drenados (HDEL):", err);
+    }
+    return;
+  }
+
   for (const item of drained) {
     const hashKey = `prog:${item.userKey}:${item.episodeId}`;
-    if (redisClient) {
-      try {
-        const currentUpdated = await withRedisTimeout(
-          redisClient.hget<string>(hashKey, "updated_at"),
-        );
-        if (!currentUpdated || currentUpdated === item.updated_at) {
-          await withRedisTimeout(redisClient.del(hashKey));
-        }
-      } catch {}
-    } else {
-      const mem = inMemoryProgressStore.get(hashKey);
-      if (!mem || mem.updated_at === item.updated_at) {
-        inMemoryProgressStore.delete(hashKey);
-      }
+    const mem = inMemoryProgressStore.get(hashKey);
+    if (!mem || mem.updated_at === item.updated_at) {
+      inMemoryProgressStore.delete(hashKey);
     }
   }
 }
+
 
 
 

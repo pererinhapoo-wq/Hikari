@@ -30,18 +30,34 @@ async function handleCleanup(request: Request): Promise<Response> {
   try {
     const sql = await getSql();
 
-    // Remove registros com mais de 180 dias sem tocar em episódios em andamento (<90%)
+    // Remove linhas com updated_at > 180 dias, mas nunca apaga a linha mais recente de um episódio em andamento
     const query = `
-      DELETE FROM "progress"
-      WHERE "updated_at" < NOW() - INTERVAL '180 days'
-        AND "position" >= "duration" * 0.95;
+      WITH latest_in_progress AS (
+        SELECT DISTINCT ON ("user_key") "user_key", "episode_id"
+        FROM "progress"
+        WHERE "duration" > 0
+          AND "position" > 0
+          AND "position" < "duration" * 0.95
+        ORDER BY "user_key", "updated_at" DESC
+      )
+      DELETE FROM "progress" p
+      WHERE p."updated_at" < NOW() - INTERVAL '180 days'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM latest_in_progress lip
+          WHERE lip."user_key" = p."user_key"
+            AND lip."episode_id" = p."episode_id"
+        )
+      RETURNING p."user_key", p."episode_id";
     `;
 
-    await sql.query(query);
+    const deleted = await sql.query<{ user_key: string; episode_id: string }>(
+      query,
+    );
 
     return Response.json({
       success: true,
-      cleaned: true,
+      deleted: deleted.length,
     });
   } catch (err) {
     console.error("[cron/cleanup-progress] Erro ao limpar progresso antigo:", err);

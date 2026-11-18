@@ -41,6 +41,7 @@ import {
   classifyVideoResolution,
   formatDuration,
 } from '../../services/videoData';
+import { useProgressTracker } from '@/hooks/useProgressTracker';
 
 export type { VideoItem, QualityLevel, PlaybackSpeed, VideoResolution, StreamQualityOption };
 
@@ -647,6 +648,17 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const [posterFailed, setPosterFailed] = useState<boolean>(false);
   const [isIframeMode, setIsIframeMode] = useState<boolean>(false);
   const [hlsRetryNonce, setHlsRetryNonce] = useState<number>(0);
+
+  const handleTrackerRestored = useCallback((position: number) => {
+    initialTimeAppliedRef.current = true;
+    onRestoredRef.current?.(position);
+  }, []);
+
+  useProgressTracker({
+    episodeId: isIframeMode ? '' : video?.id || '',
+    videoRef,
+    onRestored: handleTrackerRestored,
+  });
 
   const effectiveIframeUrl = useMemo(() => {
     if (iframeFallbackUrl) return iframeFallbackUrl;
