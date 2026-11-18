@@ -1689,6 +1689,106 @@ export async function invalidateRedisEpisodeSource(
   }
 }
 
+export async function getRedisSegMode(host: string): Promise<string | null> {
+  if (!redisClient || typeof window !== "undefined") return null;
+  const clean = host?.trim().toLowerCase();
+  if (!clean) return null;
+  try {
+    return await withRedisTimeout(redisClient.get<string>(`segmode:${clean}`));
+  } catch {
+    return null;
+  }
+}
+
+export async function setRedisSegMode(
+  host: string,
+  mode: string,
+  ttl: number,
+): Promise<void> {
+  if (!redisClient || typeof window !== "undefined") return;
+  const clean = host?.trim().toLowerCase();
+  if (!clean) return;
+  try {
+    await withRedisTimeout(
+      redisClient.set(`segmode:${clean}`, mode, { ex: ttl }),
+    );
+  } catch {}
+}
+
+export async function getRedisPlaylistCache(
+  url: string,
+): Promise<string | null> {
+  if (!redisClient || typeof window !== "undefined") return null;
+  const clean = url?.trim();
+  if (!clean) return null;
+  try {
+    return await withRedisTimeout(redisClient.get<string>(`p:${clean}`));
+  } catch {
+    return null;
+  }
+}
+
+export async function setRedisPlaylistCache(
+  url: string,
+  content: string,
+  ttl: number,
+): Promise<void> {
+  if (!redisClient || typeof window !== "undefined") return;
+  const clean = url?.trim();
+  if (!clean) return;
+  try {
+    await withRedisTimeout(
+      redisClient.set(`p:${clean}`, content, { ex: ttl }),
+    );
+  } catch {}
+}
+
+export async function getRedisCircuitBreaker(
+  episodeId: string,
+): Promise<number> {
+  if (!redisClient || typeof window !== "undefined") return 0;
+  const clean = episodeId?.trim();
+  if (!clean) return 0;
+  try {
+    const val = await withRedisTimeout(
+      redisClient.get<number>(`cb:${clean}`),
+    );
+    return Number(val) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function incrementRedisCircuitBreaker(
+  episodeId: string,
+  ttl: number,
+): Promise<number> {
+  if (!redisClient || typeof window !== "undefined") return 0;
+  const clean = episodeId?.trim();
+  if (!clean) return 0;
+  try {
+    const count = await withRedisTimeout(redisClient.incr(`cb:${clean}`));
+    if (count === 1) {
+      await withRedisTimeout(redisClient.expire(`cb:${clean}`, ttl));
+    }
+    return Number(count) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function resetRedisCircuitBreaker(
+  episodeId: string,
+): Promise<void> {
+  if (!redisClient || typeof window !== "undefined") return;
+  const clean = episodeId?.trim();
+  if (!clean) return;
+  try {
+    await withRedisTimeout(redisClient.del(`cb:${clean}`));
+  } catch {}
+}
+
+
 const EPISODE_LOCK_KEY_PREFIX = "ep:lock:";
 const EPISODE_GEN_KEY_PREFIX = "ep:gen:";
 const EPISODE_LOCK_TTL_MS = 10000; // 10 seconds lock timeout
