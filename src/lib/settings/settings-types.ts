@@ -14,7 +14,6 @@ export interface HikariAdminSettings {
   player_autoplay_default: boolean;
   player_auto_next_default: boolean;
   allow_adult_content: boolean;
-  anilist_sync_frequency: "1_per_week" | "2_per_week";
 
   // C. Avisos e comunicados
   notice_enabled: boolean;
@@ -76,7 +75,6 @@ export const DEFAULT_ADMIN_SETTINGS: HikariAdminSettings = {
   player_autoplay_default: true,
   player_auto_next_default: true,
   allow_adult_content: true,
-  anilist_sync_frequency: "1_per_week",
 
   notice_enabled: false,
   notice_title: "Aviso da Administração",
@@ -156,7 +154,6 @@ export const adminSettingsSchema = z.object({
   player_autoplay_default: z.boolean(),
   player_auto_next_default: z.boolean(),
   allow_adult_content: z.boolean(),
-  anilist_sync_frequency: z.enum(["1_per_week", "2_per_week"]),
 
   notice_enabled: z.boolean(),
   notice_title: z

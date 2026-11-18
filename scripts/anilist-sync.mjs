@@ -1,27 +1,33 @@
 #!/usr/bin/env node
 
 /**
- * Script de Sincronização Periódica da AniList — HIKARI
+ * Motor de Importação e Atualização Manual da AniList — HIKARI
  *
- * Sincroniza dados da AniList (carga inicial completa com checkpoints retomáveis,
- * varredura incremental por UPDATED_AT_DESC com janela de sobreposição, rankings de
- * popularidade/trending/score, temporadas por estação/ano e calendário semanal
- * completo) salvando no Neon PostgreSQL e invalidando caches no Upstash Redis
- * com SCAN não-bloqueante e contadores atômicos de geração.
+ * Sincroniza dados da AniList para o Neon PostgreSQL e invalida seletivamente
+ * os caches do Upstash Redis (via SCAN não-bloqueante e contadores atômicos).
  *
- * Requisitos operacionais importantes:
- *  - Neon Advisory Lock (849201): No GitHub Actions, secrets.DATABASE_URL deve usar
- *    o endpoint DIRETO (non-pooled) do Neon para garantir que pg_try_advisory_lock
- *    e pg_advisory_unlock permaneçam na mesma sessão PostgreSQL do PoolClient.
- *  - Frequência em cron: O workflow do GitHub Actions roda sem '--manual'; este script
- *    lê 'anilist_sync_frequency' ('1_per_week' ou '2_per_week') em admin_settings e
- *    valida getUTCDay() (1 = Segunda, 4 = Quinta). Execuções via workflow_dispatch
- *    (GITHUB_EVENT_NAME === 'workflow_dispatch') ou '--manual' ignoram a trava de dia.
- *  - Modo '--test': Execução estritamente dry-run / somente leitura no banco e no Redis,
- *    com limite global de itens e teto rígido de requisições à AniList.
+ * Fluxos manuais suportados:
+ *  - Atualização de anúncios (`--mode=announcements` / `--announcements`):
+ *    Quase diária. Importa novos animes anunciados (NOT_YET_RELEASED), confirmações
+ *    de novas temporadas/continuações (UPDATED_AT_DESC) e títulos previstos para
+ *    temporadas futuras (Inverno, Primavera, Verão e Outono).
+ *  - Atualização completa (`--mode=full` / `--full`):
+ *    Trimestral. Importa rankings/listas (trending, popular, top, recent), todas as
+ *    temporadas (ano anterior, atual e próximo) e calendário de episódios (14 dias UTC).
+ *  - Modo `--test`:
+ *    Execução dry-run / somente leitura no banco e no Redis, com limite global de
+ *    registros e teto rígido de requisições HTTP à AniList.
+ *
+ * Proteções preservadas:
+ *  - Advisory Lock PostgreSQL (849201) na mesma sessão do PoolClient.
+ *  - Deduplicação segura entre `anilistId`, `malId` e `id` (evita violação de
+ *    `catalog_anime_malId_key` sem apagar ou duplicar registros).
+ *  - Preservação integral de `manual_fields` e imagens customizadas.
+ *  - Checkpoints retomáveis e idempotência por página/etapa.
  *
  * Uso:
- *   node scripts/anilist-sync.mjs [--test] [--limit=N] [--frequency=1_per_week|2_per_week] [--manual]
+ *   node scripts/anilist-sync.mjs --mode=announcements [--test] [--limit=N]
+ *   node scripts/anilist-sync.mjs --mode=full [--test] [--limit=N]
  */
 
 import { pathToFileURL } from "node:url";
@@ -44,6 +50,8 @@ export const INITIAL_STAGES = [
   "schedule",
 ];
 
+export const FULL_STAGES = [...INITIAL_STAGES];
+
 export const INCREMENTAL_STAGES = [
   "incremental",
   "trending_refresh",
@@ -52,14 +60,19 @@ export const INCREMENTAL_STAGES = [
   "schedule",
 ];
 
+export const ANNOUNCEMENTS_STAGES = [
+  "incremental",
+  "announced_new",
+  "future_seasons",
+];
+
 async function delay(ms) {
   if (!ms || ms <= 0) return;
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
- * Converte valores armazenados em admin_settings (que podem estar em JSON stringificado
- * pelo painel admin, ex.: '"2_per_week"', ou em texto plano, ex.: '2_per_week').
+ * Converte valores armazenados em admin_settings (JSON stringificado ou texto plano).
  */
 export function parseAdminSettingValue(rawValue) {
   if (rawValue === null || rawValue === undefined) return null;
@@ -71,20 +84,6 @@ export function parseAdminSettingValue(rawValue) {
   } catch {
     return trimmed;
   }
-}
-
-export function normalizeSyncFrequency(rawValue) {
-  const parsed = parseAdminSettingValue(rawValue);
-  if (parsed === "2_per_week") return "2_per_week";
-  return "1_per_week";
-}
-
-export function isCronAllowedForFrequency(frequency, date = new Date()) {
-  const dayOfWeekUTC = date.getUTCDay(); // 0=Dom, 1=Seg, 4=Qui
-  if (frequency === "2_per_week") {
-    return dayOfWeekUTC === 1 || dayOfWeekUTC === 4;
-  }
-  return dayOfWeekUTC === 1;
 }
 
 export function computeTitleNorm(title) {
@@ -439,6 +438,59 @@ query AiringScheduleQuery($start: Int, $end: Int, $page: Int, $perPage: Int) {
 }
 `;
 
+// 4. Query para Animes Anunciados / Novas Temporadas & Continuações (NOT_YET_RELEASED)
+export const ANNOUNCED_MEDIA_QUERY = `
+query AnnouncedMediaQuery($page: Int, $perPage: Int, $sort: [MediaSort]) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo {
+      hasNextPage
+      currentPage
+      lastPage
+    }
+    media(type: ANIME, status: NOT_YET_RELEASED, sort: $sort) {
+      id
+      idMal
+      updatedAt
+      title {
+        romaji
+        english
+        native
+      }
+      coverImage {
+        extraLarge
+        large
+        color
+      }
+      bannerImage
+      description(asHtml: false)
+      format
+      status
+      episodes
+      season
+      seasonYear
+      averageScore
+      popularity
+      trending
+      genres
+      trailer {
+        id
+        site
+        thumbnail
+      }
+      studios(isMain: true) {
+        nodes {
+          name
+        }
+      }
+      nextAiringEpisode {
+        episode
+        airingAt
+      }
+    }
+  }
+}
+`;
+
 function parseRetryAfterMs(headers, fallbackMs, retryAfterScaleMs) {
   const rawHeader =
     typeof headers?.get === "function"
@@ -615,11 +667,41 @@ function buildSeasonCombinations(currentYear) {
   return combos;
 }
 
+export function buildFutureSeasonCombinations(date = new Date()) {
+  const currentYear = date.getUTCFullYear();
+  const month = date.getUTCMonth(); // 0..11
+  const seasons = ["WINTER", "SPRING", "SUMMER", "FALL"];
+  const currentSeasonIdx =
+    month <= 2 ? 0 : month <= 5 ? 1 : month <= 8 ? 2 : 3;
+  const combos = [];
+  for (let i = currentSeasonIdx; i < seasons.length; i++) {
+    combos.push({ year: currentYear, season: seasons[i] });
+  }
+  for (const seas of seasons) {
+    combos.push({ year: currentYear + 1, season: seas });
+  }
+  return combos;
+}
+
+function resolveRequestedMode(args, options) {
+  if (typeof options.mode === "string") {
+    const m = options.mode.trim().toLowerCase();
+    if (m === "announcements" || m === "full") return m;
+  }
+  const modeArg = args.find((a) => a.startsWith("--mode="));
+  if (modeArg) {
+    const val = modeArg.split("=")[1]?.trim().toLowerCase();
+    if (val === "announcements" || val === "full") return val;
+  }
+  if (args.includes("--announcements")) return "announcements";
+  if (args.includes("--full")) return "full";
+  return null;
+}
+
 export async function runSync(options = {}) {
   const args = options.argv ?? process.argv.slice(2);
   const isTestRun = args.includes("--test");
-  const isManualRun =
-    args.includes("--manual") || process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
+  const requestedMode = resolveRequestedMode(args, options);
 
   const limitArgIndex = args.findIndex((a) => a.startsWith("--limit="));
   const parsedLimitArg =
@@ -632,10 +714,6 @@ export async function runSync(options = {}) {
     : Number.isFinite(parsedLimitArg) && parsedLimitArg > 0
       ? parsedLimitArg
       : null;
-
-  const freqArgIndex = args.findIndex((a) => a.startsWith("--frequency="));
-  const cliFrequency =
-    freqArgIndex !== -1 ? args[freqArgIndex].split("=")[1] : null;
 
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const rateLimitDelayMs = options.rateLimitDelayMs ?? RATE_LIMIT_DELAY_MS;
@@ -659,9 +737,9 @@ export async function runSync(options = {}) {
   const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
   console.log("=======================================================");
-  console.log("[anilist-sync] Sincronização Periódica da AniList (Hikari)");
+  console.log("[anilist-sync] Importação Manual da AniList (Hikari)");
   console.log(
-    `[anilist-sync] Modo: ${isTestRun ? "TESTE (DRY-RUN / SOMENTE LEITURA)" : "PRODUÇÃO"} | Manual: ${isManualRun ? "SIM" : "NÃO"}`
+    `[anilist-sync] Execução: ${isTestRun ? "TESTE (DRY-RUN / SOMENTE LEITURA)" : "PRODUÇÃO"} | Fluxo solicitado: ${requestedMode || "padrão"}`
   );
   if (isTestRun) {
     console.log(
@@ -768,7 +846,7 @@ export async function runSync(options = {}) {
     hasLock = Boolean(lockRes.rows[0]?.locked);
     if (!hasLock) {
       console.log(
-        `[anilist-sync] Outro processo de sincronização já está em execução (advisory lock ${ADVISORY_LOCK_ID} ativo). Finalizando com segurança.`
+        `[anilist-sync] Outro processo de importação já está em execução (advisory lock ${ADVISORY_LOCK_ID} ativo). Finalizando com segurança.`
       );
       return { status: "skipped_locked" };
     }
@@ -776,54 +854,7 @@ export async function runSync(options = {}) {
       `[anilist-sync] Advisory Lock ${ADVISORY_LOCK_ID} adquirido com sucesso.`
     );
 
-    const incomingRunId = options.runId ?? null;
-    if (!isTestRun) {
-      const rawStatusSetting = await readAdminSetting("anilist_sync_status");
-      const storedStatusObj = rawStatusSetting && typeof rawStatusSetting === "object" ? rawStatusSetting : null;
-      const storedStatus = storedStatusObj?.status;
-      const storedRunId = storedStatusObj?.runId ?? null;
-      const updatedAtStr = storedStatusObj?.updatedAt ?? storedStatusObj?.startedAt ?? null;
-      const updatedMs = updatedAtStr ? Date.parse(updatedAtStr) : 0;
-      const nowMs = nowProvider().getTime();
-      const STALE_MS = 90_000;
-      const isStale = storedStatus === "running" && Number.isFinite(updatedMs) && nowMs - updatedMs >= STALE_MS;
-
-      if (storedStatus === "running" && storedRunId && !isStale) {
-        if (!incomingRunId || incomingRunId !== storedRunId) {
-          console.log(
-            `[anilist-sync] Conflito inter-processos: outra sincronização ativa (runId: ${storedRunId}, incoming: ${incomingRunId || 'nenhum'}). Execução abortada sem modificações.`
-          );
-          return { status: "skipped_conflict", conflict: true };
-        }
-      }
-    }
-
-    // 1. Verificar Frequência configurada em admin_settings
-    const rawSettingFreq = cliFrequency ?? (await readAdminSetting("anilist_sync_frequency"));
-    const frequency = normalizeSyncFrequency(rawSettingFreq);
-    console.log(`[anilist-sync] Frequência configurada: ${frequency}`);
-
-    // Validação de Frequência para execução automática (cron) em UTC
-    if (!isManualRun) {
-      const now = nowProvider();
-      const dayOfWeekUTC = now.getUTCDay();
-      console.log(
-        `[anilist-sync] Execução agendada (cron). Dia da semana atual em UTC (0-6): ${dayOfWeekUTC}`
-      );
-
-      if (!isCronAllowedForFrequency(frequency, now)) {
-        console.log(
-          `[anilist-sync] Execução agendada ignorada para '${frequency}' no dia UTC ${dayOfWeekUTC}.`
-        );
-        return { status: "skipped_frequency", frequency, dayOfWeekUTC };
-      }
-    } else {
-      console.log(
-        "[anilist-sync] Execução manual detectada (workflow_dispatch/CLI). Ignorando restrição de dia da semana."
-      );
-    }
-
-    // 2. Verificar colunas disponíveis em catalog_anime (compatível antes e após migration 0037)
+    // 1. Verificar colunas disponíveis em catalog_anime (compatível antes e após migration 0037)
     let hasTitleNormCol = true;
     let hasSearchBlobCol = true;
     let hasPopularityCol = true;
@@ -853,7 +884,7 @@ export async function runSync(options = {}) {
       // Fallback para ambientes de teste simplificados
     }
 
-    // 3. Ler estado da sincronização: carga inicial vs incremental e checkpoint retomável
+    // 2. Ler estado da importação e checkpoint retomável
     const rawInitialCompleted = await readAdminSetting("anilist_sync_initial_completed");
     const isInitialCompleted =
       rawInitialCompleted === true || String(rawInitialCompleted) === "true";
@@ -864,21 +895,41 @@ export async function runSync(options = {}) {
         ? Math.floor(Number(rawLastTs))
         : 0;
 
+    const rawAnnouncementsTs = await readAdminSetting("anilist_sync_announcements_last_timestamp");
+    const announcementsLastTimestamp =
+      Number.isFinite(Number(rawAnnouncementsTs)) && Number(rawAnnouncementsTs) > 0
+        ? Math.floor(Number(rawAnnouncementsTs))
+        : 0;
+
     const rawCheckpoint = await readAdminSetting("anilist_sync_checkpoint");
     const savedCheckpoint =
       rawCheckpoint && typeof rawCheckpoint === "object" && !Array.isArray(rawCheckpoint)
         ? rawCheckpoint
         : null;
 
-    const syncMode = isInitialCompleted ? "incremental" : "initial";
+    const syncMode =
+      requestedMode === "announcements"
+        ? "announcements"
+        : requestedMode === "full"
+          ? "full"
+          : isInitialCompleted
+            ? "incremental"
+            : "initial";
+
     const runStartTime = nowProvider().getTime();
+    const effectiveLastTimestamp =
+      syncMode === "announcements"
+        ? announcementsLastTimestamp > 0
+          ? announcementsLastTimestamp
+          : lastSyncTimestamp
+        : lastSyncTimestamp;
     const cutoffSec =
-      lastSyncTimestamp > 0
-        ? Math.floor(lastSyncTimestamp / 1000) - INCREMENTAL_OVERLAP_SECONDS
+      effectiveLastTimestamp > 0
+        ? Math.floor(effectiveLastTimestamp / 1000) - INCREMENTAL_OVERLAP_SECONDS
         : 0;
 
     console.log(
-      `[anilist-sync] Estratégia: ${syncMode.toUpperCase()} | initialCompleted=${isInitialCompleted} | lastSyncTimestamp=${lastSyncTimestamp}${savedCheckpoint ? ` | checkpoint=${JSON.stringify(savedCheckpoint)}` : ""}`
+      `[anilist-sync] Estratégia: ${syncMode.toUpperCase()} | initialCompleted=${isInitialCompleted} | lastSyncTimestamp=${effectiveLastTimestamp}${savedCheckpoint ? ` | checkpoint=${JSON.stringify(savedCheckpoint)}` : ""}`
     );
 
     let totalProcessed = 0;
@@ -888,10 +939,14 @@ export async function runSync(options = {}) {
     let simulatedReadsCount = 0;
 
     /**
-     * Upsert real (ou simulação dry-run em --test) preservando campos manuais e imagens customizadas.
+     * Upsert real (ou simulação dry-run em --test) preservando campos manuais,
+     * imagens customizadas e proteção contra colisão entre anilistId, malId e id.
      */
     async function upsertAnime(media) {
       const anilistId = media.id;
+      const incomingMalId =
+        typeof media.idMal === "number" && media.idMal > 0 ? media.idMal : null;
+      const candidateId = `anilist-${anilistId}`;
       const selectCols = [
         `"id"`,
         `"cover"`,
@@ -901,6 +956,8 @@ export async function runSync(options = {}) {
         `"titleEnglish"`,
         `"titleNative"`,
         `"synopsis"`,
+        `"anilistId"`,
+        `"malId"`,
         ...(hasManualFieldsCol ? [`"manual_fields"`] : []),
       ].join(", ");
 
@@ -908,20 +965,54 @@ export async function runSync(options = {}) {
         `SELECT ${selectCols}
          FROM "catalog_anime"
          WHERE "anilistId" = $1
-         LIMIT 1;`,
-        [anilistId]
+            OR ($2::int IS NOT NULL AND "malId" = $2)
+            OR "id" = $3;`,
+        [anilistId, incomingMalId, candidateId]
       );
 
-      const existingRow = existingRes.rows[0] || null;
+      const matchedRows = existingRes.rows || [];
+      const isDubbedText = (row) =>
+        /\b(dub|dublado|dublada)\b/i.test(
+          `${row.title || ""} ${row.titleRomaji || ""} ${row.titleEnglish || ""} ${row.titleNative || ""}`
+        );
+
+      const exactAnilistRow =
+        matchedRows.find((r) => r.anilistId === anilistId) || null;
+      const exactIdRow =
+        matchedRows.find((r) => r.id === candidateId) || null;
+      const canonicalMalRow =
+        matchedRows.find(
+          (r) =>
+            incomingMalId !== null &&
+            r.malId === incomingMalId &&
+            (r.anilistId === null || r.anilistId === undefined) &&
+            !isDubbedText(r)
+        ) || null;
+
+      const existingRow =
+        exactAnilistRow || exactIdRow || canonicalMalRow || null;
       const resolved = resolveCatalogAnimeFields(media, existingRow);
+      const targetId = existingRow ? existingRow.id : resolved.internalId;
+
+      let safeAnilistId = anilistId;
+      let safeMalId = incomingMalId;
+      for (const r of matchedRows) {
+        if (r.id === targetId) continue;
+        if (safeAnilistId !== null && r.anilistId === safeAnilistId) {
+          safeAnilistId = null;
+        }
+        if (safeMalId !== null && r.malId === safeMalId) {
+          safeMalId = null;
+        }
+      }
 
       if (isTestRun) {
         simulatedReadsCount++;
         if (!existingRow) totalInserted++;
         else totalUpdated++;
-        touchedAnimeIds.add(resolved.internalId);
+        touchedAnimeIds.add(targetId);
         touchedAnimeIds.add(String(anilistId));
-        return resolved.internalId;
+        return targetId;
       }
 
       if (!existingRow) {
@@ -932,10 +1023,10 @@ export async function runSync(options = {}) {
           ...(hasTrendingCol ? [`"trending"`] : []),
         ];
         const params = [
-          resolved.internalId,
+          targetId,
           resolved.title,
-          resolved.anilistId,
-          resolved.malId,
+          safeAnilistId,
+          safeMalId,
           resolved.titleRomaji,
           resolved.titleEnglish,
           resolved.titleNative,
@@ -979,7 +1070,7 @@ export async function runSync(options = {}) {
         totalInserted++;
       } else {
         const params = [
-          anilistId,
+          targetId,
           resolved.title,
           resolved.titleRomaji,
           resolved.titleEnglish,
@@ -995,6 +1086,8 @@ export async function runSync(options = {}) {
           resolved.genres,
           resolved.trailerId,
           resolved.score,
+          safeAnilistId,
+          safeMalId,
         ];
         const extraUpdates = [];
         if (hasTitleNormCol) {
@@ -1033,17 +1126,19 @@ export async function runSync(options = {}) {
              "season" = COALESCE($13, "season"),
              "genres" = CASE WHEN array_length($14::text[], 1) > 0 THEN $14::text[] ELSE "genres" END,
              "trailerId" = COALESCE($15, "trailerId"),
-             "score" = COALESCE($16, "score")${extraUpdateSql},
+             "score" = COALESCE($16, "score"),
+             "anilistId" = COALESCE("anilistId", $17),
+             "malId" = COALESCE("malId", $18)${extraUpdateSql},
              "updatedAt" = CURRENT_TIMESTAMP
-           WHERE "anilistId" = $1;`,
+           WHERE "id" = $1;`,
           params
         );
         totalUpdated++;
       }
 
-      touchedAnimeIds.add(resolved.internalId);
+      touchedAnimeIds.add(targetId);
       touchedAnimeIds.add(String(anilistId));
-      return resolved.internalId;
+      return targetId;
     }
 
     async function upsertScheduleEntry(item, internalId) {
@@ -1089,7 +1184,10 @@ export async function runSync(options = {}) {
       const mediaData = await requestAniList(MEDIA_LIST_QUERY, {
         page: 1,
         perPage: Math.min(mediaBudget, 10),
-        sort: syncMode === "initial" ? ["TRENDING_DESC", "POPULARITY_DESC"] : ["UPDATED_AT_DESC"],
+        sort:
+          syncMode === "initial" || syncMode === "full"
+            ? ["TRENDING_DESC", "POPULARITY_DESC"]
+            : ["UPDATED_AT_DESC"],
       });
       const mPage = mediaData?.Page;
       if (!mPage || !Array.isArray(mPage.media)) {
@@ -1103,64 +1201,112 @@ export async function runSync(options = {}) {
       }
 
       if (remaining() > 0 && httpRequestsCount < MAX_TEST_REQUESTS) {
-        const nowYear = nowProvider().getUTCFullYear();
-        const nowMonth = nowProvider().getUTCMonth();
-        const currentSeason =
-          nowMonth <= 2
-            ? "WINTER"
-            : nowMonth <= 5
-              ? "SPRING"
-              : nowMonth <= 8
-                ? "SUMMER"
-                : "FALL";
-        const seasBudgetForCall =
-          remaining() >= 2 ? Math.max(1, remaining() - 1) : remaining();
+        if (syncMode === "announcements") {
+          const announcedBudget =
+            remaining() >= 2 ? Math.max(1, remaining() - 1) : remaining();
+          console.log(
+            `[anilist-sync] [DRY-RUN] 2/3 Testando consulta de anúncios NOT_YET_RELEASED (budget: ${announcedBudget})...`
+          );
+          const annData = await requestAniList(ANNOUNCED_MEDIA_QUERY, {
+            page: 1,
+            perPage: Math.min(announcedBudget, 10),
+            sort: ["ID_DESC"],
+          });
+          const aMediaPage = annData?.Page;
+          if (!aMediaPage || !Array.isArray(aMediaPage.media)) {
+            throw new Error("[DRY-RUN] Resposta inválida da AniList na consulta de anúncios.");
+          }
+          let annTaken = 0;
+          for (const media of aMediaPage.media) {
+            if (totalProcessed >= globalLimit || annTaken >= announcedBudget) break;
+            annTaken++;
+            totalProcessed++;
+            await upsertAnime(media);
+          }
+        } else {
+          const nowYear = nowProvider().getUTCFullYear();
+          const nowMonth = nowProvider().getUTCMonth();
+          const currentSeason =
+            nowMonth <= 2
+              ? "WINTER"
+              : nowMonth <= 5
+                ? "SPRING"
+                : nowMonth <= 8
+                  ? "SUMMER"
+                  : "FALL";
+          const seasBudgetForCall =
+            remaining() >= 2 ? Math.max(1, remaining() - 1) : remaining();
 
-        console.log(
-          `[anilist-sync] [DRY-RUN] 2/3 Testando temporada ${currentSeason} ${nowYear} (budget: ${seasBudgetForCall})...`
-        );
-        const seasData = await requestAniList(SEASON_QUERY, {
-          season: currentSeason,
-          year: nowYear,
-          page: 1,
-          perPage: Math.min(seasBudgetForCall, 10),
-        });
-        const sPage = seasData?.Page;
-        if (!sPage || !Array.isArray(sPage.media)) {
-          throw new Error("[DRY-RUN] Resposta inválida da AniList na consulta de temporada.");
-        }
-        let seasTaken = 0;
-        for (const media of sPage.media) {
-          if (totalProcessed >= globalLimit || seasTaken >= seasBudgetForCall) break;
-          seasTaken++;
-          totalProcessed++;
-          await upsertAnime(media);
+          console.log(
+            `[anilist-sync] [DRY-RUN] 2/3 Testando temporada ${currentSeason} ${nowYear} (budget: ${seasBudgetForCall})...`
+          );
+          const seasData = await requestAniList(SEASON_QUERY, {
+            season: currentSeason,
+            year: nowYear,
+            page: 1,
+            perPage: Math.min(seasBudgetForCall, 10),
+          });
+          const sPage = seasData?.Page;
+          if (!sPage || !Array.isArray(sPage.media)) {
+            throw new Error("[DRY-RUN] Resposta inválida da AniList na consulta de temporada.");
+          }
+          let seasTaken = 0;
+          for (const media of sPage.media) {
+            if (totalProcessed >= globalLimit || seasTaken >= seasBudgetForCall) break;
+            seasTaken++;
+            totalProcessed++;
+            await upsertAnime(media);
+          }
         }
       }
 
       if (remaining() > 0 && httpRequestsCount < MAX_TEST_REQUESTS) {
-        const nowSec = Math.floor(nowProvider().getTime() / 1000);
-        const endSec = nowSec + 14 * 86400;
-        const schedBudget = remaining();
-        console.log(
-          `[anilist-sync] [DRY-RUN] 3/3 Testando calendário (janela 14d UTC, budget: ${schedBudget})...`
-        );
-        const schedData = await requestAniList(AIRING_SCHEDULE_QUERY, {
-          start: nowSec,
-          end: endSec,
-          page: 1,
-          perPage: Math.min(schedBudget, 10),
-        });
-        const aPage = schedData?.Page;
-        if (!aPage || !Array.isArray(aPage.airingSchedules)) {
-          throw new Error("[DRY-RUN] Resposta inválida da AniList no calendário.");
-        }
-        for (const item of aPage.airingSchedules) {
-          if (totalProcessed >= globalLimit) break;
-          if (!item.media || !item.airingAt || !item.episode) continue;
-          totalProcessed++;
-          const internalId = await upsertAnime(item.media);
-          await upsertScheduleEntry(item, internalId);
+        if (syncMode === "announcements") {
+          const futureCombos = buildFutureSeasonCombinations(nowProvider());
+          const targetCombo = futureCombos[Math.min(1, futureCombos.length - 1)] || futureCombos[0];
+          const futureBudget = remaining();
+          console.log(
+            `[anilist-sync] [DRY-RUN] 3/3 Testando temporada futura ${targetCombo.season} ${targetCombo.year} (budget: ${futureBudget})...`
+          );
+          const futureData = await requestAniList(SEASON_QUERY, {
+            season: targetCombo.season,
+            year: targetCombo.year,
+            page: 1,
+            perPage: Math.min(futureBudget, 10),
+          });
+          const fPage = futureData?.Page;
+          if (!fPage || !Array.isArray(fPage.media)) {
+            throw new Error("[DRY-RUN] Resposta inválida da AniList na temporada futura.");
+          }
+          for (const media of fPage.media) {
+            if (totalProcessed >= globalLimit) break;
+            totalProcessed++;
+            await upsertAnime(media);
+          }
+        } else {
+          const nowSec = Math.floor(nowProvider().getTime() / 1000);
+          const endSec = nowSec + 14 * 86400;
+          const schedBudget = remaining();
+          console.log(
+            `[anilist-sync] [DRY-RUN] 3/3 Testando calendário (janela 14d UTC, budget: ${schedBudget})...`
+          );
+          const schedData = await requestAniList(AIRING_SCHEDULE_QUERY, {
+            start: nowSec,
+            end: endSec,
+            page: 1,
+            perPage: Math.min(schedBudget, 10),
+          });
+          const aPage = schedData?.Page;
+          if (!aPage || !Array.isArray(aPage.airingSchedules)) {
+            throw new Error("[DRY-RUN] Resposta inválida da AniList no calendário.");
+          }
+          for (const item of aPage.airingSchedules) {
+            if (totalProcessed >= globalLimit) break;
+            if (!item.media || !item.airingAt || !item.episode) continue;
+            totalProcessed++;
+            const internalId = await upsertAnime(item.media);
+            await upsertScheduleEntry(item, internalId);
+          }
         }
       }
 
@@ -1186,18 +1332,28 @@ export async function runSync(options = {}) {
     }
 
     // =========================================================================
-    // EXECUÇÃO REAL (CARGA INICIAL OU INCREMENTAL COM CHECKPOINTS RETOMÁVEIS)
+    // EXECUÇÃO REAL (ANNOUNCEMENTS / FULL / INITIAL / INCREMENTAL COM CHECKPOINT)
     // =========================================================================
     const currentYear = nowProvider().getUTCFullYear();
-    const seasonCombos = buildSeasonCombinations(currentYear);
+    const seasonCombos =
+      syncMode === "announcements"
+        ? buildFutureSeasonCombinations(nowProvider())
+        : buildSeasonCombinations(currentYear);
+
+    const stageList =
+      syncMode === "announcements"
+        ? ANNOUNCEMENTS_STAGES
+        : syncMode === "full"
+          ? FULL_STAGES
+          : syncMode === "initial"
+            ? INITIAL_STAGES
+            : INCREMENTAL_STAGES;
 
     const activeCheckpointValid =
       savedCheckpoint &&
       savedCheckpoint.mode === syncMode &&
-      ((syncMode === "initial" && INITIAL_STAGES.includes(savedCheckpoint.stage)) ||
-        (syncMode === "incremental" && INCREMENTAL_STAGES.includes(savedCheckpoint.stage)));
+      stageList.includes(savedCheckpoint.stage);
 
-    const stageList = syncMode === "initial" ? INITIAL_STAGES : INCREMENTAL_STAGES;
     const resumeStage = activeCheckpointValid ? savedCheckpoint.stage : stageList[0];
     const resumeStageIdx = Math.max(0, stageList.indexOf(resumeStage));
     const resumePage = activeCheckpointValid
@@ -1238,10 +1394,11 @@ export async function runSync(options = {}) {
     }
 
     /**
-     * Executa uma etapa paginada de MEDIA_LIST_QUERY (rankings ou incremental UPDATED_AT_DESC).
+     * Executa uma etapa paginada de listagem AniList (MEDIA_LIST_QUERY ou ANNOUNCED_MEDIA_QUERY).
      */
     async function runMediaStage({
       stageName,
+      query = MEDIA_LIST_QUERY,
       sort,
       maxPages,
       perPage = 50,
@@ -1259,7 +1416,7 @@ export async function runSync(options = {}) {
       let reachedCutoff = false;
 
       while (hasNextPage && pagesProcessed < maxPages) {
-        const data = await requestAniList(MEDIA_LIST_QUERY, {
+        const data = await requestAniList(query, {
           page,
           perPage,
           sort,
@@ -1369,9 +1526,10 @@ export async function runSync(options = {}) {
     }
 
     /**
-     * Executa cobertura das 12 temporadas (ano anterior, atual e próximo) com checkpoint por temporada/página.
+     * Executa cobertura de temporadas por estação/ano com checkpoint por temporada/página.
      */
     async function runSeasonsStage({
+      stageName = "seasons",
       startSeasonIndex = 0,
       startPage = 1,
       perPage = 50,
@@ -1379,7 +1537,7 @@ export async function runSync(options = {}) {
     }) {
       const hadIncompleteBeforeStage = hasIncompleteSync;
       console.log(
-        `[anilist-sync] Etapa 'seasons' (iniciando em índice ${startSeasonIndex}/${seasonCombos.length}, página ${startPage})...`
+        `[anilist-sync] Etapa '${stageName}' (iniciando em índice ${startSeasonIndex}/${seasonCombos.length}, página ${startPage})...`
       );
       let firstFailureCheckpoint = null;
 
@@ -1423,7 +1581,7 @@ export async function runSync(options = {}) {
               ) {
                 await upsertAdminSetting("anilist_sync_checkpoint", {
                   mode: syncMode,
-                  stage: "seasons",
+                  stage: stageName,
                   page: seasonPage + 1,
                   seasonIndex: idx,
                   startedAt: floorTimestamp,
@@ -1438,7 +1596,7 @@ export async function runSync(options = {}) {
 
             seasonPagesProcessed++;
             seasonPage++;
-            await reportProgress("seasons", seasonPage - 1, idx);
+            await reportProgress(stageName, seasonPage - 1, idx);
 
             if (
               !hasIncompleteSync &&
@@ -1463,7 +1621,7 @@ export async function runSync(options = {}) {
             hasIncompleteSync = true;
             if (!firstFailureCheckpoint) {
               firstFailureCheckpoint = {
-                stage: "seasons",
+                stage: stageName,
                 seasonIndex: idx,
                 page: seasonPage,
               };
@@ -1476,7 +1634,7 @@ export async function runSync(options = {}) {
           ) {
             await upsertAdminSetting("anilist_sync_checkpoint", {
               mode: syncMode,
-              stage: "seasons",
+              stage: stageName,
               page: 1,
               seasonIndex: idx + 1,
               startedAt: floorTimestamp,
@@ -1495,7 +1653,7 @@ export async function runSync(options = {}) {
           hasIncompleteSync = true;
           if (!firstFailureCheckpoint) {
             firstFailureCheckpoint = {
-              stage: "seasons",
+              stage: stageName,
               seasonIndex: idx,
               page: seasonPage,
             };
@@ -1507,23 +1665,26 @@ export async function runSync(options = {}) {
         if (firstFailureCheckpoint) {
           await upsertAdminSetting("anilist_sync_checkpoint", {
             mode: syncMode,
-            stage: "seasons",
+            stage: stageName,
             page: firstFailureCheckpoint.page,
             seasonIndex: firstFailureCheckpoint.seasonIndex,
             startedAt: floorTimestamp,
             updatedAt: Date.now(),
           });
         } else if (!hasIncompleteSync) {
-          await upsertAdminSetting("anilist_sync_checkpoint", {
-            mode: syncMode,
-            stage: "schedule",
-            page: 1,
-            seasonIndex: 0,
-            startedAt: floorTimestamp,
-            updatedAt: Date.now(),
-          });
-          if (isTimeBudgetExceeded()) {
-            pausedByTimeBudget = true;
+          const nextStageIdx = stageList.indexOf(stageName) + 1;
+          if (nextStageIdx < stageList.length) {
+            await upsertAdminSetting("anilist_sync_checkpoint", {
+              mode: syncMode,
+              stage: stageList[nextStageIdx],
+              page: 1,
+              seasonIndex: 0,
+              startedAt: floorTimestamp,
+              updatedAt: Date.now(),
+            });
+            if (isTimeBudgetExceeded()) {
+              pausedByTimeBudget = true;
+            }
           }
         }
       }
@@ -1616,12 +1777,47 @@ export async function runSync(options = {}) {
       }
     }
 
-    // Execução sequencial das etapas conforme o modo (initial vs incremental)
-    const initialLimits = options.initialLimits ?? {};
+    // Execução sequencial das etapas conforme o modo (announcements / full / initial / incremental)
+    const initialLimits = options.fullLimits ?? options.initialLimits ?? {};
     const incrementalLimits = options.incrementalLimits ?? {};
+    const announcementsLimits = options.announcementsLimits ?? {};
 
-    if (syncMode === "initial") {
-      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= INITIAL_STAGES.indexOf("trending")) {
+    if (syncMode === "announcements") {
+      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= ANNOUNCEMENTS_STAGES.indexOf("incremental")) {
+        const hasAnnCutoff = cutoffSec > 0;
+        await runMediaStage({
+          stageName: "incremental",
+          query: MEDIA_LIST_QUERY,
+          sort: ["UPDATED_AT_DESC"],
+          maxPages: announcementsLimits.incrementalPages ?? (hasAnnCutoff ? 50 : 10),
+          perPage: 50,
+          startPage: resumeStage === "incremental" ? resumePage : 1,
+          useCutoff: hasAnnCutoff,
+          strictPagination: hasAnnCutoff,
+        });
+      }
+      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= ANNOUNCEMENTS_STAGES.indexOf("announced_new")) {
+        await runMediaStage({
+          stageName: "announced_new",
+          query: ANNOUNCED_MEDIA_QUERY,
+          sort: ["ID_DESC"],
+          maxPages: announcementsLimits.announcedPages ?? 5,
+          perPage: 50,
+          startPage: resumeStage === "announced_new" ? resumePage : 1,
+        });
+      }
+      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= ANNOUNCEMENTS_STAGES.indexOf("future_seasons")) {
+        await runSeasonsStage({
+          stageName: "future_seasons",
+          startSeasonIndex: resumeStage === "future_seasons" ? resumeSeasonIndex : 0,
+          startPage: resumeStage === "future_seasons" ? resumePage : 1,
+          perPage: 50,
+          maxSeasonPages: announcementsLimits.seasonPages ?? 15,
+        });
+      }
+    } else if (syncMode === "initial" || syncMode === "full") {
+      const stagesRef = syncMode === "full" ? FULL_STAGES : INITIAL_STAGES;
+      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= stagesRef.indexOf("trending")) {
         await runMediaStage({
           stageName: "trending",
           sort: ["TRENDING_DESC", "POPULARITY_DESC"],
@@ -1630,7 +1826,7 @@ export async function runSync(options = {}) {
           startPage: resumeStage === "trending" ? resumePage : 1,
         });
       }
-      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= INITIAL_STAGES.indexOf("popular")) {
+      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= stagesRef.indexOf("popular")) {
         await runMediaStage({
           stageName: "popular",
           sort: ["POPULARITY_DESC"],
@@ -1639,7 +1835,7 @@ export async function runSync(options = {}) {
           startPage: resumeStage === "popular" ? resumePage : 1,
         });
       }
-      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= INITIAL_STAGES.indexOf("top")) {
+      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= stagesRef.indexOf("top")) {
         await runMediaStage({
           stageName: "top",
           sort: ["SCORE_DESC"],
@@ -1648,7 +1844,7 @@ export async function runSync(options = {}) {
           startPage: resumeStage === "top" ? resumePage : 1,
         });
       }
-      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= INITIAL_STAGES.indexOf("recent")) {
+      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= stagesRef.indexOf("recent")) {
         await runMediaStage({
           stageName: "recent",
           sort: ["UPDATED_AT_DESC"],
@@ -1657,15 +1853,16 @@ export async function runSync(options = {}) {
           startPage: resumeStage === "recent" ? resumePage : 1,
         });
       }
-      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= INITIAL_STAGES.indexOf("seasons")) {
+      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= stagesRef.indexOf("seasons")) {
         await runSeasonsStage({
+          stageName: "seasons",
           startSeasonIndex: resumeStage === "seasons" ? resumeSeasonIndex : 0,
           startPage: resumeStage === "seasons" ? resumePage : 1,
           perPage: 50,
           maxSeasonPages: initialLimits.seasonPages ?? 15,
         });
       }
-      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= INITIAL_STAGES.indexOf("schedule")) {
+      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= stagesRef.indexOf("schedule")) {
         await runScheduleStage({
           startPage: resumeStage === "schedule" ? resumePage : 1,
           maxSchedulePages: initialLimits.schedulePages ?? 30,
@@ -1703,6 +1900,7 @@ export async function runSync(options = {}) {
       }
       if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= INCREMENTAL_STAGES.indexOf("seasons")) {
         await runSeasonsStage({
+          stageName: "seasons",
           startSeasonIndex: resumeStage === "seasons" ? resumeSeasonIndex : 0,
           startPage: resumeStage === "seasons" ? resumePage : 1,
           perPage: 50,
@@ -1725,10 +1923,21 @@ export async function runSync(options = {}) {
     if (!hasIncompleteSync && !pausedByTimeBudget) {
       await client.query("BEGIN");
       try {
-        if (syncMode === "initial") {
+        if (syncMode === "initial" || syncMode === "full") {
           await upsertAdminSetting("anilist_sync_initial_completed", "true");
+          await upsertAdminSetting("anilist_sync_last_timestamp", String(floorTimestamp));
+          await upsertAdminSetting(
+            "anilist_sync_announcements_last_timestamp",
+            String(floorTimestamp)
+          );
+        } else if (syncMode === "announcements") {
+          await upsertAdminSetting(
+            "anilist_sync_announcements_last_timestamp",
+            String(floorTimestamp)
+          );
+        } else {
+          await upsertAdminSetting("anilist_sync_last_timestamp", String(floorTimestamp));
         }
-        await upsertAdminSetting("anilist_sync_last_timestamp", String(floorTimestamp));
         await deleteAdminSetting("anilist_sync_checkpoint");
         await client.query("COMMIT");
       } catch (markerErr) {

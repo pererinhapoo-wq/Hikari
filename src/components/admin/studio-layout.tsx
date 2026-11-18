@@ -254,15 +254,6 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
             keywords: "configuracoes marca slogan avisos modulos",
           },
           {
-            id: "anilist-sync",
-            label: "Sincronização AniList",
-            description: "Catálogo, temporadas e grade semanal",
-            icon: RefreshCw,
-            to: "/admin/settings",
-            search: { tab: "sync" },
-            keywords: "anilist sincronizacao catalogo importacao cron",
-          },
-          {
             id: "maintenance",
             label: "Manutenção & Cache",
             description: "Modo manutenção, caches e diagnóstico DB",
@@ -358,13 +349,8 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     if (item.id === "database-sync") {
       return false;
     }
-    if (item.id === "anilist-sync") {
-      const searchTab = (routerState.location.search as Record<string, unknown>)?.tab;
-      return pathname.startsWith("/admin/settings") && searchTab === "sync";
-    }
     if (item.id === "settings") {
-      const searchTab = (routerState.location.search as Record<string, unknown>)?.tab;
-      return pathname.startsWith("/admin/settings") && searchTab !== "sync";
+      return pathname.startsWith("/admin/settings");
     }
     return pathname.startsWith(item.to);
   };
@@ -404,10 +390,6 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
       return { section: "Sistema & Infra", current: "Backup & Dados" };
     }
     if (pathname.startsWith("/admin/settings")) {
-      const searchTab = (routerState.location.search as Record<string, unknown>)?.tab;
-      if (searchTab === "sync") {
-        return { section: "Sistema & Infra", current: "Sincronização AniList" };
-      }
       return { section: "Sistema & Infra", current: "Configurações Gerais" };
     }
     if (pathname.startsWith("/admin/")) {
@@ -418,7 +400,7 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
       return { section: "Catálogo & Acervo", current: "Editor de Anime" };
     }
     return { section: "Console", current: "Hikari Console" };
-  }, [pathname, routerState.location.search]);
+  }, [pathname]);
 
   const handleNavigateItem = (item: NavItem) => {
     setMobileDrawerOpen(false);

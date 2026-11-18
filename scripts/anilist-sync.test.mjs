@@ -6,16 +6,16 @@ import { PGlite } from "@electric-sql/pglite";
 import {
   ADVISORY_LOCK_ID,
   AIRING_SCHEDULE_QUERY,
+  ANNOUNCED_MEDIA_QUERY,
   MEDIA_LIST_QUERY,
   MAX_TEST_LIMIT,
   MAX_TEST_REQUESTS,
   SEASON_QUERY,
+  buildFutureSeasonCombinations,
   computeSearchBlob,
   computeTitleNorm,
   fetchAniListWithRetry,
-  isCronAllowedForFrequency,
   isCustomImageUrl,
-  normalizeSyncFrequency,
   parseAdminSettingValue,
   resolveCatalogAnimeFields,
   runSync,
@@ -174,117 +174,260 @@ function jsonResponse(data, status = 200, headers = {}) {
 }
 
 describe("Etapa 1 — Sincronização Periódica da AniList (Hikari)", () => {
-  it("1. Frequência 1_per_week em cron: executa apenas na Segunda-feira UTC", async () => {
-    assert.equal(isCronAllowedForFrequency("1_per_week", new Date("2026-11-16T03:00:00Z")), true); // Seg
-    assert.equal(isCronAllowedForFrequency("1_per_week", new Date("2026-11-19T03:00:00Z")), false); // Qui
-    assert.equal(isCronAllowedForFrequency("1_per_week", new Date("2026-11-18T03:00:00Z")), false); // Qua
-
+  it("1. Fluxo manual --mode=announcements importa anúncios NOT_YET_RELEASED, atualizações e temporadas futuras com dry-run e Redis", async () => {
     const db = await createRealPglitePool();
     await db.pg.query(
-      `INSERT INTO "admin_settings" ("key", "value") VALUES ('anilist_sync_frequency', $1);`,
-      [JSON.stringify("1_per_week")]
+      `INSERT INTO "admin_settings" ("key", "value") VALUES
+       ('anilist_sync_initial_completed', 'true'),
+       ('anilist_sync_last_timestamp', '1700000000000');`
     );
 
-    const prevEvent = process.env.GITHUB_EVENT_NAME;
-    process.env.GITHUB_EVENT_NAME = "schedule";
+    const queriesSeen = [];
+    const seasonsSeen = [];
+    const redis = createTrackingRedis();
+
+    const fetchImpl = async (_url, init) => {
+      const { query, variables } = JSON.parse(init.body);
+      if (query.includes("AnnouncedMediaQuery")) {
+        queriesSeen.push(`ANNOUNCED:p${variables.page}`);
+        return jsonResponse({
+          Page: {
+            pageInfo: { hasNextPage: false },
+            media: [
+              makeMedia(8801, {
+                status: "NOT_YET_RELEASED",
+                season: "SPRING",
+                seasonYear: 2027,
+              }),
+            ],
+          },
+        });
+      }
+      if (query.includes("MediaListQuery")) {
+        queriesSeen.push(`MEDIA:${variables.sort.join(",")}:p${variables.page}`);
+        return jsonResponse({
+          Page: {
+            pageInfo: { hasNextPage: false },
+            media: [makeMedia(8802, { status: "NOT_YET_RELEASED", updatedAt: 1700100000 })],
+          },
+        });
+      }
+      if (query.includes("SeasonQuery")) {
+        seasonsSeen.push(`${variables.season}-${variables.year}`);
+        return jsonResponse({
+          Page: {
+            pageInfo: { hasNextPage: false },
+            media:
+              variables.season === "WINTER" && variables.year === 2027
+                ? [makeMedia(8803, { status: "NOT_YET_RELEASED", season: "WINTER", seasonYear: 2027 })]
+                : [],
+          },
+        });
+      }
+      if (query.includes("AiringScheduleQuery")) {
+        throw new Error("AiringScheduleQuery não deve executar no modo --mode=announcements");
+      }
+      throw new Error(`Query inesperada: ${query}`);
+    };
+
     try {
-      const skippedRes = await runSync({
+      const dryRes = await runSync({
         pool: db.pool,
-        redis: createTrackingRedis(),
-        now: () => new Date("2026-11-19T03:00:00Z"), // Quinta UTC
+        redis,
+        now: () => new Date("2026-11-18T12:00:00Z"),
         rateLimitDelayMs: 0,
-        argv: [],
-        fetchImpl: async () => {
-          throw new Error("Não deve chamar AniList quando ignorado por frequência");
-        },
+        retries: 1,
+        argv: ["--mode=announcements", "--test", "--limit=4"],
+        fetchImpl,
       });
-      assert.equal(skippedRes.status, "skipped_frequency");
-      assert.equal(db.isLockHeld(), false);
+      assert.equal(dryRes.status, "dry_run_success");
+      assert.equal(dryRes.mode, "announcements");
+      assert.equal((await db.pg.query(`SELECT COUNT(*)::int AS c FROM "catalog_anime";`)).rows[0].c, 0);
+
+      queriesSeen.length = 0;
+      seasonsSeen.length = 0;
+
+      const realRes = await runSync({
+        pool: db.pool,
+        redis,
+        now: () => new Date("2026-11-18T12:00:00Z"),
+        rateLimitDelayMs: 0,
+        retries: 1,
+        argv: ["--mode=announcements"],
+        announcementsLimits: { incrementalPages: 2, announcedPages: 2, seasonPages: 2 },
+        fetchImpl,
+      });
+      assert.equal(realRes.status, "success");
+      assert.equal(realRes.mode, "announcements");
+      assert.ok(queriesSeen.includes("ANNOUNCED:p1"));
+      assert.ok(queriesSeen.includes("MEDIA:UPDATED_AT_DESC:p1"));
+      assert.deepEqual(seasonsSeen, [
+        "FALL-2026",
+        "WINTER-2027",
+        "SPRING-2027",
+        "SUMMER-2027",
+        "FALL-2027",
+      ]);
+
+      const insertedCount = (
+        await db.pg.query(`SELECT COUNT(*)::int AS c FROM "catalog_anime" WHERE "anilistId" IN (8801, 8802, 8803);`)
+      ).rows[0].c;
+      assert.equal(insertedCount, 3);
+
+      const annTs = (
+        await db.pg.query(`SELECT "value" FROM "admin_settings" WHERE "key" = 'anilist_sync_announcements_last_timestamp';`)
+      ).rows;
+      assert.equal(annTs.length, 1);
+      assert.equal(redis.getStats().incrs.includes("hikari:calendar:gen:v1"), true);
     } finally {
-      if (prevEvent === undefined) delete process.env.GITHUB_EVENT_NAME;
-      else process.env.GITHUB_EVENT_NAME = prevEvent;
       await db.pg.close();
     }
   });
 
-  it("2. Frequência 2_per_week em cron: executa na Segunda e Quinta UTC, ignora outros dias", async () => {
-    assert.equal(isCronAllowedForFrequency("2_per_week", new Date("2026-11-16T03:00:00Z")), true); // Seg
-    assert.equal(isCronAllowedForFrequency("2_per_week", new Date("2026-11-19T03:00:00Z")), true); // Qui
-    assert.equal(isCronAllowedForFrequency("2_per_week", new Date("2026-11-20T03:00:00Z")), false); // Sex
-
+  it("2. Fluxo manual --mode=full executa rankings, todas as temporadas e calendário mesmo com carga inicial já concluída", async () => {
     const db = await createRealPglitePool();
-    // Armazenado como JSON stringificado igual ao settings.server.ts
     await db.pg.query(
-      `INSERT INTO "admin_settings" ("key", "value") VALUES ('anilist_sync_frequency', $1), ('anilist_sync_initial_completed', 'true');`,
-      [JSON.stringify("2_per_week")]
+      `INSERT INTO "admin_settings" ("key", "value") VALUES
+       ('anilist_sync_initial_completed', 'true'),
+       ('anilist_sync_last_timestamp', '1700000000000');`
     );
 
-    const prevEvent = process.env.GITHUB_EVENT_NAME;
-    process.env.GITHUB_EVENT_NAME = "schedule";
-    try {
-      const resThu = await runSync({
-        pool: db.pool,
-        redis: createTrackingRedis(),
-        now: () => new Date("2026-11-19T03:00:00Z"), // Quinta UTC -> permitido
-        rateLimitDelayMs: 0,
-        argv: [],
-        incrementalLimits: { incrementalPages: 1, trendingPages: 1, popularPages: 1, seasonPages: 1, schedulePages: 1 },
-        fetchImpl: async (_url, init) => {
-          const { query } = JSON.parse(init.body);
-          if (query.includes("AiringScheduleQuery")) {
-            return jsonResponse({ Page: { pageInfo: { hasNextPage: false }, airingSchedules: [] } });
-          }
-          return jsonResponse({ Page: { pageInfo: { hasNextPage: false }, media: [] } });
-        },
-      });
-      assert.equal(resThu.status, "success");
+    const called = [];
+    const seasonsSeen = [];
 
-      const resFri = await runSync({
+    try {
+      const res = await runSync({
         pool: db.pool,
         redis: createTrackingRedis(),
-        now: () => new Date("2026-11-20T03:00:00Z"), // Sexta UTC -> ignorado
+        now: () => new Date("2026-11-18T12:00:00Z"),
         rateLimitDelayMs: 0,
-        argv: [],
-        fetchImpl: async () => {
-          throw new Error("Não deve executar na sexta-feira");
+        retries: 1,
+        argv: ["--mode=full"],
+        fullLimits: { trendingPages: 1, popularPages: 1, topPages: 1, recentPages: 1, seasonPages: 1, schedulePages: 1 },
+        fetchImpl: async (_url, init) => {
+          const { query, variables } = JSON.parse(init.body);
+          if (query.includes("MediaListQuery")) {
+            called.push(variables.sort.join(","));
+            return jsonResponse({
+              Page: { pageInfo: { hasNextPage: false }, media: [makeMedia(9100 + called.length)] },
+            });
+          }
+          if (query.includes("SeasonQuery")) {
+            seasonsSeen.push(`${variables.season}-${variables.year}`);
+            return jsonResponse({ Page: { pageInfo: { hasNextPage: false }, media: [] } });
+          }
+          if (query.includes("AiringScheduleQuery")) {
+            called.push("SCHEDULE");
+            return jsonResponse({
+              Page: {
+                pageInfo: { hasNextPage: false },
+                airingSchedules: [
+                  {
+                    id: 9501,
+                    airingAt: Math.floor(Date.now() / 1000) + 3600,
+                    timeUntilAiring: 3600,
+                    episode: 1,
+                    media: makeMedia(9199),
+                  },
+                ],
+              },
+            });
+          }
+          throw new Error(`Query inesperada: ${query}`);
         },
       });
-      assert.equal(resFri.status, "skipped_frequency");
+
+      assert.equal(res.status, "success");
+      assert.equal(res.mode, "full");
+      assert.deepEqual(called, [
+        "TRENDING_DESC,POPULARITY_DESC",
+        "POPULARITY_DESC",
+        "SCORE_DESC",
+        "UPDATED_AT_DESC",
+        "SCHEDULE",
+      ]);
+      assert.equal(seasonsSeen.length, 12);
     } finally {
-      if (prevEvent === undefined) delete process.env.GITHUB_EVENT_NAME;
-      else process.env.GITHUB_EVENT_NAME = prevEvent;
       await db.pg.close();
     }
   });
 
-  it("3. Execução manual (workflow_dispatch e --manual) ignora restrição de dia da semana", async () => {
+  it("3. Proteção contra duplicidade catalog_anime_malId_key: mescla vínculo por malId e evita colisão com variantes dubladas/existentes", async () => {
     const db = await createRealPglitePool();
-    await db.pg.query(
-      `INSERT INTO "admin_settings" ("key", "value") VALUES ('anilist_sync_frequency', $1), ('anilist_sync_initial_completed', 'true');`,
-      [JSON.stringify("1_per_week")]
-    );
 
-    const prevEvent = process.env.GITHUB_EVENT_NAME;
-    process.env.GITHUB_EVENT_NAME = "workflow_dispatch";
     try {
-      const resDispatch = await runSync({
+      // Cenário A: Registro pré-existente com malId = 55501 e anilistId = NULL (ex.: importação Kitsu/manual)
+      await db.pg.query(
+        `INSERT INTO "catalog_anime" ("id", "title", "anilistId", "malId", "manual_fields")
+         VALUES ('kitsu-55501', 'Título Kitsu Original', NULL, 55501, ARRAY['title']::text[]);`
+      );
+
+      // Cenário B: Registro dublado pré-existente com malId = 55502 e anilistId = NULL
+      await db.pg.query(
+        `INSERT INTO "catalog_anime" ("id", "title", "anilistId", "malId", "manual_fields")
+         VALUES ('dub-55502', 'Anime Teste Dublado', NULL, 55502, '{}'::text[]);`
+      );
+
+      // Cenário C: Registro já existente com anilistId = 7703 e outro anime distinto já segurando malId = 55503
+      await db.pg.query(
+        `INSERT INTO "catalog_anime" ("id", "title", "anilistId", "malId", "manual_fields")
+         VALUES
+         ('anilist-7703', 'Anime Sem MAL', 7703, NULL, '{}'::text[]),
+         ('other-55503', 'Outro Registro MAL', 7799, 55503, '{}'::text[]);`
+      );
+
+      const res = await runSync({
         pool: db.pool,
         redis: createTrackingRedis(),
-        now: () => new Date("2026-11-18T03:00:00Z"), // Quarta UTC (normalmente bloqueado)
         rateLimitDelayMs: 0,
-        argv: [],
+        retries: 1,
+        argv: ["--mode=announcements"],
+        announcementsLimits: { incrementalPages: 1, announcedPages: 1, seasonPages: 1 },
         fetchImpl: async (_url, init) => {
-          const { query } = JSON.parse(init.body);
-          if (query.includes("AiringScheduleQuery")) {
-            return jsonResponse({ Page: { pageInfo: { hasNextPage: false }, airingSchedules: [] } });
+          const { query, variables } = JSON.parse(init.body);
+          if (query.includes("MediaListQuery") && variables.sort[0] === "UPDATED_AT_DESC") {
+            return jsonResponse({
+              Page: {
+                pageInfo: { hasNextPage: false },
+                media: [
+                  makeMedia(7701, { idMal: 55501 }),
+                  makeMedia(7702, { idMal: 55502 }),
+                  makeMedia(7703, { idMal: 55503 }),
+                ],
+              },
+            });
           }
           return jsonResponse({ Page: { pageInfo: { hasNextPage: false }, media: [] } });
         },
       });
-      assert.equal(resDispatch.status, "success");
+
+      assert.equal(res.status, "success");
+
+      // Cenário A mesclou em kitsu-55501 preservando título manual e preenchendo anilistId
+      const rowA = (
+        await db.pg.query(`SELECT "id", "title", "anilistId", "malId" FROM "catalog_anime" WHERE "id" = 'kitsu-55501';`)
+      ).rows[0];
+      assert.equal(rowA.title, "Título Kitsu Original");
+      assert.equal(rowA.anilistId, 7701);
+      assert.equal(rowA.malId, 55501);
+
+      // Cenário B inseriu anilist-7702 com malId = NULL sem violar catalog_anime_malId_key nem sobrescrever dub-55502
+      const rowB = (
+        await db.pg.query(`SELECT "id", "anilistId", "malId" FROM "catalog_anime" WHERE "anilistId" = 7702;`)
+      ).rows[0];
+      assert.equal(rowB.id, "anilist-7702");
+      assert.equal(rowB.malId, null);
+      const dubRow = (
+        await db.pg.query(`SELECT "malId" FROM "catalog_anime" WHERE "id" = 'dub-55502';`)
+      ).rows[0];
+      assert.equal(dubRow.malId, 55502);
+
+      // Cenário C atualizou anilist-7703 sem falhar na constraint do malId = 55503
+      const rowC = (
+        await db.pg.query(`SELECT "malId" FROM "catalog_anime" WHERE "id" = 'anilist-7703';`)
+      ).rows[0];
+      assert.equal(rowC.malId, null);
     } finally {
-      if (prevEvent === undefined) delete process.env.GITHUB_EVENT_NAME;
-      else process.env.GITHUB_EVENT_NAME = prevEvent;
       await db.pg.close();
     }
   });
@@ -975,32 +1118,30 @@ describe("Etapa 1 — Sincronização Periódica da AniList (Hikari)", () => {
     }
   });
 
-  it("18. Workflow GitHub Actions compatível com Bun, permissões mínimas, concurrency, sem --manual, e paridade JSON de settings", () => {
-    const workflow = fs.readFileSync(
-      path.join(process.cwd(), ".github/workflows/anilist-sync.yml"),
-      "utf8"
-    );
-    assert.ok(workflow.includes("oven-sh/setup-bun@v2"));
-    assert.ok(workflow.includes("bun install --frozen-lockfile"));
-    assert.equal(workflow.includes("npm ci"), false);
-    assert.equal(workflow.includes("cache: 'npm'"), false);
-    assert.ok(workflow.includes("contents: read"));
-    assert.ok(workflow.includes("cancel-in-progress: false"));
-    assert.ok(workflow.includes("default: 'test'"));
-    assert.ok(workflow.includes("node scripts/anilist-sync.mjs --test"));
-    assert.ok(workflow.includes("node scripts/anilist-sync.mjs $EXTRA_ARGS"));
-    assert.equal(workflow.includes("--manual"), false);
-
-    assert.equal(normalizeSyncFrequency(JSON.stringify("2_per_week")), "2_per_week");
-    assert.equal(normalizeSyncFrequency("2_per_week"), "2_per_week");
-    assert.equal(normalizeSyncFrequency(JSON.stringify("1_per_week")), "1_per_week");
-    assert.equal(normalizeSyncFrequency("invalid_value"), "1_per_week");
-    assert.deepEqual(parseAdminSettingValue('{"mode":"initial","page":3}'), {
-      mode: "initial",
-      page: 3,
-    });
-
+  it("18. Remoção de automação/admin sync e utilitários de temporadas futuras e parsing", () => {
+    assert.equal(fs.existsSync(path.join(process.cwd(), ".github/workflows/anilist-sync.yml")), false);
+    assert.equal(fs.existsSync(path.join(process.cwd(), "src/routes/api/admin/anilist-sync.ts")), false);
+    assert.equal(fs.existsSync(path.join(process.cwd(), "src/lib/anilist-sync.server.ts")), false);
+    assert.equal(fs.existsSync(path.join(process.cwd(), "src/lib/anilist-sync.functions.ts")), false);
+    assert.equal(fs.existsSync(path.join(process.cwd(), "src/lib/anilist-sync-types.ts")), false);
     assert.equal(fs.existsSync(path.join(process.cwd(), "workspace/scripts/anilist-sync.mjs")), false);
+
+    assert.ok(ANNOUNCED_MEDIA_QUERY.includes("status: NOT_YET_RELEASED"));
+    const futureCombos = buildFutureSeasonCombinations(new Date("2026-04-10T00:00:00Z"));
+    assert.deepEqual(futureCombos, [
+      { year: 2026, season: "SPRING" },
+      { year: 2026, season: "SUMMER" },
+      { year: 2026, season: "FALL" },
+      { year: 2027, season: "WINTER" },
+      { year: 2027, season: "SPRING" },
+      { year: 2027, season: "SUMMER" },
+      { year: 2027, season: "FALL" },
+    ]);
+
+    assert.deepEqual(parseAdminSettingValue('{"mode":"announcements","page":2}'), {
+      mode: "announcements",
+      page: 2,
+    });
   });
 
   it("19 (Cenários A e B). Incremental incompleta (50 páginas) preserva checkpoint e retoma exatamente da página pendente", async () => {
