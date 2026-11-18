@@ -776,6 +776,28 @@ export async function runSync(options = {}) {
       `[anilist-sync] Advisory Lock ${ADVISORY_LOCK_ID} adquirido com sucesso.`
     );
 
+    const incomingRunId = options.runId ?? null;
+    if (!isTestRun) {
+      const rawStatusSetting = await readAdminSetting("anilist_sync_status");
+      const storedStatusObj = rawStatusSetting && typeof rawStatusSetting === "object" ? rawStatusSetting : null;
+      const storedStatus = storedStatusObj?.status;
+      const storedRunId = storedStatusObj?.runId ?? null;
+      const updatedAtStr = storedStatusObj?.updatedAt ?? storedStatusObj?.startedAt ?? null;
+      const updatedMs = updatedAtStr ? Date.parse(updatedAtStr) : 0;
+      const nowMs = nowProvider().getTime();
+      const STALE_MS = 90_000;
+      const isStale = storedStatus === "running" && Number.isFinite(updatedMs) && nowMs - updatedMs >= STALE_MS;
+
+      if (storedStatus === "running" && storedRunId && !isStale) {
+        if (!incomingRunId || incomingRunId !== storedRunId) {
+          console.log(
+            `[anilist-sync] Conflito inter-processos: outra sincronização ativa (runId: ${storedRunId}, incoming: ${incomingRunId || 'nenhum'}). Execução abortada sem modificações.`
+          );
+          return { status: "skipped_conflict", conflict: true };
+        }
+      }
+    }
+
     // 1. Verificar Frequência configurada em admin_settings
     const rawSettingFreq = cliFrequency ?? (await readAdminSetting("anilist_sync_frequency"));
     const frequency = normalizeSyncFrequency(rawSettingFreq);

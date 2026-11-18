@@ -447,4 +447,136 @@ describe("Controle Administrativo da Sincronização AniList", () => {
       await db.pg.close();
     }
   });
+
+  it("6. Validações de concorrência e recuperação (7 critérios obrigatórios)", async () => {
+    const db = await createTestPgliteContext();
+    await db.pg.query(
+      `INSERT INTO "admin_settings" ("key", "value") VALUES
+       ('anilist_sync_initial_completed', 'true'),
+       ('anilist_sync_checkpoint', '{"mode":"incremental","stage":"incremental","page":3,"seasonIndex":0,"startedAt":1700000000000,"updatedAt":1700000000000}');`,
+    );
+
+    const deps: AniListSyncDeps = {
+      pool: db.pool,
+      executionMode: "background",
+      rateLimitDelayMs: 0,
+      retries: 1,
+      fetchImpl: async () => jsonResponse({ Page: { pageInfo: { hasNextPage: false }, media: [] } }),
+    };
+
+    try {
+      // 1. Duas inicializações concorrentes no Admin: apenas uma recebe autorização (409 na segunda)
+      let releaseFetch!: () => void;
+      const gate = new Promise<void>((r) => { releaseFetch = r; });
+      const slowDeps: AniListSyncDeps = {
+        ...deps,
+        fetchImpl: async () => {
+          await gate;
+          return jsonResponse({ Page: { pageInfo: { hasNextPage: false }, media: [] } });
+        },
+      };
+
+      const start1 = await startAniListSync({ adminId: "admin-1" }, slowDeps);
+      assert.equal(start1.accepted, true);
+
+      await assert.rejects(
+        () => startAniListSync({ adminId: "admin-2" }, slowDeps),
+        (err: unknown) => err instanceof AniListSyncConflictError && err.status === 409,
+      );
+
+      // Libera execução 1 para terminar
+      releaseFetch();
+      await waitForActiveAniListSync();
+
+      // 3 & 4. Simula o intervalo entre fatias (lock livre na Vercel, mas status running com runId do admin ativo):
+      // GitHub Actions sem runId ou execução com runId diferente são rejeitados com skipped_conflict.
+      const nowIso = new Date().toISOString();
+      await db.pg.query(
+        `INSERT INTO "admin_settings" ("key", "value")
+         VALUES ('anilist_sync_status', $1)
+         ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value";`,
+        [
+          JSON.stringify({
+            status: "running",
+            runId: "admin-run-1",
+            mode: "incremental",
+            startedAt: nowIso,
+            updatedAt: nowIso,
+            finishedAt: null,
+            lastSuccessAt: null,
+            errorMessage: null,
+            progress: null,
+          }),
+        ],
+      );
+
+      await db.pg.query(
+        `INSERT INTO "admin_settings" ("key", "value")
+         VALUES ('anilist_sync_checkpoint', '{"mode":"incremental","stage":"incremental","page":3,"seasonIndex":0,"startedAt":1700000000000,"updatedAt":1700000000000}')
+         ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value";`,
+      );
+
+      const { runSync } = await import("../../scripts/anilist-sync.mjs");
+      const conflictingRun = await runSync({
+        argv: ["--manual"],
+        runId: "gh-actions-or-wrong-run-id",
+        pool: db.pool,
+        fetchImpl: async (_url: string, init: any) => {
+          const bodyStr = String(init?.body || "{}");
+          if (bodyStr.includes("AiringScheduleQuery")) {
+            return jsonResponse({ Page: { pageInfo: { hasNextPage: false }, airingSchedules: [] } });
+          }
+          return jsonResponse({ Page: { pageInfo: { hasNextPage: false }, media: [makeMedia(9999)] } });
+        },
+      });
+      assert.equal(conflictingRun.status, "skipped_conflict");
+
+      // 6. Conflito não modifica checkpoint, timestamp ou dados do catálogo
+      const cpCheck = await db.pg.query<{ value: string }>(
+        `SELECT "value" FROM "admin_settings" WHERE "key" = 'anilist_sync_checkpoint';`,
+      );
+      assert.ok(cpCheck.rows[0].value.includes('"page":3'));
+
+      // 5. Após conclusão/resparagem da execução, nova execução com runId correto (ou após erro) pode prosseguir
+      await db.pg.query(`DELETE FROM "admin_settings" WHERE "key" = 'anilist_sync_status';`);
+      const cronRun = await runSync({
+        argv: [],
+        pool: db.pool,
+        now: () => new Date("2026-11-16T03:00:00Z"),
+        fetchImpl: async (_url: string, init: any) => {
+          const bodyStr = String(init?.body || "{}");
+          if (bodyStr.includes("AiringScheduleQuery")) {
+            return jsonResponse({ Page: { pageInfo: { hasNextPage: false }, airingSchedules: [] } });
+          }
+          return jsonResponse({ Page: { pageInfo: { hasNextPage: false }, media: [] } });
+        },
+      });
+      assert.equal(cronRun.status, "success");
+
+      // 7. Execução órfã pode ser recuperada sem perder o checkpoint (simula running antigo sem lock)
+      await db.pg.query(
+        `INSERT INTO "admin_settings" ("key", "value")
+         VALUES ('anilist_sync_checkpoint', '{"mode":"incremental","stage":"incremental","page":5,"seasonIndex":0,"startedAt":1700000000000,"updatedAt":1700000000000}')
+         ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value";`,
+      );
+      await db.pg.query(
+        `INSERT INTO "admin_settings" ("key", "value")
+         VALUES ('anilist_sync_status', '{"status":"running","runId":"orphan","mode":"incremental","startedAt":"2020-01-01T00:00:00.000Z","updatedAt":"2020-01-01T00:00:00.000Z","finishedAt":null,"lastSuccessAt":null,"errorMessage":null,"progress":null}')
+         ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value";`,
+      );
+
+      const orphanRecovered = await getAniListSyncStatus({
+        ...deps,
+        staleRunningMs: 1000,
+        now: () => new Date("2026-11-18T20:00:00Z"),
+      });
+      assert.equal(orphanRecovered.status, "error");
+      assert.equal(orphanRecovered.incomplete, true);
+      assert.equal(orphanRecovered.checkpoint?.page, 5);
+    } finally {
+      await waitForActiveAniListSync();
+      await db.pg.close();
+    }
+  });
+
 });

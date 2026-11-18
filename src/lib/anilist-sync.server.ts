@@ -451,6 +451,7 @@ async function executeSyncSlice(
   try {
     const syncResult = await runSync({
       argv: ["--manual"],
+      runId,
       pool,
       redis: deps?.redis,
       fetchImpl: deps?.fetchImpl,
@@ -518,9 +519,12 @@ async function executeSyncSlice(
         },
       };
       await writeSetting(ANILIST_SYNC_STATUS_KEY, pausedState, deps);
-    } else if (syncResult.status === "skipped_locked") {
+    } else if (
+      syncResult.status === "skipped_locked" ||
+      syncResult.status === "skipped_conflict"
+    ) {
       throw new AniListSyncConflictError(
-        "Outro processo já está executando a sincronização AniList no banco.",
+        "Conflito de execução: outra sincronização AniList está ativa.",
       );
     } else {
       const completedState: StoredSyncStatus = {
@@ -630,18 +634,31 @@ export async function startAniListSync(
     },
   };
 
-  // Aquisição atômica de execução em admin_settings (previne corrida entre instâncias)
+  // Aquisição atômica de execução com SELECT ... FOR UPDATE em admin_settings
   const { pool, ownsPool } = await resolvePoolForSync(deps);
   const client = await pool.connect();
   try {
     await client.query("BEGIN;");
-    const existingRows = await client.query<{ value: string }>(
-      `SELECT "value" FROM "admin_settings" WHERE "key" = $1 LIMIT 1;`,
+    await client.query(
+      `INSERT INTO "admin_settings" ("key", "value", "createdAt", "updatedAt")
+       VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       ON CONFLICT ("key") DO NOTHING;`,
+      [ANILIST_SYNC_STATUS_KEY, JSON.stringify({ status: "idle" })],
+    );
+
+    const lockedRows = await client.query<{ value: string }>(
+      `SELECT "value" FROM "admin_settings" WHERE "key" = $1 FOR UPDATE;`,
       [ANILIST_SYNC_STATUS_KEY],
     );
-    if (existingRows.rows.length > 0) {
-      const current = parseStoredStatus(parseAdminSettingValue(existingRows.rows[0].value));
-      if (current?.status === "running") {
+
+    if (lockedRows.rows.length > 0) {
+      const current = parseStoredStatus(parseAdminSettingValue(lockedRows.rows[0].value));
+      const staleMs = deps?.staleRunningMs ?? DEFAULT_STALE_RUNNING_MS;
+      const { nowMs } = getIsoNow(deps);
+      const updatedMs = current?.updatedAt ? Date.parse(current.updatedAt) : current?.startedAt ? Date.parse(current.startedAt) : 0;
+      const isStale = current?.status === "running" && Number.isFinite(updatedMs) && nowMs - updatedMs >= staleMs;
+
+      if (current?.status === "running" && !isStale) {
         await client.query("ROLLBACK;").catch(() => {});
         throw new AniListSyncConflictError(
           "Já existe uma sincronização AniList em andamento.",
@@ -650,10 +667,7 @@ export async function startAniListSync(
     }
 
     await client.query(
-      `INSERT INTO "admin_settings" ("key", "value", "createdAt", "updatedAt")
-       VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-       ON CONFLICT ("key") DO UPDATE
-       SET "value" = EXCLUDED."value", "updatedAt" = CURRENT_TIMESTAMP;`,
+      `UPDATE "admin_settings" SET "value" = $2, "updatedAt" = CURRENT_TIMESTAMP WHERE "key" = $1;`,
       [ANILIST_SYNC_STATUS_KEY, JSON.stringify(initialState)],
     );
     await client.query("COMMIT;");
