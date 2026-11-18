@@ -1603,5 +1603,236 @@ export async function invalidateRedisPublicCatalogEpisodes(): Promise<void> {
   }
 }
 
+export type CachedEpisodeSourcePayload = {
+  directUrl: string | null;
+  iframeUrl: string | null;
+  provider?: string;
+  resolvedAt: string | null;
+  pageUrl?: string;
+};
+
+const EPISODE_SOURCE_REDIS_KEY_PREFIX = "ep:src:";
+const EPISODE_SOURCE_MAX_TTL_SEC = 600; // 10 minutes
+
+export async function getRedisEpisodeSource(
+  episodeId: string,
+): Promise<CachedEpisodeSourcePayload | null> {
+  if (!redisClient || typeof window !== "undefined") return null;
+  const cleanId = episodeId?.trim();
+  if (!cleanId) return null;
+  const key = `${EPISODE_SOURCE_REDIS_KEY_PREFIX}${cleanId}`;
+  try {
+    const data = await withRedisTimeout(
+      redisClient.get<CachedEpisodeSourcePayload>(key),
+    );
+    if (data && typeof data === "object") {
+      return data;
+    }
+    return null;
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao buscar fonte do episódio no Redis (fallback para DB):",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+export async function setRedisEpisodeSource(
+  episodeId: string,
+  payload: CachedEpisodeSourcePayload,
+  ttlSec: number,
+): Promise<void> {
+  if (!redisClient || typeof window !== "undefined") return;
+  const cleanId = episodeId?.trim();
+  if (!cleanId || !payload) return;
+  const key = `${EPISODE_SOURCE_REDIS_KEY_PREFIX}${cleanId}`;
+  const safeTtl = Math.min(
+    Math.max(10, Math.floor(ttlSec)),
+    EPISODE_SOURCE_MAX_TTL_SEC,
+  );
+  try {
+    await withRedisTimeout(
+      redisClient.set(key, payload, { ex: safeTtl }),
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao salvar fonte do episódio no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+export async function invalidateRedisEpisodeSource(
+  episodeId: string,
+): Promise<void> {
+  if (!redisClient || typeof window !== "undefined") return;
+  const cleanId = episodeId?.trim();
+  if (!cleanId) return;
+
+  const sourceKey = `${EPISODE_SOURCE_REDIS_KEY_PREFIX}${cleanId}`;
+  const genKey = `${EPISODE_GEN_KEY_PREFIX}${cleanId}`;
+
+  try {
+    await withRedisTimeout(
+      redisClient.eval<never[], unknown>(
+        INVALIDATE_EPISODE_SOURCE_SCRIPT,
+        [sourceKey, genKey],
+        [],
+      ),
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao invalidar fonte do episódio no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+const EPISODE_LOCK_KEY_PREFIX = "ep:lock:";
+const EPISODE_GEN_KEY_PREFIX = "ep:gen:";
+const EPISODE_LOCK_TTL_MS = 10000; // 10 seconds lock timeout
+
+const ACQUIRE_EPISODE_LOCK_SCRIPT = `
+local locked = redis.call("SET", KEYS[1], ARGV[1], "NX", "PX", tonumber(ARGV[2]))
+local gen = redis.call("GET", KEYS[2])
+if not gen then
+  gen = "1"
+  redis.call("SET", KEYS[2], gen)
+end
+if locked then
+  return {"acquired", gen}
+else
+  return {"busy", gen}
+end
+`;
+
+const RELEASE_EPISODE_LOCK_SCRIPT = `
+local current = redis.call("GET", KEYS[1])
+if current == ARGV[1] then
+  redis.call("DEL", KEYS[1])
+  return {"released"}
+end
+return {"not_owner"}
+`;
+
+const SET_EPISODE_SOURCE_WITH_FENCE_SCRIPT = `
+local curGen = tostring(redis.call("GET", KEYS[2]) or "1")
+if curGen ~= tostring(ARGV[2]) then
+  return {"fenced"}
+end
+redis.call("SET", KEYS[1], ARGV[1], "EX", tonumber(ARGV[3]))
+return {"updated"}
+`;
+
+const INVALIDATE_EPISODE_SOURCE_SCRIPT = `
+redis.call("DEL", KEYS[1])
+local newGen = redis.call("INCR", KEYS[2])
+return tostring(newGen)
+`;
+
+export async function acquireEpisodeResolutionLock(
+  episodeId: string,
+  token: string,
+): Promise<{ acquired: boolean; generation: string }> {
+  if (!redisClient || typeof window !== "undefined") {
+    return { acquired: true, generation: "1" };
+  }
+  const cleanId = episodeId?.trim();
+  if (!cleanId) return { acquired: true, generation: "1" };
+
+  const lockKey = `${EPISODE_LOCK_KEY_PREFIX}${cleanId}`;
+  const genKey = `${EPISODE_GEN_KEY_PREFIX}${cleanId}`;
+
+  try {
+    const res = await withRedisTimeout(
+      redisClient.eval<string[], unknown[]>(
+        ACQUIRE_EPISODE_LOCK_SCRIPT,
+        [lockKey, genKey],
+        [token, String(EPISODE_LOCK_TTL_MS)],
+      ),
+    );
+    if (Array.isArray(res) && res.length >= 2) {
+      const status = res[0];
+      const gen = extractGenToken(res[1]) ?? "1";
+      return { acquired: status === "acquired", generation: gen };
+    }
+    return { acquired: false, generation: "1" };
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao adquirir lock de resolução do episódio (fallback fail-open):",
+      err instanceof Error ? err.message : err,
+    );
+    return { acquired: true, generation: "1" };
+  }
+}
+
+export async function releaseEpisodeResolutionLock(
+  episodeId: string,
+  token: string,
+): Promise<void> {
+  if (!redisClient || typeof window !== "undefined") return;
+  const cleanId = episodeId?.trim();
+  if (!cleanId) return;
+
+  const lockKey = `${EPISODE_LOCK_KEY_PREFIX}${cleanId}`;
+  try {
+    await withRedisTimeout(
+      redisClient.eval<string[], unknown[]>(
+        RELEASE_EPISODE_LOCK_SCRIPT,
+        [lockKey],
+        [token],
+      ),
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao liberar lock de resolução do episódio:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+export async function setRedisEpisodeSourceWithFence(
+  episodeId: string,
+  payload: CachedEpisodeSourcePayload,
+  ttlSec: number,
+  generation: string,
+): Promise<"updated" | "fenced" | "failed" | "unavailable"> {
+  if (!redisClient || typeof window !== "undefined") return "unavailable";
+  const cleanId = episodeId?.trim();
+  if (!cleanId || !payload) return "failed";
+
+  const sourceKey = `${EPISODE_SOURCE_REDIS_KEY_PREFIX}${cleanId}`;
+  const genKey = `${EPISODE_GEN_KEY_PREFIX}${cleanId}`;
+  const safeTtl = Math.min(
+    Math.max(10, Math.floor(ttlSec)),
+    EPISODE_SOURCE_MAX_TTL_SEC,
+  );
+
+  try {
+    const raw = JSON.stringify(payload);
+    const res = await withRedisTimeout(
+      redisClient.eval<string[], unknown[]>(
+        SET_EPISODE_SOURCE_WITH_FENCE_SCRIPT,
+        [sourceKey, genKey],
+        [raw, generation, String(safeTtl)],
+      ),
+    );
+    if (Array.isArray(res)) {
+      if (res[0] === "updated") return "updated";
+      if (res[0] === "fenced") return "fenced";
+    }
+    return "failed";
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao salvar fonte do episódio com fence no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+    return "failed";
+  }
+}
+
+
+
 
 
