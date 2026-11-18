@@ -260,6 +260,7 @@ function SearchPage() {
   const [genres, setGenres] = useState<string[]>(loaderGenres ?? []);
   const [genresLoading, setGenresLoading] = useState(false);
   const [genresLoaded, setGenresLoaded] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     if (filtersOpen && !genresLoaded && !genresLoading) {
@@ -288,7 +289,6 @@ function SearchPage() {
   const [draft, setDraft] = useState(() => search.q ?? "");
   const firstSearchSync = useRef(true);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const currentPage = search.page ?? 1;
 
   const [remoteAnimeItems, setRemoteAnimeItems] = useState<typeof result.items>(() => result.items);

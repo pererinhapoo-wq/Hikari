@@ -1014,7 +1014,7 @@ export function resolvePublicEpisodes(
   );
 
   // Se o servidor retornou erro, ou está vazio sem episódios remotos, utiliza o fallback local seguro
-  if (!hasRemoteEpisodes) {
+  if (!hasRemoteEpisodes || !serverResult) {
     return getAllPublishedEpisodes(safeLocals).filter((ep) => {
       // Respeita exclusões pendentes na Outbox
       const isPendingDelete = outboxOps.some(

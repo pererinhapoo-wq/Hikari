@@ -1396,8 +1396,8 @@ describe("Auditoria de Publicação, Cache e Navegação de Episódios", () => {
 
     const publicList = resolvePublicEpisodes(
       {
-        animeId: "a1",
-        seasons: [{ animeId: "a1", number: 1, title: "T1", position: 1 }],
+        status: "success",
+        total: 1,
         episodes: [
           {
             id: "ep-1",
@@ -1415,6 +1415,19 @@ describe("Auditoria de Publicação, Cache e Navegação de Episódios", () => {
             videoUrl5: null,
             published: true,
             publishedAt: "2026-01-01T00:00:00.000Z",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            animeTitle: "Anime 1",
+            animeTitleRomaji: "Anime 1",
+            animeTitleEnglish: null,
+            animeTitleNative: null,
+            animeCover: null,
+            animeBanner: null,
+            animeStatus: "RELEASING",
+            animeEpisodesCount: 12,
+            animeCreatedAt: "2026-01-01T00:00:00.000Z",
+            animeUpdatedAt: "2026-01-01T00:00:00.000Z",
+            seasonTitle: "T1",
           },
         ],
       },

@@ -2725,12 +2725,12 @@ function AnimePageContent({
 
 
   const title = displayTitle(anime);
-  const isReleasing = anime.status === "RELEASING";
-  const yt = youtubeIdFrom(anime.trailerId);
+  const isReleasing = anime?.status === "RELEASING";
+  const yt = youtubeIdFrom(anime?.trailerId);
 
   const episodeCount =
     effectiveEpisodes?.length ||
-    anime.episodesCount ||
+    anime?.episodesCount ||
     0;
 
   /*

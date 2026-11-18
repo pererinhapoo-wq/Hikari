@@ -123,8 +123,54 @@ async function createPgliteSql(): Promise<Sql> {
   globalRef.__pgliteInstance__ ??= (async () => {
     const { PGlite } = await import("@electric-sql/pglite");
     const { pg_trgm } = await import("@electric-sql/pglite/contrib/pg_trgm");
+
+    let pgliteWasmModule: WebAssembly.Module | undefined;
+    let initdbWasmModule: WebAssembly.Module | undefined;
+    let fsBundle: Blob | undefined;
+    let resolvedPgTrgm = pg_trgm;
+
+    try {
+      const { existsSync, readFileSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const { pathToFileURL } = await import("node:url");
+      const distDir = join(
+        process.cwd(),
+        "node_modules",
+        "@electric-sql",
+        "pglite",
+        "dist",
+      );
+      const wasmPath = join(distDir, "pglite.wasm");
+      const initdbWasmPath = join(distDir, "initdb.wasm");
+      const dataPath = join(distDir, "pglite.data");
+      const trgmPath = join(distDir, "pg_trgm.tar.gz");
+
+      if (existsSync(wasmPath)) {
+        pgliteWasmModule = await WebAssembly.compile(readFileSync(wasmPath));
+      }
+      if (existsSync(initdbWasmPath)) {
+        initdbWasmModule = await WebAssembly.compile(readFileSync(initdbWasmPath));
+      }
+      if (existsSync(dataPath)) {
+        fsBundle = new Blob([readFileSync(dataPath)]);
+      }
+      if (existsSync(trgmPath)) {
+        resolvedPgTrgm = {
+          name: "pg_trgm",
+          setup: async () => ({
+            bundlePath: pathToFileURL(trgmPath),
+          }),
+        };
+      }
+    } catch {
+      // Fallback to default relative URL resolution when local node_modules assets are unavailable
+    }
+
     const pg = new PGlite({
-      extensions: { pg_trgm },
+      ...(pgliteWasmModule ? { pgliteWasmModule } : {}),
+      ...(initdbWasmModule ? { initdbWasmModule } : {}),
+      ...(fsBundle ? { fsBundle } : {}),
+      extensions: { pg_trgm: resolvedPgTrgm },
       parsers: {
         [OID_INT8]: Number,
         [OID_DATE]: identity,

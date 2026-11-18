@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "node scripts/with-app-env.mjs vite dev --host 0.0.0.0 --port 3000",
-    "build": "npm run generate-routes && node scripts/with-app-env.mjs vite build && npm run db:migrate",
+    "build": "npm run generate-routes && NODE_ENV=production node scripts/with-app-env.mjs vite build && npm run db:migrate",
     "generate-routes": "tsr generate",
     "build:cloudflare": "npm run generate-routes && CLOUDFLARE=true node scripts/with-app-env.mjs vite build",
     "db:migrate": "node scripts/migrate.mjs",

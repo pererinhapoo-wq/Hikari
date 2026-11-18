@@ -1,6 +1,6 @@
 import type { Episode } from "@/lib/types";
 import { getBearerToken } from "@/lib/auth/client";
-import { clearTombstone } from "@/lib/catalog-storage";
+import { addTombstone, clearTombstone } from "@/lib/catalog-storage";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 import { hasEpisodePlayableSource } from "@/lib/published-episodes";
 import { useHikariStore } from "@/lib/store";

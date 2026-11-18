@@ -15,7 +15,7 @@ Current configuration:
  ╭────────── [Build Info] ─────────────╮
  │                                     │
  │  - Build Directory: .vercel/output  │
- │  - Date: 11/17/2026, 10:58:19 PM    │
+ │  - Date: 11/18/2026, 4:39:15 AM     │
  │  - Nitro Version: 3.0.260610-beta   │
  │  - Nitro Preset: vercel             │
  │                                     │
@@ -30,3 +30,157 @@ Error: Extension bundle not found: file:///app/applet/.vercel/output/functions/_
     at Fe (file:///app/applet/.vercel/output/functions/__server.func/_libs/electric-sql__pglite.mjs:6315:31)
 
 Node.js v22.23.2
+
+> preview
+> node scripts/with-app-env.mjs vite preview
+
+Warning: Route file "/app/applet/src/routes/api-hikari-ai-review.ts" does not export a Route. This file will not be included in the route tree.
+
+If this file is not intended to be a route, you can exclude it using one of these options:
+  1. Rename the file to "/app/applet/src/routes/-api-hikari-ai-review.ts" (prefix with "-")
+  2. Use 'routeFileIgnorePattern' in your config to match this file
+
+Current configuration:
+  routeFileIgnorePrefix: "-"
+  routeFileIgnorePattern: undefined
+
+ ╭────────── [Build Info] ─────────────╮
+ │                                     │
+ │  - Build Directory: .vercel/output  │
+ │  - Date: 11/18/2026, 4:45:28 AM     │
+ │  - Nitro Version: 3.0.260610-beta   │
+ │  - Nitro Preset: vercel             │
+ │                                     │
+ ╰─────────────────────────────────────╯
+
+  ➜  Local:   http://127.0.0.1:8081/
+Error: aborted
+    at abortIncoming (node:_http_server:838:17)
+    at socketOnClose (node:_http_server:832:3)
+    at Socket.emit (node:events:531:35)
+    at Socket.emit (node:domain:489:12)
+    at TCP.<anonymous> (node:net:347:12)
+    at TCP.callbackTrampoline (node:internal/async_hooks:130:17) {
+  code: 'ECONNRESET'
+}
+Error in renderToReadableStream: TypeError: (0 , import_jsx_dev_runtime.jsxDEV) is not a function
+    at RootDocument (file:///app/applet/.vercel/output/functions/__server.func/_ssr/router-phFXlh2-.mjs:4279:54)
+    at renderWithHooks (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13796:18)
+    at renderElement (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13873:16)
+    at retryNode (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14313:12)
+    at renderNodeDestructive (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14209:235)
+    at finishFunctionComponent (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13812:232)
+    at renderElement (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13875:4)
+    at renderElement (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14159:6)
+    at retryNode (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14313:12)
+    at renderNodeDestructive (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14209:235) { componentStack: [Getter] }
+TypeError: (0 , import_jsx_dev_runtime.jsxDEV) is not a function
+    at RootDocument (file:///app/applet/.vercel/output/functions/__server.func/_ssr/router-phFXlh2-.mjs:4279:54)
+    at renderWithHooks (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13796:18)
+    at renderElement (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13873:16)
+    at retryNode (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14313:12)
+    at renderNodeDestructive (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14209:235)
+    at finishFunctionComponent (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13812:232)
+    at renderElement (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13875:4)
+    at renderElement (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14159:6)
+    at retryNode (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14313:12)
+    at renderNodeDestructive (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14209:235)
+Error in renderToReadableStream: TypeError: (0 , import_jsx_dev_runtime.jsxDEV) is not a function
+    at RootDocument (file:///app/applet/.vercel/output/functions/__server.func/_ssr/router-phFXlh2-.mjs:4279:54)
+    at renderWithHooks (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13796:18)
+    at renderElement (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13873:16)
+    at retryNode (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14313:12)
+    at renderNodeDestructive (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14209:235)
+    at finishFunctionComponent (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13812:232)
+    at renderElement (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13875:4)
+    at renderElement (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14159:6)
+    at retryNode (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14313:12)
+    at renderNodeDestructive (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14209:235) { componentStack: [Getter] }
+TypeError: (0 , import_jsx_dev_runtime.jsxDEV) is not a function
+    at RootDocument (file:///app/applet/.vercel/output/functions/__server.func/_ssr/router-phFXlh2-.mjs:4279:54)
+    at renderWithHooks (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13796:18)
+    at renderElement (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13873:16)
+    at retryNode (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14313:12)
+    at renderNodeDestructive (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14209:235)
+    at finishFunctionComponent (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13812:232)
+    at renderElement (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:13875:4)
+    at renderElement (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14159:6)
+    at retryNode (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14313:12)
+    at renderNodeDestructive (file:///app/applet/.vercel/output/functions/__server.func/_libs/@tanstack/react-router+%5B...%5D.mjs:14209:235)
+
+> preview
+> node scripts/with-app-env.mjs vite preview
+
+Warning: Route file "/app/applet/src/routes/api-hikari-ai-review.ts" does not export a Route. This file will not be included in the route tree.
+
+If this file is not intended to be a route, you can exclude it using one of these options:
+  1. Rename the file to "/app/applet/src/routes/-api-hikari-ai-review.ts" (prefix with "-")
+  2. Use 'routeFileIgnorePattern' in your config to match this file
+
+Current configuration:
+  routeFileIgnorePrefix: "-"
+  routeFileIgnorePattern: undefined
+
+ ╭────────── [Build Info] ─────────────╮
+ │                                     │
+ │  - Build Directory: .vercel/output  │
+ │  - Date: 11/18/2026, 4:46:25 AM     │
+ │  - Nitro Version: 3.0.260610-beta   │
+ │  - Nitro Preset: vercel             │
+ │                                     │
+ ╰─────────────────────────────────────╯
+
+  ➜  Local:   http://127.0.0.1:8081/
+Error: aborted
+    at abortIncoming (node:_http_server:838:17)
+    at socketOnClose (node:_http_server:832:3)
+    at Socket.emit (node:events:531:35)
+    at Socket.emit (node:domain:489:12)
+    at TCP.<anonymous> (node:net:347:12)
+    at TCP.callbackTrampoline (node:internal/async_hooks:130:17) {
+  code: 'ECONNRESET'
+}
+
+> preview
+> node scripts/with-app-env.mjs vite preview
+
+Warning: Route file "/app/applet/src/routes/api-hikari-ai-review.ts" does not export a Route. This file will not be included in the route tree.
+
+If this file is not intended to be a route, you can exclude it using one of these options:
+  1. Rename the file to "/app/applet/src/routes/-api-hikari-ai-review.ts" (prefix with "-")
+  2. Use 'routeFileIgnorePattern' in your config to match this file
+
+Current configuration:
+  routeFileIgnorePrefix: "-"
+  routeFileIgnorePattern: undefined
+
+ ╭────────── [Build Info] ─────────────╮
+ │                                     │
+ │  - Build Directory: .vercel/output  │
+ │  - Date: 11/18/2026, 4:47:54 AM     │
+ │  - Nitro Version: 3.0.260610-beta   │
+ │  - Nitro Preset: vercel             │
+ │                                     │
+ ╰─────────────────────────────────────╯
+
+  ➜  Local:   http://127.0.0.1:8081/
+Error: aborted
+    at abortIncoming (node:_http_server:838:17)
+    at socketOnClose (node:_http_server:832:3)
+    at Socket.emit (node:events:531:35)
+    at Socket.emit (node:domain:489:12)
+    at TCP.<anonymous> (node:net:347:12)
+    at TCP.callbackTrampoline (node:internal/async_hooks:130:17) {
+  code: 'ECONNRESET'
+}
+Error: aborted
+    at abortIncoming (node:_http_server:838:17)
+    at socketOnClose (node:_http_server:832:3)
+    at Socket.emit (node:events:531:35)
+    at Socket.emit (node:domain:489:12)
+    at TCP.<anonymous> (node:net:347:12)
+    at TCP.callbackTrampoline (node:internal/async_hooks:130:17) {
+  code: 'ECONNRESET'
+}
+2026-11-18T04:51:08.891Z ERROR [Better Auth]: Invalid origin: http://127.0.0.1:8081
+2026-11-18T04:51:08.907Z ERROR [Better Auth]: Invalid origin: http://127.0.0.1:8081
