@@ -51,11 +51,28 @@ import {
 } from "@/components/admin/studio-ui";
 import { cn } from "@/lib/utils";
 
+type SettingsTab = "identity" | "preferences" | "sync" | "notices" | "modules";
+
+export interface AdminSettingsSearch {
+  tab?: SettingsTab;
+}
+
 export const Route = createFileRoute("/admin/settings")({
+  validateSearch: (raw: Record<string, unknown>): AdminSettingsSearch => {
+    const tab = typeof raw.tab === "string" ? raw.tab : undefined;
+    if (
+      tab === "identity" ||
+      tab === "preferences" ||
+      tab === "sync" ||
+      tab === "notices" ||
+      tab === "modules"
+    ) {
+      return { tab: tab as SettingsTab };
+    }
+    return {};
+  },
   component: AdminSettingsPage,
 });
-
-type SettingsTab = "identity" | "preferences" | "sync" | "notices" | "modules";
 
 function formatSyncDateTime(iso: string | null | undefined): string {
   if (!iso) return "Nenhuma execução concluída ainda";
@@ -95,8 +112,38 @@ function getSyncStageLabel(stage: string | null | undefined): string {
 }
 
 function AdminSettingsPage() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   const { refreshSettings } = usePublicSettings();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("identity");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => search.tab || "identity");
+
+  useEffect(() => {
+    if (search.tab) {
+      setActiveTab((curr) => (curr !== search.tab ? (search.tab as SettingsTab) : curr));
+    } else {
+      setActiveTab((curr) => (curr !== "identity" ? "identity" : curr));
+    }
+  }, [search.tab]);
+
+  const handleTabChange = useCallback(
+    (newTab: SettingsTab) => {
+      setActiveTab(newTab);
+      void navigate({
+        search: (prev: AdminSettingsSearch) => {
+          const next: AdminSettingsSearch = { ...prev };
+          if (newTab === "identity") {
+            delete next.tab;
+          } else {
+            next.tab = newTab;
+          }
+          return next;
+        },
+        replace: true,
+      });
+    },
+    [navigate],
+  );
+
   const [settings, setSettings] =
     useState<HikariAdminSettings>(DEFAULT_ADMIN_SETTINGS);
   const [savedSettings, setSavedSettings] =
@@ -437,7 +484,7 @@ function AdminSettingsPage() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
               className={cn(
                 "flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors select-none whitespace-nowrap",
                 isActive
@@ -709,7 +756,7 @@ function AdminSettingsPage() {
                   </Label>
                   <button
                     type="button"
-                    onClick={() => setActiveTab("sync")}
+                    onClick={() => handleTabChange("sync")}
                     className="text-[11px] font-semibold text-violet-300 hover:text-violet-200"
                   >
                     Abrir painel de Sincronização AniList →

@@ -60,6 +60,7 @@ interface NavItem {
   description: string;
   icon: typeof LayoutDashboard;
   to: string;
+  search?: Record<string, unknown>;
   keywords?: string;
   statusTag?: string;
   statusTone?: "default" | "emerald" | "amber" | "rose" | "cobalt";
@@ -253,6 +254,15 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
             keywords: "configuracoes marca slogan avisos modulos",
           },
           {
+            id: "anilist-sync",
+            label: "Sincronização AniList",
+            description: "Catálogo, temporadas e grade semanal",
+            icon: RefreshCw,
+            to: "/admin/settings",
+            search: { tab: "sync" },
+            keywords: "anilist sincronizacao catalogo importacao cron",
+          },
+          {
             id: "maintenance",
             label: "Manutenção & Cache",
             description: "Modo manutenção, caches e diagnóstico DB",
@@ -348,6 +358,14 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     if (item.id === "database-sync") {
       return false;
     }
+    if (item.id === "anilist-sync") {
+      const searchTab = (routerState.location.search as Record<string, unknown>)?.tab;
+      return pathname.startsWith("/admin/settings") && searchTab === "sync";
+    }
+    if (item.id === "settings") {
+      const searchTab = (routerState.location.search as Record<string, unknown>)?.tab;
+      return pathname.startsWith("/admin/settings") && searchTab !== "sync";
+    }
     return pathname.startsWith(item.to);
   };
 
@@ -386,6 +404,10 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
       return { section: "Sistema & Infra", current: "Backup & Dados" };
     }
     if (pathname.startsWith("/admin/settings")) {
+      const searchTab = (routerState.location.search as Record<string, unknown>)?.tab;
+      if (searchTab === "sync") {
+        return { section: "Sistema & Infra", current: "Sincronização AniList" };
+      }
       return { section: "Sistema & Infra", current: "Configurações Gerais" };
     }
     if (pathname.startsWith("/admin/")) {
@@ -396,7 +418,7 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
       return { section: "Catálogo & Acervo", current: "Editor de Anime" };
     }
     return { section: "Console", current: "Hikari Console" };
-  }, [pathname]);
+  }, [pathname, routerState.location.search]);
 
   const handleNavigateItem = (item: NavItem) => {
     setMobileDrawerOpen(false);
@@ -539,7 +561,8 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
                   return (
                     <Link
                       key={item.id}
-                      to={item.to}
+                      to={item.to as any}
+                      search={item.search as any}
                       onClick={() => handleNavigateItem(item)}
                       className={cn(
                         "group relative flex min-h-9 items-center justify-between rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors cursor-pointer",
@@ -715,7 +738,8 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
                   return (
                     <Link
                       key={item.id}
-                      to={item.to}
+                      to={item.to as any}
+                      search={item.search as any}
                       onClick={() => handleNavigateItem(item)}
                       className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-purple-600/15 cursor-pointer"
                     >
