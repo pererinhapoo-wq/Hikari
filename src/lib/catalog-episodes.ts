@@ -23,6 +23,7 @@ import {
   isHikariPlayableUrl,
   sanitizePlayableVideoUrl,
 } from "@/lib/published-episodes";
+import { normalizeHikariPlayerEpisodeId } from "@/lib/hikari-player";
 
 export const getCatalogEpisodesSchema = z.object({
   animeId: z.string().min(1, "animeId é obrigatório"),
@@ -45,6 +46,7 @@ export interface CatalogEpisodeItem {
   videoUrl3: string | null;
   videoUrl4: string | null;
   videoUrl5: string | null;
+  hikariPlayerEpisodeId?: string | null;
   published: boolean;
   publishedAt: string | null;
   createdAt?: string;
@@ -80,13 +82,43 @@ const clientInFlightPromises = new Map<string, Promise<CatalogEpisodesResult>>()
  * Invalida o cache em memória de episódios para um anime específico (ou todo o cache).
  */
 export function invalidateCatalogEpisodesCache(...animeIds: (string | undefined)[]): void {
-  const ids = animeIds.filter((id): id is string => typeof id === "string" && Boolean(id.trim()));
+  const ids = Array.from(
+    new Set(
+      animeIds
+        .filter((id): id is string => typeof id === "string" && Boolean(id.trim()))
+        .map((id) => id.trim()),
+    ),
+  );
   if (ids.length > 0) {
     for (const id of ids) {
       clientCatalogEpisodesCache.delete(id);
       clientInFlightPromises.delete(id);
       void invalidateRedisCatalogEpisodes(id).catch(() => {});
     }
+  } else {
+    clientCatalogEpisodesCache.clear();
+    clientInFlightPromises.clear();
+  }
+}
+
+export async function invalidateCatalogEpisodesCacheAsync(
+  ...animeIds: (string | undefined)[]
+): Promise<void> {
+  const ids = Array.from(
+    new Set(
+      animeIds
+        .filter((id): id is string => typeof id === "string" && Boolean(id.trim()))
+        .map((id) => id.trim()),
+    ),
+  );
+  if (ids.length > 0) {
+    await Promise.allSettled(
+      ids.map(async (id) => {
+        clientCatalogEpisodesCache.delete(id);
+        clientInFlightPromises.delete(id);
+        await invalidateRedisCatalogEpisodes(id);
+      }),
+    );
   } else {
     clientCatalogEpisodesCache.clear();
     clientInFlightPromises.clear();
@@ -175,15 +207,16 @@ export async function executeGetCatalogEpisodes(
          "videoUrl",
          "videoUrl2",
          "videoUrl3",
-         "videoUrl4",
-         "videoUrl5",
-         "published",
-         "publishedAt",
-         "createdAt",
-         "updatedAt"
-       FROM "catalog_episode"
-       ${whereClause}
-       ORDER BY "seasonNumber" ASC, "number" ASC;`,
+          "videoUrl4",
+          "videoUrl5",
+          "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+          "published",
+          "publishedAt",
+          "createdAt",
+          "updatedAt"
+        FROM "catalog_episode"
+        ${whereClause}
+        ORDER BY "seasonNumber" ASC, "number" ASC;`,
       [candidateIds],
     );
 
@@ -279,6 +312,7 @@ export interface PublicEpisodeRow {
   videoUrl3: string | null;
   videoUrl4: string | null;
   videoUrl5: string | null;
+  hikariPlayerEpisodeId?: string | null;
   published: boolean;
   publishedAt: string | null;
   createdAt: string;
@@ -375,6 +409,7 @@ async function queryPublicCatalogEpisodesFromDb(
            e."videoUrl3",
            e."videoUrl4",
            e."videoUrl5",
+           e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
            e."published",
            e."publishedAt",
            e."createdAt",
@@ -801,6 +836,7 @@ export async function executeGetPaginatedPublicCatalogEpisodes(
         e."videoUrl3",
         e."videoUrl4",
         e."videoUrl5",
+        e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
         e."published",
         e."publishedAt",
         e."createdAt",
@@ -1177,6 +1213,8 @@ export function buildResolvedSeasons(
             videoUrl5: repHasCanonicalSources
               ? rep.videoUrl5?.trim() || undefined
               : rep.videoUrl5?.trim() || sanitizePlayableVideoUrl(lep.videoUrl5) || undefined,
+            hikariPlayerEpisodeId:
+              normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ?? undefined,
             aired:
               lep.aired ||
               (rep.publishedAt ? new Date(rep.publishedAt).toLocaleDateString("pt-BR") : undefined),
@@ -1198,6 +1236,8 @@ export function buildResolvedSeasons(
           videoUrl3: rep.videoUrl3?.trim() || localByIdMatch?.videoUrl3?.trim() || undefined,
           videoUrl4: rep.videoUrl4?.trim() || localByIdMatch?.videoUrl4?.trim() || undefined,
           videoUrl5: rep.videoUrl5?.trim() || localByIdMatch?.videoUrl5?.trim() || undefined,
+          hikariPlayerEpisodeId:
+            normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ?? undefined,
           aired:
             localByIdMatch?.aired ||
             (rep.publishedAt ? new Date(rep.publishedAt).toLocaleDateString("pt-BR") : undefined),
@@ -1364,6 +1404,8 @@ export function catalogItemToEpisode(item: CatalogEpisodeItem): Episode {
     videoUrl3: item.videoUrl3?.trim() || undefined,
     videoUrl4: item.videoUrl4?.trim() || undefined,
     videoUrl5: item.videoUrl5?.trim() || undefined,
+    hikariPlayerEpisodeId:
+      normalizeHikariPlayerEpisodeId(item.hikariPlayerEpisodeId) ?? undefined,
     published: item.published ?? false,
     aired: item.publishedAt
       ? new Date(item.publishedAt).toLocaleDateString("pt-BR")

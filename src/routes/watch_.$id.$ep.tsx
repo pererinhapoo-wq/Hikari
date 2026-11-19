@@ -1,25 +1,23 @@
-import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import {
   ChevronLeft,
   ChevronRight,
   EyeOff,
   HeartHandshake,
-  Play,
   ShieldAlert,
 } from "lucide-react";
 import {
   lazy,
   Suspense,
-  useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
 import { SectionReveal } from "@/components/section-reveal";
+import { ElizabethHikariPlayerBanner } from "@/components/player/ElizabethHikariPlayerBanner";
 
 const EpisodeCommentsSection = lazy(() =>
   import("@/components/comments/EpisodeCommentsSection").then((mod) => ({
@@ -27,13 +25,6 @@ const EpisodeCommentsSection = lazy(() =>
   })),
 );
 
-import type { VideoItem } from "@/types/video";
-
-const CustomVideoPlayer = lazy(() =>
-  import("@/components/player/CustomVideoPlayer").then((mod) => ({
-    default: mod.CustomVideoPlayer ?? mod.default,
-  })),
-);
 import { fetchAnimeDetail } from "@/lib/api";
 import { anilistImage, getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { mergeDetail } from "@/lib/overlay";
@@ -49,17 +40,19 @@ import {
 } from "@/lib/catalog-episodes";
 import {
   isWatchPlayableMediaUrl,
-  resolveEpisodePlayerSources,
   resolveEpisodeThumbnailUrl,
   resolvePlayableStreamUrl,
   selectEpisodeForWatch,
 } from "@/lib/published-episodes";
 import {
+  buildHikariPlayerEpisodeUrl,
+  normalizeHikariPlayerEpisodeId,
+} from "@/lib/hikari-player";
+import {
   displayTitle,
   type Episode,
   type Season,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 function parseEpisodeNumber(epStr?: string): number {
   if (!epStr) return 1;
@@ -244,52 +237,7 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
 
 function WatchPage() {
   const { id, ep } = Route.useParams();
-  const navigate = useNavigate();
   const targetEpNum = parseEpisodeNumber(ep);
-
-  const [playerMounted, setPlayerMounted] = useState(false);
-  const [triggeredPlayEpisodeId, setTriggeredPlayEpisodeId] = useState<string | null>(null);
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const currentEpisodeIdRef = useRef<string | undefined>(undefined);
-
-  const handleActivatePlayer = useCallback(() => {
-    if (currentEpisodeIdRef.current) {
-      setTriggeredPlayEpisodeId(currentEpisodeIdRef.current);
-    }
-    setPlayerMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || playerMounted) return;
-    const win = window as Window & {
-      requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
-      cancelIdleCallback?: (id: number) => void;
-    };
-    let idleId: number | null = null;
-    let timerId: number | null = null;
-
-    if (typeof win.requestIdleCallback === "function") {
-      idleId = win.requestIdleCallback(
-        () => {
-          setPlayerMounted(true);
-        },
-        { timeout: 3000 },
-      );
-    } else {
-      timerId = window.setTimeout(() => {
-        setPlayerMounted(true);
-      }, 3000);
-    }
-
-    return () => {
-      if (idleId !== null && typeof win.cancelIdleCallback === "function") {
-        win.cancelIdleCallback(idleId);
-      }
-      if (timerId !== null) {
-        window.clearTimeout(timerId);
-      }
-    };
-  }, [playerMounted]);
 
   const {
     comment: commentQuery,
@@ -360,8 +308,14 @@ function WatchPage() {
     [episodes, ep, targetEpNum],
   );
 
-  currentEpisodeIdRef.current = current?.id;
-  const userTriggeredPlay = Boolean(current?.id && triggeredPlayEpisodeId === current.id);
+  const hikariPlayerEpisodeId = useMemo(
+    () => normalizeHikariPlayerEpisodeId(current?.hikariPlayerEpisodeId),
+    [current?.hikariPlayerEpisodeId],
+  );
+  const hikariPlayerEpisodeUrl = useMemo(
+    () => buildHikariPlayerEpisodeUrl(hikariPlayerEpisodeId),
+    [hikariPlayerEpisodeId],
+  );
 
   const idx = current
     ? episodes.findIndex(
@@ -411,327 +365,6 @@ function WatchPage() {
     ? displayTitle(anime)
     : "";
 
-  // Mapeamento dinâmico: exibe exclusivamente os players com URLs válidas e configuradas para este episódio
-  const playerSources = useMemo(
-    () => resolveEpisodePlayerSources(current),
-    [current],
-  );
-
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string>("player-1");
-  const lastEpisodeIdRef = useRef<string | undefined>(current?.id);
-  const livePlaybackRef = useRef<{ episodeId: string; time: number }>({
-    episodeId: current?.id ?? "",
-    time: 0,
-  });
-  const [sessionTime, setSessionTime] = useState<{
-    episodeId: string;
-    time: number;
-  } | null>(null);
-
-  // Chave de armazenamento para troca de player sem bloquear abertura
-  const progressStorageKey =
-    anime && current
-      ? `hikari_progress_${anime.id}_${current.id}`
-      : null;
-
-  const effectiveInitialTime =
-    sessionTime && sessionTime.episodeId === current?.id && sessionTime.time > 0
-      ? sessionTime.time
-      : 0;
-
-  const hasRestoredRef = useRef<boolean>(true);
-  const lastSavedTimeRef = useRef<number>(0);
-
-  useEffect(() => {
-    setIsVideoPlaying(false);
-  }, [current?.id, anime?.id]);
-
-  useEffect(() => {
-    if (current?.id !== lastEpisodeIdRef.current) {
-      if (
-        lastEpisodeIdRef.current &&
-        anime &&
-        livePlaybackRef.current.episodeId === lastEpisodeIdRef.current &&
-        livePlaybackRef.current.time > 0
-      ) {
-        try {
-          localStorage.setItem(
-            `hikari_progress_${anime.id}_${lastEpisodeIdRef.current}`,
-            String(Math.floor(livePlaybackRef.current.time)),
-          );
-        } catch {
-          /* ignore storage error */
-        }
-      }
-
-      lastEpisodeIdRef.current = current?.id;
-      const defaultId = playerSources[0]?.id ?? "player-1";
-      setSelectedPlayerId(defaultId);
-      livePlaybackRef.current = { episodeId: current?.id ?? "", time: 0 };
-      setSessionTime(null);
-      hasRestoredRef.current = true;
-      lastSavedTimeRef.current = 0;
-    }
-  }, [current?.id, anime, playerSources]);
-
-  useEffect(() => {
-    const handleUnloadOrHide = () => {
-      if (!current?.id || !progressStorageKey) return;
-      const live = livePlaybackRef.current;
-      if (live.episodeId === current.id && live.time > 0) {
-        try {
-          localStorage.setItem(
-            progressStorageKey,
-            String(Math.floor(live.time)),
-          );
-        } catch {
-          /* ignore storage error */
-        }
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        handleUnloadOrHide();
-      }
-    };
-
-    window.addEventListener("beforeunload", handleUnloadOrHide);
-    window.addEventListener("pagehide", handleUnloadOrHide);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.removeEventListener("beforeunload", handleUnloadOrHide);
-      window.removeEventListener("pagehide", handleUnloadOrHide);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [current?.id, progressStorageKey]);
-
-  const handleRestored = useCallback(
-    (time: number) => {
-      hasRestoredRef.current = true;
-      lastSavedTimeRef.current = time;
-      if (current?.id) {
-        livePlaybackRef.current = { episodeId: current.id, time };
-      }
-    },
-    [current?.id],
-  );
-
-  const handlePlay = useCallback(() => {
-    setIsVideoPlaying(true);
-    if (current?.id) {
-      setTriggeredPlayEpisodeId((prevId) => (prevId === current.id ? prevId : current.id));
-    }
-  }, [current?.id]);
-
-  const handlePlaying = useCallback(() => {
-    setIsVideoPlaying(true);
-  }, []);
-
-  const handleSeeking = useCallback(() => {
-    setIsVideoPlaying(false);
-  }, []);
-
-  const handleSeeked = useCallback(() => {}, []);
-
-  const handleWaiting = useCallback(() => {
-    setIsVideoPlaying(false);
-  }, []);
-
-  const handleTimeUpdate = useCallback(
-    (time: number, totalDuration: number) => {
-      if (!current?.id || !progressStorageKey || totalDuration <= 0) return;
-
-      if (!hasRestoredRef.current && effectiveInitialTime > 0) {
-        if (
-          Math.abs(time - effectiveInitialTime) <= 4 ||
-          time >= effectiveInitialTime
-        ) {
-          hasRestoredRef.current = true;
-          lastSavedTimeRef.current = time;
-        } else {
-          return;
-        }
-      }
-
-      if (time > 0) {
-        livePlaybackRef.current = { episodeId: current.id, time };
-      }
-    },
-    [progressStorageKey, current?.id, effectiveInitialTime],
-  );
-
-  const handlePause = useCallback(
-    (time: number, totalDuration: number) => {
-      setIsVideoPlaying(false);
-      if (!current?.id || !progressStorageKey || totalDuration <= 0) return;
-
-      if (time > 0) {
-        livePlaybackRef.current = { episodeId: current.id, time };
-      }
-    },
-    [current?.id, progressStorageKey],
-  );
-
-  const handleSelectPlayer = useCallback(
-    (targetId: string) => {
-      if (targetId === selectedPlayerId) return;
-      setIsVideoPlaying(false);
-
-      const hasValidLiveTime =
-        current?.id &&
-        livePlaybackRef.current.episodeId === current.id &&
-        livePlaybackRef.current.time > 0;
-
-      const currentTimeToCarry = hasValidLiveTime
-        ? livePlaybackRef.current.time
-        : 0;
-
-      if (currentTimeToCarry > 0 && current?.id) {
-        hasRestoredRef.current = false;
-        setSessionTime({ episodeId: current.id, time: currentTimeToCarry });
-        if (progressStorageKey) {
-          try {
-            localStorage.setItem(
-              progressStorageKey,
-              String(Math.floor(currentTimeToCarry)),
-            );
-            lastSavedTimeRef.current = currentTimeToCarry;
-          } catch {
-            // ignora falha de storage
-          }
-        }
-      }
-
-      setSelectedPlayerId(targetId);
-    },
-    [selectedPlayerId, progressStorageKey, current?.id],
-  );
-
-  const handleNextEpisode = useCallback(() => {
-    if (next && anime) {
-      void navigate({
-        to: "/watch/$id/$ep",
-        replace: true,
-        params: { id: anime.id, ep: `ep-${next.number}` },
-      });
-    }
-  }, [next, navigate, anime]);
-
-  const handleEnded = useCallback(() => {
-    setIsVideoPlaying(false);
-    if (progressStorageKey) {
-      try {
-        localStorage.removeItem(progressStorageKey);
-      } catch (err) {
-        void err;
-      }
-    }
-    livePlaybackRef.current = { episodeId: "", time: 0 };
-    setSessionTime(null);
-    handleNextEpisode();
-  }, [progressStorageKey, handleNextEpisode]);
-
-  const selectedPlayer =
-    playerSources.find((s) => s.id === selectedPlayerId) ??
-    playerSources[0] ??
-    undefined;
-  const playUrl = selectedPlayer?.url ?? "";
-  const file = playUrl || null;
-
-  function parseDurationToSeconds(raw?: string | number | null): number {
-    if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return Math.floor(raw);
-    if (!raw || typeof raw !== "string") return 0;
-    const trimmed = raw.trim().toLowerCase();
-
-    if (trimmed.includes(":")) {
-      const parts = trimmed.split(":").map(Number);
-      if (parts.every((p) => !isNaN(p))) {
-        if (parts.length === 2) return parts[0] * 60 + parts[1];
-        if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-      }
-    }
-
-    const minMatch = trimmed.match(/^(\d+)\s*(?:min|m)$/);
-    if (minMatch) return parseInt(minMatch[1], 10) * 60;
-
-    const numOnly = parseInt(trimmed, 10);
-    if (!isNaN(numOnly) && numOnly > 0) return numOnly;
-
-    return 0;
-  }
-
-  const playerPoster = useMemo(() => {
-    const rawPoster =
-      resolveEpisodeThumbnailUrl(current) ||
-      anime?.banner ||
-      anime?.cover ||
-      null;
-    return rawPoster ? anilistImage(rawPoster, 1280) : null;
-  }, [current, anime?.banner, anime?.cover]);
-
-  const _currentVideoItem = useMemo((): VideoItem | undefined => {
-    if (!current || !file) return undefined;
-    const initialDuration = parseDurationToSeconds(current.duration);
-    const episodeTitleStr = current.number
-      ? `${title} — Episódio ${current.number}${current.title ? ` · ${current.title}` : ""}`
-      : title;
-
-    const mins = Math.floor(initialDuration / 60).toString().padStart(2, "0");
-    const secs = (initialDuration % 60).toString().padStart(2, "0");
-    const possibleIframe =
-      current.videoUrl2 ||
-      current.videoUrl3 ||
-      current.videoUrl4 ||
-      (file && file.includes("maximaimg.online")
-        ? (() => {
-            try {
-              const parsed = new URL(file, "http://localhost");
-              const target = parsed.searchParams.get("u") || file;
-              return `https://api.anivideo.net/videohls.php?d=${encodeURIComponent(target)}`;
-            } catch {
-              return `https://api.anivideo.net/videohls.php?d=${encodeURIComponent(file)}`;
-            }
-          })()
-        : undefined);
-
-    return {
-      id: current.id,
-      title: episodeTitleStr,
-      description: anime?.synopsis || current.title || "Episódio disponível no Hikari",
-      duration: initialDuration,
-      durationFormatted: initialDuration > 0 ? `${mins}:${secs}` : "00:00",
-      category: "Treinamentos & Tutoriais",
-      tags: [title, `Episódio ${current.number}`].filter(Boolean),
-      posterUrl: playerPoster || "",
-      videoUrl: file,
-      url: file,
-      iframeUrl: possibleIframe,
-      thumbnailUrl: playerPoster || undefined,
-      episodeNumber: current.number,
-      episodeTitle: current.title,
-      playerLabel: selectedPlayer?.name || "Player 1",
-      isDemo: false,
-      isLocalFile: false,
-      createdAt: new Date().toISOString(),
-      resolution: "N/D",
-      uploadStatus: "pronto",
-      subtitles: [
-        { id: "sub-pt", lang: "pt", label: "Português (Brasil)" },
-        { id: "sub-en", lang: "en", label: "Inglês (Original)" },
-      ],
-    };
-  }, [current, file, title, playerPoster, anime?.synopsis, selectedPlayer?.name]);
-
-  const handlePlayerError = useCallback(() => {
-    setIsVideoPlaying(false);
-    if (!selectedPlayer) return;
-    const alt = playerSources.find((s) => s.id !== selectedPlayer.id);
-    if (alt) {
-      handleSelectPlayer(alt.id);
-    }
-  }, [playerSources, selectedPlayer, handleSelectPlayer]);
-
   if (!hydrated && !anime) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-bg text-fg">
@@ -775,122 +408,28 @@ function WatchPage() {
         <Logo />
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-3 pb-12 sm:px-5">
+      <main
+        className="mx-auto w-full max-w-6xl flex-1 px-3 pb-12 sm:px-5"
+        data-hikari-player-episode-id={hikariPlayerEpisodeId ?? undefined}
+        data-hikari-player-url={hikariPlayerEpisodeUrl ?? undefined}
+      >
 
         {/* ================================================== */}
-        {/* PLAYER */}
+        {/* BANNER DE REDIRECIONAMENTO AO HIKARI PLAYER        */}
         {/* ================================================== */}
 
-        {file && selectedPlayer && current ? (
-          playerMounted ? (
-            <Suspense
-              fallback={
-                <PlayerLoadingFallback
-                  posterUrl={playerPoster}
-                  title={
-                    current.number
-                      ? `${title} — Episódio ${current.number}`
-                      : title
-                  }
-                />
-              }
-            >
-              <CustomVideoPlayer
-                key={`${anime.id}-${current.id}-${selectedPlayer.id}-${file}`}
-                video={_currentVideoItem}
-                autoPlay={userTriggeredPlay}
-                initialTime={effectiveInitialTime}
-                onPlay={handlePlay}
-                onPlaying={handlePlaying}
-                onSeeking={handleSeeking}
-                onSeeked={handleSeeked}
-                onWaiting={handleWaiting}
-                onTimeUpdate={handleTimeUpdate}
-                onPause={handlePause}
-                onRestored={handleRestored}
-                onEnded={handleEnded}
-                onError={handlePlayerError}
-                iframeFallbackUrl={_currentVideoItem?.iframeUrl}
-                onFallbackToIframe={() => {
-                  const alt = playerSources.find((s) => s.id !== selectedPlayer.id);
-                  if (alt) {
-                    handleSelectPlayer(alt.id);
-                  }
-                }}
-              />
-            </Suspense>
-          ) : (
-            <button
-              type="button"
-              onClick={handleActivatePlayer}
-              aria-label={
-                current.number
-                  ? `Reproduzir ${title} — Episódio ${current.number}`
-                  : `Reproduzir ${title}`
-              }
-              className="relative block aspect-video min-h-[240px] md:min-h-[520px] w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)] cursor-pointer group select-none text-left outline-none focus-visible:outline-none"
-            >
-              {playerPoster ? (
-                <img
-                  src={playerPoster}
-                  alt={current.number ? `${title} — Episódio ${current.number}` : title}
-                  width={1280}
-                  height={720}
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="sync"
-                  className="absolute inset-0 size-full object-cover select-none"
-                />
-              ) : (
-                <div
-                  aria-hidden="true"
-                  className="absolute inset-0 bg-gradient-to-br from-[#141024] via-[#0a0812] to-black"
-                />
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/35" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="flex size-16 sm:size-20 items-center justify-center rounded-full bg-purple-600/90 group-hover:bg-purple-500 text-white border border-white/20 backdrop-blur-md shadow-[0_12px_36px_rgba(168,85,247,0.45)] transition-all duration-200 group-hover:scale-105 group-active:scale-95">
-                  <Play className="size-7 sm:size-9 fill-current translate-x-0.5" />
-                </div>
-              </div>
-            </button>
-          )
-        ) : (
-          <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
-            <div className="flex size-full flex-col items-center justify-center gap-3 px-6 text-center">
-              <p className="font-display text-2xl">
-                Sem vídeo neste episódio
-              </p>
-              <p className="max-w-md text-sm text-muted">
-                Adicione uma URL de vídeo válida no Admin para reproduzir este
-                episódio.
-              </p>
-              <Button
-                asChild
-                variant="outline"
-              >
-                <Link
-                  to="/admin/$id"
-                  params={{
-                    id: anime.id.startsWith(
-                      "local-",
-                    )
-                      ? anime.id
-                      : "new",
-                  }}
-                  search={{
-                    importId: anime.id,
-                  }}
-                >
-                  Abrir Admin
-                </Link>
-              </Button>
-            </div>
-          </div>
-        )}
+        <section aria-label="Assistir episódio no Hikari Player" className="mt-2 sm:mt-3">
+          <ElizabethHikariPlayerBanner
+            animeTitle={title}
+            episodeNumber={current?.number ?? targetEpNum}
+            episodeTitle={current?.title}
+            hikariPlayerEpisodeId={hikariPlayerEpisodeId}
+            hikariPlayerEpisodeUrl={hikariPlayerEpisodeUrl}
+          />
+        </section>
 
         {/* ================================================== */}
-        {/* INFORMAÇÕES DO ANIME (ABAIXO DO PLAYER)           */}
+        {/* INFORMAÇÕES DO ANIME (ABAIXO DO BANNER)           */}
         {/* ================================================== */}
 
         <section className="mt-4 flex items-center gap-3 sm:gap-3.5 rounded-none border border-white/10 bg-[#0e0c16]/95 p-2.5 sm:p-3 backdrop-blur-md shadow-sm">
@@ -938,23 +477,6 @@ function WatchPage() {
             </h1>
 
             <div className="mt-1 flex items-center gap-2 text-xs sm:text-[13px] text-white/60">
-              <span
-                className="relative flex size-2 shrink-0 items-center justify-center"
-                aria-hidden="true"
-                title={isVideoPlaying ? "Em reprodução" : "Pausado"}
-              >
-                {isVideoPlaying && (
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                )}
-                <span
-                  className={cn(
-                    "relative inline-flex size-2 rounded-full transition-all duration-300",
-                    isVideoPlaying
-                      ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.85)] animate-pulse"
-                      : "bg-emerald-500/40 border border-emerald-400/30",
-                  )}
-                />
-              </span>
               <span className="truncate font-medium">
                 {current
                   ? `Episódio ${current.number}${current.title ? ` · ${current.title}` : ""}`
@@ -1127,47 +649,6 @@ function WatchPage() {
   );
 }
 
-
-function PlayerLoadingFallback({
-  posterUrl,
-  title,
-}: {
-  posterUrl?: string | null;
-  title?: string;
-} = {}) {
-  return (
-    <div
-      aria-label="Carregando reprodutor"
-      className="relative aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)] flex items-center justify-center select-none"
-    >
-      {posterUrl ? (
-        <>
-          <img
-            src={posterUrl}
-            alt={title ? `Poster de ${title}` : "Miniatura do episódio"}
-            className="absolute inset-0 size-full object-cover filter brightness-[0.7]"
-            loading="eager"
-            decoding="async"
-          />
-          <div
-            className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/40"
-            aria-hidden="true"
-          />
-        </>
-      ) : null}
-
-      <div className="relative z-10 flex flex-col items-center justify-center gap-3">
-        <div
-          className="size-8 animate-spin rounded-full border-2 border-white/20 border-t-[#a855f7] shadow-[0_0_15px_rgba(168,85,247,0.4)]"
-          aria-hidden="true"
-        />
-        <span className="text-xs font-medium text-white/80 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-wide">
-          Carregando player...
-        </span>
-      </div>
-    </div>
-  );
-}
 
 function CommentsLoadingFallback() {
   return (

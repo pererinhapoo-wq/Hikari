@@ -46,6 +46,10 @@ import {
 } from "@/lib/anitube22";
 import type { Episode, Season } from "@/lib/types";
 import type { OutboxOperation } from "@/lib/episode-writer";
+import {
+  buildHikariPlayerEpisodeUrl,
+  validateHikariPlayerEpisodeId,
+} from "@/lib/hikari-player";
 import { cn } from "@/lib/utils";
 
 export interface EpisodeCandidateState {
@@ -894,6 +898,97 @@ export function EditorSeasons({
                                       </p>
                                     )}
                                   </Field>
+                                );
+                              })()}
+
+                              {/* Associação opcional com o Hikari Player separado */}
+                              {(() => {
+                                const rawHikariPlayerId = ep.hikariPlayerEpisodeId ?? "";
+                                const hikariPlayerValidation =
+                                  validateHikariPlayerEpisodeId(rawHikariPlayerId);
+                                const hikariPlayerPreviewUrl =
+                                  hikariPlayerValidation.valid && hikariPlayerValidation.value
+                                    ? buildHikariPlayerEpisodeUrl(hikariPlayerValidation.value)
+                                    : null;
+
+                                return (
+                                  <div className="sm:col-span-12">
+                                    <div className="rounded-xl border border-white/10 bg-[var(--studio-panel)]/55 p-3">
+                                      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                                        <Label
+                                          htmlFor={`ep-hikari-player-${ep.id}`}
+                                          className="text-xs font-semibold text-[var(--color-muted)]"
+                                        >
+                                          ID do episódio no Hikari Player (opcional)
+                                        </Label>
+                                        <span className="studio-mono text-[10px] text-[var(--color-subtle)]">
+                                          hikari-player-2.vercel.app/e/&#123;id&#125;
+                                        </span>
+                                      </div>
+
+                                      <div className="relative">
+                                        <Input
+                                          id={`ep-hikari-player-${ep.id}`}
+                                          value={rawHikariPlayerId}
+                                          onChange={(e) =>
+                                            onPatchEpisode(season.id, ep.id, {
+                                              hikariPlayerEpisodeId: e.target.value,
+                                            })
+                                          }
+                                          onBlur={(e) => {
+                                            const trimmed = e.target.value.trim();
+                                            if (trimmed !== e.target.value) {
+                                              onPatchEpisode(season.id, ep.id, {
+                                                hikariPlayerEpisodeId: trimmed,
+                                              });
+                                            }
+                                          }}
+                                          placeholder="Ex: abc123 (informe apenas o ID no Hikari Player, sem URL)"
+                                          aria-invalid={!hikariPlayerValidation.valid}
+                                          className={cn(
+                                            "studio-mono h-10 border-white/10 bg-[var(--studio-panel)] pr-8 text-xs",
+                                            !hikariPlayerValidation.valid &&
+                                              "border-rose-500/60 focus-visible:border-rose-400",
+                                          )}
+                                        />
+                                        {Boolean(rawHikariPlayerId) && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              onPatchEpisode(season.id, ep.id, {
+                                                hikariPlayerEpisodeId: "",
+                                              })
+                                            }
+                                            aria-label={`Remover associação do Hikari Player no Episódio ${ep.number}`}
+                                            title="Remover associação com o Hikari Player"
+                                            className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-[var(--color-subtle)] hover:bg-white/[0.08] hover:text-rose-400"
+                                          >
+                                            <X className="size-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+
+                                      {!hikariPlayerValidation.valid ? (
+                                        <p
+                                          role="alert"
+                                          className="mt-1.5 text-[11px] font-medium text-rose-400"
+                                        >
+                                          {hikariPlayerValidation.error}
+                                        </p>
+                                      ) : hikariPlayerPreviewUrl ? (
+                                        <p className="mt-1.5 text-[11px] text-emerald-300/90">
+                                          Associado ao destino{" "}
+                                          <span className="studio-mono">
+                                            {hikariPlayerPreviewUrl}
+                                          </span>
+                                        </p>
+                                      ) : (
+                                        <p className="mt-1.5 text-[11px] text-[var(--color-subtle)]">
+                                          Opcional. Informe somente o identificador do episódio no Hikari Player separado (ex.: abc123). Deixe vazio para manter sem associação.
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
                                 );
                               })()}
 

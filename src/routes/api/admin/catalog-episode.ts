@@ -7,8 +7,9 @@ import {
   sanitizePlayableVideoUrl,
 } from "@/lib/published-episodes";
 import { getSql } from "@/lib/db";
-import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
+import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
 import {
   deleteEpisodeSourcesForEpisode,
   SourceValidationError,
@@ -35,6 +36,7 @@ const episodePostSchema = z.object({
   videoUrl3: z.string().max(2048).optional().nullable(),
   videoUrl4: z.string().max(2048).optional().nullable(),
   videoUrl5: z.string().max(2048).optional().nullable(),
+  hikariPlayerEpisodeId: z.string().max(255).optional().nullable(),
   published: z.boolean().default(false),
   replaceSources: z.boolean().optional().default(false),
   replaceThumbnail: z.boolean().optional().default(false),
@@ -89,6 +91,17 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           }
 
           const data = parsed.data;
+          const hasHikariPlayerField = data.hikariPlayerEpisodeId !== undefined;
+          const hikariPlayerValidation = validateHikariPlayerEpisodeId(
+            data.hikariPlayerEpisodeId,
+          );
+          if (hasHikariPlayerField && !hikariPlayerValidation.valid) {
+            return Response.json(
+              { error: hikariPlayerValidation.error || "ID do Hikari Player inválido." },
+              { status: 400 },
+            );
+          }
+
           const sql = await getSql();
 
           // Reconciliação canônica do animeId:
@@ -96,16 +109,29 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           // registro correspondente em "catalog_anime" e utiliza seu "id" canônico.
           let canonicalAnimeId = data.animeId;
           const numId = /^\d+$/.test(data.animeId) ? parseInt(data.animeId, 10) : null;
-          const animeMatch = await sql.query<{ id: string }>(
-            `SELECT "id" FROM "catalog_anime"
+          const animeMatch = await sql.query<{
+            id: string;
+            anilistId: number | null;
+            malId: number | null;
+            kitsuId: number | null;
+          }>(
+            `SELECT "id", "anilistId", "malId", "kitsuId" FROM "catalog_anime"
              WHERE "id" = $1
                 OR ($2::int IS NOT NULL AND ("anilistId" = $2 OR "malId" = $2 OR "kitsuId" = $2))
              LIMIT 1;`,
             [data.animeId, numId],
           );
-          if (animeMatch[0]?.id) {
-            canonicalAnimeId = animeMatch[0].id;
+          const matchedAnime = animeMatch[0] || null;
+          if (matchedAnime?.id) {
+            canonicalAnimeId = matchedAnime.id;
           }
+          const cacheAliasIds = [
+            data.animeId,
+            canonicalAnimeId,
+            matchedAnime?.anilistId ? String(matchedAnime.anilistId) : undefined,
+            matchedAnime?.malId ? `mal-${matchedAnime.malId}` : undefined,
+            matchedAnime?.kitsuId ? `kitsu-${matchedAnime.kitsuId}` : undefined,
+          ];
 
           // 4. Buscar registros existentes por ID e por Slot (animeId, seasonNumber, number)
           const existingByIdRows = await sql.query<{
@@ -122,12 +148,14 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             videoUrl3: string | null;
             videoUrl4: string | null;
             videoUrl5: string | null;
+            hikariPlayerEpisodeId: string | null;
             published: boolean;
             publishedAt: string | null;
           }>(
             `SELECT "id", "animeId", "seasonNumber", "number", "title", "thumbnail",
                     "duration", "synopsis", "videoUrl", "videoUrl2", "videoUrl3",
-                    "videoUrl4", "videoUrl5", "published", "publishedAt"
+                    "videoUrl4", "videoUrl5", "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+                    "published", "publishedAt"
              FROM "catalog_episode"
              WHERE "id" = $1 LIMIT 1;`,
             [data.id],
@@ -148,12 +176,14 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             videoUrl3: string | null;
             videoUrl4: string | null;
             videoUrl5: string | null;
+            hikariPlayerEpisodeId: string | null;
             published: boolean;
             publishedAt: string | null;
           }>(
             `SELECT "id", "animeId", "seasonNumber", "number", "title", "thumbnail",
                     "duration", "synopsis", "videoUrl", "videoUrl2", "videoUrl3",
-                    "videoUrl4", "videoUrl5", "published", "publishedAt"
+                    "videoUrl4", "videoUrl5", "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+                    "published", "publishedAt"
              FROM "catalog_episode"
              WHERE ("animeId" = $1 OR "animeId" = $2) AND "seasonNumber" = $3 AND "number" = $4 LIMIT 1;`,
             [canonicalAnimeId, data.animeId, data.seasonNumber, data.number],
@@ -273,6 +303,10 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             existingRow?.synopsis ||
             null;
 
+          const hikariPlayerEpisodeId = hasHikariPlayerField
+            ? hikariPlayerValidation.value
+            : existingRow?.hikariPlayerEpisodeId ?? null;
+
           // 8. Garantir que o anime e a temporada existam no catálogo
           const fallbackAnimeTitle = data.animeTitle?.trim() || canonicalAnimeId;
           await sql.query(
@@ -298,17 +332,20 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             id: string;
             published: boolean;
             publishedAt: string | null;
+            hikariPlayerEpisodeId: string | null;
           }>(
             `INSERT INTO "catalog_episode" (
                "id", "animeId", "seasonNumber", "number",
                "title", "thumbnail", "duration", "synopsis",
                "videoUrl", "videoUrl2", "videoUrl3", "videoUrl4", "videoUrl5",
+               "hikari_player_episode_id",
                "published", "publishedAt", "createdAt", "updatedAt"
              )
              VALUES (
                $1, $2, $3, $4,
                $5, $6, $7, $8,
                $9, $10, $11, $12, $13,
+               $17,
                $14,
                CASE WHEN $14 = true THEN CURRENT_TIMESTAMP ELSE NULL END,
                CURRENT_TIMESTAMP,
@@ -343,6 +380,10 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                  WHEN $15 = true THEN EXCLUDED."videoUrl5"
                  ELSE COALESCE(NULLIF(EXCLUDED."videoUrl5", ''), "catalog_episode"."videoUrl5")
                END,
+               "hikari_player_episode_id" = CASE
+                 WHEN $18 = true THEN EXCLUDED."hikari_player_episode_id"
+                 ELSE "catalog_episode"."hikari_player_episode_id"
+               END,
                "published" = EXCLUDED."published",
                "publishedAt" = CASE
                  WHEN EXCLUDED."published" = true AND "catalog_episode"."publishedAt" IS NULL THEN CURRENT_TIMESTAMP
@@ -350,7 +391,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                  ELSE "catalog_episode"."publishedAt"
                END,
                "updatedAt" = CURRENT_TIMESTAMP
-             RETURNING "id", "published", "publishedAt";`,
+             RETURNING "id", "published", "publishedAt", "hikari_player_episode_id" AS "hikariPlayerEpisodeId";`,
             [
               canonicalId,
               canonicalAnimeId,
@@ -368,6 +409,8 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
               published,
               Boolean(data.replaceSources),
               shouldReplaceThumbnail,
+              hikariPlayerEpisodeId,
+              hasHikariPlayerField,
             ],
           );
 
@@ -375,6 +418,9 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           const effectiveId = savedRow ? savedRow.id : canonicalId;
           const finalPublished = savedRow ? savedRow.published : published;
           const finalPublishedAt = savedRow ? savedRow.publishedAt : null;
+          const finalHikariPlayerEpisodeId = savedRow
+            ? savedRow.hikariPlayerEpisodeId
+            : hikariPlayerEpisodeId;
 
           // Sincroniza fontes duráveis em episode_sources sem nunca gravar `time=`
           await syncCatalogEpisodeSlotsToSources(
@@ -474,14 +520,15 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             }
           }
 
-          // Invalida cache em memória do anime e da Home para refletir as alterações
-          invalidateCatalogEpisodesCache(data.animeId);
+          // Invalida cache em memória e Redis do anime (todos os aliases) e da Home
+          await invalidateCatalogEpisodesCacheAsync(...cacheAliasIds);
           invalidateHomePublicEpisodesCache();
 
           return Response.json({
             ok: true,
             published: finalPublished,
             publishedAt: finalPublishedAt,
+            hikariPlayerEpisodeId: finalHikariPlayerEpisodeId,
             episodeId: effectiveId,
             canonicalId: effectiveId,
             reconciled: effectiveId !== data.id,
@@ -557,7 +604,30 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           await deleteEpisodeSourcesForEpisode(episodeId);
           const targetAnimeId = animeId || deleted?.animeId;
           if (targetAnimeId) {
-            invalidateCatalogEpisodesCache(targetAnimeId);
+            const deleteNumId = /^\d+$/.test(targetAnimeId)
+              ? parseInt(targetAnimeId, 10)
+              : null;
+            const deleteAnimeMatch = await sql.query<{
+              id: string;
+              anilistId: number | null;
+              malId: number | null;
+              kitsuId: number | null;
+            }>(
+              `SELECT "id", "anilistId", "malId", "kitsuId" FROM "catalog_anime"
+               WHERE "id" = $1
+                  OR ($2::int IS NOT NULL AND ("anilistId" = $2 OR "malId" = $2 OR "kitsuId" = $2))
+               LIMIT 1;`,
+              [targetAnimeId, deleteNumId],
+            );
+            const matchedDelAnime = deleteAnimeMatch[0] || null;
+            await invalidateCatalogEpisodesCacheAsync(
+              targetAnimeId,
+              deleted?.animeId,
+              matchedDelAnime?.id,
+              matchedDelAnime?.anilistId ? String(matchedDelAnime.anilistId) : undefined,
+              matchedDelAnime?.malId ? `mal-${matchedDelAnime.malId}` : undefined,
+              matchedDelAnime?.kitsuId ? `kitsu-${matchedDelAnime.kitsuId}` : undefined,
+            );
           }
           if (deleted) {
             invalidateHomePublicEpisodesCache();

@@ -986,6 +986,7 @@ function AnimePageContent({
                   ep.videoUrl3 === nextEp.videoUrl3 &&
                   ep.videoUrl4 === nextEp.videoUrl4 &&
                   ep.videoUrl5 === nextEp.videoUrl5 &&
+                  ep.hikariPlayerEpisodeId === nextEp.hikariPlayerEpisodeId &&
                   ep.published === nextEp.published
                 );
               });

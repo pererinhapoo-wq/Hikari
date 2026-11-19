@@ -1255,3 +1255,250 @@ button, a, [role="button"] {
   border: 0;
 }
 
+/* =========================================================
+   HIKARI — BANNER ANIMADO DA ELIZABETH (EPISODE REDIRECT)
+   ========================================================= */
+
+@keyframes hikariBannerPetalFall {
+  0% {
+    transform: translate3d(-12px, -16px, 0) rotate(0deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.78;
+  }
+  82% {
+    opacity: 0.68;
+  }
+  100% {
+    transform: translate3d(52px, 240px, 0) rotate(210deg);
+    opacity: 0;
+  }
+}
+
+@keyframes hikariBannerLogoGlint {
+  0%, 10% {
+    transform: translate3d(-135%, 0, 0) skewX(-18deg);
+    opacity: 0;
+  }
+  22% {
+    opacity: 0.85;
+  }
+  38%, 100% {
+    transform: translate3d(190%, 0, 0) skewX(-18deg);
+    opacity: 0;
+  }
+}
+
+@keyframes hikariBannerCtaPulse {
+  0%, 100% {
+    transform: scale3d(1, 1, 1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale3d(1.028, 1.075, 1);
+    opacity: 0.88;
+  }
+}
+
+@keyframes hikariBannerSparkle {
+  0%, 100% {
+    transform: scale3d(0.65, 0.65, 1);
+    opacity: 0.18;
+  }
+  50% {
+    transform: scale3d(1.35, 1.35, 1);
+    opacity: 0.92;
+  }
+}
+
+@keyframes hikariBannerAuraBreath {
+  0%, 100% {
+    transform: scale3d(0.97, 0.97, 1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale3d(1.03, 1.03, 1);
+    opacity: 0.65;
+  }
+}
+
+.hikari-ep-banner-stage {
+  position: relative;
+  contain: layout style paint;
+}
+
+.hikari-ep-banner-aura {
+  position: absolute;
+  left: 6%;
+  top: 12%;
+  width: 38%;
+  height: 68%;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle at center,
+    rgba(168, 85, 247, 0.16) 0%,
+    rgba(192, 132, 252, 0.06) 45%,
+    transparent 72%
+  );
+  pointer-events: none;
+  z-index: 2;
+  animation: hikariBannerAuraBreath 4.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.hikari-ep-banner-logo-glint {
+  position: absolute;
+  left: 55%;
+  top: 2%;
+  width: 43%;
+  height: 27%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+  -webkit-mask-image: radial-gradient(ellipse 84% 72% at 50% 50%, #000 32%, transparent 96%);
+  mask-image: radial-gradient(ellipse 84% 72% at 50% 50%, #000 32%, transparent 96%);
+}
+
+.hikari-ep-banner-logo-glint-beam {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 18%,
+    rgba(192, 132, 252, 0.16) 42%,
+    rgba(243, 232, 255, 0.36) 50%,
+    rgba(192, 132, 252, 0.16) 58%,
+    transparent 82%
+  );
+  animation: hikariBannerLogoGlint 5.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform, opacity;
+}
+
+.hikari-ep-banner-cta-pulse {
+  position: absolute;
+  left: 55.6%;
+  top: 57.4%;
+  width: 40.9%;
+  height: 19%;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(216, 180, 254, 0.72);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(168, 85, 247, 0.12) 0%,
+    transparent 72%
+  );
+  pointer-events: none;
+  z-index: 3;
+  animation: hikariBannerCtaPulse 2.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.hikari-ep-banner-petal {
+  position: absolute;
+  width: 8px;
+  height: 11px;
+  border-radius: 65% 35% 70% 30%;
+  background: radial-gradient(circle at 35% 35%, #fbcfe8 0%, #e879f9 55%, #a855f7 100%);
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+  animation: hikariBannerPetalFall 6.4s linear infinite;
+  will-change: transform, opacity;
+}
+
+.hikari-ep-banner-petal-1 {
+  top: 2%;
+  left: 16%;
+  animation-delay: 0s;
+  animation-duration: 6.2s;
+}
+
+.hikari-ep-banner-petal-2 {
+  top: 4%;
+  left: 36%;
+  animation-delay: 1.5s;
+  animation-duration: 7s;
+}
+
+.hikari-ep-banner-petal-3 {
+  top: 6%;
+  left: 54%;
+  animation-delay: 3.1s;
+  animation-duration: 6.5s;
+}
+
+.hikari-ep-banner-petal-4 {
+  top: 8%;
+  left: 74%;
+  animation-delay: 0.9s;
+  animation-duration: 7.4s;
+}
+
+.hikari-ep-banner-petal-5 {
+  top: 12%;
+  left: 89%;
+  animation-delay: 2.3s;
+  animation-duration: 6.8s;
+}
+
+.hikari-ep-banner-sparkle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, #ffffff 0%, #d8b4fe 65%, transparent 100%);
+  pointer-events: none;
+  z-index: 3;
+  animation: hikariBannerSparkle 2.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.hikari-ep-banner-sparkle-1 {
+  top: 14%;
+  left: 29%;
+  animation-delay: 0.2s;
+}
+
+.hikari-ep-banner-sparkle-2 {
+  top: 22%;
+  left: 46%;
+  animation-delay: 0.9s;
+}
+
+.hikari-ep-banner-sparkle-3 {
+  top: 41%;
+  left: 51%;
+  animation-delay: 1.6s;
+}
+
+.hikari-ep-banner-sparkle-4 {
+  top: 37%;
+  left: 92%;
+  animation-delay: 2.1s;
+}
+
+.hikari-ep-banner-sparkle-5 {
+  top: 52%;
+  left: 61%;
+  animation-delay: 1.2s;
+}
+
+[data-banner-paused="true"] .hikari-ep-banner-anim {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hikari-ep-banner-aura,
+  .hikari-ep-banner-logo-glint,
+  .hikari-ep-banner-logo-glint-beam,
+  .hikari-ep-banner-cta-pulse,
+  .hikari-ep-banner-petal,
+  .hikari-ep-banner-sparkle {
+    animation: none !important;
+    display: none !important;
+    opacity: 0 !important;
+    will-change: auto !important;
+  }
+}
+

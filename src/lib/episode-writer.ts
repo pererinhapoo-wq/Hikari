@@ -2,6 +2,7 @@ import type { Episode } from "@/lib/types";
 import { getBearerToken } from "@/lib/auth/client";
 import { addTombstone, clearTombstone } from "@/lib/catalog-storage";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { normalizeHikariPlayerEpisodeId } from "@/lib/hikari-player";
 import { hasEpisodePlayableSource } from "@/lib/published-episodes";
 import { useHikariStore } from "@/lib/store";
 
@@ -33,6 +34,7 @@ export interface EpisodePayload {
   videoUrl3?: string | null;
   videoUrl4?: string | null;
   videoUrl5?: string | null;
+  hikariPlayerEpisodeId?: string | null;
   published?: boolean;
   replaceSources?: boolean;
   replaceThumbnail?: boolean;
@@ -69,6 +71,7 @@ export interface PersistEpisodeResult {
   canonicalId?: string;
   published?: boolean;
   publishedAt?: string | null;
+  hikariPlayerEpisodeId?: string | null;
   status: "synced" | "pending" | "conflict";
   error?: string;
 }
@@ -495,6 +498,7 @@ export async function persistEpisode(
     videoUrl3: episode.videoUrl3 || null,
     videoUrl4: episode.videoUrl4 || null,
     videoUrl5: episode.videoUrl5 || null,
+    hikariPlayerEpisodeId: normalizeHikariPlayerEpisodeId(episode.hikariPlayerEpisodeId),
     published: isPublished,
     replaceSources: true,
     replaceThumbnail: Boolean(options?.replaceThumbnail),
@@ -513,6 +517,7 @@ export async function persistEpisode(
       let canonicalId = episode.id;
       let serverPublished: boolean = isPublished;
       let serverPublishedAt: string | null = null;
+      let serverHikariPlayerEpisodeId: string | null | undefined = undefined;
       try {
         const j = await res.json();
         if (j?.episodeId || j?.canonicalId) {
@@ -523,6 +528,11 @@ export async function persistEpisode(
         }
         if (j?.publishedAt !== undefined) {
           serverPublishedAt = j.publishedAt;
+        }
+        if (j?.hikariPlayerEpisodeId !== undefined) {
+          serverHikariPlayerEpisodeId = normalizeHikariPlayerEpisodeId(
+            j.hikariPlayerEpisodeId,
+          );
         }
       } catch {
         // ignore
@@ -552,6 +562,7 @@ export async function persistEpisode(
         canonicalId,
         published: serverPublished,
         publishedAt: serverPublishedAt,
+        hikariPlayerEpisodeId: serverHikariPlayerEpisodeId,
         status: "synced",
       };
     }

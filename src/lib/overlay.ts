@@ -21,6 +21,7 @@ import {
   isHikariPlayableUrl,
   sanitizeEpisodeThumbnailUrl,
 } from "@/lib/published-episodes";
+import { normalizeHikariPlayerEpisodeId } from "@/lib/hikari-player";
 
 export function overlayList(
   remote: SlimAnime[],
@@ -172,6 +173,10 @@ export function mergeSeasonsWithRemote(
           videoUrl3: lep.videoUrl3,
           videoUrl4: lep.videoUrl4,
           videoUrl5: lep.videoUrl5,
+          hikariPlayerEpisodeId:
+            normalizeHikariPlayerEpisodeId(lep.hikariPlayerEpisodeId) ??
+            normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ??
+            undefined,
         });
       } else if (lep) {
         mergedEpisodes.push(lep);
@@ -227,6 +232,8 @@ function sanitizeRemoteEpisodeForAdmin(rep: Episode): Episode {
     videoUrl3: v3,
     videoUrl4: v4,
     videoUrl5: v5,
+    hikariPlayerEpisodeId:
+      normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ?? undefined,
     published: Boolean(rep.published === true && hasPlayable),
   };
 }
@@ -308,6 +315,10 @@ export function mergeSeasonsWithRemoteForAdmin(
           duration: lep.duration?.trim() || rep.duration?.trim() || undefined,
           synopsis: lep.synopsis?.trim() || rep.synopsis?.trim() || undefined,
           aired: lep.aired || rep.aired,
+          hikariPlayerEpisodeId:
+            normalizeHikariPlayerEpisodeId(lep.hikariPlayerEpisodeId) ??
+            normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ??
+            undefined,
         });
       } else if (lep) {
         mergedEpisodes.push(lep);

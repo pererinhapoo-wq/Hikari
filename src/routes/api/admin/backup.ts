@@ -13,6 +13,7 @@ import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 import { invalidateServerCatalogCaches } from "@/lib/api";
 import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { syncCatalogEpisodeSlotsToSources } from "@/lib/sources";
+import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
 
 const episodeSchema = z.object({
   id: z.string().trim().min(1).max(128),
@@ -26,6 +27,7 @@ const episodeSchema = z.object({
   videoUrl3: z.string().max(2048).optional().nullable(),
   videoUrl4: z.string().max(2048).optional().nullable(),
   videoUrl5: z.string().max(2048).optional().nullable(),
+  hikariPlayerEpisodeId: z.string().max(255).optional().nullable(),
   published: z.boolean().optional(),
 });
 
@@ -151,12 +153,14 @@ export const Route = createFileRoute("/api/admin/backup")({
             videoUrl3: string | null;
             videoUrl4: string | null;
             videoUrl5: string | null;
+            hikariPlayerEpisodeId: string | null;
             published: boolean | null;
           }>(`
             SELECT
               "id", "animeId", "seasonNumber", "number",
               "title", "thumbnail", "duration", "synopsis",
               "videoUrl", "videoUrl2", "videoUrl3", "videoUrl4", "videoUrl5",
+              "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
               "published"
             FROM "catalog_episode"
             ORDER BY "animeId" ASC, "seasonNumber" ASC, "number" ASC;
@@ -191,6 +195,7 @@ export const Route = createFileRoute("/api/admin/backup")({
                 videoUrl3: sanitizePlayableVideoUrl(e.videoUrl3),
                 videoUrl4: sanitizePlayableVideoUrl(e.videoUrl4),
                 videoUrl5: sanitizePlayableVideoUrl(e.videoUrl5),
+                hikariPlayerEpisodeId: e.hikariPlayerEpisodeId ?? null,
                 published: Boolean(e.published),
               })),
             });
@@ -460,6 +465,15 @@ export const Route = createFileRoute("/api/admin/backup")({
                     importedSeasons++;
 
                     for (const ep of season.episodes || []) {
+                      const hasHikariPlayerField = ep.hikariPlayerEpisodeId !== undefined;
+                      const hikariPlayerValidation = validateHikariPlayerEpisodeId(
+                        ep.hikariPlayerEpisodeId,
+                      );
+                      if (hasHikariPlayerField && !hikariPlayerValidation.valid) {
+                        throw new Error(
+                          `Episódio ${ep.number} (${anime.id}): ${hikariPlayerValidation.error}`,
+                        );
+                      }
                       const v1 = sanitizePlayableVideoUrl(ep.videoUrl);
                       const v2 = sanitizePlayableVideoUrl(ep.videoUrl2);
                       const v3 = sanitizePlayableVideoUrl(ep.videoUrl3);
@@ -474,9 +488,10 @@ export const Route = createFileRoute("/api/admin/backup")({
                            "id", "animeId", "seasonNumber", "number",
                            "title", "thumbnail", "duration", "synopsis",
                            "videoUrl", "videoUrl2", "videoUrl3", "videoUrl4", "videoUrl5",
+                           "hikari_player_episode_id",
                            "published", "publishedAt", "createdAt", "updatedAt"
                          )
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $15, $14,
                                  CASE WHEN $14 = true THEN CURRENT_TIMESTAMP ELSE NULL END,
                                  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                          ON CONFLICT ("id") DO UPDATE
@@ -492,6 +507,10 @@ export const Route = createFileRoute("/api/admin/backup")({
                            "videoUrl3" = EXCLUDED."videoUrl3",
                            "videoUrl4" = EXCLUDED."videoUrl4",
                            "videoUrl5" = EXCLUDED."videoUrl5",
+                           "hikari_player_episode_id" = CASE
+                             WHEN $16 = true THEN EXCLUDED."hikari_player_episode_id"
+                             ELSE "catalog_episode"."hikari_player_episode_id"
+                           END,
                            "published" = EXCLUDED."published",
                            "updatedAt" = CURRENT_TIMESTAMP;`,
                         [
@@ -509,6 +528,8 @@ export const Route = createFileRoute("/api/admin/backup")({
                           v4,
                           v5,
                           published,
+                          hasHikariPlayerField ? hikariPlayerValidation.value : null,
+                          hasHikariPlayerField,
                         ],
                       );
                       importedEpisodeSources.push({

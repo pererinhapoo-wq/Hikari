@@ -65,6 +65,10 @@ import {
   type CatalogEpisodesResult,
 } from "@/lib/catalog-episodes";
 import {
+  normalizeHikariPlayerEpisodeId,
+  validateHikariPlayerEpisodeId,
+} from "@/lib/hikari-player";
+import {
   EditorHeader,
   type AnimeSyncState,
 } from "@/components/admin/anime-editor/editor-header";
@@ -1053,6 +1057,7 @@ function AdminEditor() {
         videoUrl3: "",
         videoUrl4: "",
         videoUrl5: "",
+        hikariPlayerEpisodeId: undefined,
         published: false,
       })),
     }));
@@ -1164,8 +1169,18 @@ function AdminEditor() {
     }
 
     // Validação pré-salvamento: episódio marcado como Publicado exige ao menos 1 fonte válida
+    // e hikariPlayerEpisodeId (quando preenchido) deve ser apenas o ID, nunca uma URL completa
     for (const season of next.seasons) {
       for (const ep of season.episodes) {
+        const hikariPlayerValidation = validateHikariPlayerEpisodeId(
+          ep.hikariPlayerEpisodeId,
+        );
+        if (!hikariPlayerValidation.valid) {
+          toast.error(
+            `Não foi possível salvar: Episódio ${ep.number} (Temporada ${season.number}) — ${hikariPlayerValidation.error}`,
+          );
+          return;
+        }
         if (ep.published === true && !hasEpisodePlayableSource(ep)) {
           toast.error(
             `Não foi possível salvar: o Episódio ${ep.number} (Temporada ${season.number}) está marcado como Publicado sem nenhuma fonte de reprodução válida (Player 1 a Player 5).`,
@@ -1188,6 +1203,8 @@ function AdminEditor() {
         episodes: season.episodes.map((ep) => ({
           ...ep,
           thumbnail: ep.thumbnail?.trim() || undefined,
+          hikariPlayerEpisodeId:
+            normalizeHikariPlayerEpisodeId(ep.hikariPlayerEpisodeId) ?? undefined,
         })),
       })),
     };
@@ -1422,10 +1439,16 @@ function AdminEditor() {
                 : ep.aired
               : undefined;
 
+            const nextHikariPlayerEpisodeId =
+              match.hikariPlayerEpisodeId !== undefined
+                ? normalizeHikariPlayerEpisodeId(match.hikariPlayerEpisodeId) ?? undefined
+                : ep.hikariPlayerEpisodeId;
+
             if (
               nextId !== ep.id ||
               nextPublished !== Boolean(ep.published) ||
-              nextAired !== ep.aired
+              nextAired !== ep.aired ||
+              nextHikariPlayerEpisodeId !== ep.hikariPlayerEpisodeId
             ) {
               anyEpisodeChanged = true;
               return {
@@ -1433,6 +1456,7 @@ function AdminEditor() {
                 id: nextId,
                 published: nextPublished,
                 aired: nextAired,
+                hikariPlayerEpisodeId: nextHikariPlayerEpisodeId,
               };
             }
             return ep;
@@ -1492,7 +1516,15 @@ function AdminEditor() {
       }
 
       await flushAnimes();
-      invalidateCatalogEpisodesCache(effectiveAnime.id);
+      invalidateCatalogEpisodesCache(
+        effectiveAnime.id,
+        current.id,
+        id,
+        effectiveAnime.serverCatalogId,
+        effectiveAnime.anilistId ? String(effectiveAnime.anilistId) : undefined,
+        effectiveAnime.malId ? `mal-${effectiveAnime.malId}` : undefined,
+        effectiveAnime.kitsuId ? `kitsu-${effectiveAnime.kitsuId}` : undefined,
+      );
     } catch (err) {
       allEpisodesSynced = false;
       console.warn("[admin] Erro ao sincronizar episódios:", err);

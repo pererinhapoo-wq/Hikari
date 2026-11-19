@@ -20,6 +20,7 @@ export type Episode = {
   synopsis?: string;
   aired?: string;
   published?: boolean;
+  hikariPlayerEpisodeId?: string;
   audio?: string;
   audioVersion?: string;
 };
