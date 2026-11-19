@@ -29,8 +29,10 @@ import {
   hasEpisodePlayableSource,
   isPersistablePlayableVideoUrl,
   resolveEpisodeThumbnailUrl,
+  sanitizePlayableVideoUrl,
   type VideoThumbnailCandidate,
 } from "@/lib/published-episodes";
+import { isAnitube22SourceInput } from "@/lib/anitube22";
 import type { Episode, Season } from "@/lib/types";
 import type { OutboxOperation } from "@/lib/episode-writer";
 import { cn } from "@/lib/utils";
@@ -182,6 +184,24 @@ export function EditorSeasons({
       }));
     }
     onPatchEpisode(seasonId, ep.id, { [key]: value });
+  };
+
+  const normalizeDurableSourceInput = (
+    seasonId: string,
+    ep: Episode,
+    key: "videoUrl" | "videoUrl2" | "videoUrl3" | "videoUrl4" | "videoUrl5",
+    raw: string,
+  ): string => {
+    const trimmed = raw.trim();
+    if (!trimmed) return "";
+    if (isAnitube22SourceInput(trimmed) || /[?&]time=/i.test(trimmed)) {
+      const clean = sanitizePlayableVideoUrl(trimmed) ?? trimmed;
+      if (clean !== raw) {
+        handleVideoUrlChange(seasonId, ep, key, clean);
+      }
+      return clean;
+    }
+    return trimmed;
   };
 
   const toggleCollapse = (sid: string) => {
@@ -621,24 +641,39 @@ export function EditorSeasons({
                                           )
                                         }
                                         onBlur={(e) => {
-                                          const val = e.target.value.trim();
-                                          if (val && isPersistablePlayableVideoUrl(val)) {
+                                          const val = normalizeDurableSourceInput(
+                                            season.id,
+                                            ep,
+                                            key,
+                                            e.target.value,
+                                          );
+                                          if (
+                                            val &&
+                                            isPersistablePlayableVideoUrl(val) &&
+                                            !isAnitube22SourceInput(val)
+                                          ) {
                                             if (onDiscoverCandidates) {
                                               void onDiscoverCandidates(season.id, ep, val);
                                             }
                                           }
                                         }}
                                         onPaste={(e) => {
-                                          const val = e.clipboardData.getData("text").trim();
-                                          if (val && isPersistablePlayableVideoUrl(val)) {
+                                          const rawVal = e.clipboardData.getData("text").trim();
+                                          if (!rawVal) return;
+                                          if (isAnitube22SourceInput(rawVal) || /[?&]time=/i.test(rawVal)) {
+                                            e.preventDefault();
+                                            normalizeDurableSourceInput(season.id, ep, key, rawVal);
+                                            return;
+                                          }
+                                          if (isPersistablePlayableVideoUrl(rawVal)) {
                                             setTimeout(() => {
                                               if (onDiscoverCandidates) {
-                                                void onDiscoverCandidates(season.id, ep, val);
+                                                void onDiscoverCandidates(season.id, ep, rawVal);
                                               }
                                             }, 100);
                                           }
                                         }}
-                                        placeholder="URL do vídeo (MP4 / R2)"
+                                        placeholder="ID anitube22 (ex: 589535) ou URL (MP4 / R2)"
                                         className="studio-mono h-10 border-white/10 bg-[var(--studio-panel)] text-xs"
                                       />
 
@@ -680,24 +715,39 @@ export function EditorSeasons({
                                       )
                                     }
                                     onBlur={(e) => {
-                                      const val = e.target.value.trim();
-                                      if (val && isPersistablePlayableVideoUrl(val)) {
+                                      const val = normalizeDurableSourceInput(
+                                        season.id,
+                                        ep,
+                                        "videoUrl4",
+                                        e.target.value,
+                                      );
+                                      if (
+                                        val &&
+                                        isPersistablePlayableVideoUrl(val) &&
+                                        !isAnitube22SourceInput(val)
+                                      ) {
                                         if (onDiscoverCandidates) {
                                           void onDiscoverCandidates(season.id, ep, val);
                                         }
                                       }
                                     }}
                                     onPaste={(e) => {
-                                      const val = e.clipboardData.getData("text").trim();
-                                      if (val && isPersistablePlayableVideoUrl(val)) {
+                                      const rawVal = e.clipboardData.getData("text").trim();
+                                      if (!rawVal) return;
+                                      if (isAnitube22SourceInput(rawVal) || /[?&]time=/i.test(rawVal)) {
+                                        e.preventDefault();
+                                        normalizeDurableSourceInput(season.id, ep, "videoUrl4", rawVal);
+                                        return;
+                                      }
+                                      if (isPersistablePlayableVideoUrl(rawVal)) {
                                         setTimeout(() => {
                                           if (onDiscoverCandidates) {
-                                            void onDiscoverCandidates(season.id, ep, val);
+                                            void onDiscoverCandidates(season.id, ep, rawVal);
                                           }
                                         }, 100);
                                       }
                                     }}
-                                    placeholder="URL do vídeo (MP4 / R2)"
+                                    placeholder="ID anitube22 (ex: 589535) ou URL (MP4 / R2)"
                                     className="studio-mono h-10 border-white/10 bg-[var(--studio-panel)] text-xs"
                                   />
                                   <Button
@@ -733,24 +783,39 @@ export function EditorSeasons({
                                     )
                                   }
                                   onBlur={(e) => {
-                                    const val = e.target.value.trim();
-                                    if (val && isPersistablePlayableVideoUrl(val)) {
+                                    const val = normalizeDurableSourceInput(
+                                      season.id,
+                                      ep,
+                                      "videoUrl5",
+                                      e.target.value,
+                                    );
+                                    if (
+                                      val &&
+                                      isPersistablePlayableVideoUrl(val) &&
+                                      !isAnitube22SourceInput(val)
+                                    ) {
                                       if (onDiscoverCandidates) {
                                         void onDiscoverCandidates(season.id, ep, val);
                                       }
                                     }
                                   }}
                                   onPaste={(e) => {
-                                    const val = e.clipboardData.getData("text").trim();
-                                    if (val && isPersistablePlayableVideoUrl(val)) {
+                                    const rawVal = e.clipboardData.getData("text").trim();
+                                    if (!rawVal) return;
+                                    if (isAnitube22SourceInput(rawVal) || /[?&]time=/i.test(rawVal)) {
+                                      e.preventDefault();
+                                      normalizeDurableSourceInput(season.id, ep, "videoUrl5", rawVal);
+                                      return;
+                                    }
+                                    if (isPersistablePlayableVideoUrl(rawVal)) {
                                       setTimeout(() => {
                                         if (onDiscoverCandidates) {
-                                          void onDiscoverCandidates(season.id, ep, val);
+                                          void onDiscoverCandidates(season.id, ep, rawVal);
                                         }
                                       }, 100);
                                     }
                                   }}
-                                  placeholder="URL do vídeo (HLS / MP4)"
+                                  placeholder="ID anitube22 (ex: 589535) ou URL (HLS / MP4)"
                                   className="studio-mono h-10 border-white/10 bg-[var(--studio-panel)] text-xs"
                                 />
                                 {Boolean(ep.videoUrl5?.trim()) &&

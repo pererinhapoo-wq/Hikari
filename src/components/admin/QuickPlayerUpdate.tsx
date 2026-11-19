@@ -17,6 +17,8 @@ import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useHikariStore } from "@/lib/store";
 import type { LocalAnime } from "@/lib/types";
+import { isAnitube22SourceInput } from "@/lib/anitube22";
+import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { cn } from "@/lib/utils";
 
 export type PlayerKey =
@@ -49,6 +51,10 @@ export function validateHttpVideoUrl(url: string): {
   const trimmed = url.trim();
   if (!trimmed) {
     return { valid: false, error: "O endereço de vídeo não pode estar em branco." };
+  }
+
+  if (isAnitube22SourceInput(trimmed)) {
+    return { valid: true };
   }
 
   try {
@@ -196,10 +202,11 @@ export function QuickPlayerUpdate() {
         toast.info("A área de transferência está vazia.");
         return;
       }
-      setUrlInput(trimmed);
-      const validation = validateHttpVideoUrl(trimmed);
+      const normalized = sanitizePlayableVideoUrl(trimmed) ?? trimmed;
+      setUrlInput(normalized);
+      const validation = validateHttpVideoUrl(normalized);
       if (validation.valid) {
-        toast.success("URL colada com sucesso!");
+        toast.success("Fonte colada com sucesso!");
       } else {
         toast.warning(`Texto colado, mas atenção: ${validation.error}`);
       }
@@ -237,6 +244,7 @@ export function QuickPlayerUpdate() {
       return;
     }
 
+    const safeDurableUrl = sanitizePlayableVideoUrl(trimmedUrl) ?? trimmedUrl;
     const playerKey = activePlayerConfig.key;
 
     const updatedAnime: LocalAnime = {
@@ -249,7 +257,7 @@ export function QuickPlayerUpdate() {
             if (ep.id !== selectedEpisodeId) return ep;
             return {
               ...ep,
-              [playerKey]: trimmedUrl,
+              [playerKey]: safeDurableUrl,
             };
           }),
         };
@@ -258,6 +266,7 @@ export function QuickPlayerUpdate() {
     };
 
     upsertAnime(updatedAnime);
+    setUrlInput(safeDurableUrl);
 
     toast.success(
       `${activePlayerConfig.label} do Episódio ${currentEpisode.number} atualizado com sucesso!`,
@@ -490,7 +499,7 @@ export function QuickPlayerUpdate() {
                   <Input
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
-                    placeholder="Cole a URL do vídeo (https://.../video.mp4 ou .m3u8)"
+                    placeholder="ID anitube22 (ex.: 589535) ou URL (https://.../video.mp4 ou .m3u8)"
                     className="studio-input studio-mono h-10 pr-9 text-xs sm:text-sm"
                   />
                   {urlInput && (

@@ -12,6 +12,14 @@ import {
   type TombstoneRecord,
 } from "@/lib/catalog-storage";
 import type { PublicEpisodeRow, PublicEpisodesResult } from "@/lib/catalog-episodes";
+import {
+  buildAnitube22PlayerUrl,
+  extractAnitube22ExternalId,
+  extractAnitube22Lang,
+  formatDurableAnitube22Ref,
+  isAnitube22SourceInput,
+  stripTimeQueryParam,
+} from "@/lib/anitube22";
 
 export type PublishedEpisodeBadge = "LANÇAMENTO" | "NOVO" | "FINAL" | null;
 
@@ -222,6 +230,10 @@ export function isHikariPlayableUrl(url?: string | null): boolean {
     return false;
   }
 
+  if (extractAnitube22ExternalId(trimmed) !== null) {
+    return true;
+  }
+
   let parsed: URL;
   try {
     parsed = new URL(trimmed);
@@ -276,6 +288,11 @@ export function resolvePlayableStreamUrl(url: string | null | undefined): string
       const [, libraryId, videoId] = bunnyMatch;
       return `https://vz-${libraryId}.b-cdn.net/${videoId}/playlist.m3u8`;
     }
+  }
+
+  const anitubeId = extractAnitube22ExternalId(trimmed);
+  if (anitubeId) {
+    return buildAnitube22PlayerUrl(anitubeId);
   }
 
   return trimmed;
@@ -417,7 +434,17 @@ export function sanitizePlayableVideoUrl(url?: string | null): string | null {
   if (!url || typeof url !== "string") return null;
   const trimmed = url.trim();
   if (!trimmed || trimmed === "#") return null;
-  return isHikariPlayableUrl(trimmed) ? trimmed : null;
+
+  const anitubeId = extractAnitube22ExternalId(trimmed);
+  if (anitubeId) {
+    return formatDurableAnitube22Ref(anitubeId, extractAnitube22Lang(trimmed));
+  }
+
+  if (!isHikariPlayableUrl(trimmed)) {
+    return null;
+  }
+
+  return stripTimeQueryParam(trimmed);
 }
 
 /**
@@ -1961,6 +1988,10 @@ export async function extractVideoThumbnailCandidates(
           ? "Nenhuma miniatura do YouTube pôde ser carregada para este link."
           : undefined,
     };
+  }
+
+  if (isAnitube22SourceInput(trimmed)) {
+    return { candidates: [] };
   }
 
   // 3. Vídeo direto (MP4/WebM/R2) ou HLS (.m3u8)

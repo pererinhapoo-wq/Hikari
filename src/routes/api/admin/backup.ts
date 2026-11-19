@@ -12,6 +12,7 @@ import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 import { invalidateServerCatalogCaches } from "@/lib/api";
 import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
+import { syncCatalogEpisodeSlotsToSources } from "@/lib/sources";
 
 const episodeSchema = z.object({
   id: z.string().trim().min(1).max(128),
@@ -185,11 +186,11 @@ export const Route = createFileRoute("/api/admin/backup")({
                 thumbnail: e.thumbnail,
                 duration: e.duration,
                 synopsis: e.synopsis,
-                videoUrl: e.videoUrl,
-                videoUrl2: e.videoUrl2,
-                videoUrl3: e.videoUrl3,
-                videoUrl4: e.videoUrl4,
-                videoUrl5: e.videoUrl5,
+                videoUrl: sanitizePlayableVideoUrl(e.videoUrl),
+                videoUrl2: sanitizePlayableVideoUrl(e.videoUrl2),
+                videoUrl3: sanitizePlayableVideoUrl(e.videoUrl3),
+                videoUrl4: sanitizePlayableVideoUrl(e.videoUrl4),
+                videoUrl5: sanitizePlayableVideoUrl(e.videoUrl5),
                 published: Boolean(e.published),
               })),
             });
@@ -370,6 +371,10 @@ export const Route = createFileRoute("/api/admin/backup")({
             let importedSeasons = 0;
             let importedEpisodes = 0;
             let importedSettings = 0;
+            const importedEpisodeSources: Array<{
+              episodeId: string;
+              slots: Array<{ url: string | null; priority: number }>;
+            }> = [];
 
             // Transação segura para o catálogo
             if (animesList.length > 0) {
@@ -506,6 +511,16 @@ export const Route = createFileRoute("/api/admin/backup")({
                           published,
                         ],
                       );
+                      importedEpisodeSources.push({
+                        episodeId: ep.id,
+                        slots: [
+                          { url: v1, priority: 0 },
+                          { url: v2, priority: 1 },
+                          { url: v3, priority: 2 },
+                          { url: v4, priority: 3 },
+                          { url: v5, priority: 4 },
+                        ],
+                      });
                       importedEpisodes++;
                     }
                   }
@@ -515,6 +530,12 @@ export const Route = createFileRoute("/api/admin/backup")({
                 await sql.query("ROLLBACK;");
                 throw txErr;
               }
+            }
+
+            for (const item of importedEpisodeSources) {
+              await syncCatalogEpisodeSlotsToSources(item.episodeId, item.slots, {
+                replaceAnitube22: true,
+              });
             }
 
             // Importação de Configurações se houver

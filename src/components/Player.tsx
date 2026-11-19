@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Play, Pause, Volume2, VolumeX, Maximize, RefreshCcw } from "lucide-react";
+import { isAnitube22PlayerUrl } from "@/lib/anitube22";
 
 export interface PlayerProps {
   src: string | null;
@@ -27,6 +28,9 @@ export function Player({
   });
 
   const [hasError, setHasError] = useState(false);
+  const [iframeError, setIframeError] = useState(false);
+  const [iframeReloadCount, setIframeReloadCount] = useState(0);
+  const [iframeReloadTs, setIframeReloadTs] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -297,23 +301,69 @@ export function Player({
         </>
       ) : (
         <>
-          <iframe
-            src={iframeSrc}
-            title={title}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
-          {src && (
-            <div className="absolute top-4 right-4 z-20">
+          {(() => {
+            const activeIframeSrc =
+              iframeReloadTs && isAnitube22PlayerUrl(iframeSrc)
+                ? iframeSrc.replace(/([?&])time=\d+/i, `$1time=${iframeReloadTs}`)
+                : iframeSrc;
+            return (
+              <iframe
+                key={`${activeIframeSrc}-${iframeReloadCount}`}
+                src={activeIframeSrc}
+                title={title}
+                referrerPolicy="no-referrer-when-downgrade"
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowFullScreen
+                onLoad={() => setIframeError(false)}
+                onError={() => setIframeError(true)}
+              />
+            );
+          })()}
+
+          {iframeError && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/85 p-6 text-center">
+              <p className="text-sm font-medium text-white">
+                Falha ao carregar o player da fonte.
+              </p>
               <button
+                type="button"
+                onClick={() => {
+                  setIframeError(false);
+                  setIframeReloadTs(Math.floor(Date.now() / 1000));
+                  setIframeReloadCount((c) => c + 1);
+                }}
+                className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-lg cursor-pointer"
+              >
+                <RefreshCcw className="w-3.5 h-3.5" />
+                Recarregar fonte
+              </button>
+            </div>
+          )}
+
+          <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIframeError(false);
+                setIframeReloadTs(Math.floor(Date.now() / 1000));
+                setIframeReloadCount((c) => c + 1);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white text-xs font-medium backdrop-blur transition border border-white/15 flex items-center gap-1.5 shadow-lg cursor-pointer"
+            >
+              <RefreshCcw className="w-3.5 h-3.5" />
+              Recarregar fonte
+            </button>
+            {src && (
+              <button
+                type="button"
                 onClick={toggleMode}
-                className="px-3 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white text-xs font-medium backdrop-blur transition border border-white/10 flex items-center gap-1.5 shadow-lg"
+                className="px-3 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white text-xs font-medium backdrop-blur transition border border-white/10 flex items-center gap-1.5 shadow-lg cursor-pointer"
               >
                 <RefreshCcw className="w-3.5 h-3.5" />
                 Usar Player Próprio
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </>
       )}
     </div>

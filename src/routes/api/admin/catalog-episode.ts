@@ -9,6 +9,11 @@ import {
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
+import {
+  deleteEpisodeSourcesForEpisode,
+  syncCatalogEpisodeSlotsToSources,
+  upsertEpisodeSource,
+} from "@/lib/sources";
 
 const episodePostSchema = z.object({
   id: z.string().trim().min(1, "id é obrigatório").max(128, "id muito longo"),
@@ -28,6 +33,17 @@ const episodePostSchema = z.object({
   replaceSources: z.boolean().optional().default(false),
   replaceThumbnail: z.boolean().optional().default(false),
   animeTitle: z.string().max(255).optional().nullable(),
+  sources: z
+    .array(
+      z.object({
+        provider: z.string().trim().max(64).optional(),
+        externalId: z.string().trim().min(1).max(2048),
+        lang: z.enum(["sub", "dub"]).optional().default("sub"),
+        quality: z.string().trim().max(32).optional().nullable(),
+        priority: z.number().int().min(0).max(1000).optional().default(0),
+      }),
+    )
+    .optional(),
 });
 
 const episodeDeleteSchema = z.object({
@@ -332,6 +348,31 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           const finalPublished = savedRow ? savedRow.published : published;
           const finalPublishedAt = savedRow ? savedRow.publishedAt : null;
 
+          // Sincroniza fontes duráveis em episode_sources sem nunca gravar `time=`
+          await syncCatalogEpisodeSlotsToSources(
+            effectiveId,
+            [
+              { url: v1, priority: 0 },
+              { url: v2, priority: 1 },
+              { url: v3, priority: 2 },
+              { url: v4, priority: 3 },
+              { url: v5, priority: 4 },
+            ],
+            { replaceAnitube22: Boolean(data.replaceSources) },
+          );
+          if (Array.isArray(data.sources) && data.sources.length > 0) {
+            for (const src of data.sources) {
+              await upsertEpisodeSource({
+                episodeId: effectiveId,
+                provider: src.provider,
+                externalId: src.externalId,
+                lang: src.lang,
+                quality: src.quality ?? null,
+                priority: src.priority ?? 0,
+              });
+            }
+          }
+
           // 9. Notificações para seguidores do anime quando o episódio for publicado pela primeira vez
           if (isFirstTimePublished) {
             try {
@@ -482,6 +523,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           );
 
           const deleted = result[0];
+          await deleteEpisodeSourcesForEpisode(episodeId);
           const targetAnimeId = animeId || deleted?.animeId;
           if (targetAnimeId) {
             invalidateCatalogEpisodesCache(targetAnimeId);

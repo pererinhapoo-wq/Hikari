@@ -7,6 +7,7 @@ import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 import { invalidateServerCatalogCaches } from "@/lib/api";
+import { syncCatalogEpisodeSlotsToSources } from "@/lib/sources";
 
 function sanitizeVideoUrl(url?: string | null): string | null {
   return sanitizePlayableVideoUrl(url);
@@ -96,6 +97,10 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
           let episodeProcessedCount = 0;
           const errors: string[] = [];
           const affectedAnimeIds = new Set<string>();
+          const importedEpisodeSources: Array<{
+            episodeId: string;
+            slots: Array<{ url: string | null; priority: number }>;
+          }> = [];
 
           // 3. Execução transacional para integridade completa do lote
           await sql.query("BEGIN;");
@@ -287,6 +292,16 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                       published,
                     ],
                   );
+                  importedEpisodeSources.push({
+                    episodeId: ep.id,
+                    slots: [
+                      { url: v1, priority: 0 },
+                      { url: v2, priority: 1 },
+                      { url: v3, priority: 2 },
+                      { url: v4, priority: 3 },
+                      { url: v5, priority: 4 },
+                    ],
+                  });
                   episodeProcessedCount++;
                 }
               }
@@ -307,6 +322,12 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
               },
               { status: 409 },
             );
+          }
+
+          for (const item of importedEpisodeSources) {
+            await syncCatalogEpisodeSlotsToSources(item.episodeId, item.slots, {
+              replaceAnitube22: true,
+            });
           }
 
           // Invalida cache de episódios e catálogo dos animes afetados
