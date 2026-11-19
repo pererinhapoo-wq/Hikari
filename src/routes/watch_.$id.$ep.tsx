@@ -62,12 +62,13 @@ import {
 } from "@/lib/types";
 import {
   ANITUBE22_INCOMPLETE_PLAY_ERROR,
-  ANITUBE22_NOT_FOUND_ERROR,
   ANITUBE22_PROVIDER,
   buildAnitube22PlayerUrlFromParts,
   detectEpisodeLanguageHint,
+  isAnitube22PlayerUrl,
   isLegacyAnitube22Ref,
   parseAnitube22PlayerUrl,
+  parseSignedUrlExpiresAtMs,
   partitionEpisodeSourcesByLang,
   type EpisodeSourceItem,
   type SourceLang,
@@ -446,17 +447,27 @@ function WatchPage() {
   const [dbSourcesLoadedForId, setDbSourcesLoadedForId] = useState<string | null>(null);
   const [selectedLang, setSelectedLang] = useState<SourceLang>("sub");
   const [failedSessionKeys, setFailedSessionKeys] = useState<string[]>([]);
-  const checkedDbSourceIdsRef = useRef<Set<string>>(new Set());
+  const [resolvedDirectStream, setResolvedDirectStream] = useState<{
+    sourceKey: string;
+    dbSourceId: string;
+    url: string;
+    kind: "mp4" | "hls";
+    expiresAtMs: number | null;
+  } | null>(null);
+  const [sourceResolvingKey, setSourceResolvingKey] = useState<string | null>(null);
+  const [resolvedFallbackKeys, setResolvedFallbackKeys] = useState<string[]>([]);
 
   useEffect(() => {
     const episodeId = current?.id;
     setFailedSessionKeys([]);
+    setResolvedDirectStream(null);
+    setSourceResolvingKey(null);
+    setResolvedFallbackKeys([]);
     setIframeLoadError(false);
     setIframeChecking(false);
     setIframeErrorMessage(null);
     setPlayTimestamp(Math.floor(Date.now() / 1000));
     setIframeReloadKey((prev) => prev + 1);
-    checkedDbSourceIdsRef.current.clear();
 
     if (!episodeId || typeof window === "undefined") {
       setDbSources([]);
@@ -904,116 +915,168 @@ function WatchPage() {
 
   const handleReloadSource = useCallback(() => {
     if (selectedWatchSource?.key) {
-      checkedDbSourceIdsRef.current.delete(selectedWatchSource.key);
+      setResolvedFallbackKeys((prev) =>
+        prev.filter((k) => k !== selectedWatchSource.key),
+      );
     }
+    setResolvedDirectStream(null);
     setIframeLoadError(false);
     setIframeErrorMessage(null);
     setPlayTimestamp(Math.floor(Date.now() / 1000));
     setIframeReloadKey((prev) => prev + 1);
   }, [selectedWatchSource?.key]);
 
+  // Ao abrir o episódio (ou trocar de fonte anitube22), consulta GET /api/source/resolve?id={sourceId}
   useEffect(() => {
-    if (
-      !playerMounted ||
-      selectedWatchSource?.provider !== ANITUBE22_PROVIDER ||
-      !playUrl
-    ) {
-      setIframeChecking(false);
+    if (typeof window === "undefined") return;
+    if (!current?.id || dbSourcesLoadedForId !== current.id) {
+      setResolvedDirectStream(null);
+      setSourceResolvingKey(null);
       return;
     }
 
-    const checkKey = selectedWatchSource.key;
-    if (checkedDbSourceIdsRef.current.has(checkKey)) return;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    if (
+      !selectedWatchSource ||
+      selectedWatchSource.provider !== ANITUBE22_PROVIDER ||
+      !selectedWatchSource.dbSourceId
+    ) {
+      setResolvedDirectStream(null);
+      setSourceResolvingKey(null);
+      return;
+    }
 
-    checkedDbSourceIdsRef.current.add(checkKey);
+    const targetKey = selectedWatchSource.key;
+    const targetDbSourceId = selectedWatchSource.dbSourceId;
+
+    if (resolvedFallbackKeys.includes(targetKey)) {
+      setResolvedDirectStream(null);
+      setSourceResolvingKey(null);
+      return;
+    }
+
+    if (
+      resolvedDirectStream &&
+      resolvedDirectStream.sourceKey === targetKey &&
+      resolvedDirectStream.dbSourceId === targetDbSourceId
+    ) {
+      return;
+    }
+
     let cancelled = false;
-    setIframeChecking(true);
+    setSourceResolvingKey(targetKey);
+    setIframeChecking(false);
 
-    const checkPayload = selectedWatchSource.dbSourceId
-      ? {
-          action: "check",
-          sourceId: selectedWatchSource.dbSourceId,
-          clientOffline: false,
-        }
-      : {
-          action: "check",
-          playerUrl: playUrl,
-          clientOffline: false,
-        };
-
-    void fetch("/api/episode-sources", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(checkPayload),
+    void fetch(`/api/source/resolve?id=${encodeURIComponent(targetDbSourceId)}`, {
+      cache: "no-store",
     })
-      .then((res) => (res.ok ? res.json() : null))
-      .then(
-        (
-          data: {
-            ok?: boolean;
-            httpStatus?: number | null;
-            clientNetworkError?: boolean;
-            status?: string;
-          } | null,
-        ) => {
-          if (cancelled) return;
-          setIframeChecking(false);
-          if (!data) return;
-
-          if (data.status === "incomplete") {
-            const remaining = activeLangSources.filter(
-              (s) => s.key !== selectedWatchSource.key && !failedSessionKeys.includes(s.key),
-            );
-            setFailedSessionKeys((prev) =>
-              prev.includes(selectedWatchSource.key) ? prev : [...prev, selectedWatchSource.key],
-            );
-            if (remaining.length > 0) {
-              setSelectedPlayerId(remaining[0].key);
-              setPlayTimestamp(Math.floor(Date.now() / 1000));
-            } else {
-              setIframeLoadError(true);
-              setIframeErrorMessage(ANITUBE22_INCOMPLETE_PLAY_ERROR);
-            }
-            return;
-          }
-
-          if (
-            !data.ok &&
-            !data.clientNetworkError &&
-            typeof data.httpStatus === "number" &&
-            data.httpStatus >= 400
-          ) {
-            const remaining = activeLangSources.filter(
-              (s) => s.key !== selectedWatchSource.key && !failedSessionKeys.includes(s.key),
-            );
-            setFailedSessionKeys((prev) =>
-              prev.includes(selectedWatchSource.key) ? prev : [...prev, selectedWatchSource.key],
-            );
-            if (remaining.length > 0) {
-              setSelectedPlayerId(remaining[0].key);
-              setPlayTimestamp(Math.floor(Date.now() / 1000));
-            } else {
-              setIframeLoadError(true);
-              setIframeErrorMessage(
-                data.httpStatus === 404
-                  ? ANITUBE22_NOT_FOUND_ERROR
-                  : "Não foi possível carregar este vídeo no provedor.",
-              );
-            }
-          }
-        },
-      )
-      .catch(() => {
-        if (!cancelled) {
-          setIframeChecking(false);
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const data = (await res.json()) as { url?: string; kind?: string } | null;
+        if (!data?.url || (data.kind !== "mp4" && data.kind !== "hls")) {
+          return null;
         }
+        return {
+          url: data.url,
+          kind: data.kind as "mp4" | "hls",
+        };
+      })
+      .then((resolved) => {
+        if (cancelled) return;
+        setSourceResolvingKey((prev) => (prev === targetKey ? null : prev));
+        if (resolved) {
+          const expiresAtMs =
+            parseSignedUrlExpiresAtMs(resolved.url) ?? Date.now() + 3000 * 1000;
+          setResolvedDirectStream({
+            sourceKey: targetKey,
+            dbSourceId: targetDbSourceId,
+            url: resolved.url,
+            kind: resolved.kind,
+            expiresAtMs,
+          });
+          setIframeLoadError(false);
+          setIframeErrorMessage(null);
+        } else {
+          setResolvedDirectStream(null);
+          setResolvedFallbackKeys((prev) =>
+            prev.includes(targetKey) ? prev : [...prev, targetKey],
+          );
+          setPlayTimestamp(Math.floor(Date.now() / 1000));
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSourceResolvingKey((prev) => (prev === targetKey ? null : prev));
+        setResolvedDirectStream(null);
+        setResolvedFallbackKeys((prev) =>
+          prev.includes(targetKey) ? prev : [...prev, targetKey],
+        );
+        setPlayTimestamp(Math.floor(Date.now() / 1000));
       });
 
     return () => {
       cancelled = true;
     };
-  }, [playerMounted, selectedWatchSource, playUrl, activeLangSources, failedSessionKeys, iframeReloadKey]);
+  }, [
+    current?.id,
+    dbSourcesLoadedForId,
+    selectedWatchSource,
+    resolvedFallbackKeys,
+    resolvedDirectStream,
+  ]);
+
+  const handleRenewResolvedSource = useCallback(async (): Promise<boolean> => {
+    if (
+      !selectedWatchSource ||
+      selectedWatchSource.provider !== ANITUBE22_PROVIDER ||
+      !selectedWatchSource.dbSourceId
+    ) {
+      return false;
+    }
+
+    const targetKey = selectedWatchSource.key;
+    const targetDbSourceId = selectedWatchSource.dbSourceId;
+
+    try {
+      const res = await fetch(
+        `/api/source/resolve?id=${encodeURIComponent(targetDbSourceId)}&refresh=1`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) {
+        setResolvedDirectStream(null);
+        setResolvedFallbackKeys((prev) =>
+          prev.includes(targetKey) ? prev : [...prev, targetKey],
+        );
+        setPlayTimestamp(Math.floor(Date.now() / 1000));
+        return false;
+      }
+      const data = (await res.json()) as { url?: string; kind?: string } | null;
+      if (!data?.url || (data.kind !== "mp4" && data.kind !== "hls")) {
+        setResolvedDirectStream(null);
+        setResolvedFallbackKeys((prev) =>
+          prev.includes(targetKey) ? prev : [...prev, targetKey],
+        );
+        setPlayTimestamp(Math.floor(Date.now() / 1000));
+        return false;
+      }
+      const expiresAtMs =
+        parseSignedUrlExpiresAtMs(data.url) ?? Date.now() + 3000 * 1000;
+      setResolvedDirectStream({
+        sourceKey: targetKey,
+        dbSourceId: targetDbSourceId,
+        url: data.url,
+        kind: data.kind,
+        expiresAtMs,
+      });
+      return true;
+    } catch {
+      setResolvedDirectStream(null);
+      setResolvedFallbackKeys((prev) =>
+        prev.includes(targetKey) ? prev : [...prev, targetKey],
+      );
+      setPlayTimestamp(Math.floor(Date.now() / 1000));
+      return false;
+    }
+  }, [selectedWatchSource]);
 
   function parseDurationToSeconds(raw?: string | number | null): number {
     if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return Math.floor(raw);
@@ -1059,6 +1122,17 @@ function WatchPage() {
     );
   }, [current, targetEpNum, title, anime?.titles?.romaji, anime?.titles?.english, anime?.titles?.native]);
 
+  const activeResolvedStream = useMemo(() => {
+    if (
+      resolvedDirectStream &&
+      selectedWatchSource &&
+      resolvedDirectStream.sourceKey === selectedWatchSource.key
+    ) {
+      return resolvedDirectStream;
+    }
+    return null;
+  }, [resolvedDirectStream, selectedWatchSource]);
+
   const _currentVideoItem = useMemo((): VideoItem | undefined => {
     if (!current || !file) return undefined;
     const initialDuration = parseDurationToSeconds(current.duration);
@@ -1066,29 +1140,37 @@ function WatchPage() {
       ? `${title} — ${cleanedEpisodeDisplay}`
       : title;
 
-    const isAnitubeIframe = Boolean(
-      selectedWatchSource?.isIframe ||
-        selectedWatchSource?.provider === ANITUBE22_PROVIDER,
-    );
+    const isAnitubeIframe = activeResolvedStream
+      ? false
+      : Boolean(
+          selectedWatchSource?.isIframe ||
+            selectedWatchSource?.provider === ANITUBE22_PROVIDER,
+        );
+
+    const effectiveStreamUrl = activeResolvedStream
+      ? activeResolvedStream.url
+      : file;
 
     const mins = Math.floor(initialDuration / 60).toString().padStart(2, "0");
     const secs = (initialDuration % 60).toString().padStart(2, "0");
-    const possibleIframe = isAnitubeIframe
-      ? file
-      : current.videoUrl2 ||
-        current.videoUrl3 ||
-        current.videoUrl4 ||
-        (file && file.includes("maximaimg.online")
-          ? (() => {
-              try {
-                const parsed = new URL(file, "http://localhost");
-                const target = parsed.searchParams.get("u") || file;
-                return `https://api.anivideo.net/videohls.php?d=${encodeURIComponent(target)}`;
-              } catch {
-                return `https://api.anivideo.net/videohls.php?d=${encodeURIComponent(file)}`;
-              }
-            })()
-          : undefined);
+    const possibleIframe =
+      selectedWatchSource?.isIframe ||
+      selectedWatchSource?.provider === ANITUBE22_PROVIDER
+        ? file
+        : current.videoUrl2 ||
+          current.videoUrl3 ||
+          current.videoUrl4 ||
+          (file && file.includes("maximaimg.online")
+            ? (() => {
+                try {
+                  const parsed = new URL(file, "http://localhost");
+                  const target = parsed.searchParams.get("u") || file;
+                  return `https://api.anivideo.net/videohls.php?d=${encodeURIComponent(target)}`;
+                } catch {
+                  return `https://api.anivideo.net/videohls.php?d=${encodeURIComponent(file)}`;
+                }
+              })()
+            : undefined);
 
     return {
       id: current.id,
@@ -1099,10 +1181,12 @@ function WatchPage() {
       category: "Treinamentos & Tutoriais",
       tags: [title, `Episódio ${current.number}`].filter(Boolean),
       posterUrl: playerPoster || "",
-      videoUrl: file,
-      url: file,
+      videoUrl: effectiveStreamUrl,
+      url: effectiveStreamUrl,
       iframeUrl: possibleIframe,
       isIframe: isAnitubeIframe,
+      streamKind: activeResolvedStream?.kind,
+      streamExpiresAtMs: activeResolvedStream?.expiresAtMs ?? undefined,
       thumbnailUrl: playerPoster || undefined,
       episodeNumber: current.number,
       episodeTitle: current.title,
@@ -1117,7 +1201,35 @@ function WatchPage() {
         { id: "sub-en", lang: "en", label: "Inglês (Original)" },
       ],
     };
-  }, [current, file, title, cleanedEpisodeDisplay, playerPoster, anime?.synopsis, selectedPlayer?.name, selectedWatchSource?.isIframe, selectedWatchSource?.provider]);
+  }, [
+    current,
+    file,
+    title,
+    cleanedEpisodeDisplay,
+    playerPoster,
+    anime?.synopsis,
+    selectedPlayer?.name,
+    selectedWatchSource?.isIframe,
+    selectedWatchSource?.provider,
+    activeResolvedStream,
+  ]);
+
+  const nextSourceEntry = useMemo(() => {
+    if (!selectedPlayer) return null;
+    return availableLangSources.find((s) => s.key !== selectedPlayer.id) ?? null;
+  }, [availableLangSources, selectedPlayer]);
+
+  const handleSwitchToNextSource = useCallback(() => {
+    if (!selectedPlayer || !nextSourceEntry) return;
+    setFailedSessionKeys((prev) =>
+      prev.includes(selectedPlayer.id) ? prev : [...prev, selectedPlayer.id],
+    );
+    setResolvedDirectStream(null);
+    setIframeLoadError(false);
+    setIframeErrorMessage(null);
+    setPlayTimestamp(Math.floor(Date.now() / 1000));
+    handleSelectPlayer(nextSourceEntry.key);
+  }, [selectedPlayer, nextSourceEntry, handleSelectPlayer]);
 
   const handlePlayerError = useCallback(() => {
     setIsVideoPlaying(false);
@@ -1131,6 +1243,7 @@ function WatchPage() {
       return;
     }
     setIframeLoadError(true);
+    setIframeErrorMessage("fonte indisponível");
   }, [availableLangSources, selectedPlayer, handleSelectPlayer]);
 
   if (!hydrated && !anime) {
@@ -1184,51 +1297,80 @@ function WatchPage() {
 
         {file && selectedPlayer && current ? (
           playerMounted ? (
-            <Suspense
-              fallback={
-                <PlayerLoadingFallback
-                  posterUrl={playerPoster}
-                  title={
-                    current.number
-                      ? `${title} — Episódio ${current.number}`
-                      : title
-                  }
-                />
-              }
-            >
-              <CustomVideoPlayer
-                key={`${anime.id}-${current.id}-${selectedPlayer.id}`}
-                video={_currentVideoItem}
-                autoPlay={userTriggeredPlay}
-                initialTime={effectiveInitialTime}
-                onPlay={handlePlay}
-                onPlaying={handlePlaying}
-                onSeeking={handleSeeking}
-                onSeeked={handleSeeked}
-                onWaiting={handleWaiting}
-                onTimeUpdate={handleTimeUpdate}
-                onPause={handlePause}
-                onRestored={handleRestored}
-                onEnded={handleEnded}
-                onError={handlePlayerError}
-                iframeFallbackUrl={_currentVideoItem?.iframeUrl}
-                onReloadSource={handleReloadSource}
-                iframeLoadError={iframeLoadError}
-                iframeChecking={iframeChecking}
-                iframeErrorMessage={iframeErrorMessage}
-                onIframeError={() => {
-                  setIframeLoadError(true);
-                  setIframeErrorMessage("Não foi possível carregar este vídeo no provedor.");
-                }}
-                iframeReloadKey={`${playTimestamp}-${iframeReloadKey}`}
-                onFallbackToIframe={() => {
-                  const alt = availableLangSources.find((s) => s.key !== selectedPlayer.id);
-                  if (alt) {
-                    handleSelectPlayer(alt.key);
-                  }
-                }}
+            (dbSourcesLoadedForId !== current.id && isAnitube22PlayerUrl(file)) ||
+            (selectedWatchSource?.key && sourceResolvingKey === selectedWatchSource.key) ? (
+              <PlayerLoadingFallback
+                posterUrl={playerPoster}
+                title={
+                  current.number
+                    ? `${title} — Episódio ${current.number}`
+                    : title
+                }
               />
-            </Suspense>
+            ) : (
+              <Suspense
+                fallback={
+                  <PlayerLoadingFallback
+                    posterUrl={playerPoster}
+                    title={
+                      current.number
+                        ? `${title} — Episódio ${current.number}`
+                        : title
+                    }
+                  />
+                }
+              >
+                <CustomVideoPlayer
+                  key={`${anime.id}-${current.id}-${selectedPlayer.id}`}
+                  video={_currentVideoItem}
+                  autoPlay={userTriggeredPlay}
+                  initialTime={effectiveInitialTime}
+                  onPlay={handlePlay}
+                  onPlaying={handlePlaying}
+                  onSeeking={handleSeeking}
+                  onSeeked={handleSeeked}
+                  onWaiting={handleWaiting}
+                  onTimeUpdate={handleTimeUpdate}
+                  onPause={handlePause}
+                  onRestored={handleRestored}
+                  onEnded={handleEnded}
+                  onError={handlePlayerError}
+                  iframeFallbackUrl={_currentVideoItem?.iframeUrl}
+                  onReloadSource={handleReloadSource}
+                  iframeLoadError={iframeLoadError}
+                  iframeChecking={iframeChecking}
+                  iframeErrorMessage={iframeErrorMessage}
+                  onIframeError={() => {
+                    setIframeLoadError(true);
+                    setIframeErrorMessage("fonte indisponível");
+                  }}
+                  iframeReloadKey={`${playTimestamp}-${iframeReloadKey}`}
+                  onRenewSource={
+                    selectedWatchSource?.dbSourceId &&
+                    selectedWatchSource.provider === ANITUBE22_PROVIDER
+                      ? handleRenewResolvedSource
+                      : undefined
+                  }
+                  hasNextSource={Boolean(nextSourceEntry)}
+                  onNextSource={handleSwitchToNextSource}
+                  onFallbackToIframe={() => {
+                    if (selectedWatchSource?.key) {
+                      setResolvedDirectStream(null);
+                      setResolvedFallbackKeys((prev) =>
+                        prev.includes(selectedWatchSource.key)
+                          ? prev
+                          : [...prev, selectedWatchSource.key],
+                      );
+                      setPlayTimestamp(Math.floor(Date.now() / 1000));
+                      return;
+                    }
+                    if (nextSourceEntry) {
+                      handleSelectPlayer(nextSourceEntry.key);
+                    }
+                  }}
+                />
+              </Suspense>
+            )
           ) : (
             <button
               type="button"

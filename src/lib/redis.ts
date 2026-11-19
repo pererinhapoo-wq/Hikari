@@ -2341,6 +2341,139 @@ export async function invalidateRedisCalendar(): Promise<void> {
   }
 }
 
+/* ============================================================================
+ * CACHE DO RESOLVEDOR DE FONTE (/api/source/resolve) — TTL 3000s POR sourceId
+ * ============================================================================ */
+
+export type ResolvedDirectStreamCacheEntry = {
+  url: string;
+  kind: "mp4" | "hls";
+  resolvedAtMs: number;
+  expiresAtMs: number | null;
+};
+
+const SOURCE_RESOLVE_CACHE_KEY_PREFIX = "hikari:source:resolve:";
+export const SOURCE_RESOLVE_CACHE_TTL_SEC = 3000;
+
+const inMemoryResolvedSourceCache = new Map<
+  string,
+  { entry: ResolvedDirectStreamCacheEntry; cacheExpiresAtMs: number }
+>();
+
+function isValidResolvedEntry(
+  entry: ResolvedDirectStreamCacheEntry | null | undefined,
+  nowMs: number,
+): entry is ResolvedDirectStreamCacheEntry {
+  if (!entry || typeof entry.url !== "string" || !entry.url) return false;
+  if (entry.kind !== "mp4" && entry.kind !== "hls") return false;
+  if (
+    typeof entry.expiresAtMs === "number" &&
+    Number.isFinite(entry.expiresAtMs) &&
+    entry.expiresAtMs <= nowMs
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export async function getCachedResolvedSourceUrl(
+  sourceId: string,
+): Promise<ResolvedDirectStreamCacheEntry | null> {
+  if (typeof window !== "undefined") return null;
+  const cleanId = sourceId?.trim();
+  if (!cleanId) return null;
+
+  const now = Date.now();
+
+  if (redisClient) {
+    const key = `${SOURCE_RESOLVE_CACHE_KEY_PREFIX}${cleanId}`;
+    try {
+      const raw = await withRedisTimeout(
+        redisClient.get<ResolvedDirectStreamCacheEntry | string>(key),
+      );
+      if (!raw) return null;
+      const parsed =
+        typeof raw === "string"
+          ? (JSON.parse(raw) as ResolvedDirectStreamCacheEntry)
+          : raw;
+      return isValidResolvedEntry(parsed, now) ? parsed : null;
+    } catch (err) {
+      console.warn(
+        "[redis] Aviso ao ler cache do resolvedor de fonte (fallback em memória):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  const mem = inMemoryResolvedSourceCache.get(cleanId);
+  if (mem) {
+    if (mem.cacheExpiresAtMs > now && isValidResolvedEntry(mem.entry, now)) {
+      return mem.entry;
+    }
+    inMemoryResolvedSourceCache.delete(cleanId);
+  }
+
+  return null;
+}
+
+export async function setCachedResolvedSourceUrl(
+  sourceId: string,
+  entry: ResolvedDirectStreamCacheEntry,
+  ttlSec: number = SOURCE_RESOLVE_CACHE_TTL_SEC,
+): Promise<void> {
+  if (typeof window !== "undefined") return;
+  const cleanId = sourceId?.trim();
+  if (!cleanId || !entry?.url) return;
+
+  const safeTtlSec = Math.max(
+    1,
+    Math.min(SOURCE_RESOLVE_CACHE_TTL_SEC, Math.floor(ttlSec)),
+  );
+
+  if (redisClient) {
+    const key = `${SOURCE_RESOLVE_CACHE_KEY_PREFIX}${cleanId}`;
+    try {
+      await withRedisTimeout(
+        redisClient.set(key, entry, { ex: safeTtlSec }),
+      );
+      return;
+    } catch (err) {
+      console.warn(
+        "[redis] Aviso ao salvar cache do resolvedor de fonte (fallback em memória):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  inMemoryResolvedSourceCache.set(cleanId, {
+    entry,
+    cacheExpiresAtMs: Date.now() + safeTtlSec * 1000,
+  });
+}
+
+export async function invalidateCachedResolvedSourceUrl(
+  sourceId: string,
+): Promise<void> {
+  if (typeof window !== "undefined") return;
+  const cleanId = sourceId?.trim();
+  if (!cleanId) return;
+
+  inMemoryResolvedSourceCache.delete(cleanId);
+
+  if (redisClient) {
+    const key = `${SOURCE_RESOLVE_CACHE_KEY_PREFIX}${cleanId}`;
+    try {
+      await withRedisTimeout(redisClient.del(key));
+    } catch (err) {
+      console.warn(
+        "[redis] Aviso ao invalidar cache do resolvedor de fonte:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+}
+
+
 
 
 

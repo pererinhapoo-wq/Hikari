@@ -43,7 +43,7 @@ import {
   formatDuration,
 } from '../../services/videoData';
 import { useProgressTracker } from '@/hooks/useProgressTracker';
-import { isAnitube22PlayerUrl } from '@/lib/anitube22';
+import { isAnitube22PlayerUrl, parseSignedUrlExpiresAtMs } from '@/lib/anitube22';
 
 export type { VideoItem, QualityLevel, PlaybackSpeed, VideoResolution, StreamQualityOption };
 
@@ -297,6 +297,9 @@ export interface CustomVideoPlayerProps {
   iframeErrorMessage?: string | null;
   onIframeError?: () => void;
   iframeReloadKey?: string | number;
+  onRenewSource?: (reason: 'expiring' | 'ending' | 'media_error') => Promise<boolean> | boolean | void;
+  onNextSource?: () => void;
+  hasNextSource?: boolean;
 }
 
 const SPEED_OPTIONS: PlaybackSpeed[] = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -610,6 +613,9 @@ interface HikariPlayerSurfaceProps {
   iframeErrorMessage?: string | null;
   onIframeError?: () => void;
   iframeReloadKey?: string | number;
+  onRenewSource?: (reason: 'expiring' | 'ending' | 'media_error') => Promise<boolean> | boolean | void;
+  onNextSource?: () => void;
+  hasNextSource?: boolean;
 }
 
 const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
@@ -640,6 +646,9 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   iframeErrorMessage,
   onIframeError,
   iframeReloadKey,
+  onRenewSource,
+  onNextSource,
+  hasNextSource,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -671,25 +680,67 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const [hasPlaybackStarted, setHasPlaybackStarted] = useState<boolean>(() => Boolean(autoPlay));
   const hasPlaybackStartedRef = useRef<boolean>(Boolean(autoPlay));
   hasPlaybackStartedRef.current = hasPlaybackStarted;
+  const hasDirectNonIframeStream = Boolean(
+    !video?.isIframe &&
+      effectiveVideoUrl &&
+      !isAnitube22PlayerUrl(effectiveVideoUrl),
+  );
   const isIframeOnly = Boolean(
-    video?.isIframe ||
-      isAnitube22PlayerUrl(video?.iframeUrl) ||
-      isAnitube22PlayerUrl(video?.videoUrl) ||
-      isAnitube22PlayerUrl(iframeFallbackUrl),
+    !hasDirectNonIframeStream &&
+      (video?.isIframe ||
+        isAnitube22PlayerUrl(video?.iframeUrl) ||
+        isAnitube22PlayerUrl(video?.videoUrl) ||
+        isAnitube22PlayerUrl(iframeFallbackUrl)),
   );
 
   const [posterFailed, setPosterFailed] = useState<boolean>(false);
   const [isIframeMode, setIsIframeMode] = useState<boolean>(() => isIframeOnly);
   const [hlsRetryNonce, setHlsRetryNonce] = useState<number>(0);
   const [internalIframeReloadCount, setInternalIframeReloadCount] = useState<number>(0);
+  const [iframeActivatedAtSec, setIframeActivatedAtSec] = useState<number | null>(null);
   const [localIframeError, setLocalIframeError] = useState<boolean>(false);
+
+  const lastKnownPlaybackRef = useRef<{
+    videoId: string;
+    time: number;
+    wasPlaying: boolean;
+  }>({ videoId: video?.id || '', time: 0, wasPlaying: false });
+  const prevStreamTrackRef = useRef<{ videoId: string; url: string }>({
+    videoId: video?.id || '',
+    url: '',
+  });
+  const seamlessResumeRef = useRef<{
+    time: number;
+    wasPlaying: boolean;
+  } | null>(null);
+  const urlLoadedAtRef = useRef<number>(Date.now());
+  const renewInFlightRef = useRef<boolean>(false);
+  const validityRenewedUrlsRef = useRef<Set<string>>(new Set());
+  const endWindowRenewedUrlsRef = useRef<Set<string>>(new Set());
+  const errorRenewedUrlsRef = useRef<Set<string>>(new Set());
+  const lastValidityRenewAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    const vid = video?.id || '';
+    if (lastKnownPlaybackRef.current.videoId !== vid) {
+      lastKnownPlaybackRef.current = { videoId: vid, time: 0, wasPlaying: false };
+      seamlessResumeRef.current = null;
+      validityRenewedUrlsRef.current.clear();
+      endWindowRenewedUrlsRef.current.clear();
+      errorRenewedUrlsRef.current.clear();
+      lastValidityRenewAtRef.current = 0;
+    }
+  }, [video?.id]);
 
   useEffect(() => {
     if (isIframeOnly) {
       setIsIframeMode(true);
       setVideoError(null);
+    } else if (hasDirectNonIframeStream) {
+      setIsIframeMode(false);
+      setVideoError(null);
     }
-  }, [isIframeOnly]);
+  }, [isIframeOnly, hasDirectNonIframeStream]);
 
   const handleTrackerRestored = useCallback((position: number) => {
     initialTimeAppliedRef.current = true;
@@ -740,6 +791,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
 
   const handleSwitchToIframe = useCallback(() => {
     if (effectiveIframeUrl) {
+      setIframeActivatedAtSec(Math.floor(Date.now() / 1000));
       setIsIframeMode(true);
       setVideoError(null);
       return;
@@ -820,8 +872,74 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   onErrorRef.current = onError;
   const onUpdateMetadataRef = useRef(onUpdateMetadata);
   onUpdateMetadataRef.current = onUpdateMetadata;
+  const onRenewSourceRef = useRef(onRenewSource);
+  onRenewSourceRef.current = onRenewSource;
+  const effectiveIframeUrlRef = useRef(effectiveIframeUrl);
+  effectiveIframeUrlRef.current = effectiveIframeUrl;
   const initialTimeRef = useRef(initialTime);
   initialTimeRef.current = initialTime;
+
+  const snapshotLivePlaybackState = useCallback(() => {
+    const el = videoRef.current;
+    const vid = video?.id || '';
+    if (!el || !vid) return;
+    const t = Number.isFinite(el.currentTime) ? el.currentTime : 0;
+    const playing = !el.paused && !el.ended;
+    const prev = lastKnownPlaybackRef.current;
+    lastKnownPlaybackRef.current = {
+      videoId: vid,
+      time: t > 0 ? t : prev.videoId === vid ? prev.time : 0,
+      wasPlaying: playing || (el.readyState === 0 && prev.videoId === vid ? prev.wasPlaying : false),
+    };
+  }, [video?.id]);
+
+  const triggerSourceRenewal = useCallback(
+    async (reason: 'expiring' | 'ending' | 'media_error'): Promise<boolean> => {
+      const renewFn = onRenewSourceRef.current;
+      if (!renewFn || renewInFlightRef.current) return false;
+      snapshotLivePlaybackState();
+      renewInFlightRef.current = true;
+      try {
+        const res = await renewFn(reason);
+        return res !== false;
+      } catch {
+        return false;
+      } finally {
+        renewInFlightRef.current = false;
+      }
+    },
+    [snapshotLivePlaybackState],
+  );
+
+  // Monitora validade da URL assinada (< 120s restantes) para renovação sem recarregar a página
+  useEffect(() => {
+    if (isIframeMode || !effectiveVideoUrl || !onRenewSource) return;
+    const expiresAtMs =
+      video?.streamExpiresAtMs ?? parseSignedUrlExpiresAtMs(effectiveVideoUrl);
+    if (!expiresAtMs || !Number.isFinite(expiresAtMs)) return;
+
+    if (validityRenewedUrlsRef.current.has(effectiveVideoUrl)) return;
+
+    const remainingMs = expiresAtMs - Date.now();
+    let delayMs = Math.max(0, remainingMs - 120_000);
+    if (delayMs < 5000 && lastValidityRenewAtRef.current > 0) {
+      const sinceLast = Date.now() - lastValidityRenewAtRef.current;
+      if (sinceLast < 30_000) {
+        delayMs = 30_000 - sinceLast;
+      }
+    }
+
+    const timerId = window.setTimeout(() => {
+      if (validityRenewedUrlsRef.current.has(effectiveVideoUrl)) return;
+      validityRenewedUrlsRef.current.add(effectiveVideoUrl);
+      lastValidityRenewAtRef.current = Date.now();
+      void triggerSourceRenewal('expiring');
+    }, Math.max(25, delayMs));
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [isIframeMode, effectiveVideoUrl, video?.streamExpiresAtMs, onRenewSource, triggerSourceRenewal]);
 
   // Close settings menu automatically if controls become hidden
   useEffect(() => {
@@ -880,7 +998,8 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const applyInitialTime = useCallback(() => {
     const el = videoRef.current;
     if (!el || initialTimeAppliedRef.current) return;
-    const target = initialTimeRef.current;
+    const seamlessTarget = seamlessResumeRef.current?.time ?? 0;
+    const target = seamlessTarget > 0 ? seamlessTarget : initialTimeRef.current;
     if (!target || target <= 0) {
       initialTimeAppliedRef.current = true;
       return;
@@ -890,10 +1009,13 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
         const dur = el.duration;
         const targetTime =
           dur && Number.isFinite(dur) && dur > 0
-            ? Math.min(target, Math.max(0, dur - 2))
+            ? Math.min(target, Math.max(0, dur - (seamlessTarget > 0 ? 0.5 : 2)))
             : target;
         el.currentTime = targetTime;
         initialTimeAppliedRef.current = true;
+        if (seamlessResumeRef.current) {
+          seamlessResumeRef.current.time = 0;
+        }
         onRestoredRef.current?.(targetTime);
       } catch {
         // Retry once metadata/data is ready
@@ -905,7 +1027,15 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const setMutedFn = volumeState?.setMuted;
   const playSafely = useCallback(
     (videoEl: HTMLVideoElement) => {
-      if (!autoPlay && !hasPlaybackStartedRef.current) return;
+      const seamlessWasPlaying = seamlessResumeRef.current?.wasPlaying;
+      if (seamlessResumeRef.current) {
+        seamlessResumeRef.current.wasPlaying = false;
+        if (seamlessResumeRef.current.time <= 0) {
+          seamlessResumeRef.current = null;
+        }
+      }
+      if (seamlessWasPlaying === false) return;
+      if (!seamlessWasPlaying && !autoPlay && !hasPlaybackStartedRef.current) return;
       const playPromise = playFn ? playFn() : videoEl.play();
       if (playPromise !== undefined) {
         Promise.resolve(playPromise).catch((err: unknown) => {
@@ -935,6 +1065,8 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   applyInitialTimeRef.current = applyInitialTime;
   const playSafelyRef = useRef(playSafely);
   playSafelyRef.current = playSafely;
+  const triggerSourceRenewalRef = useRef(triggerSourceRenewal);
+  triggerSourceRenewalRef.current = triggerSourceRenewal;
 
   // Video.js <Video> source setup + Native HLS / Hls.js engine lifecycle
   useEffect(() => {
@@ -942,7 +1074,30 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     if (!videoEl || isIframeMode) return;
 
     const directUrl = effectiveVideoUrl.trim();
+    const currentVideoId = video?.id || '';
+    if (
+      prevStreamTrackRef.current.videoId === currentVideoId &&
+      prevStreamTrackRef.current.url &&
+      prevStreamTrackRef.current.url !== directUrl
+    ) {
+      const saved = lastKnownPlaybackRef.current;
+      seamlessResumeRef.current =
+        saved.videoId === currentVideoId
+          ? { time: saved.time, wasPlaying: saved.wasPlaying }
+          : null;
+    } else if (prevStreamTrackRef.current.videoId !== currentVideoId) {
+      seamlessResumeRef.current = null;
+    }
+    prevStreamTrackRef.current = { videoId: currentVideoId, url: directUrl };
+    urlLoadedAtRef.current = Date.now();
+
     if (!directUrl || !isValidDirectStreamUrl(directUrl)) {
+      if (effectiveIframeUrlRef.current) {
+        setIframeActivatedAtSec(Math.floor(Date.now() / 1000));
+        setIsIframeMode(true);
+        setVideoError(null);
+        return;
+      }
       const urlErr: PlayerErrorState = {
         category: 'url',
         title: 'URL de Transmissão Inválida',
@@ -999,6 +1154,34 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
         hlsRef.current = null;
       }
       activeHls = null;
+
+      if (onRenewSourceRef.current && !errorRenewedUrlsRef.current.has(directUrl)) {
+        errorRenewedUrlsRef.current.add(directUrl);
+        void triggerSourceRenewalRef.current('media_error').then((renewed) => {
+          if (isCancelled || renewed) return;
+          if (effectiveIframeUrlRef.current) {
+            setIframeActivatedAtSec(Math.floor(Date.now() / 1000));
+            setIsIframeMode(true);
+            setVideoError(null);
+            return;
+          }
+          errorHls('FATAL', `[${errState.category}] ${errState.message}`, {
+            detail: errState.detail,
+            url: sanitizeStreamUrl(directUrl),
+          });
+          setVideoError(errState);
+          onErrorRef.current?.(errState.message);
+        });
+        return;
+      }
+
+      if (effectiveIframeUrlRef.current) {
+        setIframeActivatedAtSec(Math.floor(Date.now() / 1000));
+        setIsIframeMode(true);
+        setVideoError(null);
+        return;
+      }
+
       errorHls('FATAL', `[${errState.category}] ${errState.message}`, {
         detail: errState.detail,
         url: sanitizeStreamUrl(directUrl),
@@ -1103,9 +1286,11 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
                 xhr.withCredentials = false;
               }
             },
-            ...(initialTimeRef.current && initialTimeRef.current > 0
-              ? { startPosition: initialTimeRef.current }
-              : {}),
+            ...(seamlessResumeRef.current?.time && seamlessResumeRef.current.time > 0
+              ? { startPosition: seamlessResumeRef.current.time }
+              : initialTimeRef.current && initialTimeRef.current > 0
+                ? { startPosition: initialTimeRef.current }
+                : {}),
           });
 
           activeHls = hls;
@@ -1892,6 +2077,28 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     const time = el.currentTime;
     const dur = (Number.isFinite(el.duration) && el.duration > 0 ? el.duration : 0) || video?.duration || 0;
 
+    if (video?.id && time > 0) {
+      lastKnownPlaybackRef.current = {
+        videoId: video.id,
+        time,
+        wasPlaying: !el.paused && !el.ended,
+      };
+    }
+
+    if (
+      !isIframeMode &&
+      effectiveVideoUrl &&
+      onRenewSourceRef.current &&
+      dur > 180 &&
+      time > 0 &&
+      dur - time < 120 &&
+      !endWindowRenewedUrlsRef.current.has(effectiveVideoUrl) &&
+      Date.now() - urlLoadedAtRef.current > 60_000
+    ) {
+      endWindowRenewedUrlsRef.current.add(effectiveVideoUrl);
+      void triggerSourceRenewal('ending');
+    }
+
     if (initialTimeRef.current && initialTimeRef.current > 0 && !initialTimeAppliedRef.current) {
       if (el.readyState >= 1) {
         applyInitialTime();
@@ -1900,7 +2107,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     }
 
     onTimeUpdateRef.current?.(time, dur);
-  }, [video?.duration, applyInitialTime]);
+  }, [video?.duration, video?.id, applyInitialTime, isIframeMode, effectiveVideoUrl, triggerSourceRenewal]);
 
   const handleLoadedMetadata = useCallback(() => {
     const el = videoRef.current;
@@ -1929,21 +2136,30 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
 
   const handlePlayEvent = useCallback(() => {
     setHasPlaybackStarted(true);
+    snapshotLivePlaybackState();
     onPlayRef.current?.();
-  }, []);
+  }, [snapshotLivePlaybackState]);
 
   const handlePlayingEvent = useCallback(() => {
     setHasPlaybackStarted(true);
+    snapshotLivePlaybackState();
     onPlayingRef.current?.();
-  }, []);
+  }, [snapshotLivePlaybackState]);
 
   const handlePauseEvent = useCallback(() => {
     const el = videoRef.current;
     if (!el) return;
     const time = el.currentTime;
     const dur = (Number.isFinite(el.duration) && el.duration > 0 ? el.duration : 0) || video?.duration || 0;
+    if (video?.id) {
+      lastKnownPlaybackRef.current = {
+        videoId: video.id,
+        time: Number.isFinite(time) && time > 0 ? time : lastKnownPlaybackRef.current.time,
+        wasPlaying: false,
+      };
+    }
     onPauseRef.current?.(time, dur);
-  }, [video?.duration]);
+  }, [video?.duration, video?.id]);
 
   const handleWaitingEvent = useCallback(() => {
     onWaitingRef.current?.();
@@ -1954,8 +2170,9 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   }, []);
 
   const handleSeekedEvent = useCallback(() => {
+    snapshotLivePlaybackState();
     onSeekedRef.current?.();
-  }, []);
+  }, [snapshotLivePlaybackState]);
 
   const handleEndedEvent = useCallback(() => {
     onEndedRef.current?.();
@@ -1972,6 +2189,27 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     const mediaErr = el?.error;
     const code = mediaErr?.code ?? 0;
     if (code === 1) return; // MEDIA_ERR_ABORTED
+
+    const currentUrl = effectiveVideoUrl.trim();
+    if (onRenewSourceRef.current && currentUrl && !errorRenewedUrlsRef.current.has(currentUrl)) {
+      errorRenewedUrlsRef.current.add(currentUrl);
+      void triggerSourceRenewal('media_error').then((renewed) => {
+        if (renewed) return;
+        if (effectiveIframeUrlRef.current) {
+          setIframeActivatedAtSec(Math.floor(Date.now() / 1000));
+          setIsIframeMode(true);
+          setVideoError(null);
+        }
+      });
+      return;
+    }
+
+    if (effectiveIframeUrlRef.current) {
+      setIframeActivatedAtSec(Math.floor(Date.now() / 1000));
+      setIsIframeMode(true);
+      setVideoError(null);
+      return;
+    }
 
     const errState: PlayerErrorState = video?.isLocalFile
       ? {
@@ -2007,7 +2245,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     });
     setVideoError(errState);
     onErrorRef.current?.(errState.message);
-  }, [isHls, video?.isLocalFile, effectiveVideoUrl]);
+  }, [isHls, video?.isLocalFile, effectiveVideoUrl, triggerSourceRenewal]);
 
   const timelineTrackStyle = useMemo<React.CSSProperties>(
     () => ({
@@ -2027,12 +2265,19 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   if (isIframeMode && effectiveIframeUrl) {
     const showIframeErrorBanner = Boolean(iframeLoadError || localIframeError);
     const activeIframeSrc =
-      internalIframeReloadCount > 0 && isAnitube22PlayerUrl(effectiveIframeUrl) && !onReloadSource
+      (internalIframeReloadCount > 0 || iframeActivatedAtSec !== null) &&
+      isAnitube22PlayerUrl(effectiveIframeUrl) &&
+      !onReloadSource
         ? effectiveIframeUrl.replace(
             /([?&])time=\d+/i,
-            `$1time=${Math.floor(Date.now() / 1000)}`,
+            `$1time=${iframeActivatedAtSec ?? Math.floor(Date.now() / 1000)}`,
           )
-        : effectiveIframeUrl;
+        : iframeActivatedAtSec !== null && isAnitube22PlayerUrl(effectiveIframeUrl)
+          ? effectiveIframeUrl.replace(
+              /([?&])time=\d+/i,
+              `$1time=${iframeActivatedAtSec}`,
+            )
+          : effectiveIframeUrl;
 
     return (
       <div
@@ -2071,21 +2316,33 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
               <Info className="w-6 h-6" />
             </div>
             <h4 className="text-base font-semibold text-white mb-1">
-              Falha ao carregar o vídeo
+              fonte indisponível
             </h4>
             <p className="text-xs text-slate-300 max-w-md mb-4 leading-relaxed">
               {iframeErrorMessage?.trim() ||
-                'Não foi possível carregar este vídeo no provedor. Tente recarregar a fonte ou alternar de servidor.'}
+                'Não foi possível carregar este vídeo no provedor. Tente recarregar ou alternar para a próxima fonte.'}
             </p>
-            <button
-              type="button"
-              data-controls-interactive="true"
-              onClick={handleReloadSource}
-              className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-purple-600/30 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Recarregar fonte
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {hasNextSource && onNextSource && (
+                <button
+                  type="button"
+                  data-controls-interactive="true"
+                  onClick={onNextSource}
+                  className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-purple-600/30 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                >
+                  Próxima fonte
+                </button>
+              )}
+              <button
+                type="button"
+                data-controls-interactive="true"
+                onClick={handleReloadSource}
+                className="px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Recarregar fonte
+              </button>
+            </div>
           </div>
         )}
 
@@ -2508,6 +2765,9 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   iframeErrorMessage,
   onIframeError,
   iframeReloadKey,
+  onRenewSource,
+  onNextSource,
+  hasNextSource,
 }) => {
   const effectiveVideoUrl = useMemo(() => {
     if (!video) return '';
@@ -2515,12 +2775,19 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       return (getLocalVideoUrl(video.id) || video.videoUrl || video.url || '').trim();
     }
     const raw = (video.videoUrl || video.url || '').trim();
+    if (video.streamKind) {
+      return raw;
+    }
     return resolveHlsPlaybackUrl(raw);
   }, [video]);
 
   const effectivePosterUrl = video?.posterUrl || video?.thumbnailUrl || '';
 
-  const isHls = useMemo(() => isHlsStreamUrl(effectiveVideoUrl), [effectiveVideoUrl]);
+  const isHls = useMemo(() => {
+    if (video?.streamKind === 'hls') return true;
+    if (video?.streamKind === 'mp4') return false;
+    return isHlsStreamUrl(effectiveVideoUrl);
+  }, [video?.streamKind, effectiveVideoUrl]);
 
   return (
     <HikariVideoPlayerRoot>
@@ -2552,6 +2819,9 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         iframeErrorMessage={iframeErrorMessage}
         onIframeError={onIframeError}
         iframeReloadKey={iframeReloadKey}
+        onRenewSource={onRenewSource}
+        onNextSource={onNextSource}
+        hasNextSource={hasNextSource}
       />
     </HikariVideoPlayerRoot>
   );

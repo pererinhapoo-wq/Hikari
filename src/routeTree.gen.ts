@@ -89,6 +89,7 @@ import { Route as ApiCronCleanupProgressRouteImport } from './routes/api/cron.cl
 import { Route as ApiCronDrainProgressRouteImport } from './routes/api/cron.drain-progress'
 import { Route as ApiPlaybackHeartbeatRouteImport } from './routes/api/playback.heartbeat'
 import { Route as ApiProfileFollowRouteImport } from './routes/api/profile.follow'
+import { Route as ApiSourceResolveRouteImport } from './routes/api/source/resolve'
 import { Route as WatchIdEpRouteImport } from './routes/watch_.$id.$ep'
 
 const IndexRoute = IndexRouteImport.update({
@@ -492,6 +493,11 @@ const ApiProfileFollowRoute = ApiProfileFollowRouteImport.update({
   path: '/api/profile/follow',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSourceResolveRoute = ApiSourceResolveRouteImport.update({
+  id: '/api/source/resolve',
+  path: '/api/source/resolve',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WatchIdEpRoute = WatchIdEpRouteImport.update({
   id: '/watch_/$id/$ep',
   path: '/watch/$id/$ep',
@@ -579,6 +585,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/drain-progress': typeof ApiCronDrainProgressRoute
   '/api/playback/heartbeat': typeof ApiPlaybackHeartbeatRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
+  '/api/source/resolve': typeof ApiSourceResolveRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
 }
 export interface FileRoutesByTo {
@@ -660,6 +667,7 @@ export interface FileRoutesByTo {
   '/api/cron/drain-progress': typeof ApiCronDrainProgressRoute
   '/api/playback/heartbeat': typeof ApiPlaybackHeartbeatRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
+  '/api/source/resolve': typeof ApiSourceResolveRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
 }
 export interface FileRoutesById {
@@ -744,6 +752,7 @@ export interface FileRoutesById {
   '/api/cron/drain-progress': typeof ApiCronDrainProgressRoute
   '/api/playback/heartbeat': typeof ApiPlaybackHeartbeatRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
+  '/api/source/resolve': typeof ApiSourceResolveRoute
   '/watch_/$id/$ep': typeof WatchIdEpRoute
 }
 export interface FileRouteTypes {
@@ -829,6 +838,7 @@ export interface FileRouteTypes {
     | '/api/cron/drain-progress'
     | '/api/playback/heartbeat'
     | '/api/profile/follow'
+    | '/api/source/resolve'
     | '/watch/$id/$ep'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -910,6 +920,7 @@ export interface FileRouteTypes {
     | '/api/cron/drain-progress'
     | '/api/playback/heartbeat'
     | '/api/profile/follow'
+    | '/api/source/resolve'
     | '/watch/$id/$ep'
   id:
     | '__root__'
@@ -993,6 +1004,7 @@ export interface FileRouteTypes {
     | '/api/cron/drain-progress'
     | '/api/playback/heartbeat'
     | '/api/profile/follow'
+    | '/api/source/resolve'
     | '/watch_/$id/$ep'
   fileRoutesById: FileRoutesById
 }
@@ -1057,6 +1069,7 @@ export interface RootRouteChildren {
   ApiCronDrainProgressRoute: typeof ApiCronDrainProgressRoute
   ApiPlaybackHeartbeatRoute: typeof ApiPlaybackHeartbeatRoute
   ApiProfileFollowRoute: typeof ApiProfileFollowRoute
+  ApiSourceResolveRoute: typeof ApiSourceResolveRoute
   WatchIdEpRoute: typeof WatchIdEpRoute
 }
 
@@ -1622,6 +1635,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiProfileFollowRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/source/resolve': {
+      id: '/api/source/resolve'
+      path: '/api/source/resolve'
+      fullPath: '/api/source/resolve'
+      preLoaderRoute: typeof ApiSourceResolveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/watch_/$id/$ep': {
       id: '/watch_/$id/$ep'
       path: '/watch/$id/$ep'
@@ -1759,6 +1779,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronDrainProgressRoute: ApiCronDrainProgressRoute,
   ApiPlaybackHeartbeatRoute: ApiPlaybackHeartbeatRoute,
   ApiProfileFollowRoute: ApiProfileFollowRoute,
+  ApiSourceResolveRoute: ApiSourceResolveRoute,
   WatchIdEpRoute: WatchIdEpRoute,
 }
 export const routeTree = rootRouteImport
