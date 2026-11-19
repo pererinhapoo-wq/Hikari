@@ -5,7 +5,7 @@ export const ANITUBE22_R2_BASE =
   "https://173fe263eae04670ecfcebf237fd6480.r2.cloudflarestorage.com/ziphonec";
 
 export type SourceLang = "sub" | "dub";
-export type SourceStatus = "active" | "broken";
+export type SourceStatus = "active" | "broken" | "incomplete";
 
 export interface EpisodeSourceItem {
   id: string;
@@ -18,6 +18,17 @@ export interface EpisodeSourceItem {
   status: SourceStatus;
   failCount: number;
   lastCheckedAt: string | null;
+  namePath?: string | null;
+  urlPath?: string | null;
+  imgUrl?: string | null;
+}
+
+export interface Anitube22ParsedParts {
+  externalId: string;
+  namePath: string;
+  urlPath: string;
+  imgUrl: string;
+  lang: SourceLang;
 }
 
 const BARE_NUMERIC_ID_RE = /^\d{3,16}$/;
@@ -35,11 +46,33 @@ export function normalizeSourceLang(value?: string | null): SourceLang {
   return "sub";
 }
 
-/**
- * Extrai o ID numérico durável de fontes do provedor anitube22
- * a partir de ID numérico puro, referência canônica `anitube22://...`
- * ou URL legada (`playerricas.php?...`, R2 `ziphonec/{ID}.mp4`, thumbnail `hinatasoul`).
- */
+export function parseAnitube22PlayerUrl(rawUrl: string): Anitube22ParsedParts | null {
+  if (!rawUrl || typeof rawUrl !== "string") return null;
+  const trimmed = rawUrl.trim();
+  try {
+    const queryPart = trimmed.includes("?") ? trimmed.split("?")[1] : trimmed;
+    const params = new URLSearchParams(queryPart);
+    const name = params.get("name");
+    const url = params.get("url");
+    const img = params.get("img");
+    if (!name || !url) return null;
+
+    const extIdMatch = name.match(/(\d+)\.mp4/i);
+    const externalId = extIdMatch?.[1] || extractAnitube22ExternalId(name) || "";
+    if (!externalId) return null;
+
+    return {
+      externalId,
+      namePath: name,
+      urlPath: url,
+      imgUrl: img || `${ANITUBE22_THUMB_BASE}/${externalId}/default.jpg`,
+      lang: extractAnitube22Lang(trimmed),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function extractAnitube22ExternalId(input?: string | null): string | null {
   if (!input || typeof input !== "string") return null;
   const trimmed = input.trim();
@@ -52,6 +85,11 @@ export function extractAnitube22ExternalId(input?: string | null): string | null
   const durableMatch = trimmed.match(DURABLE_REF_RE);
   if (durableMatch?.[2]) {
     return durableMatch[2];
+  }
+
+  const parsed = parseAnitube22PlayerUrl(trimmed);
+  if (parsed?.externalId) {
+    return parsed.externalId;
   }
 
   const lower = trimmed.toLowerCase();
@@ -95,7 +133,7 @@ export function extractAnitube22Lang(input?: string | null): SourceLang {
 }
 
 export function isAnitube22SourceInput(input?: string | null): boolean {
-  return extractAnitube22ExternalId(input) !== null;
+  return parseAnitube22PlayerUrl(input || "") !== null || extractAnitube22ExternalId(input) !== null;
 }
 
 export function isAnitube22PlayerUrl(url?: string | null): boolean {
@@ -104,9 +142,6 @@ export function isAnitube22PlayerUrl(url?: string | null): boolean {
   return lower.includes("anitube22.vip/playerricas.php");
 }
 
-/**
- * Formata a referência durável sem assinatura e sem `time=` para persistência segura.
- */
 export function formatDurableAnitube22Ref(
   externalId: string,
   lang: SourceLang = "sub",
@@ -119,9 +154,6 @@ export function formatDurableAnitube22Ref(
   return `anitube22://${safeLang}/${cleanId}`;
 }
 
-/**
- * Remove qualquer parâmetro `time=` de URLs antes de gravar no banco.
- */
 export function stripTimeQueryParam(rawUrl: string): string {
   const trimmed = rawUrl.trim();
   if (!trimmed) return "";
@@ -136,10 +168,24 @@ export function stripTimeQueryParam(rawUrl: string): string {
   return stripped;
 }
 
-/**
- * Monta em runtime a URL completa do player `anitube22` a partir exclusivamente do ID numérico durável,
- * mantendo exatamente `pais=pais=BR` duplicado sem normalização e `time` em segundos Unix.
- */
+export function buildAnitube22PlayerUrlFromParts(
+  parts: { namePath: string; urlPath: string; imgUrl: string },
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): string {
+  const ts =
+    Number.isFinite(nowSeconds) && nowSeconds > 0
+      ? Math.floor(nowSeconds)
+      : Math.floor(Date.now() / 1000);
+
+  return (
+    `${ANITUBE22_PLAYER_BASE}?name=${parts.namePath}` +
+    `&img=${parts.imgUrl}` +
+    `&pais=pais=BR` +
+    `&time=${ts}` +
+    `&url=${parts.urlPath}`
+  );
+}
+
 export function buildAnitube22PlayerUrl(
   externalIdOrRef: string,
   nowSeconds: number = Math.floor(Date.now() / 1000),
@@ -170,16 +216,12 @@ export function buildAnitube22ThumbUrl(externalIdOrRef: string): string | null {
   return `${ANITUBE22_THUMB_BASE}/${cleanId}/default.jpg`;
 }
 
-/**
- * Filtra fontes ativas e ordena por prioridade crescente (menor número primeiro).
- * `sub` e `dub` são mantidos como listas independentes.
- */
 export function sortEpisodeSourcesByPriority(
   sources: EpisodeSourceItem[],
   lang?: SourceLang,
 ): EpisodeSourceItem[] {
   return sources
-    .filter((s) => s.status !== "broken" && (lang ? s.lang === lang : true))
+    .filter((s) => s.status !== "broken" && s.status !== "incomplete" && (lang ? s.lang === lang : true))
     .slice()
     .sort((a, b) => a.priority - b.priority);
 }

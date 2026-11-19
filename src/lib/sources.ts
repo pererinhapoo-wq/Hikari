@@ -1,10 +1,14 @@
 import { getSql } from "@/lib/db";
 import {
   ANITUBE22_PROVIDER,
+  ANITUBE22_THUMB_BASE,
+  ANITUBE22_R2_BASE,
   buildAnitube22PlayerUrl,
+  buildAnitube22PlayerUrlFromParts,
   extractAnitube22ExternalId,
   extractAnitube22Lang,
   normalizeSourceLang,
+  parseAnitube22PlayerUrl,
   type EpisodeSourceItem,
   type SourceLang,
   type SourceStatus,
@@ -35,6 +39,9 @@ interface RawEpisodeSourceRow {
   status: string | null;
   fail_count: number | null;
   last_checked_at: string | null;
+  name_path: string | null;
+  url_path: string | null;
+  img_url: string | null;
   page_url: string | null;
   direct_url: string | null;
   resolved_at: string | null;
@@ -46,6 +53,14 @@ function mapSourceRow(row: RawEpisodeSourceRow): EpisodeSourceItem {
     extractAnitube22ExternalId(row.page_url) ||
     extractAnitube22ExternalId(row.direct_url) ||
     "";
+  const status =
+    row.status === "broken"
+      ? "broken"
+      : row.status === "incomplete"
+        ? "incomplete"
+        : (!row.name_path || !row.url_path) && row.provider === ANITUBE22_PROVIDER
+          ? "incomplete"
+          : "active";
   return {
     id: row.id,
     episodeId: row.episode_id,
@@ -54,16 +69,15 @@ function mapSourceRow(row: RawEpisodeSourceRow): EpisodeSourceItem {
     lang: normalizeSourceLang(row.lang),
     quality: row.quality ?? null,
     priority: Number.isFinite(Number(row.priority)) ? Number(row.priority) : 0,
-    status: row.status === "broken" ? "broken" : "active",
+    status,
     failCount: Number.isFinite(Number(row.fail_count)) ? Number(row.fail_count) : 0,
     lastCheckedAt: row.last_checked_at ?? null,
+    namePath: row.name_path ?? null,
+    urlPath: row.url_path ?? null,
+    imgUrl: row.img_url ?? null,
   };
 }
 
-/**
- * Lista todas as fontes cadastradas para um episódio ordenadas por prioridade (menor primeiro).
- * Por padrão omite fontes com status = 'broken'.
- */
 export async function listEpisodeSources(
   episodeId: string,
   options?: {
@@ -79,6 +93,8 @@ export async function listEpisodeSources(
   const params: unknown[] = [cleanEpId];
 
   if (!options?.includeBroken) {
+    conditions.push(`COALESCE("status", 'active') NOT IN ('broken', 'incomplete')`);
+  } else {
     conditions.push(`COALESCE("status", 'active') <> 'broken'`);
   }
   if (options?.lang) {
@@ -98,6 +114,9 @@ export async function listEpisodeSources(
        "status",
        "fail_count",
        "last_checked_at",
+       "name_path",
+       "url_path",
+       "img_url",
        "page_url",
        "direct_url",
        "resolved_at"
@@ -110,48 +129,86 @@ export async function listEpisodeSources(
   return rows.map(mapSourceRow);
 }
 
-/**
- * Grava ou atualiza uma fonte durável em `episode_sources`.
- * Nunca persiste o parâmetro `time` nem URLs assinadas com `time=`.
- */
 export async function upsertEpisodeSource(input: {
   episodeId: string;
   provider?: string;
-  externalId: string;
+  externalId?: string;
+  fullUrl?: string;
+  namePath?: string;
+  urlPath?: string;
+  imgUrl?: string;
   lang?: SourceLang | string | null;
   quality?: string | null;
   priority?: number;
-}): Promise<EpisodeSourceItem | null> {
+}): Promise<EpisodeSourceItem> {
   const episodeId = input.episodeId?.trim();
   const provider = (input.provider || ANITUBE22_PROVIDER).trim().toLowerCase();
-  const extracted =
-    provider === ANITUBE22_PROVIDER
-      ? extractAnitube22ExternalId(input.externalId)
-      : input.externalId?.trim();
 
-  if (!episodeId || !extracted || !/^\d{3,16}$/.test(extracted)) {
-    throw new Error("ID externo inválido ou vazio.");
+  let namePath = input.namePath?.trim() || "";
+  let urlPath = input.urlPath?.trim() || "";
+  let imgUrl = input.imgUrl?.trim() || "";
+  let extId = input.externalId?.trim() || "";
+
+  const fullInput = input.fullUrl || input.externalId || "";
+  const parsed = parseAnitube22PlayerUrl(fullInput);
+  if (parsed) {
+    extId = parsed.externalId;
+    namePath = parsed.namePath;
+    urlPath = parsed.urlPath;
+    imgUrl = parsed.imgUrl;
+  } else if (!extId && namePath) {
+    const m = namePath.match(/(\d+)\.mp4/i);
+    if (m) extId = m[1];
+  } else if (!extId && fullInput && /^\d{3,16}$/.test(fullInput)) {
+    extId = fullInput;
+  }
+
+  if (extId && (!namePath || !urlPath)) {
+    namePath = namePath || `apphd/${extId}.mp4`;
+    urlPath = urlPath || `${ANITUBE22_R2_BASE}/${extId}.mp4`;
+    imgUrl = imgUrl || `${ANITUBE22_THUMB_BASE}/${extId}/default.jpg`;
+  }
+
+  if (!episodeId || !extId || !namePath || !urlPath) {
+    throw new Error("URL completa do player anitube22 (com name e url) é obrigatória.");
+  }
+
+  const lang = normalizeSourceLang(
+    typeof input.lang === "string" ? input.lang : (parsed?.lang || extractAnitube22Lang(fullInput)),
+  );
+
+  const sql = await getSql();
+  const epRows = await sql.query<{ title?: string }>(
+    `SELECT "title" FROM "catalog_episode" WHERE "id" = $1 LIMIT 1;`,
+    [episodeId],
+  );
+  if (epRows[0]?.title) {
+    const epTitle = epRows[0].title.toLowerCase();
+    const isEpisodeDubbed = /\bdub\b|\bdublado\b|\bdublada\b|\bdublagem\b|\bpt-br\b/i.test(epTitle);
+    const isEpisodeSubbed = /\bleg\b|\blegendado\b|\blegendada\b|\bsub\b|\bsubbed\b|\boriginal\b/i.test(epTitle);
+    const isSourceDub = lang === "dub";
+
+    if (isEpisodeDubbed && !isSourceDub) {
+      throw new Error("O idioma da fonte (legendado) não corresponde ao episódio (dublado).");
+    }
+    if (isEpisodeSubbed && isSourceDub) {
+      throw new Error("O idioma da fonte (dublado) não corresponde ao episódio (legendado).");
+    }
   }
 
   if (provider === ANITUBE22_PROVIDER) {
-    const probe = await probeAnitube22SourceIndex(extracted);
+    const probe = await probeAnitube22SourceIndex({ externalId: extId, namePath, urlPath, imgUrl });
     if (!probe.networkError && probe.httpStatus === 404) {
       throw new Error("ID não encontrado no provedor.");
     }
   }
 
-  const lang = normalizeSourceLang(
-    typeof input.lang === "string"
-      ? input.lang
-      : extractAnitube22Lang(input.externalId),
-  );
   const quality = input.quality?.trim() || null;
   const priority =
     typeof input.priority === "number" && Number.isFinite(input.priority)
       ? Math.max(0, Math.floor(input.priority))
       : 0;
 
-  const sql = await getSql();
   const existing = await sql.query<{ id: string }>(
     `SELECT "id" FROM "episode_sources"
      WHERE "episode_id" = $1
@@ -159,15 +216,18 @@ export async function upsertEpisodeSource(input: {
        AND "external_id" = $3
        AND "lang" = $4
      LIMIT 1;`,
-    [episodeId, provider, extracted, lang],
+    [episodeId, provider, extId, lang],
   );
 
   if (existing[0]?.id) {
     const updated = await sql.query<RawEpisodeSourceRow>(
       `UPDATE "episode_sources"
        SET
-         "quality" = COALESCE($2, "quality"),
-         "priority" = $3,
+         "name_path" = $2,
+         "url_path" = $3,
+         "img_url" = $4,
+         "quality" = COALESCE($5, "quality"),
+         "priority" = $6,
          "status" = 'active',
          "fail_count" = 0,
          "page_url" = NULL,
@@ -176,33 +236,29 @@ export async function upsertEpisodeSource(input: {
        RETURNING
          "id", "episode_id", "provider", "external_id", "lang", "quality",
          "priority", "status", "fail_count", "last_checked_at",
-         "page_url", "direct_url", "resolved_at";`,
-      [existing[0].id, quality, priority],
+         "name_path", "url_path", "img_url", "page_url", "direct_url", "resolved_at";`,
+      [existing[0].id, namePath, urlPath, imgUrl, quality, priority],
     );
-    return updated[0] ? mapSourceRow(updated[0]) : null;
+    return updated[0] ? mapSourceRow(updated[0]) : null!;
   }
 
   const inserted = await sql.query<RawEpisodeSourceRow>(
     `INSERT INTO "episode_sources" (
        "episode_id", "provider", "external_id", "lang", "quality",
-       "priority", "status", "fail_count", "last_checked_at",
+       "priority", "status", "fail_count", "name_path", "url_path", "img_url",
        "page_url", "direct_url"
      )
-     VALUES ($1, $2, $3, $4, $5, $6, 'active', 0, NULL, NULL, NULL)
+     VALUES ($1, $2, $3, $4, $5, $6, 'active', 0, $7, $8, $9, NULL, NULL)
      RETURNING
        "id", "episode_id", "provider", "external_id", "lang", "quality",
        "priority", "status", "fail_count", "last_checked_at",
-       "page_url", "direct_url", "resolved_at";`,
-    [episodeId, provider, extracted, lang, quality, priority],
+       "name_path", "url_path", "img_url", "page_url", "direct_url", "resolved_at";`,
+    [episodeId, provider, extId, lang, quality, priority, namePath, urlPath, imgUrl],
   );
 
-  return inserted[0] ? mapSourceRow(inserted[0]) : null;
+  return inserted[0] ? mapSourceRow(inserted[0]) : null!;
 }
 
-/**
- * Sincroniza fontes anitube22 salvas nos slots Player 1..5 com a tabela `episode_sources`,
- * armazenando exclusivamente identificadores duráveis (sem `time=` nem URL assinada).
- */
 export async function syncCatalogEpisodeSlotsToSources(
   episodeId: string,
   slots: Array<{
@@ -220,21 +276,28 @@ export async function syncCatalogEpisodeSlotsToSources(
   const saved: EpisodeSourceItem[] = [];
 
   for (const slot of slots) {
-    const extId = extractAnitube22ExternalId(slot.url);
+    if (!slot.url) continue;
+    const parsed = parseAnitube22PlayerUrl(slot.url);
+    const extId = parsed?.externalId || extractAnitube22ExternalId(slot.url);
     if (!extId) continue;
     const lang = normalizeSourceLang(
-      typeof slot.lang === "string" ? slot.lang : extractAnitube22Lang(slot.url),
+      typeof slot.lang === "string" ? slot.lang : (parsed?.lang || extractAnitube22Lang(slot.url)),
     );
     desiredKeys.add(`${lang}:${extId}`);
-    const row = await upsertEpisodeSource({
-      episodeId: cleanEpId,
-      provider: ANITUBE22_PROVIDER,
-      externalId: extId,
-      lang,
-      quality: slot.quality ?? null,
-      priority: slot.priority,
-    });
-    if (row) saved.push(row);
+    try {
+      const row = await upsertEpisodeSource({
+        episodeId: cleanEpId,
+        provider: ANITUBE22_PROVIDER,
+        fullUrl: slot.url,
+        externalId: extId,
+        lang,
+        quality: slot.quality ?? null,
+        priority: slot.priority,
+      });
+      if (row) saved.push(row);
+    } catch {
+      // ignore invalid or 404 sources during batch sync
+    }
   }
 
   if (options?.replaceAnitube22 && desiredKeys.size > 0) {
@@ -279,12 +342,6 @@ export async function deleteEpisodeSourceById(sourceId: string): Promise<boolean
   return Boolean(rows[0]?.id);
 }
 
-/**
- * Registra o resultado da verificação do índice da fonte:
- * - Erro de rede do cliente: nunca incrementa fail_count e nunca marca como 'broken'.
- * - HTTP 4xx/5xx do índice: incrementa fail_count e marca status = 'broken' apenas após 2 falhas consecutivas.
- * - HTTP 2xx/3xx: zera fail_count e garante status = 'active'.
- */
 export async function recordEpisodeSourceIndexResult(input: {
   sourceId: string;
   httpStatus?: number | null;
@@ -363,25 +420,29 @@ export async function recordEpisodeSourceIndexResult(input: {
   return { updated: false };
 }
 
-/**
- * Verifica no servidor se o índice `playerricas.php` para um `external_id` do anitube22
- * está respondendo (2xx/3xx) ou retornando erro 4xx/5xx.
- * Erros de transporte/rede são classificados como `networkError: true` e não invalidam a fonte.
- */
 export async function probeAnitube22SourceIndex(
-  externalId: string,
+  input: string | { externalId: string; namePath: string; urlPath: string; imgUrl?: string },
   options?: { fetchImpl?: typeof fetch; timeoutMs?: number },
 ): Promise<{
   ok: boolean;
   httpStatus: number | null;
   networkError: boolean;
 }> {
-  const cleanExtId = extractAnitube22ExternalId(externalId);
-  if (!cleanExtId) {
-    return { ok: false, httpStatus: 400, networkError: false };
+  let runtimeUrl = "";
+  if (typeof input === "object" && input !== null && input.namePath && input.urlPath) {
+    runtimeUrl = buildAnitube22PlayerUrlFromParts({
+      namePath: input.namePath,
+      urlPath: input.urlPath,
+      imgUrl: input.imgUrl || `${ANITUBE22_THUMB_BASE}/${input.externalId}/default.jpg`,
+    });
+  } else {
+    const cleanExtId = extractAnitube22ExternalId(typeof input === "string" ? input : input.externalId);
+    if (!cleanExtId) {
+      return { ok: false, httpStatus: 400, networkError: false };
+    }
+    runtimeUrl = buildAnitube22PlayerUrl(cleanExtId);
   }
 
-  const runtimeUrl = buildAnitube22PlayerUrl(cleanExtId);
   const fetchFn = options?.fetchImpl ?? fetch;
 
   try {
@@ -394,7 +455,7 @@ export async function probeAnitube22SourceIndex(
     try {
       await res.body?.cancel();
     } catch {
-      // ignore body cancel errors
+      // ignore
     }
 
     if (res.status >= 400) {
@@ -406,9 +467,6 @@ export async function probeAnitube22SourceIndex(
   }
 }
 
-/**
- * Verifica um registro de `episode_sources` por ID e atualiza `fail_count`/`status` apenas em resposta HTTP real.
- */
 export async function checkAndRecordEpisodeSource(
   sourceId: string,
   options?: {
@@ -451,7 +509,7 @@ export async function checkAndRecordEpisodeSource(
     `SELECT
        "id", "episode_id", "provider", "external_id", "lang", "quality",
        "priority", "status", "fail_count", "last_checked_at",
-       "page_url", "direct_url", "resolved_at"
+       "name_path", "url_path", "img_url", "page_url", "direct_url", "resolved_at"
      FROM "episode_sources"
      WHERE "id" = $1
      LIMIT 1;`,
@@ -471,7 +529,7 @@ export async function checkAndRecordEpisodeSource(
   }
 
   const mapped = mapSourceRow(row);
-  if (mapped.provider !== ANITUBE22_PROVIDER || !mapped.externalId) {
+  if (mapped.provider !== ANITUBE22_PROVIDER || (!mapped.namePath && !mapped.externalId)) {
     return {
       sourceId: cleanId,
       ok: true,
@@ -482,7 +540,12 @@ export async function checkAndRecordEpisodeSource(
     };
   }
 
-  const probe = await probeAnitube22SourceIndex(mapped.externalId, {
+  const probe = await probeAnitube22SourceIndex({
+    externalId: mapped.externalId,
+    namePath: row.name_path || `apphd/${mapped.externalId}.mp4`,
+    urlPath: row.url_path || `${ANITUBE22_R2_BASE}/${mapped.externalId}.mp4`,
+    imgUrl: row.img_url || undefined,
+  }, {
     fetchImpl: options?.fetchImpl,
   });
 
@@ -513,10 +576,6 @@ export async function checkAndRecordEpisodeSource(
   };
 }
 
-/**
- * Resolve a fonte do episódio a partir da tabela episode_sources.
- * Para provedor anitube22, gera apenas a URL de iframe em runtime sem armazenar `time=` nem usar proxy.
- */
 export async function resolveEpisode(
   episodeId: string,
   fallbackIframeUrl?: string | null,
@@ -537,10 +596,10 @@ export async function resolveEpisode(
       `SELECT
          "id", "episode_id", "provider", "external_id", "lang", "quality",
          "priority", "status", "fail_count", "last_checked_at",
-         "page_url", "direct_url", "resolved_at"
+         "name_path", "url_path", "img_url", "page_url", "direct_url", "resolved_at"
        FROM "episode_sources"
        WHERE "episode_id" = $1
-         AND COALESCE("status", 'active') <> 'broken'
+         AND COALESCE("status", 'active') NOT IN ('broken', 'incomplete')
        ORDER BY "priority" ASC, "created_at" ASC
        LIMIT 1;`,
       [cleanEpId],
@@ -550,9 +609,18 @@ export async function resolveEpisode(
     if (sourceRecord) {
       const mapped = mapSourceRow(sourceRecord);
       if (mapped.provider === ANITUBE22_PROVIDER && mapped.externalId) {
+        const resolvedIframeUrl =
+          sourceRecord.name_path && sourceRecord.url_path
+            ? buildAnitube22PlayerUrlFromParts({
+                namePath: sourceRecord.name_path,
+                urlPath: sourceRecord.url_path,
+                imgUrl: sourceRecord.img_url || `${ANITUBE22_THUMB_BASE}/${mapped.externalId}/default.jpg`,
+              })
+            : buildAnitube22PlayerUrl(mapped.externalId);
+
         return {
           directUrl: null,
-          iframeUrl: buildAnitube22PlayerUrl(mapped.externalId),
+          iframeUrl: resolvedIframeUrl,
           provider: ANITUBE22_PROVIDER,
           unavailable: false,
         };
