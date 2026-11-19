@@ -11,16 +11,23 @@ import {
   checkAndRecordEpisodeSource,
   deleteEpisodeSourceById,
   listEpisodeSources,
+  probeAnitube22PlayerUrl,
   recordEpisodeSourceIndexResult,
+  SourceValidationError,
   upsertEpisodeSource,
 } from "@/lib/sources";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 
-const checkSchema = z.object({
-  action: z.literal("check"),
-  sourceId: z.string().trim().min(1),
-  clientOffline: z.boolean().optional(),
-});
+const checkSchema = z
+  .object({
+    action: z.literal("check"),
+    sourceId: z.string().trim().min(1).optional(),
+    playerUrl: z.string().trim().min(1).max(2048).optional(),
+    clientOffline: z.boolean().optional(),
+  })
+  .refine((data) => Boolean(data.sourceId || data.playerUrl), {
+    message: "sourceId ou playerUrl é obrigatório.",
+  });
 
 const reportSchema = z.object({
   action: z.literal("report"),
@@ -35,7 +42,9 @@ const upsertSchema = z.object({
   animeId: z.string().trim().max(128).optional().nullable(),
   provider: z.string().trim().max(64).optional().default(ANITUBE22_PROVIDER),
   externalId: z.string().trim().min(1).max(2048),
-  lang: z.enum(["sub", "dub"]).optional().default("sub"),
+  lang: z.enum(["sub", "dub"], {
+    message: "Selecione o idioma da fonte (legendado ou dublado).",
+  }),
   quality: z.string().trim().max(32).optional().nullable(),
   priority: z.number().int().min(0).max(1000).optional().default(0),
 });
@@ -116,7 +125,13 @@ export const Route = createFileRoute("/api/episode-sources")({
           const payload = parsed.data;
 
           if (payload.action === "check") {
-            const result = await checkAndRecordEpisodeSource(payload.sourceId, {
+            if (payload.sourceId) {
+              const result = await checkAndRecordEpisodeSource(payload.sourceId, {
+                clientOffline: payload.clientOffline,
+              });
+              return Response.json(result);
+            }
+            const result = await probeAnitube22PlayerUrl(payload.playerUrl || "", {
               clientOffline: payload.clientOffline,
             });
             return Response.json(result);
@@ -171,6 +186,9 @@ export const Route = createFileRoute("/api/episode-sources")({
           }
           if (err instanceof AdminGuardError) {
             return Response.json({ ok: false, error: err.message }, { status: err.status });
+          }
+          if (err instanceof SourceValidationError) {
+            return Response.json({ ok: false, error: err.message }, { status: err.statusCode });
           }
           console.error("[api/episode-sources] Erro:", err);
           return Response.json(

@@ -17,7 +17,12 @@ import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useHikariStore } from "@/lib/store";
 import type { LocalAnime } from "@/lib/types";
-import { isAnitube22SourceInput } from "@/lib/anitube22";
+import {
+  ANITUBE22_INVALID_URL_ERROR,
+  isLegacyAnitube22Ref,
+  parseAnitube22PlayerUrl,
+  stripTimeQueryParam,
+} from "@/lib/anitube22";
 import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +58,14 @@ export function validateHttpVideoUrl(url: string): {
     return { valid: false, error: "O endereço de vídeo não pode estar em branco." };
   }
 
-  if (isAnitube22SourceInput(trimmed)) {
+  if (isLegacyAnitube22Ref(trimmed) || /^\d{3,16}$/.test(trimmed)) {
+    return { valid: false, error: ANITUBE22_INVALID_URL_ERROR };
+  }
+
+  if (trimmed.toLowerCase().includes("playerricas.php")) {
+    if (!parseAnitube22PlayerUrl(trimmed)) {
+      return { valid: false, error: ANITUBE22_INVALID_URL_ERROR };
+    }
     return { valid: true };
   }
 
@@ -202,7 +214,9 @@ export function QuickPlayerUpdate() {
         toast.info("A área de transferência está vazia.");
         return;
       }
-      const normalized = sanitizePlayableVideoUrl(trimmed) ?? trimmed;
+      const normalized = parseAnitube22PlayerUrl(trimmed)
+        ? stripTimeQueryParam(trimmed)
+        : (sanitizePlayableVideoUrl(trimmed) ?? trimmed);
       setUrlInput(normalized);
       const validation = validateHttpVideoUrl(normalized);
       if (validation.valid) {
@@ -499,7 +513,7 @@ export function QuickPlayerUpdate() {
                   <Input
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
-                    placeholder="ID anitube22 (ex.: 589535) ou URL (https://.../video.mp4 ou .m3u8)"
+                    placeholder="URL completa do playerricas.php ou URL direta (.mp4 / .m3u8)"
                     className="studio-input studio-mono h-10 pr-9 text-xs sm:text-sm"
                   />
                   {urlInput && (

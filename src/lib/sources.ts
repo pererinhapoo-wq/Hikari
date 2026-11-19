@@ -1,14 +1,14 @@
 import { getSql } from "@/lib/db";
 import {
+  ANITUBE22_INVALID_URL_ERROR,
+  ANITUBE22_NOT_FOUND_ERROR,
   ANITUBE22_PROVIDER,
-  ANITUBE22_THUMB_BASE,
-  ANITUBE22_R2_BASE,
-  buildAnitube22PlayerUrl,
+  ANITUBE22_WRONG_LANG_ERROR,
   buildAnitube22PlayerUrlFromParts,
-  extractAnitube22ExternalId,
-  extractAnitube22Lang,
+  detectEpisodeLanguageHint,
   normalizeSourceLang,
   parseAnitube22PlayerUrl,
+  parseExplicitSourceLang,
   type EpisodeSourceItem,
   type SourceLang,
   type SourceStatus,
@@ -20,6 +20,16 @@ import {
   setRedisEpisodeSourceWithFence,
   invalidateRedisEpisodeSource,
 } from "@/lib/redis";
+
+export class SourceValidationError extends Error {
+  statusCode: number;
+
+  constructor(message: string, statusCode = 400) {
+    super(message);
+    this.name = "SourceValidationError";
+    this.statusCode = statusCode;
+  }
+}
 
 export interface ResolvedEpisodeSource {
   directUrl: string | null;
@@ -47,20 +57,33 @@ interface RawEpisodeSourceRow {
   resolved_at: string | null;
 }
 
+function extractNumericMp4Id(value?: string | null): string {
+  if (!value || typeof value !== "string") return "";
+  return value.match(/(\d+)\.mp4/i)?.[1] || "";
+}
+
 function mapSourceRow(row: RawEpisodeSourceRow): EpisodeSourceItem {
+  const namePath = row.name_path?.trim() || null;
+  const urlPath = row.url_path?.trim() || null;
+  const imgUrl = row.img_url?.trim() || null;
+
   const externalId =
     (row.external_id && row.external_id.trim()) ||
-    extractAnitube22ExternalId(row.page_url) ||
-    extractAnitube22ExternalId(row.direct_url) ||
+    extractNumericMp4Id(namePath) ||
+    extractNumericMp4Id(urlPath) ||
     "";
-  const status =
-    row.status === "broken"
+
+  const hasRequiredAnitubePaths =
+    row.provider !== ANITUBE22_PROVIDER || (Boolean(namePath) && Boolean(urlPath));
+
+  const status: SourceStatus = !hasRequiredAnitubePaths
+    ? "incomplete"
+    : row.status === "broken"
       ? "broken"
       : row.status === "incomplete"
         ? "incomplete"
-        : (!row.name_path || !row.url_path) && row.provider === ANITUBE22_PROVIDER
-          ? "incomplete"
-          : "active";
+        : "active";
+
   return {
     id: row.id,
     episodeId: row.episode_id,
@@ -72,10 +95,47 @@ function mapSourceRow(row: RawEpisodeSourceRow): EpisodeSourceItem {
     status,
     failCount: Number.isFinite(Number(row.fail_count)) ? Number(row.fail_count) : 0,
     lastCheckedAt: row.last_checked_at ?? null,
-    namePath: row.name_path ?? null,
-    urlPath: row.url_path ?? null,
-    imgUrl: row.img_url ?? null,
+    namePath,
+    urlPath,
+    imgUrl,
   };
+}
+
+async function getEpisodeLanguageHintFromDb(episodeId: string): Promise<SourceLang | null> {
+  const sql = await getSql();
+  const rows = await sql.query<{
+    episodeTitle: string | null;
+    seasonTitle: string | null;
+    animeTitle: string | null;
+    animeTitleEnglish: string | null;
+    animeTitleNative: string | null;
+  }>(
+    `SELECT
+       e."title" AS "episodeTitle",
+       s."title" AS "seasonTitle",
+       a."title" AS "animeTitle",
+       a."titleEnglish" AS "animeTitleEnglish",
+       a."titleNative" AS "animeTitleNative"
+     FROM "catalog_episode" e
+     LEFT JOIN "catalog_season" s
+       ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
+     LEFT JOIN "catalog_anime" a
+       ON a."id" = e."animeId"
+     WHERE e."id" = $1
+     LIMIT 1;`,
+    [episodeId],
+  );
+
+  const row = rows[0];
+  if (!row) return null;
+
+  return detectEpisodeLanguageHint([
+    row.episodeTitle,
+    row.seasonTitle,
+    row.animeTitle,
+    row.animeTitleEnglish,
+    row.animeTitleNative,
+  ]);
 }
 
 export async function listEpisodeSources(
@@ -94,8 +154,9 @@ export async function listEpisodeSources(
 
   if (!options?.includeBroken) {
     conditions.push(`COALESCE("status", 'active') NOT IN ('broken', 'incomplete')`);
-  } else {
-    conditions.push(`COALESCE("status", 'active') <> 'broken'`);
+    conditions.push(
+      `("provider" <> '${ANITUBE22_PROVIDER}' OR (COALESCE("name_path", '') <> '' AND COALESCE("url_path", '') <> ''))`,
+    );
   }
   if (options?.lang) {
     params.push(normalizeSourceLang(options.lang));
@@ -129,80 +190,69 @@ export async function listEpisodeSources(
   return rows.map(mapSourceRow);
 }
 
-export async function upsertEpisodeSource(input: {
-  episodeId: string;
-  provider?: string;
-  externalId?: string;
-  fullUrl?: string;
-  namePath?: string;
-  urlPath?: string;
-  imgUrl?: string;
-  lang?: SourceLang | string | null;
-  quality?: string | null;
-  priority?: number;
-}): Promise<EpisodeSourceItem> {
+export async function upsertEpisodeSource(
+  input: {
+    episodeId: string;
+    provider?: string;
+    externalId?: string;
+    fullUrl?: string;
+    namePath?: string;
+    urlPath?: string;
+    imgUrl?: string;
+    lang?: SourceLang | string | null;
+    quality?: string | null;
+    priority?: number;
+  },
+  options?: {
+    fetchImpl?: typeof fetch;
+    skipProbe?: boolean;
+  },
+): Promise<EpisodeSourceItem> {
   const episodeId = input.episodeId?.trim();
+  if (!episodeId) {
+    throw new SourceValidationError("episodeId é obrigatório.", 400);
+  }
+
   const provider = (input.provider || ANITUBE22_PROVIDER).trim().toLowerCase();
 
-  let namePath = input.namePath?.trim() || "";
-  let urlPath = input.urlPath?.trim() || "";
-  let imgUrl = input.imgUrl?.trim() || "";
-  let extId = input.externalId?.trim() || "";
+  const lang = parseExplicitSourceLang(typeof input.lang === "string" ? input.lang : null);
+  if (!lang) {
+    throw new SourceValidationError("Selecione o idioma da fonte (legendado ou dublado).", 400);
+  }
 
-  const fullInput = input.fullUrl || input.externalId || "";
+  const fullInput = (input.fullUrl || input.externalId || "").trim();
   const parsed = parseAnitube22PlayerUrl(fullInput);
-  if (parsed) {
-    extId = parsed.externalId;
-    namePath = parsed.namePath;
-    urlPath = parsed.urlPath;
-    imgUrl = parsed.imgUrl;
-  } else if (!extId && namePath) {
-    const m = namePath.match(/(\d+)\.mp4/i);
-    if (m) extId = m[1];
-  } else if (!extId && fullInput && /^\d{3,16}$/.test(fullInput)) {
-    extId = fullInput;
+
+  if (!parsed) {
+    throw new SourceValidationError(ANITUBE22_INVALID_URL_ERROR, 400);
   }
 
-  if (extId && (!namePath || !urlPath)) {
-    namePath = namePath || `apphd/${extId}.mp4`;
-    urlPath = urlPath || `${ANITUBE22_R2_BASE}/${extId}.mp4`;
-    imgUrl = imgUrl || `${ANITUBE22_THUMB_BASE}/${extId}/default.jpg`;
+  const extId = parsed.externalId;
+  const namePath = parsed.namePath;
+  const urlPath = parsed.urlPath;
+  const imgUrl = parsed.imgUrl;
+
+  const expectedLang = await getEpisodeLanguageHintFromDb(episodeId);
+  if (expectedLang && expectedLang !== lang) {
+    throw new SourceValidationError(ANITUBE22_WRONG_LANG_ERROR, 400);
   }
 
-  if (!episodeId || !extId || !namePath || !urlPath) {
-    throw new Error("URL completa do player anitube22 (com name e url) é obrigatória.");
+  if (provider === ANITUBE22_PROVIDER && !options?.skipProbe) {
+    const probe = await probeAnitube22SourceIndex(
+      {
+        externalId: extId,
+        namePath,
+        urlPath,
+        imgUrl,
+      },
+      { fetchImpl: options?.fetchImpl },
+    );
+    if (!probe.networkError && probe.httpStatus === 404) {
+      throw new SourceValidationError(ANITUBE22_NOT_FOUND_ERROR, 404);
+    }
   }
-
-  const lang = normalizeSourceLang(
-    typeof input.lang === "string" ? input.lang : (parsed?.lang || extractAnitube22Lang(fullInput)),
-  );
 
   const sql = await getSql();
-  const epRows = await sql.query<{ title?: string }>(
-    `SELECT "title" FROM "catalog_episode" WHERE "id" = $1 LIMIT 1;`,
-    [episodeId],
-  );
-  if (epRows[0]?.title) {
-    const epTitle = epRows[0].title.toLowerCase();
-    const isEpisodeDubbed = /\bdub\b|\bdublado\b|\bdublada\b|\bdublagem\b|\bpt-br\b/i.test(epTitle);
-    const isEpisodeSubbed = /\bleg\b|\blegendado\b|\blegendada\b|\bsub\b|\bsubbed\b|\boriginal\b/i.test(epTitle);
-    const isSourceDub = lang === "dub";
-
-    if (isEpisodeDubbed && !isSourceDub) {
-      throw new Error("O idioma da fonte (legendado) não corresponde ao episódio (dublado).");
-    }
-    if (isEpisodeSubbed && isSourceDub) {
-      throw new Error("O idioma da fonte (dublado) não corresponde ao episódio (legendado).");
-    }
-  }
-
-  if (provider === ANITUBE22_PROVIDER) {
-    const probe = await probeAnitube22SourceIndex({ externalId: extId, namePath, urlPath, imgUrl });
-    if (!probe.networkError && probe.httpStatus === 404) {
-      throw new Error("ID não encontrado no provedor.");
-    }
-  }
-
   const quality = input.quality?.trim() || null;
   const priority =
     typeof input.priority === "number" && Number.isFinite(input.priority)
@@ -268,34 +318,45 @@ export async function syncCatalogEpisodeSlotsToSources(
     lang?: SourceLang | string | null;
     quality?: string | null;
   }>,
-  options?: { replaceAnitube22?: boolean },
+  options?: { replaceAnitube22?: boolean; fetchImpl?: typeof fetch; skipProbe?: boolean },
 ): Promise<EpisodeSourceItem[]> {
   const cleanEpId = episodeId?.trim();
   if (!cleanEpId) return [];
 
   const desiredKeys = new Set<string>();
   const saved: EpisodeSourceItem[] = [];
+  let cachedHint: SourceLang | null | undefined = undefined;
 
   for (const slot of slots) {
     if (!slot.url) continue;
     const parsed = parseAnitube22PlayerUrl(slot.url);
-    const extId = parsed?.externalId || extractAnitube22ExternalId(slot.url);
-    if (!extId) continue;
-    const lang = normalizeSourceLang(
-      typeof slot.lang === "string" ? slot.lang : (parsed?.lang || extractAnitube22Lang(slot.url)),
-    );
-    const urlPath = parsed?.urlPath || slot.url;
-    desiredKeys.add(`${lang}:${urlPath}`);
+    if (!parsed) continue;
+
+    let lang = parseExplicitSourceLang(typeof slot.lang === "string" ? slot.lang : null);
+    if (!lang) {
+      if (cachedHint === undefined) {
+        cachedHint = await getEpisodeLanguageHintFromDb(cleanEpId);
+      }
+      lang = cachedHint ?? "sub";
+    }
+
+    desiredKeys.add(`${lang}:${parsed.urlPath}`);
     try {
-      const row = await upsertEpisodeSource({
-        episodeId: cleanEpId,
-        provider: ANITUBE22_PROVIDER,
-        fullUrl: slot.url,
-        externalId: extId,
-        lang,
-        quality: slot.quality ?? null,
-        priority: slot.priority,
-      });
+      const row = await upsertEpisodeSource(
+        {
+          episodeId: cleanEpId,
+          provider: ANITUBE22_PROVIDER,
+          fullUrl: slot.url,
+          externalId: parsed.externalId,
+          lang,
+          quality: slot.quality ?? null,
+          priority: slot.priority,
+        },
+        {
+          fetchImpl: options?.fetchImpl,
+          skipProbe: options?.skipProbe,
+        },
+      );
       if (row) saved.push(row);
     } catch {
       // ignore invalid or 404 sources during batch sync
@@ -380,6 +441,8 @@ export async function recordEpisodeSourceIndexResult(input: {
          "status" = 'active',
          "last_checked_at" = NOW()
        WHERE "id" = $1
+         AND COALESCE("status", 'active') <> 'incomplete'
+         AND ("provider" <> '${ANITUBE22_PROVIDER}' OR (COALESCE("name_path", '') <> '' AND COALESCE("url_path", '') <> ''))
        RETURNING "status", "fail_count", "last_checked_at";`,
       [cleanId],
     );
@@ -407,6 +470,8 @@ export async function recordEpisodeSourceIndexResult(input: {
          END,
          "last_checked_at" = NOW()
        WHERE "id" = $1
+         AND COALESCE("status", 'active') <> 'incomplete'
+         AND ("provider" <> '${ANITUBE22_PROVIDER}' OR (COALESCE("name_path", '') <> '' AND COALESCE("url_path", '') <> ''))
        RETURNING "status", "fail_count", "last_checked_at";`,
       [cleanId],
     );
@@ -422,8 +487,24 @@ export async function recordEpisodeSourceIndexResult(input: {
   return { updated: false };
 }
 
+function isProviderSoft404Body(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return false;
+  if (
+    normalized === "deleted 404 not found" ||
+    normalized === "404 not found" ||
+    /^deleted\s+404\s+not\s+found\b/i.test(normalized)
+  ) {
+    return true;
+  }
+  if (normalized.length < 300 && /deleted\s*404\s*not\s*found/i.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
 export async function probeAnitube22SourceIndex(
-  input: string | { externalId: string; namePath: string; urlPath: string; imgUrl?: string },
+  input: string | { externalId?: string; namePath: string; urlPath: string; imgUrl?: string },
   options?: { fetchImpl?: typeof fetch; timeoutMs?: number },
 ): Promise<{
   ok: boolean;
@@ -431,18 +512,20 @@ export async function probeAnitube22SourceIndex(
   networkError: boolean;
 }> {
   let runtimeUrl = "";
-  if (typeof input === "object" && input !== null && input.namePath && input.urlPath) {
+  if (typeof input === "object" && input !== null && input.namePath?.trim() && input.urlPath?.trim()) {
     runtimeUrl = buildAnitube22PlayerUrlFromParts({
       namePath: input.namePath,
       urlPath: input.urlPath,
-      imgUrl: input.imgUrl || `${ANITUBE22_THUMB_BASE}/${input.externalId}/default.jpg`,
+      imgUrl: input.imgUrl || "",
     });
-  } else {
-    const cleanExtId = extractAnitube22ExternalId(typeof input === "string" ? input : input.externalId);
-    if (!cleanExtId) {
+  } else if (typeof input === "string") {
+    const parsed = parseAnitube22PlayerUrl(input);
+    if (!parsed) {
       return { ok: false, httpStatus: 400, networkError: false };
     }
-    runtimeUrl = buildAnitube22PlayerUrl(cleanExtId);
+    runtimeUrl = buildAnitube22PlayerUrlFromParts(parsed);
+  } else {
+    return { ok: false, httpStatus: 400, networkError: false };
   }
 
   const fetchFn = options?.fetchImpl ?? fetch;
@@ -454,19 +537,83 @@ export async function probeAnitube22SourceIndex(
       signal: AbortSignal.timeout(options?.timeoutMs ?? 6000),
     });
 
-    try {
-      await res.body?.cancel();
-    } catch {
-      // ignore
+    const contentType = res.headers?.get("content-type")?.toLowerCase() || "";
+    let bodyText = "";
+    if (!contentType || contentType.includes("text") || contentType.includes("html") || contentType.includes("json")) {
+      try {
+        bodyText = await res.text();
+      } catch {
+        // ignore
+      }
+    } else {
+      try {
+        await res.body?.cancel();
+      } catch {
+        // ignore
+      }
     }
 
     if (res.status >= 400) {
       return { ok: false, httpStatus: res.status, networkError: false };
     }
+
+    if (bodyText && isProviderSoft404Body(bodyText)) {
+      return { ok: false, httpStatus: 404, networkError: false };
+    }
+
     return { ok: true, httpStatus: res.status, networkError: false };
   } catch {
     return { ok: false, httpStatus: null, networkError: true };
   }
+}
+
+export async function probeAnitube22PlayerUrl(
+  rawUrl: string,
+  options?: { clientOffline?: boolean; fetchImpl?: typeof fetch },
+): Promise<{
+  ok: boolean;
+  httpStatus: number | null;
+  clientNetworkError: boolean;
+  status: SourceStatus;
+}> {
+  if (options?.clientOffline) {
+    return {
+      ok: false,
+      httpStatus: null,
+      clientNetworkError: true,
+      status: "active",
+    };
+  }
+
+  const parsed = parseAnitube22PlayerUrl(rawUrl);
+  if (!parsed) {
+    return {
+      ok: false,
+      httpStatus: null,
+      clientNetworkError: false,
+      status: "incomplete",
+    };
+  }
+
+  const probe = await probeAnitube22SourceIndex(parsed, {
+    fetchImpl: options?.fetchImpl,
+  });
+
+  if (probe.networkError) {
+    return {
+      ok: false,
+      httpStatus: null,
+      clientNetworkError: true,
+      status: "active",
+    };
+  }
+
+  return {
+    ok: probe.ok,
+    httpStatus: probe.httpStatus,
+    clientNetworkError: false,
+    status: probe.ok ? "active" : "broken",
+  };
 }
 
 export async function checkAndRecordEpisodeSource(
@@ -531,7 +678,7 @@ export async function checkAndRecordEpisodeSource(
   }
 
   const mapped = mapSourceRow(row);
-  if (mapped.provider !== ANITUBE22_PROVIDER || (!mapped.namePath && !mapped.externalId)) {
+  if (mapped.provider !== ANITUBE22_PROVIDER) {
     return {
       sourceId: cleanId,
       ok: true,
@@ -542,14 +689,28 @@ export async function checkAndRecordEpisodeSource(
     };
   }
 
-  const probe = await probeAnitube22SourceIndex({
-    externalId: mapped.externalId,
-    namePath: row.name_path || `apphd/${mapped.externalId}.mp4`,
-    urlPath: row.url_path || `${ANITUBE22_R2_BASE}/${mapped.externalId}.mp4`,
-    imgUrl: row.img_url || undefined,
-  }, {
-    fetchImpl: options?.fetchImpl,
-  });
+  if (mapped.status === "incomplete" || !row.name_path?.trim() || !row.url_path?.trim()) {
+    return {
+      sourceId: cleanId,
+      ok: false,
+      httpStatus: null,
+      clientNetworkError: false,
+      status: "incomplete",
+      failCount: mapped.failCount,
+    };
+  }
+
+  const probe = await probeAnitube22SourceIndex(
+    {
+      externalId: mapped.externalId,
+      namePath: row.name_path,
+      urlPath: row.url_path,
+      imgUrl: row.img_url || "",
+    },
+    {
+      fetchImpl: options?.fetchImpl,
+    },
+  );
 
   if (probe.networkError) {
     return {
@@ -602,6 +763,7 @@ export async function resolveEpisode(
        FROM "episode_sources"
        WHERE "episode_id" = $1
          AND COALESCE("status", 'active') NOT IN ('broken', 'incomplete')
+         AND ("provider" <> '${ANITUBE22_PROVIDER}' OR (COALESCE("name_path", '') <> '' AND COALESCE("url_path", '') <> ''))
        ORDER BY "priority" ASC, "created_at" ASC
        LIMIT 1;`,
       [cleanEpId],
@@ -610,15 +772,16 @@ export async function resolveEpisode(
     const sourceRecord = rows[0];
     if (sourceRecord) {
       const mapped = mapSourceRow(sourceRecord);
-      if (mapped.provider === ANITUBE22_PROVIDER && mapped.externalId) {
-        const resolvedIframeUrl =
-          sourceRecord.name_path && sourceRecord.url_path
-            ? buildAnitube22PlayerUrlFromParts({
-                namePath: sourceRecord.name_path,
-                urlPath: sourceRecord.url_path,
-                imgUrl: sourceRecord.img_url || `${ANITUBE22_THUMB_BASE}/${mapped.externalId}/default.jpg`,
-              })
-            : buildAnitube22PlayerUrl(mapped.externalId);
+      if (
+        mapped.provider === ANITUBE22_PROVIDER &&
+        sourceRecord.name_path?.trim() &&
+        sourceRecord.url_path?.trim()
+      ) {
+        const resolvedIframeUrl = buildAnitube22PlayerUrlFromParts({
+          namePath: sourceRecord.name_path,
+          urlPath: sourceRecord.url_path,
+          imgUrl: sourceRecord.img_url || "",
+        });
 
         return {
           directUrl: null,

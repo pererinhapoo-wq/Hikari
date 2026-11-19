@@ -301,29 +301,31 @@ export function Player({
         </>
       ) : (
         <>
-          {(() => {
-            const activeIframeSrc =
-              iframeReloadTs && isAnitube22PlayerUrl(iframeSrc)
-                ? iframeSrc.replace(/([?&])time=\d+/i, `$1time=${iframeReloadTs}`)
-                : iframeSrc;
-            return (
-              <iframe
-                key={`${activeIframeSrc}-${iframeReloadCount}`}
-                src={activeIframeSrc}
-                title={title}
-                referrerPolicy="no-referrer-when-downgrade"
-                allow="autoplay; fullscreen; picture-in-picture"
-                allowFullScreen
-                onLoad={() => setIframeError(false)}
-                onError={() => setIframeError(true)}
-              />
-            );
-          })()}
+          {!iframeError
+            ? (() => {
+                const activeIframeSrc =
+                  iframeReloadTs && isAnitube22PlayerUrl(iframeSrc)
+                    ? iframeSrc.replace(/([?&])time=\d+/i, `$1time=${iframeReloadTs}`)
+                    : iframeSrc;
+                return (
+                  <iframe
+                    key={`${activeIframeSrc}-${iframeReloadCount}`}
+                    src={activeIframeSrc}
+                    title={title}
+                    referrerPolicy="no-referrer-when-downgrade"
+                    allow="autoplay; fullscreen; picture-in-picture"
+                    allowFullScreen
+                    onLoad={() => setIframeError(false)}
+                    onError={() => setIframeError(true)}
+                  />
+                );
+              })()
+            : null}
 
           {iframeError && (
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/85 p-6 text-center">
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-[#08070d] p-6 text-center">
               <p className="text-sm font-medium text-white">
-                Falha ao carregar o player da fonte.
+                Não foi possível carregar este vídeo no provedor.
               </p>
               <button
                 type="button"

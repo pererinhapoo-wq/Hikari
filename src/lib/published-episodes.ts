@@ -13,11 +13,9 @@ import {
 } from "@/lib/catalog-storage";
 import type { PublicEpisodeRow, PublicEpisodesResult } from "@/lib/catalog-episodes";
 import {
-  buildAnitube22PlayerUrl,
-  extractAnitube22ExternalId,
-  extractAnitube22Lang,
-  formatDurableAnitube22Ref,
-  isAnitube22SourceInput,
+  buildAnitube22PlayerUrlFromParts,
+  isLegacyAnitube22Ref,
+  parseAnitube22PlayerUrl,
   stripTimeQueryParam,
 } from "@/lib/anitube22";
 
@@ -230,8 +228,12 @@ export function isHikariPlayableUrl(url?: string | null): boolean {
     return false;
   }
 
-  if (extractAnitube22ExternalId(trimmed) !== null) {
-    return true;
+  if (isLegacyAnitube22Ref(trimmed)) {
+    return false;
+  }
+
+  if (lower.includes("playerricas.php")) {
+    return parseAnitube22PlayerUrl(trimmed) !== null;
   }
 
   let parsed: URL;
@@ -290,9 +292,13 @@ export function resolvePlayableStreamUrl(url: string | null | undefined): string
     }
   }
 
-  const anitubeId = extractAnitube22ExternalId(trimmed);
-  if (anitubeId) {
-    return buildAnitube22PlayerUrl(anitubeId);
+  if (isLegacyAnitube22Ref(trimmed)) {
+    return null;
+  }
+
+  if (trimmed.toLowerCase().includes("playerricas.php")) {
+    const parsedAnitube = parseAnitube22PlayerUrl(trimmed);
+    return parsedAnitube ? buildAnitube22PlayerUrlFromParts(parsedAnitube) : null;
   }
 
   return trimmed;
@@ -435,9 +441,15 @@ export function sanitizePlayableVideoUrl(url?: string | null): string | null {
   const trimmed = url.trim();
   if (!trimmed || trimmed === "#") return null;
 
-  const anitubeId = extractAnitube22ExternalId(trimmed);
-  if (anitubeId) {
-    return formatDurableAnitube22Ref(anitubeId, extractAnitube22Lang(trimmed));
+  if (isLegacyAnitube22Ref(trimmed)) {
+    return null;
+  }
+
+  if (trimmed.toLowerCase().includes("playerricas.php")) {
+    if (!parseAnitube22PlayerUrl(trimmed)) {
+      return null;
+    }
+    return stripTimeQueryParam(trimmed);
   }
 
   if (!isHikariPlayableUrl(trimmed)) {
@@ -1514,19 +1526,19 @@ export function cleanEpisodeDisplay(
       return `Episódio ${episodeNumber}`;
     }
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    title = title.replace(new RegExp(`^${escaped}\\s*[-–—:]*\\s*`, "i"), "").trim();
-    title = title.replace(new RegExp(`\\s*[-–—:]*\\s*${escaped}$`, "i"), "").trim();
+    title = title.replace(new RegExp(`^${escaped}\\s*[-–—:·]*\\s*`, "i"), "").trim();
+    title = title.replace(new RegExp(`\\s*[-–—:·]*\\s*${escaped}$`, "i"), "").trim();
     title = title.replace(new RegExp(`[\\(\\[]${escaped}[\\)\\]]`, "i"), "").trim();
   }
 
   // 2. Remove pontuações e prefixos de Temporada / Season: ex. "Season 1", "Temporada 1", "S1", "T1"
-  title = title.replace(/^[-–—:/|.,()[\]{}\s]+/, "").trim();
-  title = title.replace(/^(?:season|temporada|s|t)\s*\d+\s*[-–—:xX/|\s]*/i, "").trim();
+  title = title.replace(/^[-–—:/|.,·()[\]{}\s]+/, "").trim();
+  title = title.replace(/^(?:season|temporada|s|t)\s*\d+\s*[-–—:·xX/|\s]*/i, "").trim();
 
   // 3. Loop para remover tokens repetidos de episódio no início:
   // "Episode 25", "Episódio 25", "Ep 25", "EP. 25", "E25", "Capítulo 25", "#25", "(Episode 25)", ou "25 -", "01."
   const epTokenRegex = new RegExp(
-    `^(?:[([{\\s]*(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)\\s*0*${episodeNumber}[)}\\]\\s]*|[([{\\s]*#\\s*0*${episodeNumber}[)}\\]\\s]*|[([{\\s]*0*${episodeNumber}[)}\\]\\s]*)\\s*[-–—:xX/|\\s.]*`,
+    `^(?:[([{\\s]*(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)\\s*0*${episodeNumber}[)}\\]\\s]*|[([{\\s]*#\\s*0*${episodeNumber}[)}\\]\\s]*|[([{\\s]*0*${episodeNumber}[)}\\]\\s]*)\\s*[-–—:·xX/|\\s.]*`,
     "i",
   );
   let prev = "";
@@ -1536,7 +1548,7 @@ export function cleanEpisodeDisplay(
   }
 
   // Remove tokens genéricos residuais como "Episódio 1 - Episódio 1" ou "Ep. 01"
-  const genericEpTokenRegex = /^(?:[([{\s]*(?:epis[oó]dio|episode|ep\.?|cap[ií]tulo)\s*\d*[)}\]\s]*)\s*[-–—:xX/|\s.]*/i;
+  const genericEpTokenRegex = /^(?:[([{\s]*(?:epis[oó]dio|episode|ep\.?|cap[ií]tulo)\s*\d*[)}\]\s]*)\s*[-–—:·xX/|\s.]*/i;
   prev = "";
   while (title && prev !== title && genericEpTokenRegex.test(title)) {
     prev = title;
@@ -1544,8 +1556,8 @@ export function cleanEpisodeDisplay(
   }
 
   // 4. Remove duplicações residuais no final da string (ex.: "- Episode 25", "(Episode 25)")
-  title = title.replace(/[-–—:]\s*(?:epis[oó]dio|episode|ep\.?)\s*0*\d*$/i, "").trim();
-  title = title.replace(/^[-–—:/|.,\s"'\\]+/, "").replace(/[-–—:/|.,\s"'\\]+$/, "").trim();
+  title = title.replace(/[-–—:·]\s*(?:epis[oó]dio|episode|ep\.?)\s*0*\d*$/i, "").trim();
+  title = title.replace(/^[-–—:/|.,·\s"'\\]+/, "").replace(/[-–—:/|.,·\s"'\\]+$/, "").trim();
 
   // 5. Se o título resultante for vazio, for apenas o número ou palavras de episódio
   if (
@@ -1990,7 +2002,7 @@ export async function extractVideoThumbnailCandidates(
     };
   }
 
-  if (isAnitube22SourceInput(trimmed)) {
+  if (isLegacyAnitube22Ref(trimmed) || parseAnitube22PlayerUrl(trimmed) !== null) {
     return { candidates: [] };
   }
 

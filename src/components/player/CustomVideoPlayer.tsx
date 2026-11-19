@@ -293,6 +293,8 @@ export interface CustomVideoPlayerProps {
   onFallbackToIframe?: () => void;
   onReloadSource?: () => void;
   iframeLoadError?: boolean;
+  iframeChecking?: boolean;
+  iframeErrorMessage?: string | null;
   onIframeError?: () => void;
   iframeReloadKey?: string | number;
 }
@@ -604,6 +606,8 @@ interface HikariPlayerSurfaceProps {
   onFallbackToIframe?: () => void;
   onReloadSource?: () => void;
   iframeLoadError?: boolean;
+  iframeChecking?: boolean;
+  iframeErrorMessage?: string | null;
   onIframeError?: () => void;
   iframeReloadKey?: string | number;
 }
@@ -632,6 +636,8 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   onFallbackToIframe,
   onReloadSource,
   iframeLoadError,
+  iframeChecking,
+  iframeErrorMessage,
   onIframeError,
   iframeReloadKey,
 }) => {
@@ -2031,25 +2037,36 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     return (
       <div
         ref={containerRef}
-        className={`hikari-video-player relative w-full aspect-video min-h-[240px] md:min-h-[520px] flex items-center justify-center select-none border border-white/10 shadow-[0_20px_70px_rgba(0,0,0,0.45)] outline-none rounded-2xl overflow-hidden bg-black ${className || ''}`}
+        className={`hikari-video-player relative w-full aspect-video min-h-[240px] md:min-h-[520px] flex items-center justify-center select-none border border-white/10 shadow-[0_20px_70px_rgba(0,0,0,0.45)] outline-none rounded-2xl overflow-hidden bg-[#08070d] ${className || ''}`}
       >
-        <iframe
-          key={`${activeIframeSrc}-${iframeReloadKey ?? internalIframeReloadCount}`}
-          src={activeIframeSrc}
-          title={video?.title || 'Player do Provedor'}
-          className="size-full border-0"
-          referrerPolicy="no-referrer-when-downgrade"
-          allow="autoplay; fullscreen; picture-in-picture"
-          allowFullScreen
-          onLoad={() => setLocalIframeError(false)}
-          onError={() => {
-            setLocalIframeError(true);
-            onIframeError?.();
-          }}
-        />
+        {!showIframeErrorBanner && !iframeChecking ? (
+          <iframe
+            key={`${activeIframeSrc}-${iframeReloadKey ?? internalIframeReloadCount}`}
+            src={activeIframeSrc}
+            title={video?.title || 'Player do Provedor'}
+            className="size-full border-0"
+            referrerPolicy="no-referrer-when-downgrade"
+            allow="autoplay; fullscreen; picture-in-picture"
+            allowFullScreen
+            onLoad={() => setLocalIframeError(false)}
+            onError={() => {
+              setLocalIframeError(true);
+              onIframeError?.();
+            }}
+          />
+        ) : null}
+
+        {iframeChecking && !showIframeErrorBanner && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#08070d] p-6 text-center">
+            <div className="size-8 animate-spin rounded-full border-2 border-white/10 border-t-[#a855f7]" />
+            <p className="text-xs font-medium text-slate-300">
+              Verificando disponibilidade da fonte...
+            </p>
+          </div>
+        )}
 
         {showIframeErrorBanner && (
-          <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#08070d]/92 p-6 text-center">
+          <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#08070d] p-6 text-center">
             <div className="w-12 h-12 rounded-full bg-purple-950/80 border border-purple-700/50 flex items-center justify-center text-purple-400 mb-3">
               <Info className="w-6 h-6" />
             </div>
@@ -2057,7 +2074,8 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
               Falha ao carregar o vídeo
             </h4>
             <p className="text-xs text-slate-300 max-w-md mb-4 leading-relaxed">
-              O link temporário pode ter expirado após uma pausa longa ou houve falha temporária de carregamento.
+              {iframeErrorMessage?.trim() ||
+                'Não foi possível carregar este vídeo no provedor. Tente recarregar a fonte ou alternar de servidor.'}
             </p>
             <button
               type="button"
@@ -2486,6 +2504,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   onFallbackToIframe,
   onReloadSource,
   iframeLoadError,
+  iframeChecking,
+  iframeErrorMessage,
   onIframeError,
   iframeReloadKey,
 }) => {
@@ -2528,6 +2548,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         onFallbackToIframe={onFallbackToIframe}
         onReloadSource={onReloadSource}
         iframeLoadError={iframeLoadError}
+        iframeChecking={iframeChecking}
+        iframeErrorMessage={iframeErrorMessage}
         onIframeError={onIframeError}
         iframeReloadKey={iframeReloadKey}
       />

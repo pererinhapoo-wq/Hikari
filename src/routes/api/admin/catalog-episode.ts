@@ -11,9 +11,15 @@ import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 import {
   deleteEpisodeSourcesForEpisode,
+  SourceValidationError,
   syncCatalogEpisodeSlotsToSources,
   upsertEpisodeSource,
 } from "@/lib/sources";
+import {
+  ANITUBE22_INVALID_URL_ERROR,
+  isLegacyAnitube22Ref,
+  parseAnitube22PlayerUrl,
+} from "@/lib/anitube22";
 
 const episodePostSchema = z.object({
   id: z.string().trim().min(1, "id é obrigatório").max(128, "id muito longo"),
@@ -38,7 +44,9 @@ const episodePostSchema = z.object({
       z.object({
         provider: z.string().trim().max(64).optional(),
         externalId: z.string().trim().min(1).max(2048),
-        lang: z.enum(["sub", "dub"]).optional().default("sub"),
+        lang: z.enum(["sub", "dub"], {
+          message: "Selecione o idioma da fonte (legendado ou dublado).",
+        }),
         quality: z.string().trim().max(32).optional().nullable(),
         priority: z.number().int().min(0).max(1000).optional().default(0),
       }),
@@ -187,8 +195,28 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           }
 
           // 7. Resolução de fontes de vídeo:
+          // - Rejeita explicitamente formato legado anitube22://, IDs numéricos puros ou URLs incompletas de playerricas.php.
           // - Quando replaceSources=true (enviado pelo editor completo), reflete exatamente as 5 fontes (permitindo limpar URLs removidas).
           // - Caso contrário (chamadas parciais), preserva fontes existentes quando vazias/null.
+          function validateIncomingSlot(incoming: string | null | undefined): void {
+            if (!incoming) return;
+            const trimmed = incoming.trim();
+            if (!trimmed) return;
+            if (
+              isLegacyAnitube22Ref(trimmed) ||
+              /^\d{3,16}$/.test(trimmed) ||
+              (trimmed.toLowerCase().includes("playerricas.php") && !parseAnitube22PlayerUrl(trimmed))
+            ) {
+              throw new SourceValidationError(ANITUBE22_INVALID_URL_ERROR, 400);
+            }
+          }
+
+          validateIncomingSlot(data.videoUrl);
+          validateIncomingSlot(data.videoUrl2);
+          validateIncomingSlot(data.videoUrl3);
+          validateIncomingSlot(data.videoUrl4);
+          validateIncomingSlot(data.videoUrl5);
+
           function resolveSource(
             incoming: string | null | undefined,
             existing: string | null | undefined,
@@ -467,6 +495,9 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           }
           if (err instanceof AdminGuardError) {
             return Response.json({ error: err.message }, { status: err.status });
+          }
+          if (err instanceof SourceValidationError) {
+            return Response.json({ error: err.message }, { status: err.statusCode });
           }
 
           console.error("[api/admin/catalog-episode] Erro ao salvar episódio:", err);

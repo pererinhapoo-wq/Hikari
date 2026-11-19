@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Plus,
   Trash2,
@@ -32,7 +32,18 @@ import {
   sanitizePlayableVideoUrl,
   type VideoThumbnailCandidate,
 } from "@/lib/published-episodes";
-import { isAnitube22SourceInput } from "@/lib/anitube22";
+import {
+  ANITUBE22_INVALID_URL_ERROR,
+  ANITUBE22_PROVIDER,
+  ANITUBE22_WRONG_LANG_ERROR,
+  detectEpisodeLanguageHint,
+  isLegacyAnitube22Ref,
+  parseAnitube22PlayerUrl,
+  stripTimeQueryParam,
+  validateAnitube22PlayerUrl,
+  type EpisodeSourceItem,
+  type SourceLang,
+} from "@/lib/anitube22";
 import type { Episode, Season } from "@/lib/types";
 import type { OutboxOperation } from "@/lib/episode-writer";
 import { cn } from "@/lib/utils";
@@ -49,6 +60,7 @@ export interface EpisodeCandidateState {
 
 interface EditorSeasonsProps {
   animeId: string;
+  animeTitles?: string[];
   seasons: Season[];
   onAddSeason: () => void;
   onPatchSeason: (sid: string, patch: Partial<Season>) => void;
@@ -108,6 +120,7 @@ function getPublishSourceError(ep: Episode): string {
 
 export function EditorSeasons({
   animeId,
+  animeTitles = [],
   seasons,
   onAddSeason,
   onPatchSeason,
@@ -194,14 +207,34 @@ export function EditorSeasons({
   ): string => {
     const trimmed = raw.trim();
     if (!trimmed) return "";
-    if (isAnitube22SourceInput(trimmed) || /[?&]time=/i.test(trimmed)) {
-      const clean = sanitizePlayableVideoUrl(trimmed) ?? trimmed;
+    if (isLegacyAnitube22Ref(trimmed) || /^\d{3,16}$/.test(trimmed)) {
+      toast.error(ANITUBE22_INVALID_URL_ERROR);
+      return trimmed;
+    }
+    if (parseAnitube22PlayerUrl(trimmed) || /[?&]time=/i.test(trimmed)) {
+      const clean = stripTimeQueryParam(trimmed);
       if (clean !== raw) {
         handleVideoUrlChange(seasonId, ep, key, clean);
       }
       return clean;
     }
     return trimmed;
+  };
+
+  const getSlotValidationError = (rawVal: string): string | null => {
+    const trimmed = rawVal.trim();
+    if (!trimmed) return null;
+    if (
+      isLegacyAnitube22Ref(trimmed) ||
+      /^\d{3,16}$/.test(trimmed) ||
+      (trimmed.toLowerCase().includes("playerricas.php") && !parseAnitube22PlayerUrl(trimmed))
+    ) {
+      return ANITUBE22_INVALID_URL_ERROR;
+    }
+    if (!isPersistablePlayableVideoUrl(trimmed)) {
+      return "URL inválida ou não suportada para publicação.";
+    }
+    return null;
   };
 
   const toggleCollapse = (sid: string) => {
@@ -619,14 +652,22 @@ export function EditorSeasons({
                                 { key: "videoUrl3" as const, label: "Player 3" },
                               ].map(({ key, label }) => {
                                 const rawVal = ep[key] ?? "";
-                                const hasInvalidInput =
-                                  Boolean(rawVal.trim()) &&
-                                  !isPersistablePlayableVideoUrl(rawVal);
+                                const slotError = getSlotValidationError(rawVal);
+                                const isLegacySlot = isLegacyAnitube22Ref(rawVal);
 
                                 return (
                                   <Field
                                     key={key}
-                                    label={`${label} — URL do vídeo`}
+                                    label={
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <span>{label} — URL do vídeo</span>
+                                        {isLegacySlot && (
+                                          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-300">
+                                            incompleto
+                                          </span>
+                                        )}
+                                      </span>
+                                    }
                                     className="sm:col-span-6 lg:col-span-4"
                                   >
                                     <div className="flex gap-2">
@@ -650,7 +691,7 @@ export function EditorSeasons({
                                           if (
                                             val &&
                                             isPersistablePlayableVideoUrl(val) &&
-                                            !isAnitube22SourceInput(val)
+                                            !parseAnitube22PlayerUrl(val)
                                           ) {
                                             if (onDiscoverCandidates) {
                                               void onDiscoverCandidates(season.id, ep, val);
@@ -658,22 +699,22 @@ export function EditorSeasons({
                                           }
                                         }}
                                         onPaste={(e) => {
-                                          const rawVal = e.clipboardData.getData("text").trim();
-                                          if (!rawVal) return;
-                                          if (isAnitube22SourceInput(rawVal) || /[?&]time=/i.test(rawVal)) {
+                                          const pasted = e.clipboardData.getData("text").trim();
+                                          if (!pasted) return;
+                                          if (parseAnitube22PlayerUrl(pasted) || /[?&]time=/i.test(pasted)) {
                                             e.preventDefault();
-                                            normalizeDurableSourceInput(season.id, ep, key, rawVal);
+                                            normalizeDurableSourceInput(season.id, ep, key, pasted);
                                             return;
                                           }
-                                          if (isPersistablePlayableVideoUrl(rawVal)) {
+                                          if (isPersistablePlayableVideoUrl(pasted)) {
                                             setTimeout(() => {
                                               if (onDiscoverCandidates) {
-                                                void onDiscoverCandidates(season.id, ep, rawVal);
+                                                void onDiscoverCandidates(season.id, ep, pasted);
                                               }
                                             }, 100);
                                           }
                                         }}
-                                        placeholder="ID anitube22 (ex: 589535) ou URL (MP4 / R2)"
+                                        placeholder="URL completa do playerricas.php ou URL direta (MP4 / HLS)"
                                         className="studio-mono h-10 border-white/10 bg-[var(--studio-panel)] text-xs"
                                       />
 
@@ -689,9 +730,9 @@ export function EditorSeasons({
                                           : "Enviar"}
                                       </Button>
                                     </div>
-                                    {hasInvalidInput && (
+                                    {slotError && (
                                       <p className="mt-1 text-[11px] text-rose-400">
-                                        URL inválida ou não suportada para publicação.
+                                        {slotError}
                                       </p>
                                     )}
                                   </Field>
@@ -699,132 +740,172 @@ export function EditorSeasons({
                               })}
 
                               {/* Player 4 */}
-                              <Field
-                                label="Player 4 — URL do vídeo"
-                                className="sm:col-span-6 lg:col-span-6"
-                              >
-                                <div className="flex gap-2">
-                                  <Input
-                                    value={ep.videoUrl4 ?? ""}
-                                    onChange={(e) =>
-                                      handleVideoUrlChange(
-                                        season.id,
-                                        ep,
-                                        "videoUrl4",
-                                        e.target.value,
-                                      )
+                              {(() => {
+                                const rawVal4 = ep.videoUrl4 ?? "";
+                                const slotError4 = getSlotValidationError(rawVal4);
+                                const isLegacySlot4 = isLegacyAnitube22Ref(rawVal4);
+                                return (
+                                  <Field
+                                    label={
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <span>Player 4 — URL do vídeo</span>
+                                        {isLegacySlot4 && (
+                                          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-300">
+                                            incompleto
+                                          </span>
+                                        )}
+                                      </span>
                                     }
-                                    onBlur={(e) => {
-                                      const val = normalizeDurableSourceInput(
-                                        season.id,
-                                        ep,
-                                        "videoUrl4",
-                                        e.target.value,
-                                      );
-                                      if (
-                                        val &&
-                                        isPersistablePlayableVideoUrl(val) &&
-                                        !isAnitube22SourceInput(val)
-                                      ) {
-                                        if (onDiscoverCandidates) {
-                                          void onDiscoverCandidates(season.id, ep, val);
-                                        }
-                                      }
-                                    }}
-                                    onPaste={(e) => {
-                                      const rawVal = e.clipboardData.getData("text").trim();
-                                      if (!rawVal) return;
-                                      if (isAnitube22SourceInput(rawVal) || /[?&]time=/i.test(rawVal)) {
-                                        e.preventDefault();
-                                        normalizeDurableSourceInput(season.id, ep, "videoUrl4", rawVal);
-                                        return;
-                                      }
-                                      if (isPersistablePlayableVideoUrl(rawVal)) {
-                                        setTimeout(() => {
-                                          if (onDiscoverCandidates) {
-                                            void onDiscoverCandidates(season.id, ep, rawVal);
-                                          }
-                                        }, 100);
-                                      }
-                                    }}
-                                    placeholder="ID anitube22 (ex: 589535) ou URL (MP4 / R2)"
-                                    className="studio-mono h-10 border-white/10 bg-[var(--studio-panel)] text-xs"
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="h-10 shrink-0 border-white/10 text-xs"
-                                    disabled
+                                    className="sm:col-span-6 lg:col-span-6"
                                   >
-                                    Enviar
-                                  </Button>
-                                </div>
-                                {Boolean(ep.videoUrl4?.trim()) &&
-                                  !isPersistablePlayableVideoUrl(ep.videoUrl4) && (
-                                    <p className="mt-1 text-[11px] text-rose-400">
-                                      URL inválida ou não suportada para publicação.
-                                    </p>
-                                  )}
-                              </Field>
+                                    <div className="flex gap-2">
+                                      <Input
+                                        value={rawVal4}
+                                        onChange={(e) =>
+                                          handleVideoUrlChange(
+                                            season.id,
+                                            ep,
+                                            "videoUrl4",
+                                            e.target.value,
+                                          )
+                                        }
+                                        onBlur={(e) => {
+                                          const val = normalizeDurableSourceInput(
+                                            season.id,
+                                            ep,
+                                            "videoUrl4",
+                                            e.target.value,
+                                          );
+                                          if (
+                                            val &&
+                                            isPersistablePlayableVideoUrl(val) &&
+                                            !parseAnitube22PlayerUrl(val)
+                                          ) {
+                                            if (onDiscoverCandidates) {
+                                              void onDiscoverCandidates(season.id, ep, val);
+                                            }
+                                          }
+                                        }}
+                                        onPaste={(e) => {
+                                          const pasted = e.clipboardData.getData("text").trim();
+                                          if (!pasted) return;
+                                          if (parseAnitube22PlayerUrl(pasted) || /[?&]time=/i.test(pasted)) {
+                                            e.preventDefault();
+                                            normalizeDurableSourceInput(season.id, ep, "videoUrl4", pasted);
+                                            return;
+                                          }
+                                          if (isPersistablePlayableVideoUrl(pasted)) {
+                                            setTimeout(() => {
+                                              if (onDiscoverCandidates) {
+                                                void onDiscoverCandidates(season.id, ep, pasted);
+                                              }
+                                            }, 100);
+                                          }
+                                        }}
+                                        placeholder="URL completa do playerricas.php ou URL direta (MP4 / HLS)"
+                                        className="studio-mono h-10 border-white/10 bg-[var(--studio-panel)] text-xs"
+                                      />
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="h-10 shrink-0 border-white/10 text-xs"
+                                        disabled
+                                      >
+                                        Enviar
+                                      </Button>
+                                    </div>
+                                    {slotError4 && (
+                                      <p className="mt-1 text-[11px] text-rose-400">
+                                        {slotError4}
+                                      </p>
+                                    )}
+                                  </Field>
+                                );
+                              })()}
 
                               {/* Player 5 */}
-                              <Field
-                                label="Player 5 — URL do vídeo"
-                                className="sm:col-span-6 lg:col-span-6"
-                              >
-                                <Input
-                                  value={ep.videoUrl5 ?? ""}
-                                  onChange={(e) =>
-                                    handleVideoUrlChange(
-                                      season.id,
-                                      ep,
-                                      "videoUrl5",
-                                      e.target.value,
-                                    )
-                                  }
-                                  onBlur={(e) => {
-                                    const val = normalizeDurableSourceInput(
-                                      season.id,
-                                      ep,
-                                      "videoUrl5",
-                                      e.target.value,
-                                    );
-                                    if (
-                                      val &&
-                                      isPersistablePlayableVideoUrl(val) &&
-                                      !isAnitube22SourceInput(val)
-                                    ) {
-                                      if (onDiscoverCandidates) {
-                                        void onDiscoverCandidates(season.id, ep, val);
+                              {(() => {
+                                const rawVal5 = ep.videoUrl5 ?? "";
+                                const slotError5 = getSlotValidationError(rawVal5);
+                                const isLegacySlot5 = isLegacyAnitube22Ref(rawVal5);
+                                return (
+                                  <Field
+                                    label={
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <span>Player 5 — URL do vídeo</span>
+                                        {isLegacySlot5 && (
+                                          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-300">
+                                            incompleto
+                                          </span>
+                                        )}
+                                      </span>
+                                    }
+                                    className="sm:col-span-6 lg:col-span-6"
+                                  >
+                                    <Input
+                                      value={rawVal5}
+                                      onChange={(e) =>
+                                        handleVideoUrlChange(
+                                          season.id,
+                                          ep,
+                                          "videoUrl5",
+                                          e.target.value,
+                                        )
                                       }
-                                    }
-                                  }}
-                                  onPaste={(e) => {
-                                    const rawVal = e.clipboardData.getData("text").trim();
-                                    if (!rawVal) return;
-                                    if (isAnitube22SourceInput(rawVal) || /[?&]time=/i.test(rawVal)) {
-                                      e.preventDefault();
-                                      normalizeDurableSourceInput(season.id, ep, "videoUrl5", rawVal);
-                                      return;
-                                    }
-                                    if (isPersistablePlayableVideoUrl(rawVal)) {
-                                      setTimeout(() => {
-                                        if (onDiscoverCandidates) {
-                                          void onDiscoverCandidates(season.id, ep, rawVal);
+                                      onBlur={(e) => {
+                                        const val = normalizeDurableSourceInput(
+                                          season.id,
+                                          ep,
+                                          "videoUrl5",
+                                          e.target.value,
+                                        );
+                                        if (
+                                          val &&
+                                          isPersistablePlayableVideoUrl(val) &&
+                                          !parseAnitube22PlayerUrl(val)
+                                        ) {
+                                          if (onDiscoverCandidates) {
+                                            void onDiscoverCandidates(season.id, ep, val);
+                                          }
                                         }
-                                      }, 100);
-                                    }
-                                  }}
-                                  placeholder="ID anitube22 (ex: 589535) ou URL (HLS / MP4)"
-                                  className="studio-mono h-10 border-white/10 bg-[var(--studio-panel)] text-xs"
+                                      }}
+                                      onPaste={(e) => {
+                                        const pasted = e.clipboardData.getData("text").trim();
+                                        if (!pasted) return;
+                                        if (parseAnitube22PlayerUrl(pasted) || /[?&]time=/i.test(pasted)) {
+                                          e.preventDefault();
+                                          normalizeDurableSourceInput(season.id, ep, "videoUrl5", pasted);
+                                          return;
+                                        }
+                                        if (isPersistablePlayableVideoUrl(pasted)) {
+                                          setTimeout(() => {
+                                            if (onDiscoverCandidates) {
+                                              void onDiscoverCandidates(season.id, ep, pasted);
+                                            }
+                                          }, 100);
+                                        }
+                                      }}
+                                      placeholder="URL completa do playerricas.php ou URL direta (HLS / MP4)"
+                                      className="studio-mono h-10 border-white/10 bg-[var(--studio-panel)] text-xs"
+                                    />
+                                    {slotError5 && (
+                                      <p className="mt-1 text-[11px] text-rose-400">
+                                        {slotError5}
+                                      </p>
+                                    )}
+                                  </Field>
+                                );
+                              })()}
+
+                              {/* Gerenciador de Fontes Duráveis (playerricas.php) */}
+                              <div className="sm:col-span-12">
+                                <EpisodeSourcesManager
+                                  animeId={animeId}
+                                  episode={ep}
+                                  seasonTitle={season.title}
+                                  animeTitles={animeTitles}
                                 />
-                                {Boolean(ep.videoUrl5?.trim()) &&
-                                  !isPersistablePlayableVideoUrl(ep.videoUrl5) && (
-                                    <p className="mt-1 text-[11px] text-rose-400">
-                                      URL inválida ou não suportada para publicação.
-                                    </p>
-                                  )}
-                              </Field>
+                              </div>
 
                               {/* Imagem do episódio (URL) */}
                               <div className="sm:col-span-12">
@@ -1200,5 +1281,299 @@ function Field({
       </Label>
       {children}
     </label>
+  );
+}
+
+function EpisodeSourcesManager({
+  animeId,
+  episode,
+  seasonTitle,
+  animeTitles,
+}: {
+  animeId: string;
+  episode: Episode;
+  seasonTitle?: string;
+  animeTitles: string[];
+}) {
+  const [sources, setSources] = useState<EpisodeSourceItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [langInput, setLangInput] = useState<"" | SourceLang>("");
+  const [qualityInput, setQualityInput] = useState("");
+  const [priorityInput, setPriorityInput] = useState("0");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const loadSources = async () => {
+    if (!episode.id) return;
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/episode-sources?episodeId=${encodeURIComponent(episode.id)}&includeBroken=1`,
+      );
+      if (res.ok) {
+        const data = (await res.json()) as { ok?: boolean; sources?: EpisodeSourceItem[] };
+        if (data?.ok && Array.isArray(data.sources)) {
+          setSources(data.sources);
+        }
+      }
+    } catch {
+      // ignore load failure
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadSources();
+  }, [episode.id]);
+
+  const handleAddSource = async () => {
+    setFormError(null);
+    const trimmedUrl = urlInput.trim();
+    const urlCheck = validateAnitube22PlayerUrl(trimmedUrl);
+    if (!urlCheck.ok) {
+      setFormError(urlCheck.error);
+      toast.error(urlCheck.error);
+      return;
+    }
+
+    if (langInput !== "sub" && langInput !== "dub") {
+      const msg = "Selecione o idioma da fonte (legendado ou dublado).";
+      setFormError(msg);
+      toast.error(msg);
+      return;
+    }
+
+    const expectedLang = detectEpisodeLanguageHint([
+      episode.title,
+      seasonTitle,
+      ...animeTitles,
+    ]);
+    if (expectedLang && expectedLang !== langInput) {
+      setFormError(ANITUBE22_WRONG_LANG_ERROR);
+      toast.error(ANITUBE22_WRONG_LANG_ERROR);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/episode-sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "upsert",
+          episodeId: episode.id,
+          animeId,
+          provider: ANITUBE22_PROVIDER,
+          externalId: trimmedUrl,
+          lang: langInput,
+          quality: qualityInput.trim() || null,
+          priority: Number.isFinite(Number(priorityInput)) ? Math.max(0, Number(priorityInput)) : 0,
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!res.ok || !data?.ok) {
+        const msg = data?.error || "Falha ao cadastrar fonte.";
+        setFormError(msg);
+        toast.error(msg);
+        return;
+      }
+
+      toast.success("Fonte cadastrada com sucesso!");
+      setUrlInput("");
+      setLangInput("");
+      setQualityInput("");
+      setPriorityInput("0");
+      await loadSources();
+    } catch {
+      const msg = "Erro de rede ao salvar fonte.";
+      setFormError(msg);
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteSource = async (sourceId: string) => {
+    try {
+      const res = await fetch("/api/episode-sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete",
+          sourceId,
+          animeId,
+        }),
+      });
+      if (res.ok) {
+        setSources((prev) => prev.filter((s) => s.id !== sourceId));
+        toast.success("Fonte removida.");
+      }
+    } catch {
+      toast.error("Não foi possível remover a fonte.");
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-[var(--studio-panel)]/70 p-3.5 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-[var(--color-fg)]">
+            Fontes registradas (playerricas.php)
+          </span>
+          <span className="studio-mono rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-[var(--color-muted)]">
+            {sources.length}
+          </span>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => void loadSources()}
+          disabled={loading}
+          className="h-7 px-2 text-[11px] text-[var(--color-muted)] hover:text-white"
+        >
+          {loading ? "Atualizando…" : "Atualizar lista"}
+        </Button>
+      </div>
+
+      {sources.length > 0 && (
+        <ul className="space-y-1.5">
+          {sources.map((src) => {
+            const isIncomplete =
+              src.status === "incomplete" ||
+              (src.provider === ANITUBE22_PROVIDER &&
+                (!src.namePath?.trim() || !src.urlPath?.trim()));
+
+            return (
+              <li
+                key={src.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-xs"
+              >
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span
+                    className={cn(
+                      "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                      src.lang === "dub"
+                        ? "bg-sky-500/20 text-sky-300"
+                        : "bg-violet-500/20 text-violet-300",
+                    )}
+                  >
+                    {src.lang === "dub" ? "Dublado" : "Legendado"}
+                  </span>
+
+                  {isIncomplete ? (
+                    <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-300">
+                      incompleto
+                    </span>
+                  ) : src.status === "broken" ? (
+                    <span className="rounded bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-rose-300">
+                      quebrado
+                    </span>
+                  ) : (
+                    <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-300">
+                      ativo
+                    </span>
+                  )}
+
+                  <span className="studio-mono text-[11px] text-[var(--color-fg)]">
+                    ID {src.externalId || "—"}
+                  </span>
+
+                  {src.urlPath && (
+                    <span className="studio-mono max-w-[260px] truncate text-[10px] text-[var(--color-muted)]">
+                      {src.urlPath}
+                    </span>
+                  )}
+
+                  {src.quality && (
+                    <span className="text-[10px] text-[var(--color-muted)]">
+                      {src.quality}
+                    </span>
+                  )}
+                </div>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handleDeleteSource(src.id)}
+                  className="h-7 px-2 text-[11px] text-[var(--color-muted)] hover:bg-rose-500/15 hover:text-rose-300"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-12">
+        <div className="sm:col-span-6">
+          <Input
+            value={urlInput}
+            onChange={(e) => {
+              setUrlInput(e.target.value);
+              if (formError) setFormError(null);
+            }}
+            placeholder="Cole a URL completa do playerricas.php (com name, img, url)"
+            className="studio-mono h-9 border-white/10 bg-black/35 text-xs"
+          />
+        </div>
+
+        <div className="sm:col-span-2">
+          <select
+            value={langInput}
+            onChange={(e) => {
+              setLangInput((e.target.value as "" | SourceLang) || "");
+              if (formError) setFormError(null);
+            }}
+            aria-label="Idioma obrigatório da fonte"
+            className="h-9 w-full rounded-md border border-white/10 bg-black/35 px-2 text-xs text-[var(--color-fg)] outline-none focus:border-violet-500"
+          >
+            <option value="">Idioma *</option>
+            <option value="sub">Legendado (sub)</option>
+            <option value="dub">Dublado (dub)</option>
+          </select>
+        </div>
+
+        <div className="sm:col-span-2">
+          <Input
+            value={qualityInput}
+            onChange={(e) => setQualityInput(e.target.value)}
+            placeholder="Qualidade (ex: 1080p)"
+            className="h-9 border-white/10 bg-black/35 text-xs"
+          />
+        </div>
+
+        <div className="flex gap-1.5 sm:col-span-2">
+          <Input
+            type="number"
+            min={0}
+            value={priorityInput}
+            onChange={(e) => setPriorityInput(e.target.value)}
+            title="Prioridade (menor = primeiro)"
+            className="studio-tabular h-9 w-14 border-white/10 bg-black/35 text-center text-xs"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={saving}
+            onClick={() => void handleAddSource()}
+            className="h-9 flex-1 border-violet-500/35 bg-violet-500/15 px-2.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/25 hover:text-white"
+          >
+            {saving ? "Validando…" : "Adicionar"}
+          </Button>
+        </div>
+      </div>
+
+      {formError && (
+        <p role="alert" className="text-[11px] font-medium text-rose-400">
+          {formError}
+        </p>
+      )}
+    </div>
   );
 }

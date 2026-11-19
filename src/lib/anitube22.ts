@@ -1,8 +1,10 @@
 export const ANITUBE22_PROVIDER = "anitube22";
 export const ANITUBE22_PLAYER_BASE = "https://www.anitube22.vip/playerricas.php";
-export const ANITUBE22_THUMB_BASE = "https://www.hinatasoul.com/media/videos/tmb";
-export const ANITUBE22_R2_BASE =
-  "https://173fe263eae04670ecfcebf237fd6480.r2.cloudflarestorage.com/ziphonec";
+
+export const ANITUBE22_INVALID_URL_ERROR = "cole a URL completa do player";
+export const ANITUBE22_WRONG_LANG_ERROR = "esta fonte é de outro idioma";
+export const ANITUBE22_NOT_FOUND_ERROR = "ID não encontrado no provedor";
+export const ANITUBE22_INCOMPLETE_PLAY_ERROR = "fonte incompleta, recadastre";
 
 export type SourceLang = "sub" | "dub";
 export type SourceStatus = "active" | "broken" | "incomplete";
@@ -28,130 +30,116 @@ export interface Anitube22ParsedParts {
   namePath: string;
   urlPath: string;
   imgUrl: string;
-  lang: SourceLang;
 }
 
-const BARE_NUMERIC_ID_RE = /^\d{3,16}$/;
-const DURABLE_REF_RE = /^anitube22:(?:\/\/)?(?:(sub|dub)(?:\/|:))?(\d{1,16})(?:[/?#].*)?$/i;
-const APPHD_MP4_RE = /apphd\/(\d+)\.mp4/i;
-const ZIPHONEC_MP4_RE = /ziphonec\/(\d+)\.mp4/i;
-const HINATASOUL_TMB_RE = /hinatasoul\.com\/media\/videos\/tmb\/(\d+)(?:\/|$)/i;
+const EPISODE_SUB_LANG_RE =
+  /(?:^|[^a-z0-9])(leg|legendado|legendada|sub|subbed|english\s*sub|pt-br\s*leg|áudio\s*original|audio\s*original|japon[eê]s)(?:$|[^a-z0-9])/i;
+const EPISODE_DUB_LANG_RE =
+  /(?:^|[^a-z0-9])(dub|dubbed|dublado|dublada|dublagem|pt-br\s*dub|dub\s*pt-br|áudio\s*pt-br|audio\s*pt-br|pt-br)(?:$|[^a-z0-9])/i;
 
-export function normalizeSourceLang(value?: string | null): SourceLang {
-  if (!value) return "sub";
+export function parseExplicitSourceLang(value?: string | null): SourceLang | null {
+  if (!value || typeof value !== "string") return null;
   const clean = value.trim().toLowerCase();
-  if (clean === "dub" || clean === "dublado" || clean === "dubbed" || clean === "pt-br") {
+  if (!clean) return null;
+  if (clean === "sub" || clean === "leg" || clean === "legendado" || clean === "legendada" || clean === "subbed") {
+    return "sub";
+  }
+  if (clean === "dub" || clean === "dublado" || clean === "dublada" || clean === "dubbed" || clean === "pt-br") {
     return "dub";
   }
-  return "sub";
+  return null;
 }
 
+export function normalizeSourceLang(value?: string | null): SourceLang {
+  return parseExplicitSourceLang(value) === "dub" ? "dub" : "sub";
+}
+
+export function detectEpisodeLanguageHint(
+  texts: Array<string | null | undefined>,
+): SourceLang | null {
+  for (const text of texts) {
+    if (!text || typeof text !== "string") continue;
+    const trimmed = text.trim();
+    if (!trimmed) continue;
+    const hasSub = EPISODE_SUB_LANG_RE.test(trimmed);
+    const hasDub = EPISODE_DUB_LANG_RE.test(trimmed);
+    if (hasSub && !hasDub) return "sub";
+    if (hasDub && !hasSub) return "dub";
+    if (hasSub && hasDub) {
+      // If both appear, pick whichever token matches at the end (e.g. "(Dublado)")
+      const lastSub = trimmed.search(EPISODE_SUB_LANG_RE);
+      const lastDub = trimmed.search(EPISODE_DUB_LANG_RE);
+      return lastDub > lastSub ? "dub" : "sub";
+    }
+  }
+  return null;
+}
+
+export function isLegacyAnitube22Ref(input?: string | null): boolean {
+  if (!input || typeof input !== "string") return false;
+  return /^anitube22:/i.test(input.trim());
+}
+
+/**
+ * Faz o parse estrito da URL completa do playerricas.php:
+ * - Exige protocolo http/https + pathname contendo playerricas.php
+ * - Exige parâmetros não vazios `name` e `url`, além de ID numérico antes de `.mp4`
+ * - Faz parse literal de `name`, `img` e `url` sem normalizar nem remover bucket/prefixo
+ * - Descarta `time`
+ */
 export function parseAnitube22PlayerUrl(rawUrl: string): Anitube22ParsedParts | null {
   if (!rawUrl || typeof rawUrl !== "string") return null;
   const trimmed = rawUrl.trim();
-  try {
-    const queryPart = trimmed.includes("?") ? trimmed.split("?")[1] : trimmed;
-    const params = new URLSearchParams(queryPart);
-    const name = params.get("name");
-    const url = params.get("url");
-    const img = params.get("img");
-    if (!name || !url) return null;
+  if (!trimmed) return null;
 
-    const extIdMatch = name.match(/(\d+)\.mp4/i);
-    const externalId = extIdMatch?.[1] || extractAnitube22ExternalId(name) || "";
-    if (!externalId) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    if (!parsed.pathname.toLowerCase().includes("playerricas.php")) {
+      return null;
+    }
+
+    const name = parsed.searchParams.get("name")?.trim() || "";
+    const url = parsed.searchParams.get("url")?.trim() || "";
+    const img = parsed.searchParams.get("img")?.trim() || "";
+
+    if (!name || !url) {
+      return null;
+    }
+
+    const idFromName = name.match(/(\d+)\.mp4/i)?.[1];
+    const idFromUrl = url.match(/(\d+)\.mp4/i)?.[1];
+    const externalId = idFromName || idFromUrl || "";
+    if (!externalId) {
+      return null;
+    }
 
     return {
       externalId,
       namePath: name,
       urlPath: url,
-      imgUrl: img || `${ANITUBE22_THUMB_BASE}/${externalId}/default.jpg`,
-      lang: extractAnitube22Lang(trimmed),
+      imgUrl: img,
     };
   } catch {
     return null;
   }
 }
 
-export function extractAnitube22ExternalId(input?: string | null): string | null {
-  if (!input || typeof input !== "string") return null;
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-
-  if (BARE_NUMERIC_ID_RE.test(trimmed)) {
-    return trimmed;
+export function validateAnitube22PlayerUrl(
+  rawUrl: string,
+): { ok: true; parsed: Anitube22ParsedParts } | { ok: false; error: string } {
+  const parsed = parseAnitube22PlayerUrl(rawUrl);
+  if (!parsed) {
+    return { ok: false, error: ANITUBE22_INVALID_URL_ERROR };
   }
-
-  const durableMatch = trimmed.match(DURABLE_REF_RE);
-  if (durableMatch?.[2]) {
-    return durableMatch[2];
-  }
-
-  const parsed = parseAnitube22PlayerUrl(trimmed);
-  if (parsed?.externalId) {
-    return parsed.externalId;
-  }
-
-  const lower = trimmed.toLowerCase();
-  const looksLikeAnitubeContext =
-    lower.includes("anitube22") ||
-    lower.includes("playerricas.php") ||
-    lower.includes("ziphonec/") ||
-    lower.includes("hinatasoul.com/media/videos/tmb/");
-
-  if (!looksLikeAnitubeContext) {
-    return null;
-  }
-
-  const apphdMatch = trimmed.match(APPHD_MP4_RE);
-  if (apphdMatch?.[1]) return apphdMatch[1];
-
-  const ziphonecMatch = trimmed.match(ZIPHONEC_MP4_RE);
-  if (ziphonecMatch?.[1]) return ziphonecMatch[1];
-
-  const tmbMatch = trimmed.match(HINATASOUL_TMB_RE);
-  if (tmbMatch?.[1]) return tmbMatch[1];
-
-  const idParamMatch = trimmed.match(/(?:[?&]id=)(\d+)/i);
-  if (idParamMatch?.[1]) return idParamMatch[1];
-
-  return null;
-}
-
-export function extractAnitube22Lang(input?: string | null): SourceLang {
-  if (!input || typeof input !== "string") return "sub";
-  const trimmed = input.trim();
-  const durableMatch = trimmed.match(DURABLE_REF_RE);
-  if (durableMatch?.[1]) {
-    return durableMatch[1].toLowerCase() === "dub" ? "dub" : "sub";
-  }
-  const paramMatch = trimmed.match(/[?&]lang=(sub|dub)\b/i);
-  if (paramMatch?.[1]) {
-    return paramMatch[1].toLowerCase() === "dub" ? "dub" : "sub";
-  }
-  return "sub";
-}
-
-export function isAnitube22SourceInput(input?: string | null): boolean {
-  return parseAnitube22PlayerUrl(input || "") !== null || extractAnitube22ExternalId(input) !== null;
+  return { ok: true, parsed };
 }
 
 export function isAnitube22PlayerUrl(url?: string | null): boolean {
   if (!url || typeof url !== "string") return false;
-  const lower = url.trim().toLowerCase();
-  return lower.includes("anitube22.vip/playerricas.php");
-}
-
-export function formatDurableAnitube22Ref(
-  externalId: string,
-  lang: SourceLang = "sub",
-): string {
-  const cleanId = extractAnitube22ExternalId(externalId) ?? externalId.trim().replace(/[^0-9]/g, "");
-  if (!cleanId) {
-    throw new Error("Identificador externo inválido para anitube22.");
-  }
-  const safeLang = normalizeSourceLang(lang);
-  return `anitube22://${safeLang}/${cleanId}`;
+  return parseAnitube22PlayerUrl(url) !== null;
 }
 
 export function stripTimeQueryParam(rawUrl: string): string {
@@ -169,51 +157,29 @@ export function stripTimeQueryParam(rawUrl: string): string {
 }
 
 export function buildAnitube22PlayerUrlFromParts(
-  parts: { namePath: string; urlPath: string; imgUrl: string },
+  parts: { namePath: string; urlPath: string; imgUrl?: string | null },
   nowSeconds: number = Math.floor(Date.now() / 1000),
 ): string {
-  const ts =
-    Number.isFinite(nowSeconds) && nowSeconds > 0
-      ? Math.floor(nowSeconds)
-      : Math.floor(Date.now() / 1000);
-
-  return (
-    `${ANITUBE22_PLAYER_BASE}?name=${parts.namePath}` +
-    `&img=${parts.imgUrl}` +
-    `&pais=pais=BR` +
-    `&time=${ts}` +
-    `&url=${parts.urlPath}`
-  );
-}
-
-export function buildAnitube22PlayerUrl(
-  externalIdOrRef: string,
-  nowSeconds: number = Math.floor(Date.now() / 1000),
-): string {
-  const cleanId =
-    extractAnitube22ExternalId(externalIdOrRef) ??
-    externalIdOrRef.trim().replace(/[^0-9]/g, "");
-  if (!cleanId) {
-    throw new Error("Identificador numérico externo inválido para anitube22.");
+  const namePath = parts.namePath?.trim();
+  const urlPath = parts.urlPath?.trim();
+  if (!namePath || !urlPath) {
+    throw new Error("Fonte anitube22 incompleta (name_path e url_path obrigatórios).");
   }
+
   const ts =
     Number.isFinite(nowSeconds) && nowSeconds > 0
       ? Math.floor(nowSeconds)
       : Math.floor(Date.now() / 1000);
 
-  return (
-    `${ANITUBE22_PLAYER_BASE}?name=apphd/${cleanId}.mp4` +
-    `&img=${ANITUBE22_THUMB_BASE}/${cleanId}/default.jpg` +
-    `&pais=pais=BR` +
-    `&time=${ts}` +
-    `&url=${ANITUBE22_R2_BASE}/${cleanId}.mp4`
-  );
-}
+  const queryParts = [
+    `name=${namePath}`,
+    `img=${parts.imgUrl?.trim() || ""}`,
+    `pais=pais=BR`,
+    `time=${ts}`,
+    `url=${urlPath}`,
+  ];
 
-export function buildAnitube22ThumbUrl(externalIdOrRef: string): string | null {
-  const cleanId = extractAnitube22ExternalId(externalIdOrRef);
-  if (!cleanId) return null;
-  return `${ANITUBE22_THUMB_BASE}/${cleanId}/default.jpg`;
+  return `${ANITUBE22_PLAYER_BASE}?${queryParts.join("&")}`;
 }
 
 export function sortEpisodeSourcesByPriority(
@@ -221,7 +187,13 @@ export function sortEpisodeSourcesByPriority(
   lang?: SourceLang,
 ): EpisodeSourceItem[] {
   return sources
-    .filter((s) => s.status !== "broken" && s.status !== "incomplete" && (lang ? s.lang === lang : true))
+    .filter(
+      (s) =>
+        s.status !== "broken" &&
+        s.status !== "incomplete" &&
+        (s.provider !== ANITUBE22_PROVIDER || (Boolean(s.namePath?.trim()) && Boolean(s.urlPath?.trim()))) &&
+        (lang ? s.lang === lang : true),
+    )
     .slice()
     .sort((a, b) => a.priority - b.priority);
 }

@@ -48,6 +48,7 @@ import {
   resolveEpisodes,
 } from "@/lib/catalog-episodes";
 import {
+  cleanEpisodeDisplay,
   isWatchPlayableMediaUrl,
   resolveEpisodePlayerSources,
   resolveEpisodeThumbnailUrl,
@@ -60,11 +61,13 @@ import {
   type Season,
 } from "@/lib/types";
 import {
+  ANITUBE22_INCOMPLETE_PLAY_ERROR,
+  ANITUBE22_NOT_FOUND_ERROR,
   ANITUBE22_PROVIDER,
-  buildAnitube22PlayerUrl,
-  extractAnitube22ExternalId,
-  extractAnitube22Lang,
-  isAnitube22SourceInput,
+  buildAnitube22PlayerUrlFromParts,
+  detectEpisodeLanguageHint,
+  isLegacyAnitube22Ref,
+  parseAnitube22PlayerUrl,
   partitionEpisodeSourcesByLang,
   type EpisodeSourceItem,
   type SourceLang,
@@ -172,9 +175,14 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
     const externalOriginSet = new Set<string>();
     for (const rawCandidate of streamCandidates) {
       if (!rawCandidate || !isWatchPlayableMediaUrl(rawCandidate)) continue;
-      if (isAnitube22SourceInput(rawCandidate)) {
+      const parsedAnitube = parseAnitube22PlayerUrl(rawCandidate);
+      if (parsedAnitube) {
         externalOriginSet.add("https://www.anitube22.vip");
-        externalOriginSet.add("https://173fe263eae04670ecfcebf237fd6480.r2.cloudflarestorage.com");
+        try {
+          externalOriginSet.add(new URL(parsedAnitube.urlPath).origin);
+        } catch {
+          // ignora URL de bucket inválida
+        }
         continue;
       }
       const resolvedUrl = resolvePlayableStreamUrl(rawCandidate);
@@ -268,6 +276,8 @@ function WatchPage() {
   const [playTimestamp, setPlayTimestamp] = useState<number>(() => Math.floor(Date.now() / 1000));
   const [iframeReloadKey, setIframeReloadKey] = useState<number>(0);
   const [iframeLoadError, setIframeLoadError] = useState<boolean>(false);
+  const [iframeChecking, setIframeChecking] = useState<boolean>(false);
+  const [iframeErrorMessage, setIframeErrorMessage] = useState<string | null>(null);
   const currentEpisodeIdRef = useRef<string | undefined>(undefined);
 
   const handleActivatePlayer = useCallback(() => {
@@ -276,6 +286,7 @@ function WatchPage() {
     }
     setPlayTimestamp(Math.floor(Date.now() / 1000));
     setIframeLoadError(false);
+    setIframeErrorMessage(null);
     setPlayerMounted(true);
   }, []);
 
@@ -441,6 +452,8 @@ function WatchPage() {
     const episodeId = current?.id;
     setFailedSessionKeys([]);
     setIframeLoadError(false);
+    setIframeChecking(false);
+    setIframeErrorMessage(null);
     setPlayTimestamp(Math.floor(Date.now() / 1000));
     setIframeReloadKey((prev) => prev + 1);
     checkedDbSourceIdsRef.current.clear();
@@ -487,6 +500,9 @@ function WatchPage() {
     dbSourceId?: string;
     provider: string;
     externalId?: string;
+    namePath?: string;
+    urlPath?: string;
+    imgUrl?: string;
     lang: SourceLang;
     quality?: string | null;
     priority: number;
@@ -499,13 +515,18 @@ function WatchPage() {
     const subList: WatchSourceEntry[] = [];
     const dubList: WatchSourceEntry[] = [];
     const trackedAnitubeKeys = new Set<string>();
+    let incompleteCount = 0;
 
     const relevantDbSources =
       current?.id && dbSourcesLoadedForId === current.id ? dbSources : [];
 
     for (const s of relevantDbSources) {
-      if (s.provider === ANITUBE22_PROVIDER && s.externalId) {
-        trackedAnitubeKeys.add(`${s.lang}:${s.externalId}`);
+      if (s.provider === ANITUBE22_PROVIDER) {
+        if (s.status === "incomplete" || !s.namePath?.trim() || !s.urlPath?.trim()) {
+          incompleteCount += 1;
+        } else {
+          trackedAnitubeKeys.add(`${s.lang}:${s.urlPath}`);
+        }
       }
     }
 
@@ -513,12 +534,15 @@ function WatchPage() {
     for (const langKey of ["sub", "dub"] as const) {
       const targetList = langKey === "sub" ? subList : dubList;
       activePartition[langKey].forEach((s, index) => {
-        if (s.provider === ANITUBE22_PROVIDER && s.externalId) {
+        if (s.provider === ANITUBE22_PROVIDER && s.namePath?.trim() && s.urlPath?.trim()) {
           targetList.push({
             key: `db:${s.id}`,
             dbSourceId: s.id,
             provider: s.provider,
             externalId: s.externalId,
+            namePath: s.namePath,
+            urlPath: s.urlPath,
+            imgUrl: s.imgUrl || "",
             lang: s.lang,
             quality: s.quality,
             priority: s.priority,
@@ -530,6 +554,15 @@ function WatchPage() {
     }
 
     if (current) {
+      const episodeLangHint =
+        detectEpisodeLanguageHint([
+          current.title,
+          title,
+          anime?.titles?.romaji,
+          anime?.titles?.english,
+          anime?.titles?.native,
+        ]) ?? "sub";
+
       const rawSlots = [
         { id: "player-1", raw: current.videoUrl, label: "Player 1" },
         { id: "player-2", raw: current.videoUrl2, label: "Player 2" },
@@ -540,29 +573,44 @@ function WatchPage() {
 
       rawSlots.forEach((slot, idx) => {
         if (!slot.raw) return;
-        const extId = extractAnitube22ExternalId(slot.raw);
-        if (extId) {
-          const lang = extractAnitube22Lang(slot.raw);
-          if (trackedAnitubeKeys.has(`${lang}:${extId}`)) {
+        const trimmedRaw = slot.raw.trim();
+        if (!trimmedRaw) return;
+
+        if (isLegacyAnitube22Ref(trimmedRaw)) {
+          incompleteCount += 1;
+          return;
+        }
+
+        if (trimmedRaw.toLowerCase().includes("playerricas.php")) {
+          const parsedSlot = parseAnitube22PlayerUrl(trimmedRaw);
+          if (!parsedSlot) {
+            incompleteCount += 1;
             return;
           }
-          trackedAnitubeKeys.add(`${lang}:${extId}`);
+          const dedupKey = `${episodeLangHint}:${parsedSlot.urlPath}`;
+          if (trackedAnitubeKeys.has(dedupKey)) {
+            return;
+          }
+          trackedAnitubeKeys.add(dedupKey);
           const entry: WatchSourceEntry = {
-            key: `slot:${slot.id}:${lang}:${extId}`,
+            key: `slot:${slot.id}:${episodeLangHint}:${parsedSlot.externalId}`,
             provider: ANITUBE22_PROVIDER,
-            externalId: extId,
-            lang,
+            externalId: parsedSlot.externalId,
+            namePath: parsedSlot.namePath,
+            urlPath: parsedSlot.urlPath,
+            imgUrl: parsedSlot.imgUrl,
+            lang: episodeLangHint,
             priority: idx,
             isIframe: true,
             name: slot.label,
           };
-          if (lang === "dub") dubList.push(entry);
+          if (episodeLangHint === "dub") dubList.push(entry);
           else subList.push(entry);
           return;
         }
 
-        if (isWatchPlayableMediaUrl(slot.raw)) {
-          const resolved = resolvePlayableStreamUrl(slot.raw);
+        if (isWatchPlayableMediaUrl(trimmedRaw)) {
+          const resolved = resolvePlayableStreamUrl(trimmedRaw);
           if (resolved) {
             subList.push({
               key: slot.id,
@@ -581,8 +629,11 @@ function WatchPage() {
     subList.sort((a, b) => a.priority - b.priority);
     dubList.sort((a, b) => a.priority - b.priority);
 
-    return { sub: subList, dub: dubList };
-  }, [current, dbSources, dbSourcesLoadedForId]);
+    const hasIncompleteOnly =
+      subList.length === 0 && dubList.length === 0 && incompleteCount > 0;
+
+    return { sub: subList, dub: dubList, hasIncompleteOnly };
+  }, [current, dbSources, dbSourcesLoadedForId, title, anime?.titles?.romaji, anime?.titles?.english, anime?.titles?.native]);
 
   useEffect(() => {
     if (selectedLang === "dub" && sourcesByLang.dub.length === 0 && sourcesByLang.sub.length > 0) {
@@ -831,8 +882,17 @@ function WatchPage() {
         id: selectedWatchSource.key,
         name: selectedWatchSource.name,
         url:
-          selectedWatchSource.provider === ANITUBE22_PROVIDER && selectedWatchSource.externalId
-            ? buildAnitube22PlayerUrl(selectedWatchSource.externalId, playTimestamp)
+          selectedWatchSource.provider === ANITUBE22_PROVIDER &&
+          selectedWatchSource.namePath &&
+          selectedWatchSource.urlPath
+            ? buildAnitube22PlayerUrlFromParts(
+                {
+                  namePath: selectedWatchSource.namePath,
+                  urlPath: selectedWatchSource.urlPath,
+                  imgUrl: selectedWatchSource.imgUrl || "",
+                },
+                playTimestamp,
+              )
             : selectedWatchSource.staticUrl || "",
       };
     }
@@ -843,28 +903,49 @@ function WatchPage() {
   const file = playUrl || null;
 
   const handleReloadSource = useCallback(() => {
+    if (selectedWatchSource?.key) {
+      checkedDbSourceIdsRef.current.delete(selectedWatchSource.key);
+    }
     setIframeLoadError(false);
+    setIframeErrorMessage(null);
     setPlayTimestamp(Math.floor(Date.now() / 1000));
     setIframeReloadKey((prev) => prev + 1);
-  }, []);
+  }, [selectedWatchSource?.key]);
 
   useEffect(() => {
-    if (!playerMounted || !selectedWatchSource?.dbSourceId) return;
-    const dbSourceId = selectedWatchSource.dbSourceId;
-    if (checkedDbSourceIdsRef.current.has(dbSourceId)) return;
+    if (
+      !playerMounted ||
+      selectedWatchSource?.provider !== ANITUBE22_PROVIDER ||
+      !playUrl
+    ) {
+      setIframeChecking(false);
+      return;
+    }
+
+    const checkKey = selectedWatchSource.key;
+    if (checkedDbSourceIdsRef.current.has(checkKey)) return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
 
-    checkedDbSourceIdsRef.current.add(dbSourceId);
+    checkedDbSourceIdsRef.current.add(checkKey);
     let cancelled = false;
+    setIframeChecking(true);
+
+    const checkPayload = selectedWatchSource.dbSourceId
+      ? {
+          action: "check",
+          sourceId: selectedWatchSource.dbSourceId,
+          clientOffline: false,
+        }
+      : {
+          action: "check",
+          playerUrl: playUrl,
+          clientOffline: false,
+        };
 
     void fetch("/api/episode-sources", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "check",
-        sourceId: dbSourceId,
-        clientOffline: false,
-      }),
+      body: JSON.stringify(checkPayload),
     })
       .then((res) => (res.ok ? res.json() : null))
       .then(
@@ -873,9 +954,30 @@ function WatchPage() {
             ok?: boolean;
             httpStatus?: number | null;
             clientNetworkError?: boolean;
+            status?: string;
           } | null,
         ) => {
-          if (cancelled || !data) return;
+          if (cancelled) return;
+          setIframeChecking(false);
+          if (!data) return;
+
+          if (data.status === "incomplete") {
+            const remaining = activeLangSources.filter(
+              (s) => s.key !== selectedWatchSource.key && !failedSessionKeys.includes(s.key),
+            );
+            setFailedSessionKeys((prev) =>
+              prev.includes(selectedWatchSource.key) ? prev : [...prev, selectedWatchSource.key],
+            );
+            if (remaining.length > 0) {
+              setSelectedPlayerId(remaining[0].key);
+              setPlayTimestamp(Math.floor(Date.now() / 1000));
+            } else {
+              setIframeLoadError(true);
+              setIframeErrorMessage(ANITUBE22_INCOMPLETE_PLAY_ERROR);
+            }
+            return;
+          }
+
           if (
             !data.ok &&
             !data.clientNetworkError &&
@@ -893,18 +995,25 @@ function WatchPage() {
               setPlayTimestamp(Math.floor(Date.now() / 1000));
             } else {
               setIframeLoadError(true);
+              setIframeErrorMessage(
+                data.httpStatus === 404
+                  ? ANITUBE22_NOT_FOUND_ERROR
+                  : "Não foi possível carregar este vídeo no provedor.",
+              );
             }
           }
         },
       )
       .catch(() => {
-        // Erro de rede do cliente: nunca marca como quebrada
+        if (!cancelled) {
+          setIframeChecking(false);
+        }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [playerMounted, selectedWatchSource, activeLangSources, failedSessionKeys]);
+  }, [playerMounted, selectedWatchSource, playUrl, activeLangSources, failedSessionKeys, iframeReloadKey]);
 
   function parseDurationToSeconds(raw?: string | number | null): number {
     if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return Math.floor(raw);
@@ -937,11 +1046,24 @@ function WatchPage() {
     return rawPoster ? anilistImage(rawPoster, 1280) : null;
   }, [current, anime?.banner, anime?.cover]);
 
+  const cleanedEpisodeDisplay = useMemo(() => {
+    if (!current) {
+      return `Episódio ${targetEpNum}`;
+    }
+    return cleanEpisodeDisplay(
+      current.number,
+      current.title,
+      [title, anime?.titles?.romaji, anime?.titles?.english, anime?.titles?.native].filter(
+        (t): t is string => Boolean(t),
+      ),
+    );
+  }, [current, targetEpNum, title, anime?.titles?.romaji, anime?.titles?.english, anime?.titles?.native]);
+
   const _currentVideoItem = useMemo((): VideoItem | undefined => {
     if (!current || !file) return undefined;
     const initialDuration = parseDurationToSeconds(current.duration);
     const episodeTitleStr = current.number
-      ? `${title} — Episódio ${current.number}${current.title ? ` · ${current.title}` : ""}`
+      ? `${title} — ${cleanedEpisodeDisplay}`
       : title;
 
     const isAnitubeIframe = Boolean(
@@ -995,7 +1117,7 @@ function WatchPage() {
         { id: "sub-en", lang: "en", label: "Inglês (Original)" },
       ],
     };
-  }, [current, file, title, playerPoster, anime?.synopsis, selectedPlayer?.name, selectedWatchSource?.isIframe, selectedWatchSource?.provider]);
+  }, [current, file, title, cleanedEpisodeDisplay, playerPoster, anime?.synopsis, selectedPlayer?.name, selectedWatchSource?.isIframe, selectedWatchSource?.provider]);
 
   const handlePlayerError = useCallback(() => {
     setIsVideoPlaying(false);
@@ -1092,7 +1214,12 @@ function WatchPage() {
                 iframeFallbackUrl={_currentVideoItem?.iframeUrl}
                 onReloadSource={handleReloadSource}
                 iframeLoadError={iframeLoadError}
-                onIframeError={() => setIframeLoadError(true)}
+                iframeChecking={iframeChecking}
+                iframeErrorMessage={iframeErrorMessage}
+                onIframeError={() => {
+                  setIframeLoadError(true);
+                  setIframeErrorMessage("Não foi possível carregar este vídeo no provedor.");
+                }}
                 iframeReloadKey={`${playTimestamp}-${iframeReloadKey}`}
                 onFallbackToIframe={() => {
                   const alt = availableLangSources.find((s) => s.key !== selectedPlayer.id);
@@ -1108,7 +1235,7 @@ function WatchPage() {
               onClick={handleActivatePlayer}
               aria-label={
                 current.number
-                  ? `Reproduzir ${title} — Episódio ${current.number}`
+                  ? `Reproduzir ${title} — ${cleanedEpisodeDisplay}`
                   : `Reproduzir ${title}`
               }
               className="relative block aspect-video min-h-[240px] md:min-h-[520px] w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)] cursor-pointer group select-none text-left outline-none focus-visible:outline-none"
@@ -1116,7 +1243,7 @@ function WatchPage() {
               {playerPoster ? (
                 <img
                   src={playerPoster}
-                  alt={current.number ? `${title} — Episódio ${current.number}` : title}
+                  alt={current.number ? `${title} — ${cleanedEpisodeDisplay}` : title}
                   width={1280}
                   height={720}
                   loading="eager"
@@ -1139,14 +1266,17 @@ function WatchPage() {
             </button>
           )
         ) : (
-          <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
+          <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-[#08070d] shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
             <div className="flex size-full flex-col items-center justify-center gap-3 px-6 text-center">
               <p className="font-display text-2xl">
-                Sem vídeo neste episódio
+                {sourcesByLang.hasIncompleteOnly
+                  ? ANITUBE22_INCOMPLETE_PLAY_ERROR
+                  : "Sem vídeo neste episódio"}
               </p>
               <p className="max-w-md text-sm text-muted">
-                Adicione uma URL de vídeo válida no Admin para reproduzir este
-                episódio.
+                {sourcesByLang.hasIncompleteOnly
+                  ? "Este episódio possui apenas fontes antigas sem os parâmetros completos do player. Recadastre a URL completa no Admin."
+                  : "Adicione uma URL de vídeo válida no Admin para reproduzir este episódio."}
               </p>
               <Button
                 asChild
@@ -1299,9 +1429,7 @@ function WatchPage() {
                 />
               </span>
               <span className="truncate font-medium">
-                {current
-                  ? `Episódio ${current.number}${current.title ? ` · ${current.title}` : ""}`
-                  : `Episódio ${targetEpNum}`}
+                {cleanedEpisodeDisplay}
               </span>
             </div>
           </div>

@@ -1936,6 +1936,11 @@ function AdminEditor() {
       {(activeTab === "all" || activeTab === "seasons") && (
         <EditorSeasons
           animeId={current.id}
+          animeTitles={[
+            current.titleRomaji,
+            current.titleEnglish,
+            current.titleNative,
+          ].filter((t): t is string => Boolean(t && t.trim()))}
           seasons={current.seasons}
           onAddSeason={addSeason}
           onPatchSeason={patchSeason}
