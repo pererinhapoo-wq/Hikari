@@ -27,7 +27,6 @@ import {
   X,
   RotateCcw,
   RotateCw,
-  RefreshCw,
   Check,
 } from 'lucide-react';
 import {
@@ -43,7 +42,6 @@ import {
   formatDuration,
 } from '../../services/videoData';
 import { useProgressTracker } from '@/hooks/useProgressTracker';
-import { isAnitube22PlayerUrl } from '@/lib/anitube22';
 
 export type { VideoItem, QualityLevel, PlaybackSpeed, VideoResolution, StreamQualityOption };
 
@@ -122,12 +120,6 @@ function resolveHlsPlaybackUrl(url: string): string {
       return trimmed;
     }
     const hostname = parsed.hostname.toLowerCase();
-    if (
-      hostname.includes('anitube22.vip') ||
-      hostname.endsWith('r2.cloudflarestorage.com')
-    ) {
-      return trimmed;
-    }
     if (
       (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
       (hostname === 'maximaimg.online' || hostname.endsWith('.maximaimg.online'))
@@ -291,12 +283,6 @@ export interface CustomVideoPlayerProps {
   className?: string;
   iframeFallbackUrl?: string;
   onFallbackToIframe?: () => void;
-  onReloadSource?: () => void;
-  iframeLoadError?: boolean;
-  iframeChecking?: boolean;
-  iframeErrorMessage?: string | null;
-  onIframeError?: () => void;
-  iframeReloadKey?: string | number;
 }
 
 const SPEED_OPTIONS: PlaybackSpeed[] = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -604,12 +590,6 @@ interface HikariPlayerSurfaceProps {
   className?: string;
   iframeFallbackUrl?: string;
   onFallbackToIframe?: () => void;
-  onReloadSource?: () => void;
-  iframeLoadError?: boolean;
-  iframeChecking?: boolean;
-  iframeErrorMessage?: string | null;
-  onIframeError?: () => void;
-  iframeReloadKey?: string | number;
 }
 
 const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
@@ -634,12 +614,6 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   className,
   iframeFallbackUrl,
   onFallbackToIframe,
-  onReloadSource,
-  iframeLoadError,
-  iframeChecking,
-  iframeErrorMessage,
-  onIframeError,
-  iframeReloadKey,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -671,25 +645,9 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const [hasPlaybackStarted, setHasPlaybackStarted] = useState<boolean>(() => Boolean(autoPlay));
   const hasPlaybackStartedRef = useRef<boolean>(Boolean(autoPlay));
   hasPlaybackStartedRef.current = hasPlaybackStarted;
-  const isIframeOnly = Boolean(
-    video?.isIframe ||
-      isAnitube22PlayerUrl(video?.iframeUrl) ||
-      isAnitube22PlayerUrl(video?.videoUrl) ||
-      isAnitube22PlayerUrl(iframeFallbackUrl),
-  );
-
   const [posterFailed, setPosterFailed] = useState<boolean>(false);
-  const [isIframeMode, setIsIframeMode] = useState<boolean>(() => isIframeOnly);
+  const [isIframeMode, setIsIframeMode] = useState<boolean>(false);
   const [hlsRetryNonce, setHlsRetryNonce] = useState<number>(0);
-  const [internalIframeReloadCount, setInternalIframeReloadCount] = useState<number>(0);
-  const [localIframeError, setLocalIframeError] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (isIframeOnly) {
-      setIsIframeMode(true);
-      setVideoError(null);
-    }
-  }, [isIframeOnly]);
 
   const handleTrackerRestored = useCallback((position: number) => {
     initialTimeAppliedRef.current = true;
@@ -705,8 +663,6 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const effectiveIframeUrl = useMemo(() => {
     if (iframeFallbackUrl) return iframeFallbackUrl;
     if (video?.iframeUrl) return video.iframeUrl;
-    if (isAnitube22PlayerUrl(video?.videoUrl)) return video?.videoUrl || null;
-    if (isAnitube22PlayerUrl(video?.url)) return video?.url || null;
     let raw = video?.videoUrl || video?.url || '';
     try {
       const parsed = new URL(raw, 'http://localhost');
@@ -724,20 +680,6 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     return null;
   }, [iframeFallbackUrl, video?.iframeUrl, video?.videoUrl, video?.url]);
 
-  useEffect(() => {
-    setLocalIframeError(false);
-  }, [effectiveIframeUrl, iframeReloadKey, internalIframeReloadCount]);
-
-  const handleReloadSource = useCallback(() => {
-    setLocalIframeError(false);
-    setVideoError(null);
-    if (onReloadSource) {
-      onReloadSource();
-    } else {
-      setInternalIframeReloadCount((prev) => prev + 1);
-    }
-  }, [onReloadSource]);
-
   const handleSwitchToIframe = useCallback(() => {
     if (effectiveIframeUrl) {
       setIsIframeMode(true);
@@ -750,11 +692,10 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   }, [effectiveIframeUrl, onFallbackToIframe]);
 
   const handleRetryHls = useCallback(() => {
-    if (isIframeOnly) return;
     setVideoError(null);
     setIsIframeMode(false);
     setHlsRetryNonce((prev) => prev + 1);
-  }, [isIframeOnly]);
+  }, []);
 
   const showInitialCover = !hasPlaybackStarted && !videoError && !isIframeMode;
 
@@ -2025,92 +1966,27 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   );
 
   if (isIframeMode && effectiveIframeUrl) {
-    const showIframeErrorBanner = Boolean(iframeLoadError || localIframeError);
-    const activeIframeSrc =
-      internalIframeReloadCount > 0 && isAnitube22PlayerUrl(effectiveIframeUrl) && !onReloadSource
-        ? effectiveIframeUrl.replace(
-            /([?&])time=\d+/i,
-            `$1time=${Math.floor(Date.now() / 1000)}`,
-          )
-        : effectiveIframeUrl;
-
     return (
       <div
         ref={containerRef}
-        className={`hikari-video-player relative w-full aspect-video min-h-[240px] md:min-h-[520px] flex items-center justify-center select-none border border-white/10 shadow-[0_20px_70px_rgba(0,0,0,0.45)] outline-none rounded-2xl overflow-hidden bg-[#08070d] ${className || ''}`}
+        className={`hikari-video-player relative w-full aspect-video min-h-[240px] md:min-h-[520px] flex items-center justify-center select-none border border-white/10 shadow-[0_20px_70px_rgba(0,0,0,0.45)] outline-none rounded-2xl overflow-hidden bg-black ${className || ''}`}
       >
-        {!showIframeErrorBanner && !iframeChecking ? (
-          <iframe
-            key={`${activeIframeSrc}-${iframeReloadKey ?? internalIframeReloadCount}`}
-            src={activeIframeSrc}
-            title={video?.title || 'Player do Provedor'}
-            className="size-full border-0"
-            referrerPolicy="no-referrer-when-downgrade"
-            allow="autoplay; fullscreen; picture-in-picture"
-            allowFullScreen
-            onLoad={() => setLocalIframeError(false)}
-            onError={() => {
-              setLocalIframeError(true);
-              onIframeError?.();
-            }}
-          />
-        ) : null}
-
-        {iframeChecking && !showIframeErrorBanner && (
-          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#08070d] p-6 text-center">
-            <div className="size-8 animate-spin rounded-full border-2 border-white/10 border-t-[#a855f7]" />
-            <p className="text-xs font-medium text-slate-300">
-              Verificando disponibilidade da fonte...
-            </p>
-          </div>
-        )}
-
-        {showIframeErrorBanner && (
-          <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#08070d] p-6 text-center">
-            <div className="w-12 h-12 rounded-full bg-purple-950/80 border border-purple-700/50 flex items-center justify-center text-purple-400 mb-3">
-              <Info className="w-6 h-6" />
-            </div>
-            <h4 className="text-base font-semibold text-white mb-1">
-              Falha ao carregar o vídeo
-            </h4>
-            <p className="text-xs text-slate-300 max-w-md mb-4 leading-relaxed">
-              {iframeErrorMessage?.trim() ||
-                'Não foi possível carregar este vídeo no provedor. Tente recarregar a fonte ou alternar de servidor.'}
-            </p>
-            <button
-              type="button"
-              data-controls-interactive="true"
-              onClick={handleReloadSource}
-              className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-purple-600/30 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Recarregar fonte
-            </button>
-          </div>
-        )}
-
+        <iframe
+          src={effectiveIframeUrl}
+          title={video?.title || 'Player do Provedor'}
+          className="size-full border-0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+        />
         <div className="absolute top-3 right-3 z-30 flex items-center gap-2">
           <button
             type="button"
-            data-controls-interactive="true"
-            onClick={handleReloadSource}
+            onClick={handleRetryHls}
             className="px-3 py-1.5 rounded-xl bg-black/80 hover:bg-black text-white text-xs font-medium backdrop-blur-md transition border border-white/20 flex items-center gap-1.5 shadow-lg cursor-pointer active:scale-95"
           >
-            <RefreshCw className="w-3.5 h-3.5 text-purple-400" />
-            Recarregar fonte
+            <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
+            Tentar Player Próprio (HLS)
           </button>
-
-          {!isIframeOnly && Boolean(effectiveVideoUrl) && (
-            <button
-              type="button"
-              data-controls-interactive="true"
-              onClick={handleRetryHls}
-              className="px-3 py-1.5 rounded-xl bg-black/80 hover:bg-black text-white text-xs font-medium backdrop-blur-md transition border border-white/20 flex items-center gap-1.5 shadow-lg cursor-pointer active:scale-95"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
-              Tentar Player Próprio (HLS)
-            </button>
-          )}
         </div>
       </div>
     );
@@ -2502,12 +2378,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   className,
   iframeFallbackUrl,
   onFallbackToIframe,
-  onReloadSource,
-  iframeLoadError,
-  iframeChecking,
-  iframeErrorMessage,
-  onIframeError,
-  iframeReloadKey,
 }) => {
   const effectiveVideoUrl = useMemo(() => {
     if (!video) return '';
@@ -2546,12 +2416,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         className={className}
         iframeFallbackUrl={iframeFallbackUrl}
         onFallbackToIframe={onFallbackToIframe}
-        onReloadSource={onReloadSource}
-        iframeLoadError={iframeLoadError}
-        iframeChecking={iframeChecking}
-        iframeErrorMessage={iframeErrorMessage}
-        onIframeError={onIframeError}
-        iframeReloadKey={iframeReloadKey}
       />
     </HikariVideoPlayerRoot>
   );
