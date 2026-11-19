@@ -1,17 +1,14 @@
 import { getSql } from "@/lib/db";
 import {
-  ANITUBE22_INCOMPLETE_PLAY_ERROR,
   ANITUBE22_INVALID_URL_ERROR,
   ANITUBE22_NOT_FOUND_ERROR,
   ANITUBE22_PROVIDER,
   ANITUBE22_WRONG_LANG_ERROR,
   buildAnitube22PlayerUrlFromParts,
   detectEpisodeLanguageHint,
-  extractSignedMediaUrlFromProviderHtml,
   normalizeSourceLang,
   parseAnitube22PlayerUrl,
   parseExplicitSourceLang,
-  parseSignedUrlExpiresAtMs,
   type EpisodeSourceItem,
   type SourceLang,
   type SourceStatus,
@@ -22,10 +19,6 @@ import {
   releaseEpisodeResolutionLock,
   setRedisEpisodeSourceWithFence,
   invalidateRedisEpisodeSource,
-  getCachedResolvedSourceUrl,
-  setCachedResolvedSourceUrl,
-  invalidateCachedResolvedSourceUrl,
-  SOURCE_RESOLVE_CACHE_TTL_SEC,
 } from "@/lib/redis";
 
 export class SourceValidationError extends Error {
@@ -297,7 +290,6 @@ export async function upsertEpisodeSource(
          "name_path", "url_path", "img_url", "page_url", "direct_url", "resolved_at";`,
       [existing[0].id, extId, namePath, imgUrl, quality, priority],
     );
-    await invalidateCachedResolvedSourceUrl(existing[0].id);
     return updated[0] ? mapSourceRow(updated[0]) : null!;
   }
 
@@ -410,11 +402,7 @@ export async function deleteEpisodeSourceById(sourceId: string): Promise<boolean
     `DELETE FROM "episode_sources" WHERE "id" = $1 RETURNING "id";`,
     [cleanId],
   );
-  if (rows[0]?.id) {
-    await invalidateCachedResolvedSourceUrl(cleanId);
-    return true;
-  }
-  return false;
+  return Boolean(rows[0]?.id);
 }
 
 export async function recordEpisodeSourceIndexResult(input: {
@@ -488,7 +476,6 @@ export async function recordEpisodeSourceIndexResult(input: {
       [cleanId],
     );
     if (!rows[0]) return { updated: false };
-    await invalidateCachedResolvedSourceUrl(cleanId);
     return {
       updated: true,
       status: rows[0].status === "broken" ? "broken" : "active",
@@ -911,336 +898,3 @@ export async function resolveEpisode(
     return { directUrl: null, iframeUrl, unavailable: true };
   }
 }
-
-const RESOLVER_BROWSER_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
-const ANITUBE22_PROVIDER_REFERER = "https://www.anitube22.vip/";
-
-export interface DirectSourceResolveResult {
-  ok: boolean;
-  httpStatus: number;
-  url?: string;
-  kind?: "mp4" | "hls";
-  cached?: boolean;
-  sourceStatus?: SourceStatus;
-  error?: string;
-  networkError?: boolean;
-}
-
-function isDirectSignedOrHlsLocation(candidateUrl: string): {
-  url: string;
-  kind: "mp4" | "hls";
-} | null {
-  try {
-    const parsed = new URL(candidateUrl);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
-    if (parsed.pathname.toLowerCase().includes("playerricas.php")) return null;
-    const isHls =
-      parsed.pathname.toLowerCase().endsWith(".m3u8") ||
-      /\.m3u8(?:[?#&]|$)/i.test(candidateUrl);
-    if (/[?&]X-Amz-Signature=/i.test(candidateUrl)) {
-      return { url: candidateUrl, kind: isHls ? "hls" : "mp4" };
-    }
-    if (isHls) {
-      return { url: candidateUrl, kind: "hls" };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Resolve a fonte anitube22 diretamente no servidor buscando o invólucro playerricas.php
- * com User-Agent de navegador e Referer do provedor, extraindo apenas a URL assinada R2
- * (X-Amz-Signature) ou playlist .m3u8 sem trafegar bytes de vídeo pelo servidor.
- */
-export async function resolveAnitube22DirectStream(
-  sourceId: string,
-  options?: {
-    fetchImpl?: typeof fetch;
-    forceRefresh?: boolean;
-    timeoutMs?: number;
-  },
-): Promise<DirectSourceResolveResult> {
-  const cleanId = sourceId?.trim();
-  if (!cleanId) {
-    return { ok: false, httpStatus: 400, error: "id é obrigatório." };
-  }
-
-  if (!options?.forceRefresh) {
-    const cached = await getCachedResolvedSourceUrl(cleanId);
-    if (cached) {
-      return {
-        ok: true,
-        httpStatus: 200,
-        url: cached.url,
-        kind: cached.kind,
-        cached: true,
-      };
-    }
-  }
-
-  const sql = await getSql();
-  const rows = await sql.query<RawEpisodeSourceRow>(
-    `SELECT
-       "id", "episode_id", "provider", "external_id", "lang", "quality",
-       "priority", "status", "fail_count", "last_checked_at",
-       "name_path", "url_path", "img_url", "page_url", "direct_url", "resolved_at"
-     FROM "episode_sources"
-     WHERE "id" = $1
-     LIMIT 1;`,
-    [cleanId],
-  );
-
-  const row = rows[0];
-  if (!row) {
-    return { ok: false, httpStatus: 404, error: "Fonte não encontrada." };
-  }
-
-  const mapped = mapSourceRow(row);
-  if (mapped.provider !== ANITUBE22_PROVIDER) {
-    return {
-      ok: false,
-      httpStatus: 400,
-      sourceStatus: mapped.status,
-      error: "Fonte não utiliza provedor anitube22.",
-    };
-  }
-
-  if (
-    mapped.status === "incomplete" ||
-    !row.name_path?.trim() ||
-    !row.url_path?.trim()
-  ) {
-    return {
-      ok: false,
-      httpStatus: 422,
-      sourceStatus: "incomplete",
-      error: ANITUBE22_INCOMPLETE_PLAY_ERROR,
-    };
-  }
-
-  const playerUrl = buildAnitube22PlayerUrlFromParts({
-    namePath: row.name_path,
-    urlPath: row.url_path,
-    imgUrl: row.img_url || "",
-  });
-
-  const fetchFn = options?.fetchImpl ?? fetch;
-  const timeoutMs = options?.timeoutMs ?? 8000;
-  let currentUrl = playerUrl;
-  let res: Response | null = null;
-
-  try {
-    for (let hop = 0; hop < 3; hop++) {
-      const attempt = await fetchFn(currentUrl, {
-        method: "GET",
-        headers: {
-          "User-Agent": RESOLVER_BROWSER_UA,
-          Referer: ANITUBE22_PROVIDER_REFERER,
-          Origin: "https://www.anitube22.vip",
-          Accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        },
-        redirect: "manual",
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-
-      if (attempt.status >= 300 && attempt.status < 400) {
-        const location = attempt.headers?.get("location");
-        try {
-          await attempt.body?.cancel();
-        } catch {
-          // ignore
-        }
-        if (!location) {
-          res = attempt;
-          break;
-        }
-        const nextUrl = new URL(location, currentUrl).toString();
-        const directRedirect = isDirectSignedOrHlsLocation(nextUrl);
-        if (directRedirect) {
-          const expiresAtMs = parseSignedUrlExpiresAtMs(directRedirect.url);
-          await setCachedResolvedSourceUrl(
-            cleanId,
-            {
-              url: directRedirect.url,
-              kind: directRedirect.kind,
-              resolvedAtMs: Date.now(),
-              expiresAtMs,
-            },
-            SOURCE_RESOLVE_CACHE_TTL_SEC,
-          );
-          return {
-            ok: true,
-            httpStatus: 200,
-            url: directRedirect.url,
-            kind: directRedirect.kind,
-            cached: false,
-          };
-        }
-        currentUrl = nextUrl;
-        continue;
-      }
-
-      res = attempt;
-      break;
-    }
-  } catch {
-    // Erro de rede não marca falha na fonte
-    return {
-      ok: false,
-      httpStatus: 502,
-      networkError: true,
-      sourceStatus: mapped.status,
-      error: "Erro de rede ao consultar o provedor.",
-    };
-  }
-
-  if (!res) {
-    return {
-      ok: false,
-      httpStatus: 502,
-      sourceStatus: mapped.status,
-      error: "Excesso de redirecionamentos no provedor.",
-    };
-  }
-
-  if (res.status === 404 || res.status === 403) {
-    try {
-      await res.body?.cancel();
-    } catch {
-      // ignore
-    }
-    const recorded = await recordEpisodeSourceIndexResult({
-      sourceId: cleanId,
-      httpStatus: res.status,
-      clientNetworkError: false,
-    });
-    return {
-      ok: false,
-      httpStatus: res.status,
-      sourceStatus: recorded.status ?? mapped.status,
-      error:
-        res.status === 404
-          ? ANITUBE22_NOT_FOUND_ERROR
-          : "Acesso recusado pelo provedor.",
-    };
-  }
-
-  if (res.status >= 400) {
-    try {
-      await res.body?.cancel();
-    } catch {
-      // ignore
-    }
-    return {
-      ok: false,
-      httpStatus: res.status,
-      sourceStatus: mapped.status,
-      error: "Falha do provedor ao resolver a fonte.",
-    };
-  }
-
-  const contentType = res.headers?.get("content-type")?.toLowerCase() || "";
-  if (
-    contentType.startsWith("video/") ||
-    contentType.startsWith("audio/") ||
-    contentType.includes("application/octet-stream")
-  ) {
-    try {
-      await res.body?.cancel();
-    } catch {
-      // ignore
-    }
-    const directFromResUrl = res.url
-      ? isDirectSignedOrHlsLocation(res.url)
-      : null;
-    if (directFromResUrl) {
-      const expiresAtMs = parseSignedUrlExpiresAtMs(directFromResUrl.url);
-      await setCachedResolvedSourceUrl(
-        cleanId,
-        {
-          url: directFromResUrl.url,
-          kind: directFromResUrl.kind,
-          resolvedAtMs: Date.now(),
-          expiresAtMs,
-        },
-        SOURCE_RESOLVE_CACHE_TTL_SEC,
-      );
-      return {
-        ok: true,
-        httpStatus: 200,
-        url: directFromResUrl.url,
-        kind: directFromResUrl.kind,
-        cached: false,
-      };
-    }
-    return {
-      ok: false,
-      httpStatus: 502,
-      sourceStatus: mapped.status,
-      error: "Resposta binária inesperada sem URL assinada.",
-    };
-  }
-
-  let bodyText = "";
-  try {
-    bodyText = await res.text();
-  } catch {
-    return {
-      ok: false,
-      httpStatus: 502,
-      networkError: true,
-      sourceStatus: mapped.status,
-      error: "Erro ao ler resposta do provedor.",
-    };
-  }
-
-  if (isProviderSoft404Body(bodyText)) {
-    const recorded = await recordEpisodeSourceIndexResult({
-      sourceId: cleanId,
-      httpStatus: 404,
-      clientNetworkError: false,
-    });
-    return {
-      ok: false,
-      httpStatus: 404,
-      sourceStatus: recorded.status ?? mapped.status,
-      error: ANITUBE22_NOT_FOUND_ERROR,
-    };
-  }
-
-  const extracted = extractSignedMediaUrlFromProviderHtml(bodyText);
-  if (!extracted) {
-    return {
-      ok: false,
-      httpStatus: 422,
-      sourceStatus: mapped.status,
-      error: "Corpo do provedor sem URL assinada ou playlist HLS.",
-    };
-  }
-
-  const expiresAtMs = parseSignedUrlExpiresAtMs(extracted.url);
-  await setCachedResolvedSourceUrl(
-    cleanId,
-    {
-      url: extracted.url,
-      kind: extracted.kind,
-      resolvedAtMs: Date.now(),
-      expiresAtMs,
-    },
-    SOURCE_RESOLVE_CACHE_TTL_SEC,
-  );
-
-  return {
-    ok: true,
-    httpStatus: 200,
-    url: extracted.url,
-    kind: extracted.kind,
-    cached: false,
-  };
-}
-

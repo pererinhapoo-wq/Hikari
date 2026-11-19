@@ -9,11 +9,9 @@ import {
   ANITUBE22_PROVIDER,
   ANITUBE22_WRONG_LANG_ERROR,
   buildAnitube22PlayerUrlFromParts,
-  extractSignedMediaUrlFromProviderHtml,
   isAnitube22PlayerUrl,
   isLegacyAnitube22Ref,
   parseAnitube22PlayerUrl,
-  parseSignedUrlExpiresAtMs,
   partitionEpisodeSourcesByLang,
   sortEpisodeSourcesByPriority,
   stripTimeQueryParam,
@@ -32,21 +30,15 @@ import {
 } from "./published-episodes";
 import { getSql } from "./db";
 import {
-  invalidateCachedResolvedSourceUrl,
-  SOURCE_RESOLVE_CACHE_TTL_SEC,
-} from "./redis";
-import {
   checkAndRecordEpisodeSource,
   deleteEpisodeSourcesForEpisode,
   listEpisodeSources,
   recordEpisodeSourceIndexResult,
-  resolveAnitube22DirectStream,
   resolveEpisode,
   SourceValidationError,
   syncCatalogEpisodeSlotsToSources,
   upsertEpisodeSource,
 } from "./sources";
-import { handleSourceResolveRequest } from "../routes/api/source/resolve";
 
 const SUB_URL_583375 =
   "https://www.anitube22.vip/playerricas.php?name=apphd/583375.mp4&img=https://www.hinatasoul.com/media/videos/tmb/583375/default.jpg&pais=pais=BR&time=1770000000&url=https://173fe263eae04670ecfcebf237fd6480.r2.cloudflarestorage.com/zful/583375.mp4";
@@ -496,234 +488,3 @@ describe("episode_sources strict validation, bucket isolation, legacy incomplete
     assert.ok(imageUtilsSrc.includes("/assets/placeholder-cover.webp"));
   });
 });
-
-describe("GET /api/source/resolve signed R2/HLS extraction, 3000s cache & error handling", () => {
-  it("extrai URL assinada do R2 (MP4) com escapes HTML/JSON e playlists .m3u8 (HLS), ignorando playerricas.php", () => {
-    const r2SignedMp4 =
-      "https://173fe263eae04670ecfcebf237fd6480.r2.cloudflarestorage.com/zful/583375.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=abc&X-Amz-Date=20261119T050000Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=deadbeef1234";
-
-    const htmlEscaped = `<video><source src="${r2SignedMp4.replace(/&/g, "&amp;")}" type="video/mp4"></video>`;
-    assert.deepEqual(extractSignedMediaUrlFromProviderHtml(htmlEscaped), {
-      url: r2SignedMp4,
-      kind: "mp4",
-    });
-
-    const jsEscaped = `<script>var cfg = {"src":"${r2SignedMp4.replace(/\//g, "\\/")}"};</script>`;
-    assert.deepEqual(extractSignedMediaUrlFromProviderHtml(jsEscaped), {
-      url: r2SignedMp4,
-      kind: "mp4",
-    });
-
-    const hlsUrl = "https://cdn.example.com/streams/583375/master.m3u8?token=xyz999";
-    assert.deepEqual(
-      extractSignedMediaUrlFromProviderHtml(`<script>setup({file:"${hlsUrl}"})</script>`),
-      { url: hlsUrl, kind: "hls" },
-    );
-
-    const noSigHtml = `<html><body><script>var u="${SUB_URL_583375}";</script></body></html>`;
-    assert.equal(extractSignedMediaUrlFromProviderHtml(noSigHtml), null);
-
-    const expMs = parseSignedUrlExpiresAtMs(r2SignedMp4);
-    assert.equal(expMs, Date.UTC(2026, 10, 19, 5, 0, 0) + 3600 * 1000);
-  });
-
-  it("resolve com UA+Referer, faz cache de 3000s por sourceId, envia Cache-Control: private, max-age=0 e trata 404/403 vs erro de rede", async () => {
-    const sql = await getSql();
-    const ts = Date.now();
-    const animeId = `test-resolve-anime-${ts}`;
-    const episodeId = `test-resolve-ep-${ts}`;
-
-    try {
-      await sql.query(
-        `INSERT INTO "catalog_anime" ("id", "title", "createdAt", "updatedAt")
-         VALUES ($1, 'Anime Resolver Test', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
-        [animeId],
-      );
-      await sql.query(
-        `INSERT INTO "catalog_episode" ("id", "animeId", "seasonNumber", "number", "title", "videoUrl", "published", "createdAt", "updatedAt")
-         VALUES ($1, $2, 1, 1, 'Episódio 1', $3, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
-        [episodeId, animeId, sanitizePlayableVideoUrl(SUB_URL_583375)],
-      );
-
-      const src1 = await upsertEpisodeSource(
-        {
-          episodeId,
-          provider: ANITUBE22_PROVIDER,
-          externalId: SUB_URL_583375,
-          lang: "sub",
-          priority: 0,
-        },
-        { skipProbe: true },
-      );
-      const src2 = await upsertEpisodeSource(
-        {
-          episodeId,
-          provider: ANITUBE22_PROVIDER,
-          externalId: DUB_URL_583375.replace("/ziphonec/", "/altbucket/"),
-          lang: "sub",
-          priority: 1,
-        },
-        { skipProbe: true },
-      );
-
-      assert.equal(SOURCE_RESOLVE_CACHE_TTL_SEC, 3000);
-      await invalidateCachedResolvedSourceUrl(src1.id);
-
-      let providerCalls = 0;
-      let capturedHeaders: Record<string, string> = {};
-      let capturedUrl = "";
-      const signedUrl1 =
-        "https://173fe263eae04670ecfcebf237fd6480.r2.cloudflarestorage.com/zful/583375.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20990101T000000Z&X-Amz-Expires=3600&X-Amz-Signature=sig1";
-
-      const res1 = await handleSourceResolveRequest(
-        new Request(`http://localhost/api/source/resolve?id=${encodeURIComponent(src1.id)}`),
-        {
-          fetchImpl: async (input, init) => {
-            providerCalls += 1;
-            capturedUrl = String(input);
-            const h = new Headers(init?.headers);
-            capturedHeaders = {
-              ua: h.get("User-Agent") || "",
-              referer: h.get("Referer") || "",
-            };
-            return new Response(`<video><source src="${signedUrl1}" /></video>`, {
-              status: 200,
-              headers: { "Content-Type": "text/html" },
-            });
-          },
-        },
-      );
-
-      assert.equal(res1.status, 200);
-      assert.equal(res1.headers.get("Cache-Control"), "private, max-age=0");
-      assert.deepEqual(await res1.json(), { url: signedUrl1, kind: "mp4" });
-      assert.equal(providerCalls, 1);
-      assert.ok(capturedUrl.includes("playerricas.php"));
-      assert.ok(capturedUrl.includes("/zful/583375.mp4"));
-      assert.ok(capturedHeaders.ua.includes("Mozilla/5.0"));
-      assert.equal(capturedHeaders.referer, "https://www.anitube22.vip/");
-
-      // Segunda abertura devolve do cache sem nova chamada ao provedor
-      const res2 = await handleSourceResolveRequest(
-        new Request(`http://localhost/api/source/resolve?id=${encodeURIComponent(src1.id)}`),
-        {
-          fetchImpl: async () => {
-            providerCalls += 1;
-            throw new Error("Não deveria chamar o provedor quando há cache");
-          },
-        },
-      );
-      assert.equal(res2.status, 200);
-      assert.equal(res2.headers.get("Cache-Control"), "private, max-age=0");
-      assert.deepEqual(await res2.json(), { url: signedUrl1, kind: "mp4" });
-      assert.equal(providerCalls, 1);
-
-      // refresh=1 renova a URL assinada no provedor
-      const signedUrlRefreshed = signedUrl1.replace("sig1", "sig2");
-      const resRefresh = await handleSourceResolveRequest(
-        new Request(`http://localhost/api/source/resolve?id=${encodeURIComponent(src1.id)}&refresh=1`),
-        {
-          fetchImpl: async () => {
-            providerCalls += 1;
-            return new Response(`<video src="${signedUrlRefreshed}"></video>`, {
-              status: 200,
-              headers: { "Content-Type": "text/html" },
-            });
-          },
-        },
-      );
-      assert.equal(resRefresh.status, 200);
-      assert.deepEqual(await resRefresh.json(), { url: signedUrlRefreshed, kind: "mp4" });
-      assert.equal(providerCalls, 2);
-
-      // Redirecionamento 302 direto para R2 devolve URL sem baixar bytes de vídeo
-      let fetchedR2Binary = false;
-      const redirectResult = await resolveAnitube22DirectStream(src1.id, {
-        forceRefresh: true,
-        fetchImpl: async (input) => {
-          const u = String(input);
-          if (new URL(u).hostname.includes("r2.cloudflarestorage.com")) {
-            fetchedR2Binary = true;
-            return new Response("binary-video-bytes", { status: 200 });
-          }
-          return new Response(null, {
-            status: 302,
-            headers: { Location: signedUrl1 },
-          });
-        },
-      });
-      assert.equal(redirectResult.ok, true);
-      assert.equal(redirectResult.url, signedUrl1);
-      assert.equal(fetchedR2Binary, false);
-
-      // Erro de rede não marca falha na fonte
-      const netErrResult = await resolveAnitube22DirectStream(src1.id, {
-        forceRefresh: true,
-        fetchImpl: async () => {
-          throw new TypeError("network down");
-        },
-      });
-      assert.equal(netErrResult.ok, false);
-      assert.equal(netErrResult.networkError, true);
-      let currentSrcs = await listEpisodeSources(episodeId, { includeBroken: true });
-      assert.equal(currentSrcs.find((s) => s.id === src1.id)?.failCount, 0);
-
-      // Corpo sem assinatura nem .m3u8 retorna erro 422 para cair para iframe, sem marcar falha
-      const noSigResult = await resolveAnitube22DirectStream(src1.id, {
-        forceRefresh: true,
-        fetchImpl: async () => new Response("<html><body>sem link</body></html>", { status: 200 }),
-      });
-      assert.equal(noSigResult.ok, false);
-      currentSrcs = await listEpisodeSources(episodeId, { includeBroken: true });
-      assert.equal(currentSrcs.find((s) => s.id === src1.id)?.failCount, 0);
-
-      // 403 do provedor marca falha na fonte (failCount=1)
-      const err403 = await resolveAnitube22DirectStream(src1.id, {
-        forceRefresh: true,
-        fetchImpl: async () => new Response("Forbidden", { status: 403 }),
-      });
-      assert.equal(err403.ok, false);
-      assert.equal(err403.httpStatus, 403);
-      currentSrcs = await listEpisodeSources(episodeId, { includeBroken: true });
-      assert.equal(currentSrcs.find((s) => s.id === src1.id)?.failCount, 1);
-      assert.equal(currentSrcs.find((s) => s.id === src1.id)?.status, "active");
-
-      // 404 do provedor marca falha adicional -> broken (e listEpisodeSources ativo passa para src2)
-      const err404 = await resolveAnitube22DirectStream(src1.id, {
-        forceRefresh: true,
-        fetchImpl: async () => new Response("deleted 404 not found", { status: 404 }),
-      });
-      assert.equal(err404.ok, false);
-      assert.equal(err404.httpStatus, 404);
-      assert.equal(err404.sourceStatus, "broken");
-
-      const activeRemaining = await listEpisodeSources(episodeId);
-      assert.equal(activeRemaining.length, 1);
-      assert.equal(activeRemaining[0]?.id, src2.id);
-    } finally {
-      await deleteEpisodeSourcesForEpisode(episodeId);
-      await sql.query(`DELETE FROM "catalog_episode" WHERE "id" = $1;`, [episodeId]);
-      await sql.query(`DELETE FROM "catalog_anime" WHERE "id" = $1;`, [animeId]);
-    }
-  });
-
-  it("garante player próprio direto para R2/HLS, fallback silencioso para iframe, 'fonte indisponível' e renovação <120s", () => {
-    const customPlayerSrc = fs.readFileSync(
-      path.resolve("src/components/player/CustomVideoPlayer.tsx"),
-      "utf8",
-    );
-    const watchSrc = fs.readFileSync(
-      path.resolve("src/routes/watch_.$id.$ep.tsx"),
-      "utf8",
-    );
-
-    assert.ok(watchSrc.includes("/api/source/resolve?id="));
-    assert.ok(watchSrc.includes("&refresh=1"));
-    assert.ok(customPlayerSrc.includes("hasDirectNonIframeStream"));
-    assert.ok(customPlayerSrc.includes("120_000"));
-    assert.ok(customPlayerSrc.includes("fonte indisponível"));
-    assert.ok(customPlayerSrc.includes("Próxima fonte"));
-    assert.ok(customPlayerSrc.includes("seamlessResumeRef"));
-  });
-});
-
