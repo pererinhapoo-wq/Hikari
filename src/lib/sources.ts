@@ -129,8 +129,15 @@ export async function upsertEpisodeSource(input: {
       ? extractAnitube22ExternalId(input.externalId)
       : input.externalId?.trim();
 
-  if (!episodeId || !extracted) {
-    return null;
+  if (!episodeId || !extracted || !/^\d{3,16}$/.test(extracted)) {
+    throw new Error("ID externo inválido ou vazio.");
+  }
+
+  if (provider === ANITUBE22_PROVIDER) {
+    const probe = await probeAnitube22SourceIndex(extracted);
+    if (!probe.networkError && probe.httpStatus === 404) {
+      throw new Error("ID não encontrado no provedor.");
+    }
   }
 
   const lang = normalizeSourceLang(

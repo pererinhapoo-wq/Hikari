@@ -1,3 +1,5 @@
+export const PLACEHOLDER_COVER_FALLBACK = "/assets/placeholder-cover.webp";
+
 function getCloudinaryCloud(): string {
   const fromProcess =
     typeof process !== "undefined"

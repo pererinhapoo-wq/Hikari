@@ -52,6 +52,7 @@ import { Route as AdultTagsRouteImport } from './routes/adult.tags'
 import { Route as AdultNewsRouteImport } from './routes/adult_.news'
 import { Route as AnimeIdRouteImport } from './routes/anime.$id'
 import { Route as ApiCommentsRouteImport } from './routes/api/comments'
+import { Route as ApiEpisodeSourcesRouteImport } from './routes/api/episode-sources'
 import { Route as ApiHlsRouteImport } from './routes/api/hls'
 import { Route as ApiNotificationsRouteImport } from './routes/api/notifications'
 import { Route as ApiProgressRouteImport } from './routes/api/progress'
@@ -305,6 +306,11 @@ const ApiCommentsRoute = ApiCommentsRouteImport.update({
   path: '/api/comments',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiEpisodeSourcesRoute = ApiEpisodeSourcesRouteImport.update({
+  id: '/api/episode-sources',
+  path: '/api/episode-sources',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiHlsRoute = ApiHlsRouteImport.update({
   id: '/api/hls',
   path: '/api/hls',
@@ -534,6 +540,7 @@ export interface FileRoutesByFullPath {
   '/adult/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
   '/api/comments': typeof ApiCommentsRouteWithChildren
+  '/api/episode-sources': typeof ApiEpisodeSourcesRoute
   '/api/hls': typeof ApiHlsRoute
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/progress': typeof ApiProgressRoute
@@ -614,6 +621,7 @@ export interface FileRoutesByTo {
   '/adult/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
   '/api/comments': typeof ApiCommentsRouteWithChildren
+  '/api/episode-sources': typeof ApiEpisodeSourcesRoute
   '/api/hls': typeof ApiHlsRoute
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/progress': typeof ApiProgressRoute
@@ -697,6 +705,7 @@ export interface FileRoutesById {
   '/adult_/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
   '/api/comments': typeof ApiCommentsRouteWithChildren
+  '/api/episode-sources': typeof ApiEpisodeSourcesRoute
   '/api/hls': typeof ApiHlsRoute
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/progress': typeof ApiProgressRoute
@@ -781,6 +790,7 @@ export interface FileRouteTypes {
     | '/adult/news'
     | '/anime/$id'
     | '/api/comments'
+    | '/api/episode-sources'
     | '/api/hls'
     | '/api/notifications'
     | '/api/progress'
@@ -861,6 +871,7 @@ export interface FileRouteTypes {
     | '/adult/news'
     | '/anime/$id'
     | '/api/comments'
+    | '/api/episode-sources'
     | '/api/hls'
     | '/api/notifications'
     | '/api/progress'
@@ -943,6 +954,7 @@ export interface FileRouteTypes {
     | '/adult_/news'
     | '/anime/$id'
     | '/api/comments'
+    | '/api/episode-sources'
     | '/api/hls'
     | '/api/notifications'
     | '/api/progress'
@@ -1013,6 +1025,7 @@ export interface RootRouteChildren {
   AdultNewsRoute: typeof AdultNewsRoute
   AnimeIdRoute: typeof AnimeIdRoute
   ApiCommentsRoute: typeof ApiCommentsRouteWithChildren
+  ApiEpisodeSourcesRoute: typeof ApiEpisodeSourcesRoute
   ApiHlsRoute: typeof ApiHlsRoute
   ApiNotificationsRoute: typeof ApiNotificationsRoute
   ApiProgressRoute: typeof ApiProgressRoute
@@ -1348,6 +1361,13 @@ declare module '@tanstack/react-router' {
       path: '/api/comments'
       fullPath: '/api/comments'
       preLoaderRoute: typeof ApiCommentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/episode-sources': {
+      id: '/api/episode-sources'
+      path: '/api/episode-sources'
+      fullPath: '/api/episode-sources'
+      preLoaderRoute: typeof ApiEpisodeSourcesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/hls': {
@@ -1707,6 +1727,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdultNewsRoute: AdultNewsRoute,
   AnimeIdRoute: AnimeIdRoute,
   ApiCommentsRoute: ApiCommentsRouteWithChildren,
+  ApiEpisodeSourcesRoute: ApiEpisodeSourcesRoute,
   ApiHlsRoute: ApiHlsRoute,
   ApiNotificationsRoute: ApiNotificationsRoute,
   ApiProgressRoute: ApiProgressRoute,
@@ -1743,3 +1764,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
