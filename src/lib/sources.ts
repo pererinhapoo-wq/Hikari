@@ -209,22 +209,23 @@ export async function upsertEpisodeSource(input: {
       ? Math.max(0, Math.floor(input.priority))
       : 0;
 
+  // Chave única: (episode_id, provider, lang, url_path)
   const existing = await sql.query<{ id: string }>(
     `SELECT "id" FROM "episode_sources"
      WHERE "episode_id" = $1
        AND "provider" = $2
-       AND "external_id" = $3
-       AND "lang" = $4
+       AND "lang" = $3
+       AND "url_path" = $4
      LIMIT 1;`,
-    [episodeId, provider, extId, lang],
+    [episodeId, provider, lang, urlPath],
   );
 
   if (existing[0]?.id) {
     const updated = await sql.query<RawEpisodeSourceRow>(
       `UPDATE "episode_sources"
        SET
-         "name_path" = $2,
-         "url_path" = $3,
+         "external_id" = $2,
+         "name_path" = $3,
          "img_url" = $4,
          "quality" = COALESCE($5, "quality"),
          "priority" = $6,
@@ -237,7 +238,7 @@ export async function upsertEpisodeSource(input: {
          "id", "episode_id", "provider", "external_id", "lang", "quality",
          "priority", "status", "fail_count", "last_checked_at",
          "name_path", "url_path", "img_url", "page_url", "direct_url", "resolved_at";`,
-      [existing[0].id, namePath, urlPath, imgUrl, quality, priority],
+      [existing[0].id, extId, namePath, imgUrl, quality, priority],
     );
     return updated[0] ? mapSourceRow(updated[0]) : null!;
   }
@@ -283,7 +284,8 @@ export async function syncCatalogEpisodeSlotsToSources(
     const lang = normalizeSourceLang(
       typeof slot.lang === "string" ? slot.lang : (parsed?.lang || extractAnitube22Lang(slot.url)),
     );
-    desiredKeys.add(`${lang}:${extId}`);
+    const urlPath = parsed?.urlPath || slot.url;
+    desiredKeys.add(`${lang}:${urlPath}`);
     try {
       const row = await upsertEpisodeSource({
         episodeId: cleanEpId,
@@ -304,17 +306,17 @@ export async function syncCatalogEpisodeSlotsToSources(
     const sql = await getSql();
     const existingRows = await sql.query<{
       id: string;
-      external_id: string | null;
+      url_path: string | null;
       lang: string | null;
     }>(
-      `SELECT "id", "external_id", "lang"
+      `SELECT "id", "url_path", "lang"
        FROM "episode_sources"
        WHERE "episode_id" = $1 AND "provider" = $2;`,
       [cleanEpId, ANITUBE22_PROVIDER],
     );
 
     for (const row of existingRows) {
-      const key = `${normalizeSourceLang(row.lang)}:${row.external_id || ""}`;
+      const key = `${normalizeSourceLang(row.lang)}:${row.url_path || ""}`;
       if (!desiredKeys.has(key)) {
         await sql.query(`DELETE FROM "episode_sources" WHERE "id" = $1;`, [row.id]);
       }
