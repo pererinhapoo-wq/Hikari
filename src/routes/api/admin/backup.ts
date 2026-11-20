@@ -8,9 +8,9 @@ import {
   saveSettingsToDb,
   invalidatePublicSettingsCache,
 } from "@/lib/settings/settings.server";
-import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
-import { invalidateServerCatalogCaches } from "@/lib/api";
+import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { syncCatalogEpisodeSlotsToSources } from "@/lib/sources";
 import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
@@ -566,9 +566,9 @@ export const Route = createFileRoute("/api/admin/backup")({
             }
 
             // Invalidação geral de caches
-            invalidateCatalogEpisodesCache();
+            await invalidateCatalogEpisodesCacheAsync();
             invalidateHomePublicEpisodesCache();
-            invalidateServerCatalogCaches();
+            await invalidateServerCatalogCachesAsync();
             invalidatePublicSettingsCache();
 
             return Response.json({

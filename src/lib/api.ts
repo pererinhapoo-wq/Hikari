@@ -43,10 +43,19 @@ import {
 } from "@/lib/anime-search-ranking";
 
 import {
+  buildCreditsRedisScopeKey,
+  collectCatalogInvalidationTargetIds,
   getRedisAnimeDetailWithFence,
   setRedisAnimeDetail,
   invalidateRedisAnimeDetail,
   updateRedisAnimeDetailAtomic,
+  getRedisAnimeCreditsWithFence,
+  setRedisAnimeCredits,
+  invalidateRedisAnimeCredits,
+  getRedisAnimeJikanEpisodesWithFence,
+  setRedisAnimeJikanEpisodes,
+  invalidateRedisAnimeJikanEpisodes,
+  registerJikanEpisodesRamInvalidator,
   getRedisHomeCatalog,
   setRedisHomeCatalog,
   getRedisHomeTodayRaw,
@@ -54,6 +63,8 @@ import {
   getRedisHomeSeason,
   setRedisHomeSeason,
   type RedisAnimeDetailFence,
+  type RedisEvalClient,
+  type RedisScopedFence,
 } from "@/lib/redis";
 
 const ANILIST = "https://graphql.anilist.co";
@@ -490,7 +501,93 @@ export function getDomainCache(
   return domainMap;
 }
 
-export function invalidateServerCatalogCaches(
+const MAX_ID_INDEX_ENTRIES = 500;
+const animeCreditsRamKeys = new Map<string, Set<string>>();
+const animeEpisodesRamKeys = new Map<string, Set<string>>();
+
+function trackAnimeRamKey(
+  indexMap: Map<string, Set<string>>,
+  ids: Array<string | number | null | undefined>,
+  cacheKey: string,
+): void {
+  for (const rawId of ids) {
+    const id =
+      typeof rawId === "number"
+        ? Number.isFinite(rawId) && rawId > 0
+          ? String(Math.floor(rawId))
+          : ""
+        : (rawId ?? "").trim();
+    if (!id) continue;
+
+    let set = indexMap.get(id);
+    if (set) {
+      indexMap.delete(id);
+    } else {
+      while (indexMap.size >= MAX_ID_INDEX_ENTRIES) {
+        const oldest = indexMap.keys().next().value;
+        if (oldest === undefined) break;
+        indexMap.delete(oldest);
+      }
+      set = new Set<string>();
+    }
+    set.add(cacheKey);
+    indexMap.set(id, set);
+  }
+}
+
+function evictTrackedDomainKeys(
+  domain: "credits" | "episodes",
+  indexMap: Map<string, Set<string>>,
+  targetIds: string[],
+  directFallbackKeys?: string[],
+): void {
+  const domainMap = domainCaches.get(domain);
+  if (targetIds.length === 0) {
+    domainMap?.clear();
+    indexMap.clear();
+    const flightPrefix = domain === "credits" ? "credits:" : "jikan-episodes:";
+    for (const fk of Array.from(inFlight.keys())) {
+      if (fk.startsWith(flightPrefix) || (domain === "episodes" && fk.startsWith("episodes:"))) {
+        inFlight.delete(fk);
+      }
+    }
+    return;
+  }
+
+  const keysToEvict = new Set<string>(directFallbackKeys ?? []);
+  for (const id of targetIds) {
+    const tracked = indexMap.get(id);
+    if (tracked) {
+      for (const k of tracked) {
+        keysToEvict.add(k);
+      }
+      indexMap.delete(id);
+    }
+  }
+
+  for (const key of keysToEvict) {
+    domainMap?.delete(key);
+    inFlight.delete(key);
+  }
+}
+
+export function evictLocalJikanEpisodesCacheByIds(ids: string[]): void {
+  const cleanIds = ids.map((id) => id.trim()).filter(Boolean);
+  const directKeys: string[] = [];
+  for (const id of cleanIds) {
+    const malMatch = /^mal-(\d+)$/.exec(id);
+    if (malMatch) {
+      directKeys.push(`jikan-episodes:v2:${malMatch[1]}`);
+    }
+  }
+  evictTrackedDomainKeys("episodes", animeEpisodesRamKeys, cleanIds, directKeys);
+}
+
+registerJikanEpisodesRamInvalidator((ids) => {
+  evictLocalJikanEpisodesCacheByIds(ids);
+});
+
+function applyLocalServerCatalogInvalidation(
   animeId?: string | null,
   externalIds?: {
     anilistId?: number | null;
@@ -498,7 +595,7 @@ export function invalidateServerCatalogCaches(
     kitsuId?: number | null;
     extraIds?: Array<string | number | null | undefined>;
   },
-): void {
+): string[] {
   domainCaches.get("home")?.clear();
   domainCaches.get("browse")?.clear();
   domainCaches.get("search")?.clear();
@@ -507,29 +604,10 @@ export function invalidateServerCatalogCaches(
     m.invalidateCatalogIndex();
   }).catch(() => {});
 
-  const candidateDetailKeys = new Set<string>();
-  const cleanId = animeId?.trim();
-  if (cleanId) {
-    candidateDetailKeys.add(`detail:v7:${cleanId}`);
-  }
-  if (typeof externalIds?.anilistId === "number" && externalIds.anilistId > 0) {
-    candidateDetailKeys.add(`detail:v7:${externalIds.anilistId}`);
-  }
-  if (typeof externalIds?.malId === "number" && externalIds.malId > 0) {
-    candidateDetailKeys.add(`detail:v7:mal-${externalIds.malId}`);
-  }
-  if (typeof externalIds?.kitsuId === "number" && externalIds.kitsuId > 0) {
-    candidateDetailKeys.add(`detail:v7:kitsu-${externalIds.kitsuId}`);
-  }
-  if (Array.isArray(externalIds?.extraIds)) {
-    for (const extra of externalIds.extraIds) {
-      if (typeof extra === "string" && extra.trim()) {
-        candidateDetailKeys.add(`detail:v7:${extra.trim()}`);
-      } else if (typeof extra === "number" && Number.isFinite(extra) && extra > 0) {
-        candidateDetailKeys.add(`detail:v7:${extra}`);
-      }
-    }
-  }
+  const targetIds = collectCatalogInvalidationTargetIds(animeId, externalIds);
+  const candidateDetailKeys = new Set<string>(
+    targetIds.map((tid) => `detail:v7:${tid}`),
+  );
 
   const detailCache = domainCaches.get("detail");
   if (detailCache) {
@@ -556,7 +634,43 @@ export function invalidateServerCatalogCaches(
     }
   }
 
+  evictTrackedDomainKeys("credits", animeCreditsRamKeys, targetIds);
+  evictLocalJikanEpisodesCacheByIds(targetIds);
+
+  return targetIds;
+}
+
+export function invalidateServerCatalogCaches(
+  animeId?: string | null,
+  externalIds?: {
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
+    extraIds?: Array<string | number | null | undefined>;
+  },
+): void {
+  applyLocalServerCatalogInvalidation(animeId, externalIds);
   void invalidateRedisAnimeDetail(animeId, externalIds).catch(() => {});
+  void invalidateRedisAnimeCredits(animeId, externalIds).catch(() => {});
+  void invalidateRedisAnimeJikanEpisodes(animeId, externalIds).catch(() => {});
+}
+
+export async function invalidateServerCatalogCachesAsync(
+  animeId?: string | null,
+  externalIds?: {
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
+    extraIds?: Array<string | number | null | undefined>;
+  },
+  redisOverride?: RedisEvalClient | null,
+): Promise<void> {
+  applyLocalServerCatalogInvalidation(animeId, externalIds);
+  await Promise.allSettled([
+    invalidateRedisAnimeDetail(animeId, externalIds),
+    invalidateRedisAnimeCredits(animeId, externalIds, redisOverride),
+    invalidateRedisAnimeJikanEpisodes(animeId, externalIds, redisOverride),
+  ]);
 }
 
 export function getDomainTtlConfig(
@@ -1454,106 +1568,183 @@ function mapJikanSlim(
   };
 }
 
-async function jikanEpisodes(
+export async function fetchCachedAnimeEpisodesWithDeps(
   malId: number,
+  upstreamFetcher: () => Promise<Season[]>,
+  options?: {
+    animeId?: string;
+    redis?: RedisEvalClient | null;
+  },
 ): Promise<Season[]> {
-  const cacheKey = `jikan-episodes:v2:${malId}`;
+  const cleanMalId = Number.isFinite(malId) && malId > 0 ? Math.floor(malId) : 0;
+  if (cleanMalId <= 0) {
+    return [];
+  }
+
+  const cacheKey = `jikan-episodes:v2:${cleanMalId}`;
+  const cleanAnimeId = options?.animeId?.trim();
+  const fenceAliasIds = Array.from(
+    new Set([`mal-${cleanMalId}`, ...(cleanAnimeId ? [cleanAnimeId] : [])]),
+  );
+  trackAnimeRamKey(animeEpisodesRamKeys, fenceAliasIds, cacheKey);
+
+  const flightState = { fenced: false };
 
   return withCache<Season[]>(
     cacheKey,
-    async () => {
-      const episodes: Episode[] = [];
+    async (ctx) => {
+      const redisRead = await getRedisAnimeJikanEpisodesWithFence(
+        cleanMalId,
+        fenceAliasIds,
+        options?.redis,
+      );
 
-      let page = 1;
-      let hasNext = true;
-      let hadError = false;
-
-      // Limita a até 2 páginas para não bloquear a resposta em animes longos
-      while (
-        hasNext &&
-        page <= 2
-      ) {
-        type EpisodePage = {
-          pagination?: {
-            has_next_page?: boolean;
-          };
-
-          data?: {
-            mal_id: number;
-            title?: string;
-            title_japanese?: string;
-            aired?: string;
-            filler?: boolean;
-            recap?: boolean;
-          }[];
-        };
-
-        try {
-          const json =
-            await jikanFetch<EpisodePage>(
-              `/anime/${malId}/episodes?page=${page}`,
-            );
-
-          for (
-            const episode of
-              json.data ?? []
-          ) {
-            episodes.push({
-              id: `mal-ep-${malId}-${episode.mal_id}`,
-
-              number:
-                episode.mal_id,
-
-              title:
-                episode.title ||
-                episode.title_japanese ||
-                `Episódio ${episode.mal_id}`,
-
-              aired:
-                episode.aired ??
-                undefined,
-            });
-          }
-
-          hasNext = Boolean(
-            json.pagination
-              ?.has_next_page,
-          );
-
-          page += 1;
-        } catch {
-          hadError = true;
-          break;
+      if (redisRead.status === "hit" && redisRead.seasons) {
+        if (ctx && !ctx.isCurrentFlight()) {
+          flightState.fenced = true;
+          domainCaches.get("episodes")?.delete(cacheKey);
         }
+        return redisRead.seasons;
       }
 
-      if (!episodes.length) {
-        if (hadError) {
-          throw new Error(
-            `Jikan episodes indisponível para malId ${malId}`,
-          );
-        }
+      const activeFence: RedisScopedFence | null | undefined =
+        redisRead.status === "miss"
+          ? redisRead.fence
+          : redisRead.status === "failed"
+            ? null
+            : undefined;
+
+      const seasons = await upstreamFetcher();
+      if (!Array.isArray(seasons) || seasons.length === 0) {
         return [];
       }
 
-      return [
-        {
-          id: `mal-s1-${malId}`,
+      if (ctx && !ctx.isCurrentFlight()) {
+        flightState.fenced = true;
+        domainCaches.get("episodes")?.delete(cacheKey);
+        return seasons;
+      }
 
-          number: 1,
+      const writeStatus = await setRedisAnimeJikanEpisodes(
+        cleanMalId,
+        seasons,
+        activeFence,
+        options?.redis,
+      );
+      if (writeStatus === "fenced" || (ctx && !ctx.isCurrentFlight())) {
+        flightState.fenced = true;
+        domainCaches.get("episodes")?.delete(cacheKey);
+      }
 
-          title:
-            "Temporada 1",
-
-          episodes,
-        },
-      ];
+      return seasons;
     },
     {
       shouldCache: (result) =>
-        result.length > 0,
+        !flightState.fenced && result.length > 0,
       fallback: () => [],
     },
+  );
+}
+
+async function fetchJikanEpisodesUpstream(
+  malId: number,
+): Promise<Season[]> {
+  const episodes: Episode[] = [];
+
+  let page = 1;
+  let hasNext = true;
+  let hadError = false;
+
+  // Limita a até 2 páginas para não bloquear a resposta em animes longos
+  while (
+    hasNext &&
+    page <= 2
+  ) {
+    type EpisodePage = {
+      pagination?: {
+        has_next_page?: boolean;
+      };
+
+      data?: {
+        mal_id: number;
+        title?: string;
+        title_japanese?: string;
+        aired?: string;
+        filler?: boolean;
+        recap?: boolean;
+      }[];
+    };
+
+    try {
+      const json =
+        await jikanFetch<EpisodePage>(
+          `/anime/${malId}/episodes?page=${page}`,
+        );
+
+      for (
+        const episode of
+          json.data ?? []
+      ) {
+        episodes.push({
+          id: `mal-ep-${malId}-${episode.mal_id}`,
+
+          number:
+            episode.mal_id,
+
+          title:
+            episode.title ||
+            episode.title_japanese ||
+            `Episódio ${episode.mal_id}`,
+
+          aired:
+            episode.aired ??
+            undefined,
+        });
+      }
+
+      hasNext = Boolean(
+        json.pagination
+          ?.has_next_page,
+      );
+
+      page += 1;
+    } catch {
+      hadError = true;
+      break;
+    }
+  }
+
+  if (!episodes.length) {
+    if (hadError) {
+      throw new Error(
+        `Jikan episodes indisponível para malId ${malId}`,
+      );
+    }
+    return [];
+  }
+
+  return [
+    {
+      id: `mal-s1-${malId}`,
+
+      number: 1,
+
+      title:
+        "Temporada 1",
+
+      episodes,
+    },
+  ];
+}
+
+async function jikanEpisodes(
+  malId: number,
+  animeId?: string,
+): Promise<Season[]> {
+  return fetchCachedAnimeEpisodesWithDeps(
+    malId,
+    () => fetchJikanEpisodesUpstream(malId),
+    { animeId },
   );
 }
 
@@ -1735,7 +1926,7 @@ export const fetchAnimeEpisodes = createServerFn({
     }
 
     try {
-      const seasons = await jikanEpisodes(malId);
+      const seasons = await jikanEpisodes(malId, animeId);
       const cleanAnimeId = animeId?.trim();
       if (cleanAnimeId && seasons.length > 0 && seasons[0]?.episodes?.length) {
         const titleMap = new Map<number, { title: string; aired?: string }>();
@@ -2931,6 +3122,113 @@ async function fetchJikanCredits(
   };
 }
 
+export async function fetchCachedAnimeCreditsWithDeps(
+  input: {
+    anilistId?: number;
+    malId?: number;
+    kitsuId?: number;
+    titles?: string[];
+    year?: number | null;
+    format?: string | null;
+    skipAnilist?: boolean;
+    animeId?: string;
+  },
+  upstreamFetcher: (markProviderSucceeded: () => void) => Promise<AnimeCreditsResult>,
+  options?: {
+    redis?: RedisEvalClient | null;
+  },
+): Promise<AnimeCreditsResult> {
+  const cleanTitles = (input.titles ?? [])
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
+
+  const cacheKey = `credits:v1:${input.anilistId ?? 0}:${input.malId ?? 0}:${input.kitsuId ?? 0}:${input.skipAnilist ? 1 : 0}:${normalizeSearchText(cleanTitles[0] ?? "")}:${input.year ?? 0}`;
+  const redisScopeKey = buildCreditsRedisScopeKey(input);
+  const fenceAliasIds = collectCatalogInvalidationTargetIds(input.animeId, {
+    anilistId: input.anilistId,
+    malId: input.malId,
+    kitsuId: input.kitsuId,
+  });
+
+  trackAnimeRamKey(animeCreditsRamKeys, fenceAliasIds, cacheKey);
+
+  let anyProviderSucceeded = false;
+  const flightState = { fenced: false };
+
+  return withCache<AnimeCreditsResult>(
+    cacheKey,
+    async (ctx) => {
+      const redisRead = await getRedisAnimeCreditsWithFence(
+        redisScopeKey,
+        fenceAliasIds,
+        options?.redis,
+      );
+
+      if (redisRead.status === "hit" && redisRead.credits) {
+        if (ctx && !ctx.isCurrentFlight()) {
+          flightState.fenced = true;
+          domainCaches.get("credits")?.delete(cacheKey);
+        }
+        anyProviderSucceeded = true;
+        return redisRead.credits;
+      }
+
+      const activeFence: RedisScopedFence | null | undefined =
+        redisRead.status === "miss"
+          ? redisRead.fence
+          : redisRead.status === "failed"
+            ? null
+            : undefined;
+
+      const result = await upstreamFetcher(() => {
+        anyProviderSucceeded = true;
+      });
+
+      const resolvedIds = collectCatalogInvalidationTargetIds(input.animeId, {
+        anilistId: result.anilistId ?? input.anilistId,
+        malId: result.malId ?? input.malId,
+        kitsuId: result.kitsuId ?? input.kitsuId,
+      });
+      trackAnimeRamKey(animeCreditsRamKeys, resolvedIds, cacheKey);
+
+      const canCache =
+        result.characters.length > 0 ||
+        result.staff.length > 0 ||
+        result.studios.length > 0 ||
+        anyProviderSucceeded;
+
+      if (canCache) {
+        if (ctx && !ctx.isCurrentFlight()) {
+          flightState.fenced = true;
+          domainCaches.get("credits")?.delete(cacheKey);
+          return result;
+        }
+
+        const writeStatus = await setRedisAnimeCredits(
+          redisScopeKey,
+          result,
+          activeFence,
+          options?.redis,
+        );
+        if (writeStatus === "fenced" || (ctx && !ctx.isCurrentFlight())) {
+          flightState.fenced = true;
+          domainCaches.get("credits")?.delete(cacheKey);
+        }
+      }
+
+      return result;
+    },
+    {
+      shouldCache: (result) =>
+        !flightState.fenced &&
+        (result.characters.length > 0 ||
+          result.staff.length > 0 ||
+          result.studios.length > 0 ||
+          anyProviderSucceeded),
+    },
+  );
+}
+
 async function resolveAnimeCredits(input: {
   anilistId?: number;
   malId?: number;
@@ -2939,18 +3237,15 @@ async function resolveAnimeCredits(input: {
   year?: number | null;
   format?: string | null;
   skipAnilist?: boolean;
+  animeId?: string;
 }): Promise<AnimeCreditsResult> {
   const cleanTitles = (input.titles ?? [])
     .map((t) => t.trim())
     .filter((t) => t.length >= 2);
 
-  const cacheKey = `credits:v1:${input.anilistId ?? 0}:${input.malId ?? 0}:${input.kitsuId ?? 0}:${input.skipAnilist ? 1 : 0}:${normalizeSearchText(cleanTitles[0] ?? "")}:${input.year ?? 0}`;
-
-  let anyProviderSucceeded = false;
-
-  return withCache<AnimeCreditsResult>(
-    cacheKey,
-    async () => {
+  return fetchCachedAnimeCreditsWithDeps(
+    input,
+    async (markProviderSucceeded) => {
       let studios: string[] = [];
       let characters: AnimeCharacter[] = [];
       let staff: AnimeStaff[] = [];
@@ -2969,7 +3264,7 @@ async function resolveAnimeCredits(input: {
 
       const mergePart = (part: AnimeCreditsResult | null) => {
         if (!part) return;
-        anyProviderSucceeded = true;
+        markProviderSucceeded();
         if (studios.length === 0 && part.studios.length > 0) {
           studios = part.studios;
         }
@@ -3082,13 +3377,6 @@ async function resolveAnimeCredits(input: {
         malId: resolvedMalId,
         kitsuId: resolvedKitsuId,
       };
-    },
-    {
-      shouldCache: (result) =>
-        result.characters.length > 0 ||
-        result.staff.length > 0 ||
-        result.studios.length > 0 ||
-        anyProviderSucceeded,
     },
   );
 }

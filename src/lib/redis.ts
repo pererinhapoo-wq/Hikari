@@ -1,8 +1,9 @@
 import { Redis } from "@upstash/redis";
+import type { AnimeCreditsResult } from "@/lib/api";
 import type { DbCatalogAnimeRow } from "@/lib/catalog-server-overlay.server";
 import type { CatalogEpisodesResult, PublicEpisodesResult } from "@/lib/catalog-episodes";
 import type { HomeEpisodesResult } from "@/lib/home-episodes";
-import type { Anime, Episode, HomeCatalog, SlimAnime } from "@/lib/types";
+import type { Anime, Episode, HomeCatalog, Season, SlimAnime } from "@/lib/types";
 
 const restUrl = typeof process !== "undefined" ? process.env.UPSTASH_REDIS_REST_URL?.trim() : undefined;
 const restToken = typeof process !== "undefined" ? process.env.UPSTASH_REDIS_REST_TOKEN?.trim() : undefined;
@@ -2338,6 +2339,649 @@ export async function invalidateRedisCalendar(): Promise<void> {
     await withRedisTimeout(redisClient.incr(CALENDAR_GEN_KEY));
   } catch (err) {
     console.warn("[redis] Falha ao incrementar geração do calendário:", err instanceof Error ? err.message : err);
+  }
+}
+
+/* ============================================================================
+ * CRÉDITOS E EPISÓDIOS EXTERNOS (ELENCO/STAFF E EPISÓDIOS JIKAN)
+ * Chaves versionadas e isoladas por anime com fence atômico de geração:
+ *   - hikari:catalog:credits:v1:<scopeKey> (TTL 7200s = 2h)
+ *   - hikari:catalog:credits:gen:global:v1
+ *   - hikari:catalog:credits:gen:id:v1:<id>
+ *   - hikari:catalog:jikan-episodes:v1:<malId> (TTL 1800s = 30m)
+ *   - hikari:catalog:jikan-episodes:gen:global:v1
+ *   - hikari:catalog:jikan-episodes:gen:id:v1:<id>
+ * ============================================================================ */
+
+export type RedisEvalClient = Pick<Redis, "eval" | "del" | "keys">;
+
+export const CREDITS_REDIS_KEY_PREFIX = "hikari:catalog:credits:v1:";
+export const CREDITS_GLOBAL_GEN_KEY = "hikari:catalog:credits:gen:global:v1";
+export const CREDITS_ID_GEN_PREFIX = "hikari:catalog:credits:gen:id:v1:";
+export const CREDITS_REDIS_TTL_SEC = 7200; // 2 horas (alinhado ao domínio credits)
+
+export const JIKAN_EPISODES_REDIS_KEY_PREFIX = "hikari:catalog:jikan-episodes:v1:";
+export const JIKAN_EPISODES_GLOBAL_GEN_KEY = "hikari:catalog:jikan-episodes:gen:global:v1";
+export const JIKAN_EPISODES_ID_GEN_PREFIX = "hikari:catalog:jikan-episodes:gen:id:v1:";
+export const JIKAN_EPISODES_REDIS_TTL_SEC = 1800; // 30 minutos
+
+export type RedisScopedFence = {
+  globalGen: string;
+  idGens: Record<string, string>;
+};
+
+export type RedisCreditsReadResult = {
+  status: "hit" | "miss" | "unavailable" | "failed";
+  credits: AnimeCreditsResult | null;
+  fence: RedisScopedFence | null;
+};
+
+export type RedisJikanEpisodesReadResult = {
+  status: "hit" | "miss" | "unavailable" | "failed";
+  seasons: Season[] | null;
+  fence: RedisScopedFence | null;
+};
+
+export type RedisScopedWriteStatus =
+  | "inserted"
+  | "fenced"
+  | "skipped"
+  | "unavailable"
+  | "failed";
+
+type RedisScopedEnvelope<T> = {
+  v: 1;
+  globalGen: string;
+  idGens: Record<string, string>;
+  data: T;
+};
+
+const GET_ENVELOPE_OR_FENCE_SCRIPT = `
+local v = redis.call("GET", KEYS[1])
+local g = tostring(redis.call("GET", KEYS[2]) or "0")
+local out = { v and (":" .. v) or "", ":" .. g }
+for i = 3, #KEYS do
+  out[#out + 1] = ":" .. tostring(redis.call("GET", KEYS[i]) or "0")
+end
+return out
+`;
+
+const SET_ENVELOPE_WITH_FENCE_SCRIPT = `
+if #KEYS >= 2 then
+  for i = 2, #KEYS do
+    local currentGen = tostring(redis.call("GET", KEYS[i]) or "0")
+    if currentGen ~= tostring(ARGV[i + 1]) then
+      return {"fenced"}
+    end
+  end
+end
+redis.call("SET", KEYS[1], ARGV[1], "EX", tonumber(ARGV[2]))
+return {"inserted"}
+`;
+
+function resolveScopedRedisClient(
+  override?: RedisEvalClient | null,
+): RedisEvalClient | null {
+  if (override !== undefined) {
+    return override;
+  }
+  if (!redisClient || typeof window !== "undefined") {
+    return null;
+  }
+  return redisClient;
+}
+
+function normalizeScopeText(value?: string | null): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function fnv1aHex(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function normalizePositiveInt(value?: number | null): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : 0;
+}
+
+export function collectCatalogInvalidationTargetIds(
+  animeId?: string | null,
+  externalIds?: {
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
+    extraIds?: Array<string | number | null | undefined>;
+  },
+): string[] {
+  const targetIds = new Set<string>();
+  const cleanId = animeId?.trim();
+  if (cleanId) {
+    targetIds.add(cleanId);
+  }
+  const anilistId = normalizePositiveInt(externalIds?.anilistId);
+  if (anilistId > 0) {
+    targetIds.add(String(anilistId));
+  }
+  const malId = normalizePositiveInt(externalIds?.malId);
+  if (malId > 0) {
+    targetIds.add(`mal-${malId}`);
+  }
+  const kitsuId = normalizePositiveInt(externalIds?.kitsuId);
+  if (kitsuId > 0) {
+    targetIds.add(`kitsu-${kitsuId}`);
+  }
+  if (Array.isArray(externalIds?.extraIds)) {
+    for (const extra of externalIds.extraIds) {
+      if (typeof extra === "string" && extra.trim()) {
+        targetIds.add(extra.trim());
+      } else if (typeof extra === "number" && Number.isFinite(extra) && extra > 0) {
+        targetIds.add(String(Math.floor(extra)));
+      }
+    }
+  }
+  return Array.from(targetIds);
+}
+
+export function buildCreditsRedisScopeKey(input: {
+  anilistId?: number;
+  malId?: number;
+  kitsuId?: number;
+  skipAnilist?: boolean;
+  titles?: string[];
+  year?: number | null;
+  format?: string | null;
+  animeId?: string;
+}): string {
+  const ani = normalizePositiveInt(input.anilistId);
+  const mal = normalizePositiveInt(input.malId);
+  const kit = normalizePositiveInt(input.kitsuId);
+  const skip = input.skipAnilist ? 1 : 0;
+  const year = normalizePositiveInt(input.year);
+  const fmt = normalizeScopeText(input.format) || "-";
+
+  const cleanTitles = (input.titles ?? [])
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
+  const firstNorm = normalizeScopeText(cleanTitles[0] ?? "");
+  const allNorm = cleanTitles.map((t) => normalizeScopeText(t)).filter(Boolean);
+  const titlePart =
+    allNorm.length <= 1
+      ? encodeURIComponent(firstNorm).slice(0, 64) || "-"
+      : `${encodeURIComponent(firstNorm).slice(0, 48)}~${fnv1aHex(allNorm.join("|"))}`;
+
+  if (ani === 0 && mal === 0 && kit === 0) {
+    const cleanAnimeId = input.animeId?.trim();
+    const idSeg = cleanAnimeId ? `id-${encodeURIComponent(cleanAnimeId).slice(0, 64)}` : "local";
+    return `${idSeg}:${skip}:${year}:${fmt}:${titlePart}`;
+  }
+
+  return `${ani}:${mal}:${kit}:${skip}:${year}:${fmt}:${titlePart}`;
+}
+
+export function buildCreditsRedisKey(scopeKey: string): string {
+  return `${CREDITS_REDIS_KEY_PREFIX}${scopeKey.trim()}`;
+}
+
+export function buildJikanEpisodesRedisKey(malId: number): string {
+  return `${JIKAN_EPISODES_REDIS_KEY_PREFIX}${Math.floor(malId)}`;
+}
+
+function buildScopedFenceArrays(
+  globalGenKey: string,
+  idGenPrefix: string,
+  fence: RedisScopedFence,
+): { keys: string[]; args: string[] } {
+  const keys: string[] = [globalGenKey];
+  const args: string[] = [fence.globalGen];
+  for (const [fid, gen] of Object.entries(fence.idGens)) {
+    const cleanFid = fid.trim();
+    if (!cleanFid) continue;
+    keys.push(`${idGenPrefix}${cleanFid}`);
+    args.push(gen);
+  }
+  return { keys, args };
+}
+
+function isEnvelopeFenceValid(
+  envelope: { globalGen?: unknown; idGens?: unknown },
+  currentGlobalGen: string,
+  currentIdGens: Record<string, string>,
+): boolean {
+  if (String(envelope.globalGen ?? "") !== currentGlobalGen) {
+    return false;
+  }
+  const storedIdGens =
+    envelope.idGens && typeof envelope.idGens === "object"
+      ? (envelope.idGens as Record<string, unknown>)
+      : {};
+  for (const [fid, curGen] of Object.entries(currentIdGens)) {
+    const stored = String(storedIdGens[fid] ?? "0");
+    if (stored !== curGen) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isValidCreditsData(data: unknown): data is AnimeCreditsResult {
+  if (!data || typeof data !== "object") return false;
+  const c = data as AnimeCreditsResult;
+  return (
+    Array.isArray(c.studios) &&
+    Array.isArray(c.characters) &&
+    Array.isArray(c.staff)
+  );
+}
+
+function isValidJikanEpisodesData(data: unknown): data is Season[] {
+  if (!Array.isArray(data) || data.length === 0) return false;
+  const first = data[0] as Season | undefined;
+  return Boolean(first && Array.isArray(first.episodes) && first.episodes.length > 0);
+}
+
+export async function getRedisAnimeCreditsWithFence(
+  scopeKey: string,
+  aliasIds?: string[],
+  redisOverride?: RedisEvalClient | null,
+): Promise<RedisCreditsReadResult> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) {
+    return { status: "unavailable", credits: null, fence: null };
+  }
+  const cleanScope = scopeKey?.trim();
+  if (!cleanScope) {
+    return { status: "unavailable", credits: null, fence: null };
+  }
+
+  const fenceIds = Array.from(
+    new Set((aliasIds ?? []).map((v) => v.trim()).filter(Boolean)),
+  );
+  const valueKey = buildCreditsRedisKey(cleanScope);
+  const keys = [
+    valueKey,
+    CREDITS_GLOBAL_GEN_KEY,
+    ...fenceIds.map((fid) => `${CREDITS_ID_GEN_PREFIX}${fid}`),
+  ];
+
+  try {
+    const res = await withRedisTimeout(
+      client.eval<never[], unknown[]>(GET_ENVELOPE_OR_FENCE_SCRIPT, keys, []),
+    );
+    if (!Array.isArray(res) || res.length !== 2 + fenceIds.length) {
+      return { status: "failed", credits: null, fence: null };
+    }
+
+    const globalGen = extractGenToken(res[1]);
+    if (!globalGen) {
+      return { status: "failed", credits: null, fence: null };
+    }
+
+    const idGens: Record<string, string> = {};
+    for (let i = 0; i < fenceIds.length; i++) {
+      const token = extractGenToken(res[i + 2]);
+      if (!token) {
+        return { status: "failed", credits: null, fence: null };
+      }
+      idGens[fenceIds[i]] = token;
+    }
+
+    const fence: RedisScopedFence = { globalGen, idGens };
+    const raw = extractPrefixedRaw(res[0]);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as RedisScopedEnvelope<AnimeCreditsResult>;
+        if (
+          parsed &&
+          parsed.v === 1 &&
+          isEnvelopeFenceValid(parsed, globalGen, idGens) &&
+          isValidCreditsData(parsed.data)
+        ) {
+          return { status: "hit", credits: parsed.data, fence };
+        }
+      } catch {
+        // Envelope inválido: trata como miss para rebuscar e sobrescrever
+      }
+    }
+
+    return { status: "miss", credits: null, fence };
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao buscar créditos do anime no Redis (fail-open para upstream):",
+      err instanceof Error ? err.message : err,
+    );
+    return { status: "failed", credits: null, fence: null };
+  }
+}
+
+export async function setRedisAnimeCredits(
+  scopeKey: string,
+  credits: AnimeCreditsResult,
+  fence?: RedisScopedFence | null,
+  redisOverride?: RedisEvalClient | null,
+): Promise<RedisScopedWriteStatus> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) {
+    return "unavailable";
+  }
+  const cleanScope = scopeKey?.trim();
+  if (!cleanScope || !isValidCreditsData(credits)) {
+    return "skipped";
+  }
+  if (fence === null) {
+    return "failed";
+  }
+
+  const activeFence: RedisScopedFence = fence ?? { globalGen: "0", idGens: {} };
+  const envelope: RedisScopedEnvelope<AnimeCreditsResult> = {
+    v: 1,
+    globalGen: activeFence.globalGen,
+    idGens: activeFence.idGens,
+    data: credits,
+  };
+
+  const valueKey = buildCreditsRedisKey(cleanScope);
+  const { keys: fenceKeys, args: fenceArgs } = buildScopedFenceArrays(
+    CREDITS_GLOBAL_GEN_KEY,
+    CREDITS_ID_GEN_PREFIX,
+    activeFence,
+  );
+
+  try {
+    const raw = JSON.stringify(envelope);
+    const res = await withRedisTimeout(
+      client.eval<string[], unknown[]>(
+        SET_ENVELOPE_WITH_FENCE_SCRIPT,
+        [valueKey, ...fenceKeys],
+        [raw, String(CREDITS_REDIS_TTL_SEC), ...fenceArgs],
+      ),
+    );
+    if (!Array.isArray(res)) return "failed";
+    if (res[0] === "fenced") return "fenced";
+    if (res[0] === "inserted") return "inserted";
+    return "failed";
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao salvar créditos do anime no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+    return "failed";
+  }
+}
+
+export async function invalidateRedisAnimeCredits(
+  animeId?: string | null,
+  externalIds?: {
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
+    extraIds?: Array<string | number | null | undefined>;
+  },
+  redisOverride?: RedisEvalClient | null,
+): Promise<void> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) return;
+
+  try {
+    const idList = collectCatalogInvalidationTargetIds(animeId, externalIds);
+    if (idList.length > 0) {
+      const genKeys = idList.map((tid) => `${CREDITS_ID_GEN_PREFIX}${tid}`);
+      await withRedisTimeout(
+        client.eval<[string], number>(
+          INVALIDATE_IDS_SCRIPT,
+          genKeys,
+          [String(genKeys.length)],
+        ),
+      );
+    } else {
+      await withRedisTimeout(
+        client.eval<never[], string>(
+          INCR_GLOBAL_GEN_SCRIPT,
+          [CREDITS_GLOBAL_GEN_KEY],
+          [],
+        ),
+      );
+      const keys = await withRedisTimeout(
+        client.keys(`${CREDITS_REDIS_KEY_PREFIX}*`),
+      );
+      if (Array.isArray(keys) && keys.length > 0) {
+        const CHUNK_SIZE = 200;
+        for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
+          await withRedisTimeout(client.del(...keys.slice(i, i + CHUNK_SIZE)));
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao invalidar créditos no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+export async function getRedisAnimeJikanEpisodesWithFence(
+  malId: number,
+  aliasIds?: string[],
+  redisOverride?: RedisEvalClient | null,
+): Promise<RedisJikanEpisodesReadResult> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) {
+    return { status: "unavailable", seasons: null, fence: null };
+  }
+  const cleanMalId = normalizePositiveInt(malId);
+  if (cleanMalId <= 0) {
+    return { status: "unavailable", seasons: null, fence: null };
+  }
+
+  const fenceIds = Array.from(
+    new Set([
+      `mal-${cleanMalId}`,
+      ...(aliasIds ?? []).map((v) => v.trim()).filter(Boolean),
+    ]),
+  );
+  const valueKey = buildJikanEpisodesRedisKey(cleanMalId);
+  const keys = [
+    valueKey,
+    JIKAN_EPISODES_GLOBAL_GEN_KEY,
+    ...fenceIds.map((fid) => `${JIKAN_EPISODES_ID_GEN_PREFIX}${fid}`),
+  ];
+
+  try {
+    const res = await withRedisTimeout(
+      client.eval<never[], unknown[]>(GET_ENVELOPE_OR_FENCE_SCRIPT, keys, []),
+    );
+    if (!Array.isArray(res) || res.length !== 2 + fenceIds.length) {
+      return { status: "failed", seasons: null, fence: null };
+    }
+
+    const globalGen = extractGenToken(res[1]);
+    if (!globalGen) {
+      return { status: "failed", seasons: null, fence: null };
+    }
+
+    const idGens: Record<string, string> = {};
+    for (let i = 0; i < fenceIds.length; i++) {
+      const token = extractGenToken(res[i + 2]);
+      if (!token) {
+        return { status: "failed", seasons: null, fence: null };
+      }
+      idGens[fenceIds[i]] = token;
+    }
+
+    const fence: RedisScopedFence = { globalGen, idGens };
+    const raw = extractPrefixedRaw(res[0]);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as RedisScopedEnvelope<Season[]>;
+        if (
+          parsed &&
+          parsed.v === 1 &&
+          isEnvelopeFenceValid(parsed, globalGen, idGens) &&
+          isValidJikanEpisodesData(parsed.data)
+        ) {
+          return { status: "hit", seasons: parsed.data, fence };
+        }
+      } catch {
+        // Envelope inválido: trata como miss
+      }
+    }
+
+    return { status: "miss", seasons: null, fence };
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao buscar episódios Jikan no Redis (fail-open para upstream):",
+      err instanceof Error ? err.message : err,
+    );
+    return { status: "failed", seasons: null, fence: null };
+  }
+}
+
+export async function setRedisAnimeJikanEpisodes(
+  malId: number,
+  seasons: Season[],
+  fence?: RedisScopedFence | null,
+  redisOverride?: RedisEvalClient | null,
+): Promise<RedisScopedWriteStatus> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) {
+    return "unavailable";
+  }
+  const cleanMalId = normalizePositiveInt(malId);
+  if (cleanMalId <= 0 || !isValidJikanEpisodesData(seasons)) {
+    return "skipped";
+  }
+  if (fence === null) {
+    return "failed";
+  }
+
+  const activeFence: RedisScopedFence = fence ?? { globalGen: "0", idGens: {} };
+  const envelope: RedisScopedEnvelope<Season[]> = {
+    v: 1,
+    globalGen: activeFence.globalGen,
+    idGens: activeFence.idGens,
+    data: seasons,
+  };
+
+  const valueKey = buildJikanEpisodesRedisKey(cleanMalId);
+  const { keys: fenceKeys, args: fenceArgs } = buildScopedFenceArrays(
+    JIKAN_EPISODES_GLOBAL_GEN_KEY,
+    JIKAN_EPISODES_ID_GEN_PREFIX,
+    activeFence,
+  );
+
+  try {
+    const raw = JSON.stringify(envelope);
+    const res = await withRedisTimeout(
+      client.eval<string[], unknown[]>(
+        SET_ENVELOPE_WITH_FENCE_SCRIPT,
+        [valueKey, ...fenceKeys],
+        [raw, String(JIKAN_EPISODES_REDIS_TTL_SEC), ...fenceArgs],
+      ),
+    );
+    if (!Array.isArray(res)) return "failed";
+    if (res[0] === "fenced") return "fenced";
+    if (res[0] === "inserted") return "inserted";
+    return "failed";
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao salvar episódios Jikan no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+    return "failed";
+  }
+}
+
+export async function invalidateRedisAnimeJikanEpisodes(
+  animeId?: string | null,
+  externalIds?: {
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
+    extraIds?: Array<string | number | null | undefined>;
+  },
+  redisOverride?: RedisEvalClient | null,
+): Promise<void> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) return;
+
+  try {
+    const idList = collectCatalogInvalidationTargetIds(animeId, externalIds);
+    if (idList.length > 0) {
+      const genKeys = idList.map((tid) => `${JIKAN_EPISODES_ID_GEN_PREFIX}${tid}`);
+      const directValueKeys = new Set<string>();
+      const explicitMalId = normalizePositiveInt(externalIds?.malId);
+      if (explicitMalId > 0) {
+        directValueKeys.add(buildJikanEpisodesRedisKey(explicitMalId));
+      }
+      for (const tid of idList) {
+        const malMatch = /^mal-(\d+)$/.exec(tid);
+        if (malMatch) {
+          const parsed = normalizePositiveInt(Number(malMatch[1]));
+          if (parsed > 0) {
+            directValueKeys.add(buildJikanEpisodesRedisKey(parsed));
+          }
+        }
+      }
+      await withRedisTimeout(
+        client.eval<[string], number>(
+          INVALIDATE_IDS_SCRIPT,
+          [...genKeys, ...Array.from(directValueKeys)],
+          [String(genKeys.length)],
+        ),
+      );
+    } else {
+      await withRedisTimeout(
+        client.eval<never[], string>(
+          INCR_GLOBAL_GEN_SCRIPT,
+          [JIKAN_EPISODES_GLOBAL_GEN_KEY],
+          [],
+        ),
+      );
+      const keys = await withRedisTimeout(
+        client.keys(`${JIKAN_EPISODES_REDIS_KEY_PREFIX}*`),
+      );
+      if (Array.isArray(keys) && keys.length > 0) {
+        const CHUNK_SIZE = 200;
+        for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
+          await withRedisTimeout(client.del(...keys.slice(i, i + CHUNK_SIZE)));
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao invalidar episódios Jikan no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+type EpisodesRamInvalidator = (ids: string[]) => void;
+const episodesRamInvalidators = new Set<EpisodesRamInvalidator>();
+
+export function registerJikanEpisodesRamInvalidator(fn: EpisodesRamInvalidator): () => void {
+  episodesRamInvalidators.add(fn);
+  return () => {
+    episodesRamInvalidators.delete(fn);
+  };
+}
+
+export function notifyJikanEpisodesRamInvalidation(ids: string[]): void {
+  for (const fn of episodesRamInvalidators) {
+    try {
+      fn(ids);
+    } catch {
+      // ignore
+    }
   }
 }
 

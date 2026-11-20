@@ -1,100 +1,140 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Search as SearchIcon, Film, Clapperboard } from "lucide-react";
 import { useHikariStore } from "@/lib/store";
 import { resolvePublicEpisodes } from "@/lib/published-episodes";
 import {
-  executeGetPublicCatalogEpisodes,
-  getPublicCatalogEpisodes,
+  executeGetPaginatedPublicCatalogEpisodes,
+  getPaginatedPublicCatalogEpisodes,
+  executeGetPublicCatalogAnimeOptions,
+  getPublicCatalogAnimeOptionsFn,
 } from "@/lib/catalog-episodes";
 import { EpisodeCard } from "@/components/episode-card";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 
+export interface EpisodesSearch {
+  page?: number;
+  q?: string;
+  animeId?: string;
+}
+
 export const Route = createFileRoute("/episodes")({
   staleTime: 1000 * 60 * 5,
   gcTime: 1000 * 60 * 20,
-  loader: async () => {
-    const publicEpisodesResult = await (typeof window === "undefined"
-      ? executeGetPublicCatalogEpisodes()
-      : getPublicCatalogEpisodes()
-    ).catch((err) => ({
-      status: "error" as const,
-      episodes: [],
-      total: 0,
-      error: String(err),
-    }));
+  validateSearch: (search: Record<string, unknown>): EpisodesSearch => {
+    const parsedPage = Number(search.page);
+    const page = Number.isFinite(parsedPage) && parsedPage > 1 ? Math.floor(parsedPage) : 1;
+    const q = typeof search.q === "string" && search.q.trim() ? search.q.trim() : undefined;
+    const animeId =
+      typeof search.animeId === "string" && search.animeId.trim() && search.animeId !== "all"
+        ? search.animeId.trim()
+        : undefined;
+    return { page, q, animeId };
+  },
+  loaderDeps: ({ search }) => ({
+    page: search.page ?? 1,
+    q: search.q,
+    animeId: search.animeId,
+  }),
+  loader: async ({ deps }) => {
+    const page = deps.page;
+    const q = deps.q;
+    const animeId = deps.animeId;
+
+    const [paginatedResult, animeOptions] = await Promise.all([
+      (typeof window === "undefined"
+        ? executeGetPaginatedPublicCatalogEpisodes({ page, pageSize: 24, q, animeId })
+        : getPaginatedPublicCatalogEpisodes({ data: { page, pageSize: 24, q, animeId } })
+      ).catch((err) => ({
+        status: "error" as const,
+        episodes: [],
+        totalCount: 0,
+        page,
+        pageSize: 24,
+        totalPages: 0,
+        error: String(err),
+      })),
+      (typeof window === "undefined"
+        ? executeGetPublicCatalogAnimeOptions()
+        : getPublicCatalogAnimeOptionsFn()
+      ).catch(() => []),
+    ]);
+
     return {
-      publicEpisodesResult,
+      paginatedResult,
+      animeOptions,
     };
   },
   component: AllEpisodesPage,
 });
 
-const ITEMS_PER_PAGE = 24;
-
 function AllEpisodesPage() {
+  const searchParams = Route.useSearch();
+  const navigate = Route.useNavigate();
   const loaderData = Route.useLoaderData();
   const animes = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
 
-  const [search, setSearch] = useState("");
-  const [selectedAnime, setSelectedAnime] = useState<string>("all");
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState(searchParams.q ?? "");
 
-  // Todos os episódios publicados, priorizando PostgreSQL como fonte canônica com fallback local
-  const allEpisodes = useMemo(() => {
-    return resolvePublicEpisodes(loaderData?.publicEpisodesResult ?? null, animes);
-  }, [loaderData?.publicEpisodesResult, animes]);
+  // Sincroniza input de busca local quando searchParams.q mudar na URL
+  useEffect(() => {
+    setSearch(searchParams.q ?? "");
+  }, [searchParams.q]);
 
-  // Lista única de animes que possuem episódios para o filtro
-  const animeOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const ep of allEpisodes) {
-      if (!map.has(ep.animeId)) {
-        map.set(ep.animeId, ep.animeTitle);
-      }
-    }
-    return Array.from(map.entries()).map(([id, title]) => ({ id, title }));
-  }, [allEpisodes]);
+  const paginatedResult = loaderData?.paginatedResult;
+  const animeOptions = loaderData?.animeOptions ?? [];
+  const selectedAnime = searchParams.animeId ?? "all";
 
-  // Filtra por termo de busca e anime selecionado
-  const filteredEpisodes = useMemo(() => {
-    const q = search.trim().toLowerCase();
-
-    return allEpisodes.filter((ep) => {
-      if (selectedAnime !== "all" && ep.animeId !== selectedAnime) {
-        return false;
-      }
-      if (!q) return true;
-
-      const matchAnime = ep.animeTitle.toLowerCase().includes(q);
-      const matchEpisode =
-        ep.episodeTitle.toLowerCase().includes(q) ||
-        String(ep.episodeNumber) === q ||
-        `episodio ${ep.episodeNumber}`.includes(q) ||
-        `ep ${ep.episodeNumber}`.includes(q);
-
-      return matchAnime || matchEpisode;
-    });
-  }, [allEpisodes, search, selectedAnime]);
-
-  // Paginação otimizada para suportar centenas ou milhares de episódios
-  const totalPages = Math.max(1, Math.ceil(filteredEpisodes.length / ITEMS_PER_PAGE));
-  const currentPage = Math.min(page, totalPages);
+  // Resolve episódios publicados paginados com fallback local seguro
   const paginatedEpisodes = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredEpisodes.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredEpisodes, currentPage]);
+    return resolvePublicEpisodes(
+      paginatedResult
+        ? {
+            ...paginatedResult,
+            total: paginatedResult.totalCount,
+          }
+        : null,
+      animes,
+    );
+  }, [paginatedResult, animes]);
+
+  const totalPages = paginatedResult?.totalPages ?? 1;
+  const currentPage = paginatedResult?.page ?? 1;
+  const totalCount = paginatedResult?.totalCount ?? paginatedEpisodes.length;
 
   const handleAnimeChange = (animeId: string) => {
-    setSelectedAnime(animeId);
-    setPage(1);
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        animeId: animeId === "all" ? undefined : animeId,
+        page: 1,
+      }),
+      replace: true,
+    });
   };
 
   const handleSearchChange = (term: string) => {
     setSearch(term);
-    setPage(1);
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        q: term.trim() ? term.trim() : undefined,
+        page: 1,
+      }),
+      replace: true,
+    });
+  };
+
+  const handlePageChange = (newPage: number) => {
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        page: newPage,
+      }),
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
@@ -123,9 +163,9 @@ function AllEpisodesPage() {
           </div>
 
           <div className="inline-flex items-center gap-2 rounded-full bg-purple-950/60 border border-purple-500/30 px-3 py-1 text-xs font-semibold text-purple-200">
-            <span>{filteredEpisodes.length}</span>
+            <span>{totalCount}</span>
             <span className="text-zinc-400 font-normal">
-              {filteredEpisodes.length === 1 ? "episódio encontrado" : "episódios encontrados"}
+              {totalCount === 1 ? "episódio encontrado" : "episódios encontrados"}
             </span>
           </div>
         </div>
@@ -169,26 +209,27 @@ function AllEpisodesPage() {
             <div key={i} className="aspect-video animate-pulse rounded-lg sm:rounded-xl bg-elevated/70 border border-purple-500/10" />
           ))}
         </div>
-      ) : filteredEpisodes.length === 0 ? (
+      ) : paginatedEpisodes.length === 0 ? (
         <div className="rounded-2xl border border-purple-500/15 bg-surface/40 px-6 py-20 text-center">
           <Clapperboard className="mx-auto size-12 text-zinc-500" />
           <h2 className="mt-4 font-section text-xl font-bold text-white">
             Nenhum episódio publicado
           </h2>
           <p className="mx-auto mt-2 max-w-md text-xs sm:text-sm text-zinc-400">
-            {allEpisodes.length === 0
-              ? loaderData?.publicEpisodesResult?.status === "error"
-                ? "Não foi possível conectar ao servidor de episódios no momento. Exibindo catálogo local quando disponível."
-                : "Ainda não há episódios cadastrados pelo administrador no Hikari. Novos lançamentos aparecerão aqui automaticamente."
-              : "Nenhum episódio corresponde ao filtro de busca selecionado."}
+            {paginatedResult?.status === "error"
+              ? "Não foi possível conectar ao servidor de episódios no momento. Exibindo catálogo local quando disponível."
+              : searchParams.q || selectedAnime !== "all"
+                ? "Nenhum episódio corresponde aos filtros de busca selecionados."
+                : "Ainda não há episódios cadastrados pelo administrador no Hikari. Novos lançamentos aparecerão aqui automaticamente."}
           </p>
-          {search || selectedAnime !== "all" ? (
+          {searchParams.q || selectedAnime !== "all" ? (
             <button
               type="button"
               onClick={() => {
-                setSearch("");
-                setSelectedAnime("all");
-                setPage(1);
+                navigate({
+                  search: {},
+                  replace: true,
+                });
               }}
               className="mt-5 inline-flex items-center rounded-lg bg-purple-950/60 border border-purple-500/40 px-4 py-2 text-xs font-semibold text-purple-200 transition-colors hover:bg-purple-900/70 hover:text-white"
             >
@@ -221,7 +262,7 @@ function AllEpisodesPage() {
             <div className="flex flex-wrap items-center justify-center gap-1.5 pt-6">
               <button
                 type="button"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
                 disabled={currentPage <= 1}
                 aria-label="Página anterior"
                 className="flex size-9 items-center justify-center rounded-lg border border-purple-500/20 bg-surface text-zinc-300 transition-colors hover:bg-elevated hover:text-white disabled:pointer-events-none disabled:opacity-30"
@@ -235,7 +276,7 @@ function AllEpisodesPage() {
 
               <button
                 type="button"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage >= totalPages}
                 aria-label="Próxima página"
                 className="flex size-9 items-center justify-center rounded-lg border border-purple-500/20 bg-surface text-zinc-300 transition-colors hover:bg-elevated hover:text-white disabled:pointer-events-none disabled:opacity-30"

@@ -3,8 +3,38 @@ import { z } from "zod";
 import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolation.server";
 import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { getSql } from "@/lib/db";
-import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
+
+async function resolveSeasonInvalidationAliases(
+  sql: Awaited<ReturnType<typeof getSql>>,
+  animeId: string,
+): Promise<string[]> {
+  const aliases = new Set<string>([animeId]);
+  try {
+    const numId = /^\d+$/.test(animeId) ? parseInt(animeId, 10) : null;
+    const rows = await sql.query<{
+      id: string;
+      anilistId: number | null;
+      malId: number | null;
+      kitsuId: number | null;
+    }>(
+      `SELECT "id", "anilistId", "malId", "kitsuId" FROM "catalog_anime"
+       WHERE "id" = $1
+          OR ($2::int IS NOT NULL AND ("anilistId" = $2 OR "malId" = $2 OR "kitsuId" = $2))
+       LIMIT 1;`,
+      [animeId, numId],
+    );
+    const match = rows[0];
+    if (match?.id) aliases.add(match.id);
+    if (match?.anilistId) aliases.add(String(match.anilistId));
+    if (match?.malId) aliases.add(`mal-${match.malId}`);
+    if (match?.kitsuId) aliases.add(`kitsu-${match.kitsuId}`);
+  } catch {
+    // ignore
+  }
+  return Array.from(aliases);
+}
 
 const seasonDeleteSchema = z.object({
   animeId: z.string().trim().min(1, "animeId é obrigatório").max(128),
@@ -55,7 +85,8 @@ export const Route = createFileRoute("/api/admin/catalog-season")({
             [animeId, seasonNumber, seasonTitle, seasonPos],
           );
 
-          invalidateCatalogEpisodesCache(animeId);
+          const invalidationAliases = await resolveSeasonInvalidationAliases(sql, animeId);
+          await invalidateCatalogEpisodesCacheAsync(...invalidationAliases);
           invalidateHomePublicEpisodesCache();
 
           return Response.json({
@@ -134,7 +165,8 @@ export const Route = createFileRoute("/api/admin/catalog-season")({
             [animeId, seasonNumber],
           );
 
-          invalidateCatalogEpisodesCache(animeId);
+          const invalidationAliases = await resolveSeasonInvalidationAliases(sql, animeId);
+          await invalidateCatalogEpisodesCacheAsync(...invalidationAliases);
           if (seasonResult.length > 0 || episodeResult.length > 0) {
             invalidateHomePublicEpisodesCache();
           }

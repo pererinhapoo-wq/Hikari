@@ -7,6 +7,8 @@ import {
   getRedisCatalogEpisodes,
   setRedisCatalogEpisodes,
   invalidateRedisCatalogEpisodes,
+  invalidateRedisAnimeJikanEpisodes,
+  notifyJikanEpisodesRamInvalidation,
   getRedisPublicCatalogEpisodesWithFence,
   setRedisPublicCatalogEpisodes,
   invalidateRedisPublicCatalogEpisodes,
@@ -97,9 +99,13 @@ export function invalidateCatalogEpisodesCache(...animeIds: (string | undefined)
       clientInFlightPromises.delete(id);
       void invalidateRedisCatalogEpisodes(id).catch(() => {});
     }
+    notifyJikanEpisodesRamInvalidation(ids);
+    void invalidateRedisAnimeJikanEpisodes(ids[0], { extraIds: ids.slice(1) }).catch(() => {});
   } else {
     clientCatalogEpisodesCache.clear();
     clientInFlightPromises.clear();
+    notifyJikanEpisodesRamInvalidation([]);
+    void invalidateRedisAnimeJikanEpisodes().catch(() => {});
   }
 }
 
@@ -114,16 +120,20 @@ export async function invalidateCatalogEpisodesCacheAsync(
     ),
   );
   if (ids.length > 0) {
-    await Promise.allSettled(
-      ids.map(async (id) => {
+    notifyJikanEpisodesRamInvalidation(ids);
+    await Promise.allSettled([
+      ...ids.map(async (id) => {
         clientCatalogEpisodesCache.delete(id);
         clientInFlightPromises.delete(id);
         await invalidateRedisCatalogEpisodes(id);
       }),
-    );
+      invalidateRedisAnimeJikanEpisodes(ids[0], { extraIds: ids.slice(1) }),
+    ]);
   } else {
     clientCatalogEpisodesCache.clear();
     clientInFlightPromises.clear();
+    notifyJikanEpisodesRamInvalidation([]);
+    await invalidateRedisAnimeJikanEpisodes();
   }
 }
 
@@ -587,6 +597,21 @@ export const getPublicCatalogEpisodes = createServerFn({
   .validator((d?: { limit?: number; offset?: number }) => d ?? {})
   .handler(async ({ data }): Promise<PublicEpisodesResult> => {
     return executeGetPublicCatalogEpisodes(data);
+  });
+
+export const getPaginatedPublicCatalogEpisodes = createServerFn({
+  method: "GET",
+})
+  .validator((d?: PaginatedPublicEpisodesInput) => d ?? {})
+  .handler(async ({ data }): Promise<PaginatedPublicEpisodesResult> => {
+    return executeGetPaginatedPublicCatalogEpisodes(data);
+  });
+
+export const getPublicCatalogAnimeOptionsFn = createServerFn({
+  method: "GET",
+})
+  .handler(async (): Promise<PublicCatalogAnimeOption[]> => {
+    return executeGetPublicCatalogAnimeOptions();
   });
 
 export interface PaginatedPublicEpisodesInput {

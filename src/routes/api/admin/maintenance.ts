@@ -8,9 +8,9 @@ import {
   saveSettingsToDb,
   invalidatePublicSettingsCache,
 } from "@/lib/settings/settings.server";
-import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
-import { invalidateServerCatalogCaches } from "@/lib/api";
+import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 
 const updateMaintenanceSchema = z.object({
   action: z.literal("update_maintenance"),
@@ -245,13 +245,13 @@ export const Route = createFileRoute("/api/admin/maintenance")({
             const cleared: string[] = [];
 
             if (payload.target === "episodes" || payload.target === "all") {
-              invalidateCatalogEpisodesCache();
+              await invalidateCatalogEpisodesCacheAsync();
               invalidateHomePublicEpisodesCache();
               cleared.push("Cache de Episódios em Memória");
             }
 
             if (payload.target === "catalog" || payload.target === "all") {
-              invalidateServerCatalogCaches();
+              await invalidateServerCatalogCachesAsync();
               cleared.push("Cache de Catálogo de Animes");
             }
 

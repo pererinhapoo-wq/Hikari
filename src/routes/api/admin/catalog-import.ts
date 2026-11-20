@@ -4,9 +4,9 @@ import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolati
 import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { getSql } from "@/lib/db";
-import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
-import { invalidateServerCatalogCaches } from "@/lib/api";
+import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { syncCatalogEpisodeSlotsToSources } from "@/lib/sources";
 import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
 
@@ -351,11 +351,9 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
           }
 
           // Invalida cache de episódios e catálogo dos animes afetados
-          for (const aId of affectedAnimeIds) {
-            invalidateCatalogEpisodesCache(aId);
-          }
+          await invalidateCatalogEpisodesCacheAsync(...Array.from(affectedAnimeIds));
           invalidateHomePublicEpisodesCache();
-          invalidateServerCatalogCaches();
+          await invalidateServerCatalogCachesAsync();
 
           return Response.json({
             ok: true,

@@ -3,9 +3,9 @@ import { z } from "zod";
 import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolation.server";
 import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { getSql } from "@/lib/db";
-import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
-import { invalidateServerCatalogCaches } from "@/lib/api";
+import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import {
   resolveCatalogAnimeBadgesWrite,
@@ -376,11 +376,6 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             });
           }
 
-          invalidateCatalogEpisodesCache(canonicalSavedId);
-          if (data.id !== canonicalSavedId) {
-            invalidateCatalogEpisodesCache(data.id);
-          }
-          invalidateHomePublicEpisodesCache();
           const invalidationExtraIds: Array<string | number | null | undefined> = [
             data.id !== canonicalSavedId ? data.id : null,
             previousRow?.id,
@@ -392,7 +387,16 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             data.kitsuId ? `kitsu-${data.kitsuId}` : null,
           ];
 
-          invalidateServerCatalogCaches(canonicalSavedId, {
+          await invalidateCatalogEpisodesCacheAsync(
+            canonicalSavedId,
+            data.id !== canonicalSavedId ? data.id : undefined,
+            ...invalidationExtraIds
+              .map((v) => (typeof v === "number" ? String(v) : v ?? undefined))
+              .filter((v): v is string => Boolean(v)),
+          );
+          invalidateHomePublicEpisodesCache();
+
+          await invalidateServerCatalogCachesAsync(canonicalSavedId, {
             anilistId: savedRow?.anilistId ?? data.anilistId,
             malId: savedRow?.malId ?? data.malId,
             kitsuId: savedRow?.kitsuId ?? data.kitsuId,
@@ -491,7 +495,29 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
               [animeId, seasonNumber],
             );
 
-            invalidateCatalogEpisodesCache(animeId);
+            const seasonAliases = new Set<string>([animeId]);
+            try {
+              const numId = /^\d+$/.test(animeId) ? parseInt(animeId, 10) : null;
+              const matched = await sql.query<{
+                id: string;
+                anilistId: number | null;
+                malId: number | null;
+                kitsuId: number | null;
+              }>(
+                `SELECT "id", "anilistId", "malId", "kitsuId" FROM "catalog_anime"
+                 WHERE "id" = $1
+                    OR ($2::int IS NOT NULL AND ("anilistId" = $2 OR "malId" = $2 OR "kitsuId" = $2))
+                 LIMIT 1;`,
+                [animeId, numId],
+              );
+              if (matched[0]?.id) seasonAliases.add(matched[0].id);
+              if (matched[0]?.anilistId) seasonAliases.add(String(matched[0].anilistId));
+              if (matched[0]?.malId) seasonAliases.add(`mal-${matched[0].malId}`);
+              if (matched[0]?.kitsuId) seasonAliases.add(`kitsu-${matched[0].kitsuId}`);
+            } catch {
+              // ignore
+            }
+            await invalidateCatalogEpisodesCacheAsync(...Array.from(seasonAliases));
             if (sRes.length > 0 || epRes.length > 0) {
               invalidateHomePublicEpisodesCache();
             }
@@ -520,11 +546,16 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
           );
 
           await deleteAnimeRecentBadgesFromDb(animeId);
-          invalidateCatalogEpisodesCache(animeId);
+          await invalidateCatalogEpisodesCacheAsync(
+            animeId,
+            result[0]?.anilistId ? String(result[0].anilistId) : undefined,
+            result[0]?.malId ? `mal-${result[0].malId}` : undefined,
+            result[0]?.kitsuId ? `kitsu-${result[0].kitsuId}` : undefined,
+          );
           if (result.length > 0) {
             invalidateHomePublicEpisodesCache();
           }
-          invalidateServerCatalogCaches(animeId, result[0]);
+          await invalidateServerCatalogCachesAsync(animeId, result[0]);
 
           return Response.json({
             ok: true,
