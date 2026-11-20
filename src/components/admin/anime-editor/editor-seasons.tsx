@@ -14,6 +14,7 @@ import {
   Globe,
   EyeOff,
   X,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -104,6 +105,45 @@ interface EditorSeasonsProps {
   thumbnailEditModes?: Record<string, "modified" | "cleared">;
   onThumbnailChange?: (sid: string, ep: Episode, value: string) => void;
   onThumbnailClear?: (sid: string, ep: Episode) => void;
+  onFetchOpeningSuggestions?: () => Promise<void>;
+  isFetchingOpening?: boolean;
+  openingSuggestions?: Record<
+    number,
+    {
+      found: boolean;
+      startSeconds: number | null;
+      endSeconds: number | null;
+      startTime: string;
+      endTime: string;
+    }
+  >;
+  onApplyOpeningSuggestion?: (
+    seasonId: string,
+    episodeId: string,
+    start: number | null,
+    end: number | null,
+  ) => void;
+}
+
+function formatSecs(secs: number | null | undefined): string {
+  if (secs === null || secs === undefined || isNaN(secs) || secs < 0) return "";
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+function parseTimeInput(val: string): number | null {
+  const trimmed = val.trim();
+  if (!trimmed) return null;
+  if (/^\d+$/.test(trimmed)) {
+    const n = parseInt(trimmed, 10);
+    return isNaN(n) ? null : n;
+  }
+  const parts = trimmed.split(":").map((p) => parseInt(p, 10));
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
 }
 
 function getPublishSourceError(ep: Episode): string {
@@ -272,16 +312,41 @@ export function EditorSeasons({
           </p>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onAddSeason}
-          className="h-10 border-violet-500/35 bg-violet-500/12 px-4 text-xs font-semibold text-violet-200 hover:bg-violet-500/22 hover:text-white"
-        >
-          <Plus className="mr-1.5 size-4" />
-          <span>Nova Temporada</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          {onFetchOpeningSuggestions && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isFetchingOpening}
+              onClick={onFetchOpeningSuggestions}
+              className="h-10 border-purple-500/35 bg-purple-500/12 px-4 text-xs font-semibold text-purple-200 hover:bg-purple-500/22 hover:text-white"
+            >
+              {isFetchingOpening ? (
+                <>
+                  <Loader2 className="mr-1.5 size-4 animate-spin" />
+                  <span>Buscando AniSkip…</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-1.5 size-4 text-purple-300" />
+                  <span>Buscar Sugestões de Opening (AniSkip)</span>
+                </>
+              )}
+            </Button>
+          )}
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onAddSeason}
+            className="h-10 border-violet-500/35 bg-violet-500/12 px-4 text-xs font-semibold text-violet-200 hover:bg-violet-500/22 hover:text-white"
+          >
+            <Plus className="mr-1.5 size-4" />
+            <span>Nova Temporada</span>
+          </Button>
+        </div>
       </div>
 
       {/* Navegação por Abas de Temporadas */}
@@ -648,6 +713,64 @@ export function EditorSeasons({
                                   <Trash2 className="size-4" />
                                 </Button>
                               </div>
+
+                              {/* Início OP / Fim OP & Sugestões AniSkip */}
+                              <Field label="Início OP (MM:SS ou seg)" className="sm:col-span-3 lg:col-span-3">
+                                <Input
+                                  value={formatSecs(ep.openingStartSeconds)}
+                                  onChange={(e) => {
+                                    const secs = parseTimeInput(e.target.value);
+                                    onPatchEpisode(season.id, ep.id, { openingStartSeconds: secs });
+                                  }}
+                                  placeholder="00:02"
+                                  className="studio-mono h-10 border-white/10 bg-[var(--studio-panel)] text-xs"
+                                />
+                              </Field>
+
+                              <Field label="Fim OP (MM:SS ou seg)" className="sm:col-span-3 lg:col-span-3">
+                                <Input
+                                  value={formatSecs(ep.openingEndSeconds)}
+                                  onChange={(e) => {
+                                    const secs = parseTimeInput(e.target.value);
+                                    onPatchEpisode(season.id, ep.id, { openingEndSeconds: secs });
+                                  }}
+                                  placeholder="03:00"
+                                  className="studio-mono h-10 border-white/10 bg-[var(--studio-panel)] text-xs"
+                                />
+                              </Field>
+
+                              {openingSuggestions?.[ep.number] && (
+                                <div className="flex flex-col justify-end sm:col-span-6 lg:col-span-6">
+                                  {openingSuggestions[ep.number].found ? (
+                                    <div className="flex items-center justify-between rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs">
+                                      <div className="text-purple-200">
+                                        <span className="font-semibold">AniSkip OP:</span>{" "}
+                                        {openingSuggestions[ep.number].startTime} — {openingSuggestions[ep.number].endTime}
+                                      </div>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 border-purple-500/40 bg-purple-500/20 px-2.5 text-[11px] text-purple-100 hover:bg-purple-500/30"
+                                        onClick={() =>
+                                          onApplyOpeningSuggestion?.(
+                                            season.id,
+                                            ep.id,
+                                            openingSuggestions[ep.number].startSeconds,
+                                            openingSuggestions[ep.number].endSeconds,
+                                          )
+                                        }
+                                      >
+                                        Aplicar sugestão
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-[var(--color-muted)]">
+                                      <span>AniSkip: Nenhuma opening encontrada.</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
 
                               {/* Players 1, 2 e 3 com Upload B2 */}
                               {[

@@ -22,39 +22,54 @@ import {
   parseAnitube22PlayerUrl,
 } from "@/lib/anitube22";
 
-const episodePostSchema = z.object({
-  id: z.string().trim().min(1, "id é obrigatório").max(128, "id muito longo"),
-  animeId: z.string().trim().min(1, "animeId é obrigatório").max(128, "animeId muito longo"),
-  seasonNumber: z.number().int().min(1, "seasonNumber deve ser >= 1").default(1),
-  number: z.number().int().min(0, "number deve ser >= 0"),
-  title: z.string().max(255).optional().nullable(),
-  thumbnail: z.string().max(4096).optional().nullable(),
-  duration: z.string().max(64).optional().nullable(),
-  synopsis: z.string().max(10000).optional().nullable(),
-  videoUrl: z.string().max(2048).optional().nullable(),
-  videoUrl2: z.string().max(2048).optional().nullable(),
-  videoUrl3: z.string().max(2048).optional().nullable(),
-  videoUrl4: z.string().max(2048).optional().nullable(),
-  videoUrl5: z.string().max(2048).optional().nullable(),
-  hikariPlayerEpisodeId: z.string().max(255).optional().nullable(),
-  published: z.boolean().default(false),
-  replaceSources: z.boolean().optional().default(false),
-  replaceThumbnail: z.boolean().optional().default(false),
-  animeTitle: z.string().max(255).optional().nullable(),
-  sources: z
-    .array(
-      z.object({
-        provider: z.string().trim().max(64).optional(),
-        externalId: z.string().trim().min(1).max(2048),
-        lang: z.enum(["sub", "dub"], {
-          message: "Selecione o idioma da fonte (legendado ou dublado).",
+const episodePostSchema = z
+  .object({
+    id: z.string().trim().min(1, "id é obrigatório").max(128, "id muito longo"),
+    animeId: z.string().trim().min(1, "animeId é obrigatório").max(128, "animeId muito longo"),
+    seasonNumber: z.number().int().min(1, "seasonNumber deve ser >= 1").default(1),
+    number: z.number().int().min(0, "number deve ser >= 0"),
+    title: z.string().max(255).optional().nullable(),
+    thumbnail: z.string().max(4096).optional().nullable(),
+    duration: z.string().max(64).optional().nullable(),
+    synopsis: z.string().max(10000).optional().nullable(),
+    videoUrl: z.string().max(2048).optional().nullable(),
+    videoUrl2: z.string().max(2048).optional().nullable(),
+    videoUrl3: z.string().max(2048).optional().nullable(),
+    videoUrl4: z.string().max(2048).optional().nullable(),
+    videoUrl5: z.string().max(2048).optional().nullable(),
+    hikariPlayerEpisodeId: z.string().max(255).optional().nullable(),
+    openingStartSeconds: z.number().int().min(0, "Início da opening não pode ser negativo").optional().nullable(),
+    openingEndSeconds: z.number().int().min(0, "Fim da opening não pode ser negativo").optional().nullable(),
+    published: z.boolean().default(false),
+    replaceSources: z.boolean().optional().default(false),
+    replaceThumbnail: z.boolean().optional().default(false),
+    animeTitle: z.string().max(255).optional().nullable(),
+    sources: z
+      .array(
+        z.object({
+          provider: z.string().trim().max(64).optional(),
+          externalId: z.string().trim().min(1).max(2048),
+          lang: z.enum(["sub", "dub"], {
+            message: "Selecione o idioma da fonte (legendado ou dublado).",
+          }),
+          quality: z.string().trim().max(32).optional().nullable(),
+          priority: z.number().int().min(0).max(1000).optional().default(0),
         }),
-        quality: z.string().trim().max(32).optional().nullable(),
-        priority: z.number().int().min(0).max(1000).optional().default(0),
-      }),
-    )
-    .optional(),
-});
+      )
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.openingStartSeconds != null && data.openingEndSeconds != null) {
+        return data.openingEndSeconds > data.openingStartSeconds;
+      }
+      return true;
+    },
+    {
+      message: "O fim da opening deve ser maior que o início.",
+      path: ["openingEndSeconds"],
+    },
+  );
 
 const episodeDeleteSchema = z.object({
   id: z.string().trim().min(1, "id é obrigatório"),
@@ -328,17 +343,25 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           const wasAlreadyPublished = existingRow?.published === true;
           const isFirstTimePublished = published && !wasAlreadyPublished;
 
+          const openingStartSeconds = data.openingStartSeconds ?? null;
+          const openingEndSeconds = data.openingEndSeconds ?? null;
+          const hasOpeningFields =
+            data.openingStartSeconds !== undefined || data.openingEndSeconds !== undefined;
+
           const upsertResult = await sql.query<{
             id: string;
             published: boolean;
             publishedAt: string | null;
             hikariPlayerEpisodeId: string | null;
+            openingStartSeconds: number | null;
+            openingEndSeconds: number | null;
           }>(
             `INSERT INTO "catalog_episode" (
                "id", "animeId", "seasonNumber", "number",
                "title", "thumbnail", "duration", "synopsis",
                "videoUrl", "videoUrl2", "videoUrl3", "videoUrl4", "videoUrl5",
                "hikari_player_episode_id",
+               "opening_start_seconds", "opening_end_seconds",
                "published", "publishedAt", "createdAt", "updatedAt"
              )
              VALUES (
@@ -346,6 +369,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                $5, $6, $7, $8,
                $9, $10, $11, $12, $13,
                $17,
+               $19, $20,
                $14,
                CASE WHEN $14 = true THEN CURRENT_TIMESTAMP ELSE NULL END,
                CURRENT_TIMESTAMP,
@@ -384,6 +408,14 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                  WHEN $18 = true THEN EXCLUDED."hikari_player_episode_id"
                  ELSE "catalog_episode"."hikari_player_episode_id"
                END,
+               "opening_start_seconds" = CASE
+                 WHEN $21 = true THEN EXCLUDED."opening_start_seconds"
+                 ELSE "catalog_episode"."opening_start_seconds"
+               END,
+               "opening_end_seconds" = CASE
+                 WHEN $21 = true THEN EXCLUDED."opening_end_seconds"
+                 ELSE "catalog_episode"."opening_end_seconds"
+               END,
                "published" = EXCLUDED."published",
                "publishedAt" = CASE
                  WHEN EXCLUDED."published" = true AND "catalog_episode"."publishedAt" IS NULL THEN CURRENT_TIMESTAMP
@@ -391,7 +423,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                  ELSE "catalog_episode"."publishedAt"
                END,
                "updatedAt" = CURRENT_TIMESTAMP
-             RETURNING "id", "published", "publishedAt", "hikari_player_episode_id" AS "hikariPlayerEpisodeId";`,
+             RETURNING "id", "published", "publishedAt", "hikari_player_episode_id" AS "hikariPlayerEpisodeId", "opening_start_seconds" AS "openingStartSeconds", "opening_end_seconds" AS "openingEndSeconds";`,
             [
               canonicalId,
               canonicalAnimeId,
@@ -411,6 +443,9 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
               shouldReplaceThumbnail,
               hikariPlayerEpisodeId,
               hasHikariPlayerField,
+              openingStartSeconds,
+              openingEndSeconds,
+              hasOpeningFields,
             ],
           );
 

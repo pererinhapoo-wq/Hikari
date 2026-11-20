@@ -35,6 +35,8 @@ export interface EpisodePayload {
   videoUrl4?: string | null;
   videoUrl5?: string | null;
   hikariPlayerEpisodeId?: string | null;
+  openingStartSeconds?: number | null;
+  openingEndSeconds?: number | null;
   published?: boolean;
   replaceSources?: boolean;
   replaceThumbnail?: boolean;
@@ -499,6 +501,8 @@ export async function persistEpisode(
     videoUrl4: episode.videoUrl4 || null,
     videoUrl5: episode.videoUrl5 || null,
     hikariPlayerEpisodeId: normalizeHikariPlayerEpisodeId(episode.hikariPlayerEpisodeId),
+    openingStartSeconds: episode.openingStartSeconds ?? null,
+    openingEndSeconds: episode.openingEndSeconds ?? null,
     published: isPublished,
     replaceSources: true,
     replaceThumbnail: Boolean(options?.replaceThumbnail),

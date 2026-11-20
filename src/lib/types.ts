@@ -23,6 +23,8 @@ export type Episode = {
   hikariPlayerEpisodeId?: string;
   audio?: string;
   audioVersion?: string;
+  openingStartSeconds?: number | null;
+  openingEndSeconds?: number | null;
 };
 
 export type Season = {

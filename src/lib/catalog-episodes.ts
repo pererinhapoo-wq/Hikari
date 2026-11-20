@@ -47,6 +47,8 @@ export interface CatalogEpisodeItem {
   videoUrl4: string | null;
   videoUrl5: string | null;
   hikariPlayerEpisodeId?: string | null;
+  openingStartSeconds?: number | null;
+  openingEndSeconds?: number | null;
   published: boolean;
   publishedAt: string | null;
   createdAt?: string;
