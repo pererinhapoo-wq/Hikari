@@ -54,41 +54,26 @@ const fetchRootSessionUser = createServerFn({ method: "GET" }).handler(
 
       try {
         const sql = await getSql();
-        const [profileRows, userRows] = await Promise.all([
-          sql<{
-            displayName: string | null;
-            nick: string | null;
-            avatarUrl: string | null;
-            role: string | null;
-          }>`
-            select "displayName", "nick", "avatarUrl", "role"
-            from "profile"
-            where "userId" = ${resolvedUser.id}
-            limit 1
-          `,
-          sql<{
-            name: string | null;
-            image: string | null;
-          }>`
-            select "name", "image"
-            from "user"
-            where "id" = ${resolvedUser.id}
-            limit 1
-          `,
-        ]);
+        const profileRows = await sql<{
+          displayName: string | null;
+          nick: string | null;
+          avatarUrl: string | null;
+          role: string | null;
+        }>`
+          select "displayName", "nick", "avatarUrl", "role"
+          from "profile"
+          where "userId" = ${resolvedUser.id}
+          limit 1
+        `;
 
         const prof = profileRows[0];
-        const usr = userRows[0];
         resolvedProfileRole = prof?.role ?? null;
 
-        const resolvedName = prof?.displayName || usr?.name || null;
-        const resolvedAvatar = prof?.avatarUrl || usr?.image || null;
-
-        if (resolvedName) {
-          resolvedUser.displayName = resolvedName;
+        if (prof?.displayName) {
+          resolvedUser.displayName = prof.displayName;
         }
-        if (resolvedAvatar) {
-          resolvedUser.profileImageUrl = resolvedAvatar;
+        if (prof?.avatarUrl) {
+          resolvedUser.profileImageUrl = prof.avatarUrl;
         }
         if (prof?.nick) {
           resolvedUser.profileNick = prof.nick;

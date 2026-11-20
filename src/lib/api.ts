@@ -63,6 +63,7 @@ import {
   setRedisHomeTodayRaw,
   getRedisHomeSeason,
   setRedisHomeSeason,
+  scheduleRedisBackgroundWrite,
   type RedisAnimeDetailFence,
   type RedisEvalClient,
   type RedisScopedFence,
@@ -4703,7 +4704,10 @@ async function fetchRawTodaySchedulesFromAni(
 
       // 3. Persiste no Redis somente se houver registros válidos do AniList
       if (schedules.length > 0) {
-        await setRedisHomeTodayRaw(todayKey, schedules, fetchStartedAt);
+        scheduleRedisBackgroundWrite(
+          setRedisHomeTodayRaw(todayKey, schedules, fetchStartedAt),
+          "setRedisHomeTodayRaw",
+        );
       }
 
       return schedules;
@@ -5253,7 +5257,10 @@ export const fetchSeasonSection = createServerFn({
           .map(mapAniSlim);
 
         if (items.length > 0) {
-          await setRedisHomeSeason(year, season, items, fetchStartedAt);
+          scheduleRedisBackgroundWrite(
+            setRedisHomeSeason(year, season, items, fetchStartedAt),
+            "setRedisHomeSeason",
+          );
           return items;
         }
       } catch (err) {
@@ -5429,7 +5436,10 @@ export const fetchHomeCatalog =
               aniData.popular.length > 0 &&
               aniData.season.length > 0
             ) {
-              await setRedisHomeCatalog(todayKey, aniData, fetchStartedAt);
+              scheduleRedisBackgroundWrite(
+                setRedisHomeCatalog(todayKey, aniData, fetchStartedAt),
+                "setRedisHomeCatalog",
+              );
             }
             if (aniData?.trending?.length > 0) {
               return aniData;

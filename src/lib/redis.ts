@@ -1,8 +1,13 @@
 import { Redis } from "@upstash/redis";
 import type { AnimeCreditsResult } from "@/lib/api";
 import type { DbCatalogAnimeRow } from "@/lib/catalog-server-overlay.server";
-import type { CatalogEpisodesResult, PublicEpisodesResult } from "@/lib/catalog-episodes";
+import type {
+  CatalogEpisodesResult,
+  PublicCatalogAnimeOption,
+  PublicEpisodesResult,
+} from "@/lib/catalog-episodes";
 import type { HomeEpisodesResult } from "@/lib/home-episodes";
+import type { HikariPublicSettings } from "@/lib/settings/settings-types";
 import type { Anime, Episode, HomeCatalog, Season, SlimAnime } from "@/lib/types";
 
 const restUrl = typeof process !== "undefined" ? process.env.UPSTASH_REDIS_REST_URL?.trim() : undefined;
@@ -1822,6 +1827,295 @@ export async function invalidateRedisPublicCatalogEpisodes(): Promise<void> {
   } catch (err) {
     console.warn(
       "[redis] Aviso ao invalidar listagem pública /episodes no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+const PUBLIC_CATALOG_ANIME_OPTIONS_REDIS_KEY = "hikari:catalog:anime-options:v1";
+const PUBLIC_CATALOG_ANIME_OPTIONS_GEN_KEY = "hikari:catalog:anime-options:gen:v1";
+const PUBLIC_CATALOG_ANIME_OPTIONS_TTL_SEC = 300; // 5 minutos
+
+function isValidPublicCatalogAnimeOptionsPayload(
+  value: unknown,
+): value is PublicCatalogAnimeOption[] {
+  if (!Array.isArray(value)) return false;
+  return value.every(
+    (item) =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      typeof (item as PublicCatalogAnimeOption).id === "string" &&
+      (item as PublicCatalogAnimeOption).id.length > 0 &&
+      typeof (item as PublicCatalogAnimeOption).title === "string",
+  );
+}
+
+export async function getRedisPublicCatalogAnimeOptionsWithFence(): Promise<
+  RedisPublicEpisodesReadResult<PublicCatalogAnimeOption[]>
+> {
+  if (!redisClient || typeof window !== "undefined") {
+    return { status: "unavailable", data: null, fence: null };
+  }
+
+  try {
+    const res = await withRedisTimeout(
+      redisClient.eval<never[], unknown[]>(
+        GET_PUBLIC_EPISODES_OR_FENCE_SCRIPT,
+        [PUBLIC_CATALOG_ANIME_OPTIONS_REDIS_KEY, PUBLIC_CATALOG_ANIME_OPTIONS_GEN_KEY],
+        [],
+      ),
+      "getRedisPublicCatalogAnimeOptionsWithFence",
+    );
+
+    if (!Array.isArray(res) || res.length < 2) {
+      return { status: "failed", data: null, fence: null };
+    }
+
+    if (res[0] === "hit") {
+      const raw = extractPrefixedRaw(res[1]);
+      const parsed = raw ? decodePublicEpisodesEnvelope<PublicCatalogAnimeOption[]>(raw) : null;
+      if (parsed && isValidPublicCatalogAnimeOptionsPayload(parsed)) {
+        return { status: "hit", data: parsed, fence: null };
+      }
+      const genRes = await withRedisTimeout(
+        redisClient.eval<never[], unknown[]>(
+          CAPTURE_FENCE_SCRIPT,
+          [PUBLIC_CATALOG_ANIME_OPTIONS_GEN_KEY],
+          [],
+        ),
+        "getRedisPublicCatalogAnimeOptionsWithFence.captureFence",
+      );
+      const genToken = Array.isArray(genRes) ? extractGenToken(genRes[0]) : null;
+      if (!genToken) {
+        return { status: "failed", data: null, fence: null };
+      }
+      return { status: "miss", data: null, fence: genToken };
+    }
+
+    if (res[0] === "miss") {
+      const genToken = extractGenToken(res[1]);
+      if (!genToken) {
+        return { status: "failed", data: null, fence: null };
+      }
+      return { status: "miss", data: null, fence: genToken };
+    }
+
+    return { status: "failed", data: null, fence: null };
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao buscar opções de animes públicos no Redis (fallback para DB):",
+      err instanceof Error ? err.message : err,
+    );
+    return { status: "failed", data: null, fence: null };
+  }
+}
+
+export async function setRedisPublicCatalogAnimeOptions(
+  options: PublicCatalogAnimeOption[],
+  fence: string | null,
+  fetchedAt: number,
+): Promise<RedisPublicEpisodesWriteStatus> {
+  if (!redisClient || typeof window !== "undefined") {
+    return "unavailable";
+  }
+  if (!fence) {
+    return "failed";
+  }
+  if (!isValidPublicCatalogAnimeOptionsPayload(options)) {
+    return "skipped";
+  }
+
+  try {
+    const safeTs =
+      typeof fetchedAt === "number" && Number.isFinite(fetchedAt) && fetchedAt > 0
+        ? Math.floor(fetchedAt)
+        : Date.now();
+    const payload = encodePublicEpisodesEnvelope(fence, safeTs, options);
+    if (getUtf8ByteLength(payload) > PUBLIC_EPISODES_MAX_REDIS_BYTES) {
+      return "skipped";
+    }
+
+    const res = await withRedisTimeout(
+      redisClient.eval<string[], unknown[]>(
+        SET_PUBLIC_EPISODES_WITH_FENCE_SCRIPT,
+        [PUBLIC_CATALOG_ANIME_OPTIONS_REDIS_KEY, PUBLIC_CATALOG_ANIME_OPTIONS_GEN_KEY],
+        [payload, fence, String(safeTs), String(PUBLIC_CATALOG_ANIME_OPTIONS_TTL_SEC)],
+      ),
+      "setRedisPublicCatalogAnimeOptions",
+    );
+
+    if (!Array.isArray(res)) return "failed";
+    if (res[0] === "inserted") return "inserted";
+    if (res[0] === "updated") return "updated";
+    if (res[0] === "kept") return "kept";
+    if (res[0] === "fenced") return "fenced";
+    return "failed";
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao salvar opções de animes públicos no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+    return "failed";
+  }
+}
+
+export async function invalidateRedisPublicCatalogAnimeOptions(): Promise<void> {
+  if (!redisClient || typeof window !== "undefined") return;
+  try {
+    await withRedisTimeout(
+      redisClient.eval<never[], unknown>(
+        INVALIDATE_PUBLIC_EPISODES_SCRIPT,
+        [PUBLIC_CATALOG_ANIME_OPTIONS_GEN_KEY, PUBLIC_CATALOG_ANIME_OPTIONS_REDIS_KEY],
+        [],
+      ),
+      "invalidateRedisPublicCatalogAnimeOptions",
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao invalidar opções de animes públicos no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+const PUBLIC_SETTINGS_REDIS_KEY = "hikari:settings:public:v1";
+const PUBLIC_SETTINGS_GEN_KEY = "hikari:settings:public:gen:v1";
+const PUBLIC_SETTINGS_TTL_SEC = 300; // 5 minutos
+
+function isValidPublicSettingsPayload(value: unknown): value is HikariPublicSettings {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Partial<HikariPublicSettings>;
+  return (
+    typeof v.site_name === "string" &&
+    Boolean(v.notice && typeof v.notice === "object") &&
+    Boolean(v.modules && typeof v.modules === "object") &&
+    Boolean(v.maintenance && typeof v.maintenance === "object")
+  );
+}
+
+export async function getRedisPublicSettingsWithFence(): Promise<
+  RedisPublicEpisodesReadResult<HikariPublicSettings>
+> {
+  if (!redisClient || typeof window !== "undefined") {
+    return { status: "unavailable", data: null, fence: null };
+  }
+
+  try {
+    const res = await withRedisTimeout(
+      redisClient.eval<never[], unknown[]>(
+        GET_PUBLIC_EPISODES_OR_FENCE_SCRIPT,
+        [PUBLIC_SETTINGS_REDIS_KEY, PUBLIC_SETTINGS_GEN_KEY],
+        [],
+      ),
+      "getRedisPublicSettingsWithFence",
+    );
+
+    if (!Array.isArray(res) || res.length < 2) {
+      return { status: "failed", data: null, fence: null };
+    }
+
+    if (res[0] === "hit") {
+      const raw = extractPrefixedRaw(res[1]);
+      const parsed = raw ? decodePublicEpisodesEnvelope<HikariPublicSettings>(raw) : null;
+      if (parsed && isValidPublicSettingsPayload(parsed)) {
+        return { status: "hit", data: parsed, fence: null };
+      }
+      const genRes = await withRedisTimeout(
+        redisClient.eval<never[], unknown[]>(
+          CAPTURE_FENCE_SCRIPT,
+          [PUBLIC_SETTINGS_GEN_KEY],
+          [],
+        ),
+        "getRedisPublicSettingsWithFence.captureFence",
+      );
+      const genToken = Array.isArray(genRes) ? extractGenToken(genRes[0]) : null;
+      if (!genToken) {
+        return { status: "failed", data: null, fence: null };
+      }
+      return { status: "miss", data: null, fence: genToken };
+    }
+
+    if (res[0] === "miss") {
+      const genToken = extractGenToken(res[1]);
+      if (!genToken) {
+        return { status: "failed", data: null, fence: null };
+      }
+      return { status: "miss", data: null, fence: genToken };
+    }
+
+    return { status: "failed", data: null, fence: null };
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao buscar configurações públicas no Redis (fallback para DB):",
+      err instanceof Error ? err.message : err,
+    );
+    return { status: "failed", data: null, fence: null };
+  }
+}
+
+export async function setRedisPublicSettings(
+  settings: HikariPublicSettings,
+  fence: string | null,
+  fetchedAt: number,
+): Promise<RedisPublicEpisodesWriteStatus> {
+  if (!redisClient || typeof window !== "undefined") {
+    return "unavailable";
+  }
+  if (!fence) {
+    return "failed";
+  }
+  if (!isValidPublicSettingsPayload(settings)) {
+    return "skipped";
+  }
+
+  try {
+    const safeTs =
+      typeof fetchedAt === "number" && Number.isFinite(fetchedAt) && fetchedAt > 0
+        ? Math.floor(fetchedAt)
+        : Date.now();
+    const payload = encodePublicEpisodesEnvelope(fence, safeTs, settings);
+    if (getUtf8ByteLength(payload) > PUBLIC_EPISODES_MAX_REDIS_BYTES) {
+      return "skipped";
+    }
+
+    const res = await withRedisTimeout(
+      redisClient.eval<string[], unknown[]>(
+        SET_PUBLIC_EPISODES_WITH_FENCE_SCRIPT,
+        [PUBLIC_SETTINGS_REDIS_KEY, PUBLIC_SETTINGS_GEN_KEY],
+        [payload, fence, String(safeTs), String(PUBLIC_SETTINGS_TTL_SEC)],
+      ),
+      "setRedisPublicSettings",
+    );
+
+    if (!Array.isArray(res)) return "failed";
+    if (res[0] === "inserted") return "inserted";
+    if (res[0] === "updated") return "updated";
+    if (res[0] === "kept") return "kept";
+    if (res[0] === "fenced") return "fenced";
+    return "failed";
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao salvar configurações públicas no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+    return "failed";
+  }
+}
+
+export async function invalidateRedisPublicSettings(): Promise<void> {
+  if (!redisClient || typeof window !== "undefined") return;
+  try {
+    await withRedisTimeout(
+      redisClient.eval<never[], unknown>(
+        INVALIDATE_PUBLIC_EPISODES_SCRIPT,
+        [PUBLIC_SETTINGS_GEN_KEY, PUBLIC_SETTINGS_REDIS_KEY],
+        [],
+      ),
+      "invalidateRedisPublicSettings",
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao invalidar configurações públicas no Redis:",
       err instanceof Error ? err.message : err,
     );
   }

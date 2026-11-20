@@ -26,6 +26,7 @@ import {
 import {
   consolidateUserTrackingDuplicates,
   dedupePublicTrackingItems,
+  lookupCatalogRowForTracking,
   resolveAndConsolidateTrackingTarget,
 } from "@/lib/tracking-canonical";
 
@@ -1673,13 +1674,20 @@ export const fetchAnimeUserInitialState = createServerFn({
       .filter(Boolean);
 
     try {
-      const resolved = await resolveAndConsolidateTrackingTarget(
-        sql,
-        userId,
-        data.animeId,
-      );
-      if (resolved?.candidateIds?.length) {
-        rawCandidateIds.push(...resolved.candidateIds);
+      const catalogRow = await lookupCatalogRowForTracking(sql, data.animeId);
+      if (catalogRow) {
+        rawCandidateIds.push(catalogRow.id);
+        if (catalogRow.anilistId && catalogRow.anilistId > 0) {
+          rawCandidateIds.push(String(catalogRow.anilistId));
+        }
+        if (catalogRow.malId && catalogRow.malId > 0) {
+          rawCandidateIds.push(`mal-${catalogRow.malId}`);
+          rawCandidateIds.push(String(catalogRow.malId));
+        }
+        if (catalogRow.kitsuId && catalogRow.kitsuId > 0) {
+          rawCandidateIds.push(`kitsu-${catalogRow.kitsuId}`);
+          rawCandidateIds.push(String(catalogRow.kitsuId));
+        }
       }
     } catch {
       // Ignora erro se registro do anime ainda não existe
@@ -1695,58 +1703,83 @@ export const fetchAnimeUserInitialState = createServerFn({
       .filter(Boolean);
     const normalizedTitles = new Set(titlesList);
 
-    // 1. Busca acompanhamento em user_anime_tracking
-    const trackingRows = await sql.query<{
-      userId: string;
-      animeId: string;
-      status: TrackingStatus;
-      score: string | number | null;
-      episodesWatched: number;
-      createdAt: string;
-      updatedAt: string;
-    }>(
-      `SELECT
-         uat."userId",
-         uat."animeId",
-         uat."status",
-         uat."score",
-         uat."episodesWatched",
-         uat."createdAt",
-         uat."updatedAt"
-       FROM "user_anime_tracking" uat
-       WHERE uat."userId" = $1
-         AND (
-           uat."animeId" = ANY($2::text[])
-           OR ($3::text[] IS NOT NULL AND array_length($3::text[], 1) > 0 AND LOWER(TRIM(COALESCE(uat."animeSnapshot"->>'title', uat."animeSnapshot"->>'titleRomaji', uat."animeSnapshot"->>'titleEnglish', ''))) = ANY($3::text[]))
-         )
-       ORDER BY uat."updatedAt" DESC
-       LIMIT 1;`,
-      [userId, candidateIds, titlesList.length > 0 ? titlesList : null],
-    );
-
-    // 2. Busca favoritos oficiais em user_favorite
-    const favoriteRows = await sql.query<{
-      id: string;
-      targetType: "anime" | "character" | "studio" | "company" | "person";
-      targetId: string;
-      title: string | null;
-      nativeTitle: string | null;
-    }>(
-      `SELECT
-         uf."id",
-         uf."targetType",
-         COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "targetId",
-         COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name") AS "title",
-         COALESCE(ca."titleNative", cc."nativeName", cp."nativeName") AS "nativeTitle"
-       FROM "user_favorite" uf
-       LEFT JOIN "catalog_anime" ca ON uf."targetType" = 'anime' AND uf."animeId" = ca."id"
-       LEFT JOIN "catalog_character" cc ON uf."targetType" = 'character' AND uf."characterId" = cc."id"
-       LEFT JOIN "catalog_studio" cs ON uf."targetType" = 'studio' AND uf."studioId" = cs."id"
-       LEFT JOIN "catalog_company" cco ON uf."targetType" = 'company' AND uf."companyId" = cco."id"
-       LEFT JOIN "catalog_person" cp ON uf."targetType" = 'person' AND uf."personId" = cp."id"
-       WHERE uf."userId" = $1;`,
-      [userId],
-    );
+    // Executa todas as 4 consultas independentes em paralelo para reduzir latência de round-trips
+    const [trackingRows, favoriteRows, progressRows, watchedRows] = await Promise.all([
+      sql.query<{
+        userId: string;
+        animeId: string;
+        status: TrackingStatus;
+        score: string | number | null;
+        episodesWatched: number;
+        createdAt: string;
+        updatedAt: string;
+      }>(
+        `SELECT
+           uat."userId",
+           uat."animeId",
+           uat."status",
+           uat."score",
+           uat."episodesWatched",
+           uat."createdAt",
+           uat."updatedAt"
+         FROM "user_anime_tracking" uat
+         WHERE uat."userId" = $1
+           AND (
+             uat."animeId" = ANY($2::text[])
+             OR ($3::text[] IS NOT NULL AND array_length($3::text[], 1) > 0 AND LOWER(TRIM(COALESCE(uat."animeSnapshot"->>'title', uat."animeSnapshot"->>'titleRomaji', uat."animeSnapshot"->>'titleEnglish', ''))) = ANY($3::text[]))
+           )
+         ORDER BY uat."updatedAt" DESC
+         LIMIT 1;`,
+        [userId, candidateIds, titlesList.length > 0 ? titlesList : null],
+      ),
+      sql.query<{
+        id: string;
+        targetType: "anime" | "character" | "studio" | "company" | "person";
+        targetId: string;
+        title: string | null;
+        nativeTitle: string | null;
+      }>(
+        `SELECT
+           uf."id",
+           uf."targetType",
+           COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "targetId",
+           COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name") AS "title",
+           COALESCE(ca."titleNative", cc."nativeName", cp."nativeName") AS "nativeTitle"
+         FROM "user_favorite" uf
+         LEFT JOIN "catalog_anime" ca ON uf."targetType" = 'anime' AND uf."animeId" = ca."id"
+         LEFT JOIN "catalog_character" cc ON uf."targetType" = 'character' AND uf."characterId" = cc."id"
+         LEFT JOIN "catalog_studio" cs ON uf."targetType" = 'studio' AND uf."studioId" = cs."id"
+         LEFT JOIN "catalog_company" cco ON uf."targetType" = 'company' AND uf."companyId" = cco."id"
+         LEFT JOIN "catalog_person" cp ON uf."targetType" = 'person' AND uf."personId" = cp."id"
+         WHERE uf."userId" = $1;`,
+        [userId],
+      ),
+      sql.query<{
+        episodeId: string;
+        episodeNumber: number;
+        currentTime: number;
+        duration: number | null;
+        updatedAt: string;
+      }>(
+        `SELECT "episodeId", "episodeNumber", "currentTime", "duration", "updatedAt"
+         FROM "user_episode_progress"
+         WHERE "userId" = $1 AND "animeId" = ANY($2::text[])
+         ORDER BY "updatedAt" DESC
+         LIMIT 1;`,
+        [userId, candidateIds],
+      ),
+      sql.query<{
+        episodeId: string;
+        episodeNumber: number;
+        watchedAt: string;
+      }>(
+        `SELECT "episodeId", "episodeNumber", "watchedAt"
+         FROM "user_watched_episode"
+         WHERE "userId" = $1 AND "animeId" = ANY($2::text[])
+         ORDER BY "watchedAt" DESC;`,
+        [userId, candidateIds],
+      ),
+    ]);
 
     const idsSet = new Set(candidateIds);
     const favMatch = favoriteRows.find((row) => {
@@ -1761,34 +1794,6 @@ export const fetchAnimeUserInitialState = createServerFn({
 
     const isFavorite = Boolean(favMatch);
     const favFavoriteId = favMatch?.id ?? null;
-
-    // 3. Progresso técnico de reprodução e episódios assistidos
-    const progressRows = await sql.query<{
-      episodeId: string;
-      episodeNumber: number;
-      currentTime: number;
-      duration: number | null;
-      updatedAt: string;
-    }>(
-      `SELECT "episodeId", "episodeNumber", "currentTime", "duration", "updatedAt"
-       FROM "user_episode_progress"
-       WHERE "userId" = $1 AND "animeId" = ANY($2::text[])
-       ORDER BY "updatedAt" DESC
-       LIMIT 1;`,
-      [userId, candidateIds],
-    );
-
-    const watchedRows = await sql.query<{
-      episodeId: string;
-      episodeNumber: number;
-      watchedAt: string;
-    }>(
-      `SELECT "episodeId", "episodeNumber", "watchedAt"
-       FROM "user_watched_episode"
-       WHERE "userId" = $1 AND "animeId" = ANY($2::text[])
-       ORDER BY "watchedAt" DESC;`,
-      [userId, candidateIds],
-    );
 
     let continueEpisode: { id: string; number: number } | null = null;
     if (progressRows.length > 0) {
@@ -1827,6 +1832,7 @@ export const fetchAnimeUserInitialState = createServerFn({
         targetType: r.targetType,
         targetId: r.targetId,
         title: r.title,
+        nativeTitle: r.nativeTitle,
       })),
       continueEpisode,
       watchedEpisodeIds: watchedRows.map((r) => r.episodeId),

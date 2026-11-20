@@ -235,6 +235,12 @@ function WatchPage() {
       const cacheKey = catalogEpisodes.animeId || episodeCatalogId;
       if (typeof window !== "undefined") {
         primeCatalogEpisodesCache(cacheKey, catalogEpisodes);
+        if (episodeCatalogId && episodeCatalogId !== cacheKey) {
+          primeCatalogEpisodesCache(episodeCatalogId, catalogEpisodes);
+        }
+        if (id && id !== cacheKey && id !== episodeCatalogId) {
+          primeCatalogEpisodesCache(id, catalogEpisodes);
+        }
       }
       return buildResolvedSeasons(cacheKey, catalogEpisodes, baseAnime?.seasons ?? []);
     }

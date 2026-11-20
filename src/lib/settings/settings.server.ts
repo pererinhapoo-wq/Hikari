@@ -1,5 +1,11 @@
 import { getSql } from "@/lib/db";
 import {
+  getRedisPublicSettingsWithFence,
+  invalidateRedisPublicSettings,
+  scheduleRedisBackgroundWrite,
+  setRedisPublicSettings,
+} from "@/lib/redis";
+import {
   type HikariAdminSettings,
   type HikariPublicSettings,
   DEFAULT_ADMIN_SETTINGS,
@@ -18,6 +24,7 @@ export function invalidatePublicSettingsCache(): void {
   cachedPublicSettings = null;
   lastPublicCacheTime = 0;
   publicSettingsInFlightPromise = null;
+  void invalidateRedisPublicSettings().catch(() => {});
 }
 
 async function fetchAllSettingsFromDbStrict(): Promise<HikariAdminSettings> {
@@ -89,6 +96,7 @@ export async function saveSettingsToDb(
   }
 
   invalidatePublicSettingsCache();
+  await invalidateRedisPublicSettings().catch(() => {});
   return loadAllSettingsFromDb();
 }
 
@@ -107,6 +115,16 @@ export async function loadPublicSettingsFromDb(): Promise<HikariPublicSettings> 
 
   const currentFlight = (async (): Promise<HikariPublicSettings> => {
     try {
+      const redisRead = await getRedisPublicSettingsWithFence();
+      if (redisRead.status === "hit" && redisRead.data) {
+        if (requestEpoch === publicSettingsCacheEpoch) {
+          cachedPublicSettings = redisRead.data;
+          lastPublicCacheTime = Date.now();
+        }
+        return redisRead.data;
+      }
+
+      const fetchStartedAt = Date.now();
       const all = await fetchAllSettingsFromDbStrict();
       const publicSettings: HikariPublicSettings = {
         site_name: all.site_name || DEFAULT_PUBLIC_SETTINGS.site_name,
@@ -144,6 +162,12 @@ export async function loadPublicSettingsFromDb(): Promise<HikariPublicSettings> 
       if (requestEpoch === publicSettingsCacheEpoch) {
         cachedPublicSettings = publicSettings;
         lastPublicCacheTime = Date.now();
+        if (redisRead.fence) {
+          scheduleRedisBackgroundWrite(
+            setRedisPublicSettings(publicSettings, redisRead.fence, fetchStartedAt),
+            "setRedisPublicSettings",
+          );
+        }
       }
       return publicSettings;
     } catch (err) {

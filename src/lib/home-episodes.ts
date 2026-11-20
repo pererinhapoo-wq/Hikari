@@ -5,6 +5,7 @@ import {
   getRedisHomePublicEpisodesWithFence,
   setRedisHomePublicEpisodes,
   invalidateRedisHomePublicEpisodes,
+  scheduleRedisBackgroundWrite,
 } from "@/lib/redis";
 
 export interface HomeEpisodeRow {
@@ -213,10 +214,13 @@ export async function executeGetHomePublicEpisodes(options?: {
           timestamp: Date.now(),
         };
         if (redisRead.fence) {
-          await setRedisHomePublicEpisodes(
-            result,
-            redisRead.fence,
-            fetchStartedAt,
+          scheduleRedisBackgroundWrite(
+            setRedisHomePublicEpisodes(
+              result,
+              redisRead.fence,
+              fetchStartedAt,
+            ),
+            "setRedisHomePublicEpisodes",
           );
         }
       }

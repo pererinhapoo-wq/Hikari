@@ -19,6 +19,12 @@ export interface EpisodesSearch {
   animeId?: string;
 }
 
+const CLIENT_ANIME_OPTIONS_TTL_MS = 180 * 1000;
+let clientCachedAnimeOptions: {
+  data: Awaited<ReturnType<typeof executeGetPublicCatalogAnimeOptions>>;
+  timestamp: number;
+} | null = null;
+
 export const Route = createFileRoute("/episodes")({
   staleTime: 1000 * 60 * 5,
   gcTime: 1000 * 60 * 20,
@@ -42,8 +48,14 @@ export const Route = createFileRoute("/episodes")({
     const q = deps.q;
     const animeId = deps.animeId;
 
+    const isClient = typeof window !== "undefined";
+    const hasFreshClientOptions =
+      isClient &&
+      clientCachedAnimeOptions &&
+      Date.now() - clientCachedAnimeOptions.timestamp < CLIENT_ANIME_OPTIONS_TTL_MS;
+
     const [paginatedResult, animeOptions] = await Promise.all([
-      (typeof window === "undefined"
+      (!isClient
         ? executeGetPaginatedPublicCatalogEpisodes({ page, pageSize: 24, q, animeId })
         : getPaginatedPublicCatalogEpisodes({ data: { page, pageSize: 24, q, animeId } })
       ).catch((err) => ({
@@ -55,10 +67,22 @@ export const Route = createFileRoute("/episodes")({
         totalPages: 0,
         error: String(err),
       })),
-      (typeof window === "undefined"
-        ? executeGetPublicCatalogAnimeOptions()
-        : getPublicCatalogAnimeOptionsFn()
-      ).catch(() => []),
+      hasFreshClientOptions && clientCachedAnimeOptions
+        ? Promise.resolve(clientCachedAnimeOptions.data)
+        : (!isClient
+            ? executeGetPublicCatalogAnimeOptions()
+            : getPublicCatalogAnimeOptionsFn()
+          )
+            .then((opts) => {
+              if (isClient && Array.isArray(opts) && opts.length > 0) {
+                clientCachedAnimeOptions = {
+                  data: opts,
+                  timestamp: Date.now(),
+                };
+              }
+              return opts;
+            })
+            .catch(() => clientCachedAnimeOptions?.data ?? []),
     ]);
 
     return {

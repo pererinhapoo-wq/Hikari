@@ -12,6 +12,9 @@ import {
   getRedisPublicCatalogEpisodesWithFence,
   setRedisPublicCatalogEpisodes,
   invalidateRedisPublicCatalogEpisodes,
+  getRedisPublicCatalogAnimeOptionsWithFence,
+  setRedisPublicCatalogAnimeOptions,
+  invalidateRedisPublicCatalogAnimeOptions,
   scheduleRedisBackgroundWrite,
 } from "@/lib/redis";
 import {
@@ -83,6 +86,57 @@ interface CacheEntry {
 const clientCatalogEpisodesCache = new Map<string, CacheEntry>();
 const clientInFlightPromises = new Map<string, Promise<CatalogEpisodesResult>>();
 
+const SERVER_CATALOG_EPISODES_TTL_MS = 180 * 1000; // 180s por instância
+const SERVER_CATALOG_EPISODES_MAX_ENTRIES = 300;
+const serverCatalogEpisodesCache = new Map<
+  string,
+  { timestamp: number; data: CatalogEpisodesResult; candidateIds: string[] }
+>();
+const serverCatalogEpisodesInFlight = new Map<string, Promise<CatalogEpisodesResult>>();
+let serverCatalogEpisodesCacheEpoch = 0;
+
+function setServerCatalogEpisodesRamCache(
+  key: string,
+  data: CatalogEpisodesResult,
+  candidateIds: string[],
+): void {
+  if (
+    !serverCatalogEpisodesCache.has(key) &&
+    serverCatalogEpisodesCache.size >= SERVER_CATALOG_EPISODES_MAX_ENTRIES
+  ) {
+    const oldestKey = serverCatalogEpisodesCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      serverCatalogEpisodesCache.delete(oldestKey);
+    }
+  }
+  serverCatalogEpisodesCache.set(key, {
+    timestamp: Date.now(),
+    data,
+    candidateIds,
+  });
+}
+
+function invalidateServerCatalogEpisodesRam(ids: string[]): void {
+  serverCatalogEpisodesCacheEpoch += 1;
+  if (ids.length === 0) {
+    serverCatalogEpisodesCache.clear();
+    serverCatalogEpisodesInFlight.clear();
+    return;
+  }
+  const targetSet = new Set(ids);
+  for (const [entryKey, entry] of serverCatalogEpisodesCache.entries()) {
+    if (
+      targetSet.has(entryKey) ||
+      entry.candidateIds.some((cid) => targetSet.has(cid))
+    ) {
+      serverCatalogEpisodesCache.delete(entryKey);
+    }
+  }
+  for (const id of ids) {
+    serverCatalogEpisodesInFlight.delete(id);
+  }
+}
+
 /**
  * Invalida o cache em memória de episódios para um anime específico (ou todo o cache).
  */
@@ -94,6 +148,7 @@ export function invalidateCatalogEpisodesCache(...animeIds: (string | undefined)
         .map((id) => id.trim()),
     ),
   );
+  invalidateServerCatalogEpisodesRam(ids);
   if (ids.length > 0) {
     for (const id of ids) {
       clientCatalogEpisodesCache.delete(id);
@@ -120,6 +175,7 @@ export async function invalidateCatalogEpisodesCacheAsync(
         .map((id) => id.trim()),
     ),
   );
+  invalidateServerCatalogEpisodesRam(ids);
   if (ids.length > 0) {
     notifyJikanEpisodesRamInvalidation(ids);
     await Promise.allSettled([
@@ -152,6 +208,17 @@ export function primeCatalogEpisodesCache(
   });
 }
 
+export function getCachedCatalogEpisodes(
+  animeId: string,
+): CatalogEpisodesResult | null {
+  if (!animeId) return null;
+  const cached = clientCatalogEpisodesCache.get(animeId.trim());
+  if (cached && Date.now() - cached.timestamp < STALE_TIME_MS) {
+    return cached.data;
+  }
+  return null;
+}
+
 /**
  * Consulta server-side segura de episódios (publicados ou todos no caso administrativo)
  * e metadados de temporadas de um anime.
@@ -167,110 +234,149 @@ export async function executeGetCatalogEpisodes(
 
   const wantUnpublished = Boolean(options?.includeUnpublished);
 
-  // 1. Tentar consultar no Upstash Redis (cache compartilhado) se for consulta pública
   if (!wantUnpublished) {
-    try {
-      const cached = await getRedisCatalogEpisodes(cleanId);
-      if (cached && typeof cached === "object" && Array.isArray(cached.episodes)) {
-        return cached;
-      }
-    } catch {
-      // ignore
+    const cachedRam = serverCatalogEpisodesCache.get(cleanId);
+    if (
+      cachedRam &&
+      Date.now() - cachedRam.timestamp < SERVER_CATALOG_EPISODES_TTL_MS
+    ) {
+      return cachedRam.data;
+    }
+
+    const existingFlight = serverCatalogEpisodesInFlight.get(cleanId);
+    if (existingFlight) {
+      return existingFlight;
     }
   }
 
-  try {
-    const sql = await getSql();
+  const requestEpoch = serverCatalogEpisodesCacheEpoch;
 
-    const candidateIds = [cleanId];
-    try {
-      const numId = /^\d+$/.test(cleanId) ? parseInt(cleanId, 10) : null;
-      const matched = await sql.query<{ id: string; anilistId: number | null }>(
-        `SELECT "id", "anilistId" FROM "catalog_anime"
-         WHERE "id" = $1
-            OR ($2::int IS NOT NULL AND ("anilistId" = $2 OR "malId" = $2 OR "kitsuId" = $2))
-         LIMIT 1;`,
-        [cleanId, numId],
-      );
-      if (matched[0]?.id && !candidateIds.includes(matched[0].id)) {
-        candidateIds.push(matched[0].id);
-      }
-      if (matched[0]?.anilistId && !candidateIds.includes(String(matched[0].anilistId))) {
-        candidateIds.push(String(matched[0].anilistId));
-      }
-    } catch {
-      // ignore
-    }
-
-    const whereClause = wantUnpublished
-      ? `WHERE "animeId" = ANY($1::text[])`
-      : `WHERE "animeId" = ANY($1::text[]) AND "published" = true`;
-
-    // 1. Episódios, ordenados por temporada e número
-    const episodeRows = await sql.query<CatalogEpisodeItem>(
-      `SELECT
-         "id",
-         "animeId",
-         "seasonNumber",
-         "number",
-         "title",
-         "thumbnail",
-         "duration",
-         "synopsis",
-         "videoUrl",
-         "videoUrl2",
-         "videoUrl3",
-          "videoUrl4",
-          "videoUrl5",
-          "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
-          "opening_start_seconds" AS "openingStartSeconds",
-          "opening_end_seconds" AS "openingEndSeconds",
-          "published",
-          "publishedAt",
-          "createdAt",
-          "updatedAt"
-        FROM "catalog_episode"
-        ${whereClause}
-        ORDER BY "seasonNumber" ASC, "number" ASC;`,
-      [candidateIds],
-    );
-
-    // 2. Metadados de temporadas, ordenados por posição e número
-    const seasonRows = await sql.query<CatalogSeasonItem>(
-      `SELECT
-         "animeId",
-         "number",
-         "title",
-         "position",
-         "createdAt"
-       FROM "catalog_season"
-       WHERE "animeId" = ANY($1::text[])
-       ORDER BY "position" ASC, "number" ASC;`,
-      [candidateIds],
-    );
-
-    const result: CatalogEpisodesResult = {
-      animeId: cleanId,
-      seasons: seasonRows,
-      episodes: episodeRows,
-    };
-
+  const runFetch = async (): Promise<CatalogEpisodesResult> => {
+    // 1. Tentar consultar no Upstash Redis (cache compartilhado) se for consulta pública
     if (!wantUnpublished) {
-      scheduleRedisBackgroundWrite(
-        setRedisCatalogEpisodes(cleanId, result),
-        "setRedisCatalogEpisodes",
-      );
+      try {
+        const cached = await getRedisCatalogEpisodes(cleanId);
+        if (cached && typeof cached === "object" && Array.isArray(cached.episodes)) {
+          if (requestEpoch === serverCatalogEpisodesCacheEpoch) {
+            setServerCatalogEpisodesRamCache(cleanId, cached, [cleanId]);
+          }
+          return cached;
+        }
+      } catch {
+        // ignore
+      }
     }
 
-    return result;
-  } catch (err) {
-    console.warn("[Hikari] Falha segura ao consultar catalog_episode:", err);
-    return {
-      animeId: cleanId,
-      seasons: [],
-      episodes: [],
-    };
+    try {
+      const sql = await getSql();
+
+      const candidateIds = [cleanId];
+      try {
+        const numId = /^\d+$/.test(cleanId) ? parseInt(cleanId, 10) : null;
+        const matched = await sql.query<{ id: string; anilistId: number | null }>(
+          `SELECT "id", "anilistId" FROM "catalog_anime"
+           WHERE "id" = $1
+              OR ($2::int IS NOT NULL AND ("anilistId" = $2 OR "malId" = $2 OR "kitsuId" = $2))
+           LIMIT 1;`,
+          [cleanId, numId],
+        );
+        if (matched[0]?.id && !candidateIds.includes(matched[0].id)) {
+          candidateIds.push(matched[0].id);
+        }
+        if (matched[0]?.anilistId && !candidateIds.includes(String(matched[0].anilistId))) {
+          candidateIds.push(String(matched[0].anilistId));
+        }
+      } catch {
+        // ignore
+      }
+
+      const whereClause = wantUnpublished
+        ? `WHERE "animeId" = ANY($1::text[])`
+        : `WHERE "animeId" = ANY($1::text[]) AND "published" = true`;
+
+      // Executa consultas de episódios e temporadas em paralelo após resolver candidateIds
+      const [episodeRows, seasonRows] = await Promise.all([
+        sql.query<CatalogEpisodeItem>(
+          `SELECT
+             "id",
+             "animeId",
+             "seasonNumber",
+             "number",
+             "title",
+             "thumbnail",
+             "duration",
+             "synopsis",
+             "videoUrl",
+             "videoUrl2",
+             "videoUrl3",
+             "videoUrl4",
+             "videoUrl5",
+             "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+             "opening_start_seconds" AS "openingStartSeconds",
+             "opening_end_seconds" AS "openingEndSeconds",
+             "published",
+             "publishedAt",
+             "createdAt",
+             "updatedAt"
+           FROM "catalog_episode"
+           ${whereClause}
+           ORDER BY "seasonNumber" ASC, "number" ASC;`,
+          [candidateIds],
+        ),
+        sql.query<CatalogSeasonItem>(
+          `SELECT
+             "animeId",
+             "number",
+             "title",
+             "position",
+             "createdAt"
+           FROM "catalog_season"
+           WHERE "animeId" = ANY($1::text[])
+           ORDER BY "position" ASC, "number" ASC;`,
+          [candidateIds],
+        ),
+      ]);
+
+      const result: CatalogEpisodesResult = {
+        animeId: cleanId,
+        seasons: seasonRows,
+        episodes: episodeRows,
+      };
+
+      if (!wantUnpublished) {
+        if (requestEpoch === serverCatalogEpisodesCacheEpoch) {
+          setServerCatalogEpisodesRamCache(cleanId, result, candidateIds);
+        }
+        scheduleRedisBackgroundWrite(
+          setRedisCatalogEpisodes(cleanId, result),
+          "setRedisCatalogEpisodes",
+        );
+      }
+
+      return result;
+    } catch (err) {
+      console.warn("[Hikari] Falha segura ao consultar catalog_episode:", err);
+      return {
+        animeId: cleanId,
+        seasons: [],
+        episodes: [],
+      };
+    }
+  };
+
+  if (wantUnpublished) {
+    return runFetch();
   }
+
+  let flightRef: Promise<CatalogEpisodesResult> | null = null;
+  const currentFlight = runFetch().finally(() => {
+    if (serverCatalogEpisodesInFlight.get(cleanId) === flightRef) {
+      serverCatalogEpisodesInFlight.delete(cleanId);
+    }
+  });
+  flightRef = currentFlight;
+  serverCatalogEpisodesInFlight.set(cleanId, currentFlight);
+  return currentFlight;
 }
 
 
@@ -380,7 +486,11 @@ export function invalidatePublicCatalogEpisodesCache(): void {
   publicCatalogEpisodesCacheEpoch += 1;
   publicCatalogEpisodesCache.clear();
   publicCatalogEpisodesInFlight.clear();
+  publicCatalogAnimeOptionsCacheEpoch += 1;
+  cachedPublicCatalogAnimeOptions = null;
+  publicCatalogAnimeOptionsInFlight = null;
   void invalidateRedisPublicCatalogEpisodes().catch(() => {});
+  void invalidateRedisPublicCatalogAnimeOptions().catch(() => {});
 }
 
 function setPublicCatalogEpisodesRamCache(
@@ -562,12 +672,15 @@ export async function executeGetPublicCatalogEpisodes(options?: {
       ) {
         setPublicCatalogEpisodesRamCache(cacheKey, result);
         if (redisRead.fence) {
-          await setRedisPublicCatalogEpisodes(
-            result,
-            limit,
-            offset,
-            redisRead.fence,
-            fetchStartedAt,
+          scheduleRedisBackgroundWrite(
+            setRedisPublicCatalogEpisodes(
+              result,
+              limit,
+              offset,
+              redisRead.fence,
+              fetchStartedAt,
+            ),
+            "setRedisPublicCatalogEpisodes",
           );
         }
       }
@@ -985,6 +1098,14 @@ export async function executeGetPaginatedPublicCatalogEpisodes(
   }
 }
 
+const PUBLIC_CATALOG_ANIME_OPTIONS_CACHE_TTL_MS = 180 * 1000; // 180s
+let cachedPublicCatalogAnimeOptions: {
+  data: PublicCatalogAnimeOption[];
+  timestamp: number;
+} | null = null;
+let publicCatalogAnimeOptionsInFlight: Promise<PublicCatalogAnimeOption[]> | null = null;
+let publicCatalogAnimeOptionsCacheEpoch = 0;
+
 /**
  * Consulta leve e independente para obter apenas os animes que possuem ao menos
  * um episódio publicado e reproduzível no catálogo público.
@@ -993,44 +1114,99 @@ export async function executeGetPaginatedPublicCatalogEpisodes(
 export async function executeGetPublicCatalogAnimeOptions(): Promise<
   PublicCatalogAnimeOption[]
 > {
-  try {
-    const sql = await getSql();
-    const rows = await sql.query<PublicCatalogAnimeOption>(
-      `SELECT
-         a."id",
-         COALESCE(
-           NULLIF(BTRIM(a."title"), ''),
-           NULLIF(BTRIM(a."titleRomaji"), ''),
-           NULLIF(BTRIM(a."titleEnglish"), ''),
-           NULLIF(BTRIM(a."titleNative"), ''),
-           'Anime'
-         ) AS "title"
-       FROM "catalog_anime" a
-       WHERE EXISTS (
-         SELECT 1
-         FROM "catalog_episode" e
-         WHERE e."animeId" = a."id"
-           AND e."published" = true
-           AND ${PLAYABLE_EPISODE_SQL_CONDITION}
-       )
-       ORDER BY LOWER(
-         COALESCE(
-           NULLIF(BTRIM(a."title"), ''),
-           NULLIF(BTRIM(a."titleRomaji"), ''),
-           NULLIF(BTRIM(a."titleEnglish"), ''),
-           NULLIF(BTRIM(a."titleNative"), ''),
-           'Anime'
-         )
-       ) ASC, a."id" ASC;`,
-    );
-    return Array.isArray(rows) ? rows : [];
-  } catch (err) {
-    console.warn(
-      "[Hikari] Falha segura ao consultar opções de animes públicos:",
-      err,
-    );
-    return [];
+  const now = Date.now();
+  if (
+    cachedPublicCatalogAnimeOptions &&
+    now - cachedPublicCatalogAnimeOptions.timestamp <
+      PUBLIC_CATALOG_ANIME_OPTIONS_CACHE_TTL_MS
+  ) {
+    return cachedPublicCatalogAnimeOptions.data;
   }
+
+  if (publicCatalogAnimeOptionsInFlight) {
+    return publicCatalogAnimeOptionsInFlight;
+  }
+
+  const requestEpoch = publicCatalogAnimeOptionsCacheEpoch;
+  let flightRef: Promise<PublicCatalogAnimeOption[]> | null = null;
+
+  const currentFlight = (async (): Promise<PublicCatalogAnimeOption[]> => {
+    try {
+      const redisRead = await getRedisPublicCatalogAnimeOptionsWithFence();
+      if (redisRead.status === "hit" && redisRead.data) {
+        if (requestEpoch === publicCatalogAnimeOptionsCacheEpoch) {
+          cachedPublicCatalogAnimeOptions = {
+            data: redisRead.data,
+            timestamp: Date.now(),
+          };
+        }
+        return redisRead.data;
+      }
+
+      const fetchStartedAt = Date.now();
+      const sql = await getSql();
+      const rows = await sql.query<PublicCatalogAnimeOption>(
+        `SELECT
+           a."id",
+           COALESCE(
+             NULLIF(BTRIM(a."title"), ''),
+             NULLIF(BTRIM(a."titleRomaji"), ''),
+             NULLIF(BTRIM(a."titleEnglish"), ''),
+             NULLIF(BTRIM(a."titleNative"), ''),
+             'Anime'
+           ) AS "title"
+         FROM "catalog_anime" a
+         WHERE EXISTS (
+           SELECT 1
+           FROM "catalog_episode" e
+           WHERE e."animeId" = a."id"
+             AND e."published" = true
+             AND ${PLAYABLE_EPISODE_SQL_CONDITION}
+         )
+         ORDER BY LOWER(
+           COALESCE(
+             NULLIF(BTRIM(a."title"), ''),
+             NULLIF(BTRIM(a."titleRomaji"), ''),
+             NULLIF(BTRIM(a."titleEnglish"), ''),
+             NULLIF(BTRIM(a."titleNative"), ''),
+             'Anime'
+           )
+         ) ASC, a."id" ASC;`,
+      );
+      const validRows = Array.isArray(rows) ? rows : [];
+      if (requestEpoch === publicCatalogAnimeOptionsCacheEpoch) {
+        cachedPublicCatalogAnimeOptions = {
+          data: validRows,
+          timestamp: Date.now(),
+        };
+        if (redisRead.fence) {
+          scheduleRedisBackgroundWrite(
+            setRedisPublicCatalogAnimeOptions(
+              validRows,
+              redisRead.fence,
+              fetchStartedAt,
+            ),
+            "setRedisPublicCatalogAnimeOptions",
+          );
+        }
+      }
+      return validRows;
+    } catch (err) {
+      console.warn(
+        "[Hikari] Falha segura ao consultar opções de animes públicos:",
+        err,
+      );
+      return [];
+    } finally {
+      if (publicCatalogAnimeOptionsInFlight === flightRef) {
+        publicCatalogAnimeOptionsInFlight = null;
+      }
+    }
+  })();
+
+  flightRef = currentFlight;
+  publicCatalogAnimeOptionsInFlight = currentFlight;
+  return currentFlight;
 }
 
 /**

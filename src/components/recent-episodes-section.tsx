@@ -26,10 +26,12 @@ function EpisodeCardSkeleton() {
 
 export function RecentEpisodesSection({
   serverResult,
+  serverStatus,
   initialEpisodes,
   title = "Episódios Recentes",
 }: {
   serverResult?: PublicEpisodesResult | null;
+  serverStatus?: "success" | "empty" | "error";
   initialEpisodes?: PublishedEpisode[];
   title?: string;
 }) {
@@ -42,11 +44,11 @@ export function RecentEpisodesSection({
   const lastFetchAtRef = useRef<number>(Date.now());
   const inFlightRef = useRef<boolean>(false);
 
-  // Sincroniza quando o loader da rota entrega novo serverResult
+  // Sincroniza quando o loader da rota entrega novo serverResult ou initialEpisodes
   useEffect(() => {
     setLiveServerResult(null);
     lastFetchAtRef.current = Date.now();
-  }, [serverResult]);
+  }, [serverResult, initialEpisodes]);
 
   const refreshPublicEpisodes = useCallback(async (force = false) => {
     if (typeof window === "undefined") return;
@@ -73,16 +75,14 @@ export function RecentEpisodesSection({
     }
   }, []);
 
+  const effectiveStatus = serverStatus ?? serverResult?.status;
+
   // Recupera automaticamente no cliente apenas caso SSR não tenha entregue dados ou tenha falhado
   useEffect(() => {
-    if (
-      serverResult === undefined ||
-      serverResult === null ||
-      serverResult.status === "error"
-    ) {
+    if (effectiveStatus === undefined || effectiveStatus === "error") {
       void refreshPublicEpisodes(true);
     }
-  }, [serverResult, refreshPublicEpisodes]);
+  }, [effectiveStatus, refreshPublicEpisodes]);
 
   // Atualiza ao retornar o foco para a aba
   useEffect(() => {

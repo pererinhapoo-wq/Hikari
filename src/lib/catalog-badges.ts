@@ -1,6 +1,11 @@
 import { getSql } from "@/lib/db";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
-import { getRedisCatalogBadges, setRedisCatalogBadges, invalidateRedisCatalogBadges } from "@/lib/redis";
+import {
+  getRedisCatalogBadges,
+  setRedisCatalogBadges,
+  invalidateRedisCatalogBadges,
+  scheduleRedisBackgroundWrite,
+} from "@/lib/redis";
 import {
   normalizeAnimeRecentBadges,
   type AnimeRecentBadges,
@@ -150,8 +155,11 @@ export async function loadAllAnimeRecentBadgesFromDb(): Promise<AnimeRecentBadge
       );
 
       const validRows = rows ?? [];
-      // Salvar de forma assíncrona no Redis (sem bloquear a resposta)
-      void setRedisCatalogBadges(validRows).catch(() => {});
+      // Salvar em segundo plano via waitUntil sem bloquear nem perder a escrita
+      scheduleRedisBackgroundWrite(
+        setRedisCatalogBadges(validRows),
+        "setRedisCatalogBadges",
+      );
 
       const lookup = buildBadgesLookupFromRows(validRows);
       cachedBadgesResult = {

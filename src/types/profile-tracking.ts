@@ -427,6 +427,7 @@ export type AnimeUserInitialState = {
     targetType: "anime" | "character" | "studio" | "company" | "person";
     targetId: string;
     title: string | null;
+    nativeTitle?: string | null;
   }>;
   continueEpisode: { id: string; number: number } | null;
   watchedEpisodeIds: string[];

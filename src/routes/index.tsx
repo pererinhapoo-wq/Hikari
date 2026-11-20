@@ -20,7 +20,10 @@ import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { TodayEpisodesSection } from "@/components/today-episodes-section";
 import { RecentEpisodesSection } from "@/components/recent-episodes-section";
-import { resolvePublicRecentEpisodes } from "@/lib/published-episodes";
+import {
+  getRecentEpisodesSection,
+  resolvePublicRecentEpisodes,
+} from "@/lib/published-episodes";
 import { getHomePublicEpisodes } from "@/lib/home-episodes.functions";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { SectionReveal } from "@/components/section-reveal";
@@ -61,9 +64,14 @@ export const Route = createFileRoute("/")({
         error: String(err),
       })),
     ]);
+    const publicRecentEpisodes = resolvePublicRecentEpisodes(
+      publicEpisodesResult,
+      [],
+    );
     return {
       ...homeCatalog,
-      publicEpisodesResult,
+      publicRecentEpisodes,
+      publicEpisodesStatus: publicEpisodesResult.status,
     };
   },
   head: ({ loaderData }) => {
@@ -333,10 +341,24 @@ function Home() {
   const featured = featuredItems[0];
 
   // Novos Episódios: apenas monta o container de carregamento progressivo se houver episódios cadastrados
-  // Prioriza o PostgreSQL como fonte canônica com fallback seguro no catálogo local
+  // Prioriza os 18 itens resolvidos no loader (evitando serializar milhares de linhas no HTML SSR)
+  // e mescla com o catálogo local apenas quando houver registros locais no navegador
   const recentEpisodes = useMemo(() => {
-    return resolvePublicRecentEpisodes(data.publicEpisodesResult ?? null, locals);
-  }, [data.publicEpisodesResult, locals]);
+    const base = data.publicRecentEpisodes ?? [];
+    if (locals.length === 0) return base;
+    const localRecent = getRecentEpisodesSection(locals);
+    if (localRecent.length === 0) return base;
+    const seenIds = new Set(base.map((ep) => ep.episodeId));
+    const merged = [...base];
+    for (const ep of localRecent) {
+      if (!seenIds.has(ep.episodeId)) {
+        seenIds.add(ep.episodeId);
+        merged.push(ep);
+      }
+    }
+    merged.sort((a, b) => b.publishedAt - a.publishedAt);
+    return merged.slice(0, 18);
+  }, [data.publicRecentEpisodes, locals]);
 
   return (
     <div className="space-y-8 pb-12 sm:space-y-11 md:space-y-14">
@@ -366,7 +388,7 @@ function Home() {
       {/* 3. Episódios Recentes (publicados pelo administrador) */}
       <SectionReveal minHeight="380px" rootMargin="300px 0px" lazy={false}>
         <RecentEpisodesSection
-          serverResult={data.publicEpisodesResult}
+          serverStatus={data.publicEpisodesStatus}
           initialEpisodes={recentEpisodes}
         />
       </SectionReveal>

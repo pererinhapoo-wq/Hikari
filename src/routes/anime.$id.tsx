@@ -123,7 +123,15 @@ import {
   syncAuthenticatedWatchedEpisodes,
   useHikariStore,
 } from "@/lib/store";
-import { resolveEpisodes, getCachedResolvedSeasons } from "@/lib/catalog-episodes";
+import {
+  buildResolvedSeasons,
+  executeGetCatalogEpisodes,
+  getCachedCatalogEpisodes,
+  getCachedResolvedSeasons,
+  getCatalogEpisodes,
+  primeCatalogEpisodesCache,
+  resolveEpisodes,
+} from "@/lib/catalog-episodes";
 import { resolveEpisodeThumbnailUrl } from "@/lib/published-episodes";
 import {
   displayTitle,
@@ -347,26 +355,50 @@ export const Route = createFileRoute("/anime/$id")({
       }
       return {
         remote: null,
+        catalogEpisodes: null,
         initialUserStatus: null,
         initialStateRequestId: undefined as string | undefined,
       };
     }
 
     const detailKey = `detail:v7:${params.id}`;
-    let remote: Anime | null = fromCache<Anime | null>(detailKey, () =>
+    const cachedRemote = fromCache<Anime | null>(detailKey, () =>
       fetchAnimeDetail({ data: { id: params.id } }),
     );
+    const cachedClientEpisodes =
+      typeof window !== "undefined" ? getCachedCatalogEpisodes(params.id) : null;
 
-    if (!remote) {
-      remote = await fetchAnimeDetail({
-        data: { id: params.id },
-      });
-      if (remote) {
-        toCache(detailKey, remote);
-        if (remote.id && remote.id !== params.id) {
-          toCache(`detail:v7:${remote.id}`, remote);
-        }
-      }
+    const [resolvedRemote, initialCatalogEpisodes] = await Promise.all([
+      cachedRemote
+        ? Promise.resolve(cachedRemote)
+        : fetchAnimeDetail({ data: { id: params.id } }).then((fetched) => {
+            if (fetched) {
+              toCache(detailKey, fetched);
+              if (fetched.id && fetched.id !== params.id) {
+                toCache(`detail:v7:${fetched.id}`, fetched);
+              }
+            }
+            return fetched;
+          }),
+      cachedClientEpisodes
+        ? Promise.resolve(cachedClientEpisodes)
+        : (typeof window === "undefined"
+            ? executeGetCatalogEpisodes(params.id)
+            : getCatalogEpisodes({ data: { animeId: params.id } })
+          ).catch(() => null),
+    ]);
+
+    const remote = resolvedRemote;
+    let catalogEpisodes = initialCatalogEpisodes;
+    if (
+      remote?.serverCatalogId &&
+      remote.serverCatalogId !== params.id &&
+      (!catalogEpisodes || catalogEpisodes.episodes.length === 0)
+    ) {
+      catalogEpisodes = await (typeof window === "undefined"
+        ? executeGetCatalogEpisodes(remote.serverCatalogId)
+        : getCatalogEpisodes({ data: { animeId: remote.serverCatalogId } })
+      ).catch(() => catalogEpisodes);
     }
 
     if (typeof window !== "undefined") {
@@ -444,7 +476,7 @@ export const Route = createFileRoute("/anime/$id")({
       initialUserStatus = await fetchUserPromise;
     }
 
-    return { remote, initialUserStatus, initialStateRequestId };
+    return { remote, catalogEpisodes, initialUserStatus, initialStateRequestId };
   },
   head: ({ loaderData, params }) => {
     const remote = loaderData?.remote ?? null;
@@ -741,12 +773,14 @@ const TrailerFacade = memo(function TrailerFacade({
 
 function AnimePage() {
   const { id } = Route.useParams();
-  const { remote, initialUserStatus, initialStateRequestId } = Route.useLoaderData();
+  const { remote, catalogEpisodes, initialUserStatus, initialStateRequestId } =
+    Route.useLoaderData();
   return (
     <AnimePageContent
       key={id}
       id={id}
       remote={remote}
+      catalogEpisodes={catalogEpisodes}
       initialUserStatus={initialUserStatus}
       initialStateRequestId={initialStateRequestId}
     />
@@ -756,12 +790,14 @@ function AnimePage() {
 function AnimePageContent({
   id,
   remote: rawRemote,
+  catalogEpisodes,
   initialUserStatus,
   initialStateRequestId,
 }: {
   id: string;
   remote: Anime | null;
-  initialUserStatus?: AnimeUserInitialState | null;
+  catalogEpisodes: Awaited<ReturnType<typeof executeGetCatalogEpisodes>> | null;
+  initialUserStatus: AnimeUserInitialState | null;
   initialStateRequestId?: string;
 }) {
   const activeAnimeIdRef = useRef(id);
@@ -970,6 +1006,19 @@ function AnimePageContent({
   const episodeCatalogId = baseAnime?.serverCatalogId || baseAnime?.id || id;
 
   const [resolvedSeasons, setResolvedSeasons] = useState<Season[] | null>(() => {
+    if (catalogEpisodes) {
+      const cacheKey = catalogEpisodes.animeId || episodeCatalogId;
+      if (typeof window !== "undefined") {
+        primeCatalogEpisodesCache(cacheKey, catalogEpisodes);
+        if (episodeCatalogId && episodeCatalogId !== cacheKey) {
+          primeCatalogEpisodesCache(episodeCatalogId, catalogEpisodes);
+        }
+        if (id && id !== cacheKey && id !== episodeCatalogId) {
+          primeCatalogEpisodesCache(id, catalogEpisodes);
+        }
+      }
+      return buildResolvedSeasons(cacheKey, catalogEpisodes, baseAnime?.seasons ?? []);
+    }
     return getCachedResolvedSeasons(episodeCatalogId, baseAnime?.seasons);
   });
 
@@ -1419,6 +1468,13 @@ function AnimePageContent({
             targetId: item.targetId,
           });
         }
+        if (item.nativeTitle) {
+          map.set(`${item.targetType}:${item.nativeTitle.toLowerCase().trim()}`, {
+            id: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+          });
+        }
       }
     }
     return map;
@@ -1707,8 +1763,143 @@ function AnimePageContent({
       ]);
     };
 
+    const applyFavoriteStateFromInitial = (state: AnimeUserInitialState) => {
+      if (favoriteMutationVersionRef.current !== favoriteVersionAtStart) {
+        setHydratedFavoriteUserId(currentUserId);
+        return;
+      }
+
+      const newMap = new Map<
+        string,
+        { id: string; targetType: FavoriteTargetType; targetId: string }
+      >();
+      const entities = state.favoriteEntities ?? [];
+      for (const item of entities) {
+        newMap.set(`${item.targetType}:${item.targetId}`, {
+          id: item.id,
+          targetType: item.targetType,
+          targetId: item.targetId,
+        });
+        if (item.title) {
+          newMap.set(`${item.targetType}:${item.title.toLowerCase().trim()}`, {
+            id: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+          });
+        }
+        if (item.nativeTitle) {
+          newMap.set(`${item.targetType}:${item.nativeTitle.toLowerCase().trim()}`, {
+            id: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+          });
+        }
+      }
+      setFavoriteEntities(newMap);
+
+      const matchFromEntities = entities.find((item) => {
+        if (item.targetType !== "anime") return false;
+        if (idsSet.has(item.targetId)) return true;
+        const itemTitle = (item.title || "").toLowerCase().trim();
+        const itemNative = (item.nativeTitle || "").toLowerCase().trim();
+        if (itemTitle && normalizedTitles.has(itemTitle)) return true;
+        if (itemNative && normalizedTitles.has(itemNative)) return true;
+        return false;
+      });
+
+      const resolvedIsFav = Boolean(state.isFavorite || matchFromEntities);
+      const resolvedFavId = state.favFavoriteId ?? matchFromEntities?.id ?? null;
+
+      setIsFavorite(resolvedIsFav);
+      setFavFavoriteId(resolvedFavId);
+      saveAnimeUserClientCache(
+        idsToQuery,
+        {
+          isFavorite: resolvedIsFav,
+          favFavoriteId: resolvedFavId,
+        },
+        currentUserId,
+      );
+      setHydratedFavoriteUserId(currentUserId);
+    };
+
+    const fallbackFetchFavorites = () => {
+      void getMyProfileFavoritesFnRef
+        .current({ data: {} })
+        .then((res) => {
+          if (!active) return;
+          if (favoriteMutationVersionRef.current !== favoriteVersionAtStart) return;
+
+          const newMap = new Map<
+            string,
+            { id: string; targetType: FavoriteTargetType; targetId: string }
+          >();
+          for (const item of res.items) {
+            newMap.set(`${item.targetType}:${item.targetId}`, {
+              id: item.id,
+              targetType: item.targetType,
+              targetId: item.targetId,
+            });
+            if (item.title) {
+              newMap.set(`${item.targetType}:${item.title.toLowerCase().trim()}`, {
+                id: item.id,
+                targetType: item.targetType,
+                targetId: item.targetId,
+              });
+            }
+          }
+          setFavoriteEntities(newMap);
+
+          const match = res.items.find((item) => {
+            if (item.targetType !== "anime") return false;
+            if (idsSet.has(item.targetId)) return true;
+            const itemTitle = (item.title || "").toLowerCase().trim();
+            const itemNative = (item.nativeTitle || "").toLowerCase().trim();
+            if (itemTitle && normalizedTitles.has(itemTitle)) return true;
+            if (itemNative && normalizedTitles.has(itemNative)) return true;
+            return false;
+          });
+
+          if (match) {
+            setIsFavorite(true);
+            setFavFavoriteId(match.id);
+            saveAnimeUserClientCache(
+              idsToQuery,
+              {
+                isFavorite: true,
+                favFavoriteId: match.id,
+              },
+              currentUserId,
+            );
+          } else {
+            setIsFavorite(false);
+            setFavFavoriteId(null);
+            saveAnimeUserClientCache(
+              idsToQuery,
+              {
+                isFavorite: false,
+                favFavoriteId: null,
+              },
+              currentUserId,
+            );
+          }
+        })
+        .catch((err) => {
+          console.warn("Erro ao buscar favoritos:", err);
+        })
+        .finally(() => {
+          if (!active) return;
+          setHydratedFavoriteUserId(currentUserId);
+        });
+    };
+
     if (freshInitial && initialUserStatus) {
       applyAuthoritativeInitialState(initialUserStatus);
+      if (Array.isArray(initialUserStatus.favoriteEntities)) {
+        applyFavoriteStateFromInitial(initialUserStatus);
+      } else {
+        fallbackFetchFavorites();
+      }
     } else if (inFlightInitial) {
       if (cachedTracking && trackingMutationVersionRef.current === trackingVersionAtStart) {
         applyTrackingState(cachedTracking.item);
@@ -1718,6 +1909,11 @@ function AnimePageContent({
         if (!active) return;
         consumeInFlightAnimeInitialState(initialStateRequestId);
         if (trackingMutationVersionRef.current !== trackingVersionAtStart) {
+          if (resolved && resolved.userId === currentUserId && Array.isArray(resolved.favoriteEntities)) {
+            applyFavoriteStateFromInitial(resolved);
+          } else {
+            fallbackFetchFavorites();
+          }
           return;
         }
         if (
@@ -1736,9 +1932,15 @@ function AnimePageContent({
             resolved,
           );
           applyAuthoritativeInitialState(resolved);
+          if (Array.isArray(resolved.favoriteEntities)) {
+            applyFavoriteStateFromInitial(resolved);
+          } else {
+            fallbackFetchFavorites();
+          }
           return;
         }
         fallbackFetchTrackingAndWatched();
+        fallbackFetchFavorites();
       });
     } else if (cachedTracking) {
       if (trackingMutationVersionRef.current === trackingVersionAtStart) {
@@ -1748,78 +1950,27 @@ function AnimePageContent({
       void syncAuthenticatedWatchedEpisodes(currentUserId, animePrimaryId, {
         candidateIds: idsToQuery,
       });
+      if (
+        initialUserStatus &&
+        initialUserStatus.userId === currentUserId &&
+        Array.isArray(initialUserStatus.favoriteEntities)
+      ) {
+        applyFavoriteStateFromInitial(initialUserStatus);
+      } else {
+        fallbackFetchFavorites();
+      }
     } else {
       fallbackFetchTrackingAndWatched();
+      if (
+        initialUserStatus &&
+        initialUserStatus.userId === currentUserId &&
+        Array.isArray(initialUserStatus.favoriteEntities)
+      ) {
+        applyFavoriteStateFromInitial(initialUserStatus);
+      } else {
+        fallbackFetchFavorites();
+      }
     }
-
-    // 2. Busca favoritos oficiais do perfil (anime, personagens, estúdios, pessoas)
-    void getMyProfileFavoritesFnRef
-      .current({ data: {} })
-      .then((res) => {
-        if (!active) return;
-        if (favoriteMutationVersionRef.current !== favoriteVersionAtStart) return;
-
-        const newMap = new Map<
-          string,
-          { id: string; targetType: FavoriteTargetType; targetId: string }
-        >();
-        for (const item of res.items) {
-          newMap.set(`${item.targetType}:${item.targetId}`, {
-            id: item.id,
-            targetType: item.targetType,
-            targetId: item.targetId,
-          });
-          if (item.title) {
-            newMap.set(`${item.targetType}:${item.title.toLowerCase().trim()}`, {
-              id: item.id,
-              targetType: item.targetType,
-              targetId: item.targetId,
-            });
-          }
-        }
-        setFavoriteEntities(newMap);
-
-        const match = res.items.find((item) => {
-          if (item.targetType !== "anime") return false;
-          if (idsSet.has(item.targetId)) return true;
-          const itemTitle = (item.title || "").toLowerCase().trim();
-          const itemNative = (item.nativeTitle || "").toLowerCase().trim();
-          if (itemTitle && normalizedTitles.has(itemTitle)) return true;
-          if (itemNative && normalizedTitles.has(itemNative)) return true;
-          return false;
-        });
-
-        if (match) {
-          setIsFavorite(true);
-          setFavFavoriteId(match.id);
-          saveAnimeUserClientCache(
-            idsToQuery,
-            {
-              isFavorite: true,
-              favFavoriteId: match.id,
-            },
-            currentUserId,
-          );
-        } else {
-          setIsFavorite(false);
-          setFavFavoriteId(null);
-          saveAnimeUserClientCache(
-            idsToQuery,
-            {
-              isFavorite: false,
-              favFavoriteId: null,
-            },
-            currentUserId,
-          );
-        }
-      })
-      .catch((err) => {
-        console.warn("Erro ao buscar favoritos:", err);
-      })
-      .finally(() => {
-        if (!active) return;
-        setHydratedFavoriteUserId(currentUserId);
-      });
 
     return () => {
       active = false;
