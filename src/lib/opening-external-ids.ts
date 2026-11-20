@@ -54,11 +54,11 @@ function toValidImdbId(val: unknown): string | null {
 
 function buildPrimaryCacheKey(input: CatalogIdsInput): string | null {
   const malId = toPositiveInt(input.malId);
-  if (malId) return `hikari:opening:ext-ids:v1:mal:${malId}`;
+  if (malId) return `hikari:opening:ext-ids:v2:mal:${malId}`;
   const anilistId = toPositiveInt(input.anilistId);
-  if (anilistId) return `hikari:opening:ext-ids:v1:anilist:${anilistId}`;
+  if (anilistId) return `hikari:opening:ext-ids:v2:anilist:${anilistId}`;
   const kitsuId = toPositiveInt(input.kitsuId);
-  if (kitsuId) return `hikari:opening:ext-ids:v1:kitsu:${kitsuId}`;
+  if (kitsuId) return `hikari:opening:ext-ids:v2:kitsu:${kitsuId}`;
   return null;
 }
 
@@ -133,6 +133,41 @@ function validateAndNormalizeMapperResponse(
   };
 }
 
+function mergeExternalAnimeIds(
+  primary: ExternalAnimeIds | null,
+  secondary: ExternalAnimeIds | null,
+): ExternalAnimeIds | null {
+  if (!primary) return secondary;
+  if (!secondary) return primary;
+
+  const secondaryAddedTargets = Boolean(
+    (!primary.malId && secondary.malId) ||
+      (!primary.tvdbId && secondary.tvdbId) ||
+      (!primary.imdbId && secondary.imdbId) ||
+      (!primary.tmdbId && secondary.tmdbId),
+  );
+
+  const primaryHadTargets = Boolean(primary.tvdbId || primary.imdbId || primary.tmdbId);
+
+  return {
+    malId: primary.malId ?? secondary.malId,
+    anilistId: primary.anilistId ?? secondary.anilistId,
+    kitsuId: primary.kitsuId ?? secondary.kitsuId,
+    anidbId: primary.anidbId ?? secondary.anidbId,
+    tvdbId: primary.tvdbId ?? secondary.tvdbId,
+    tvdbSeason: primary.tvdbId
+      ? (primary.tvdbSeason ?? secondary.tvdbSeason)
+      : (secondary.tvdbSeason ?? primary.tvdbSeason),
+    tmdbId: primary.tmdbId ?? secondary.tmdbId,
+    tmdbSeason: primary.tmdbId
+      ? (primary.tmdbSeason ?? secondary.tmdbSeason)
+      : (secondary.tmdbSeason ?? primary.tmdbSeason),
+    imdbId: primary.imdbId ?? secondary.imdbId,
+    mediaType: primary.mediaType ?? secondary.mediaType,
+    source: !primaryHadTargets && secondaryAddedTargets ? secondary.source : primary.source,
+  };
+}
+
 async function queryMapperEndpoint(
   baseUrl: string,
   querySource: "myanimelist" | "anilist" | "kitsu",
@@ -190,7 +225,7 @@ export function resolveExternalSeasonNumber(
 
 /**
  * Resolve identificadores externos (TVDB, TMDB, IMDb, MAL, AniList) priorizando os IDs do catálogo
- * e consultando Yuna Relations (com fallback em ARM) com cache de 30 dias no Upstash Redis.
+ * e consultando Yuna Relations (com fallback/complemento em ARM) com cache de 30 dias no Upstash Redis.
  */
 export async function resolveExternalAnimeIds(
   input: CatalogIdsInput,
@@ -248,11 +283,11 @@ export async function resolveExternalAnimeIds(
     anyTransientFailure = true;
   }
 
-  // 2. Fallback para ARM se Yuna falhou ou não trouxe TVDB/IMDb/TMDB
-  const hasUsefulExternal = Boolean(
-    resolved && (resolved.tvdbId || resolved.imdbId || resolved.tmdbId || resolved.malId),
+  // 2. Consulta ARM como fallback/complemento se Yuna falhou ou ainda faltam MAL/TVDB/IMDb
+  const hasCompleteTargets = Boolean(
+    resolved && resolved.malId && resolved.tvdbId && resolved.imdbId,
   );
-  if (!hasUsefulExternal) {
+  if (!hasCompleteTargets) {
     const armRes = await queryMapperEndpoint(
       "https://arm.haglund.dev/api/v2/ids",
       lookupSource,
@@ -263,7 +298,7 @@ export async function resolveExternalAnimeIds(
     if (armRes.status === "ok" && armRes.data) {
       const normalized = validateAndNormalizeMapperResponse(input, armRes.data, "arm");
       if (normalized) {
-        resolved = normalized;
+        resolved = mergeExternalAnimeIds(resolved, normalized);
       }
     } else if (armRes.status === "error") {
       anyTransientFailure = true;
@@ -271,13 +306,18 @@ export async function resolveExternalAnimeIds(
   }
 
   if (resolved) {
-    const hasTargets = Boolean(resolved.tvdbId || resolved.imdbId || resolved.tmdbId || resolved.malId);
-    await writeOpeningRedisJson(
-      redis,
-      cacheKey,
-      resolved,
-      hasTargets ? EXTERNAL_IDS_POSITIVE_CACHE_TTL_SEC : EXTERNAL_IDS_NEGATIVE_CACHE_TTL_SEC,
+    const hasAllExternal = Boolean(resolved.tvdbId && resolved.imdbId && resolved.malId);
+    const hasAnyExternalTarget = Boolean(
+      resolved.tvdbId || resolved.imdbId || resolved.tmdbId || (resolved.malId && !baseline.malId),
     );
+    if (!anyTransientFailure || hasAllExternal) {
+      await writeOpeningRedisJson(
+        redis,
+        cacheKey,
+        resolved,
+        hasAnyExternalTarget ? EXTERNAL_IDS_POSITIVE_CACHE_TTL_SEC : EXTERNAL_IDS_NEGATIVE_CACHE_TTL_SEC,
+      );
+    }
     return resolved;
   }
 

@@ -164,7 +164,7 @@ export function normalizeEpisodeLengthParam(episodeLength?: number | null): numb
 }
 
 /**
- * Monta a URL oficial da AniSkip API v2 com types[]=op, types[]=mixed-op e episodeLength (inclusive 0).
+ * Monta a URL oficial da AniSkip API v2 com types=op, types=mixed-op e episodeLength (inclusive 0).
  */
 export function buildAniSkipSkipTimesUrl(
   malId: number,
@@ -172,7 +172,7 @@ export function buildAniSkipSkipTimesUrl(
   episodeLength?: number | null,
 ): string {
   const safeLen = normalizeEpisodeLengthParam(episodeLength);
-  return `https://api.aniskip.com/v2/skip-times/${malId}/${episodeNumber}?types[]=op&types[]=mixed-op&episodeLength=${safeLen}`;
+  return `https://api.aniskip.com/v2/skip-times/${malId}/${episodeNumber}?types=op&types=mixed-op&episodeLength=${safeLen}`;
 }
 
 function isValidRelationRule(rule: unknown): rule is AniSkipRelationRule {
@@ -331,7 +331,7 @@ export async function fetchAniSkipTimestamps(
   const targetEpisode = mapped.episodeNumber;
   const safeEpisodeLength = normalizeEpisodeLengthParam(options?.episodeLength);
 
-  const cacheKey = `hikari:aniskip:v3:${targetMalId}:${targetEpisode}:len${safeEpisodeLength}:op-mixed`;
+  const cacheKey = `hikari:aniskip:v4:${targetMalId}:${targetEpisode}:len${safeEpisodeLength}:op-mixed`;
   const redis = resolveRedisInstance(options);
 
   const cached = await readOpeningRedisJson<AniSkipTimestampResult>(redis, cacheKey);

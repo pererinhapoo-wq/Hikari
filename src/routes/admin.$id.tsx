@@ -83,6 +83,7 @@ import {
   getOpeningSuggestionKey,
   mergeLoadedOpeningSuggestions,
   parseReliableEpisodeDurationSeconds,
+  reconcileDirtyEpisodeIdsAfterFormPopulation,
   type OpeningSuggestionEntry,
 } from "@/lib/opening-admin-state";
 
@@ -405,6 +406,7 @@ function AdminEditor() {
   const formRef = useRef<LocalAnime | null>(null);
   formRef.current = form;
   const dirtyEpisodeIdsRef = useRef<Set<string>>(new Set());
+  const explicitUserDirtyEpisodeIdsRef = useRef<Set<string>>(new Set());
   const dirtyMediaRef = useRef<{ cover: boolean; banner: boolean }>({
     cover: false,
     banner: false,
@@ -562,21 +564,26 @@ function AdminEditor() {
         }
 
         const mergeAnimeId = result.animeId || formRef.current?.id || effectiveId;
-        setForm((currentForm) => {
-          if (!currentForm) return currentForm;
-          const currentOps = typeof window !== "undefined" ? readOutbox() : [];
+        const currentOps = typeof window !== "undefined" ? readOutbox() : [];
+        const baseForm = formRef.current;
+        if (baseForm) {
           const mergeResult = mergeAdminEpisodesWithServer({
             animeId: mergeAnimeId,
-            localSeasons: currentForm.seasons,
+            localSeasons: baseForm.seasons,
             serverResult: result!,
             outboxOps: currentOps,
           });
-
-          return {
-            ...currentForm,
+          reconcileDirtyEpisodeIdsAfterFormPopulation(
+            dirtyEpisodeIdsRef.current,
+            mergeResult.seasons,
+            result.episodes,
+            explicitUserDirtyEpisodeIdsRef.current,
+          );
+          setForm({
+            ...baseForm,
             seasons: mergeResult.seasons,
-          };
-        });
+          });
+        }
 
         setRecoveryState({
           status: "success",
@@ -906,25 +913,39 @@ function AdminEditor() {
       if (id !== "new" && serverEpisodes) {
         if (serverEpisodes.episodes.length > 0) {
           const currentOps = typeof window !== "undefined" ? readOutbox() : [];
-          setForm((currentForm) => {
-            if (!currentForm) return currentForm;
+          const baseForm = formRef.current;
+          if (baseForm) {
             const mergeResult = mergeAdminEpisodesWithServer({
-              animeId: serverEpisodes.animeId || currentForm.id || id,
-              localSeasons: currentForm.seasons,
+              animeId: serverEpisodes.animeId || baseForm.id || id,
+              localSeasons: baseForm.seasons,
               serverResult: serverEpisodes,
               outboxOps: currentOps,
             });
-            return {
-              ...currentForm,
+            reconcileDirtyEpisodeIdsAfterFormPopulation(
+              dirtyEpisodeIdsRef.current,
+              mergeResult.seasons,
+              serverEpisodes.episodes,
+              explicitUserDirtyEpisodeIdsRef.current,
+            );
+            setForm({
+              ...baseForm,
               seasons: mergeResult.seasons,
-            };
-          });
+            });
+          }
           setRecoveryState({
             status: "success",
             message: `Episódios recuperados com sucesso do PostgreSQL (${serverEpisodes.episodes.length} confirmados no banco).`,
             recoveredCount: serverEpisodes.episodes.length,
           });
         } else {
+          if (formRef.current) {
+            reconcileDirtyEpisodeIdsAfterFormPopulation(
+              dirtyEpisodeIdsRef.current,
+              formRef.current.seasons,
+              [],
+              explicitUserDirtyEpisodeIdsRef.current,
+            );
+          }
           setRecoveryState({
             status: "empty",
             message: "Nenhum episódio cadastrado no servidor para este anime.",
@@ -939,6 +960,7 @@ function AdminEditor() {
     thumbnailEditModesRef.current = {};
     setThumbnailEditModes({});
     dirtyEpisodeIdsRef.current = new Set();
+    explicitUserDirtyEpisodeIdsRef.current = new Set();
     dirtyMediaRef.current = { cover: false, banner: false };
     dirtyBadgesRef.current = false;
     revokeAllCandidatePreviewUrls();
@@ -991,6 +1013,12 @@ function AdminEditor() {
         outboxOps: currentOps,
       });
 
+      reconcileDirtyEpisodeIdsAfterFormPopulation(
+        dirtyEpisodeIdsRef.current,
+        mergeResult.seasons,
+        serverEpisodes.episodes,
+        explicitUserDirtyEpisodeIdsRef.current,
+      );
       setForm({
         ...base,
         seasons: mergeResult.seasons,
@@ -1003,6 +1031,12 @@ function AdminEditor() {
         recoveredCount: serverEpisodes.episodes.length,
       });
     } else {
+      reconcileDirtyEpisodeIdsAfterFormPopulation(
+        dirtyEpisodeIdsRef.current,
+        base.seasons,
+        serverEpisodes?.episodes ?? [],
+        explicitUserDirtyEpisodeIdsRef.current,
+      );
       setForm(base);
       setGenreText(base.genres.join(", "));
       if (base.syncedAt && base.syncedAt >= (base.updatedAt ?? 0)) {
@@ -1541,8 +1575,10 @@ function AdminEditor() {
             resultByPair.set(`${task.seasonId}:${task.episodeId}`, result);
             if (result.confirmed) {
               dirtyEpisodeIdsRef.current.delete(task.episodeId);
+              explicitUserDirtyEpisodeIdsRef.current.delete(task.episodeId);
               if (result.canonicalId) {
                 dirtyEpisodeIdsRef.current.delete(result.canonicalId);
+                explicitUserDirtyEpisodeIdsRef.current.delete(result.canonicalId);
               }
             }
           }
@@ -1823,6 +1859,7 @@ function AdminEditor() {
   function addEpisode(sid: string) {
     const newEpisodeId = `e-${crypto.randomUUID()}`;
     dirtyEpisodeIdsRef.current.add(newEpisodeId);
+    explicitUserDirtyEpisodeIdsRef.current.add(newEpisodeId);
 
     setForm((f) =>
       f
@@ -1857,6 +1894,7 @@ function AdminEditor() {
     patch: Partial<Episode>,
   ) {
     dirtyEpisodeIdsRef.current.add(eid);
+    explicitUserDirtyEpisodeIdsRef.current.add(eid);
     setForm((f) =>
       f
         ? {
@@ -1881,6 +1919,7 @@ function AdminEditor() {
     const season = current.seasons.find((s) => s.id === sid);
     const targetEp = season?.episodes.find((e) => e.id === eid);
     dirtyEpisodeIdsRef.current.delete(eid);
+    explicitUserDirtyEpisodeIdsRef.current.delete(eid);
     revokeEpisodePreviewUrls(eid);
     setEpisodeCandidates((prev) => {
       if (!(eid in prev)) return prev;

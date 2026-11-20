@@ -1,4 +1,4 @@
-import type { LocalAnime } from "@/lib/types";
+import type { LocalAnime, Season } from "@/lib/types";
 import type { OpeningLookupStatus, OpeningSourceId } from "@/lib/opening-providers";
 
 export interface OpeningSuggestionEntry {
@@ -21,6 +21,15 @@ export interface OpeningSuggestionEntry {
     targetMalId: number;
     targetEpisodeNumber: number;
   };
+}
+
+export interface ServerEpisodeSnapshot {
+  id: string;
+  seasonNumber?: number;
+  number: number;
+  openingStartSeconds?: number | null;
+  openingEndSeconds?: number | null;
+  published?: boolean;
 }
 
 export function getOpeningSuggestionKey(seasonNumber: number, episodeNumber: number): string {
@@ -70,6 +79,62 @@ export function mergeLoadedOpeningSuggestions(
     ...prev,
     ...incoming,
   };
+}
+
+/**
+ * Reconcilia `dirtyEpisodeIds` após `setForm()` preencher/mesclar temporadas automaticamente:
+ * - Todo episódio que ainda não existe no servidor PostgreSQL (ex: importado via `importId`,
+ *   duplicado via `duplicateAsDubbed`, ou presente apenas localmente/remoto) é mantido em
+ *   `dirtyEpisodeIds` para não ser ignorado ao salvar.
+ * - Episódios já confirmados no servidor com os mesmos valores (e não editados manualmente pelo
+ *   admin em `explicitUserDirtyIds`) são removidos de `dirtyEpisodeIds`, evitando regravações
+ *   desnecessárias.
+ * - Nunca aplica nem aprova sugestões de opening automaticamente.
+ */
+export function reconcileDirtyEpisodeIdsAfterFormPopulation(
+  dirtyEpisodeIds: Set<string>,
+  seasons: Season[],
+  serverEpisodes: ServerEpisodeSnapshot[] | null | undefined,
+  explicitUserDirtyIds: ReadonlySet<string> = new Set(),
+): Set<string> {
+  const serverById = new Map<string, ServerEpisodeSnapshot>();
+  const serverBySlot = new Map<string, ServerEpisodeSnapshot>();
+
+  for (const sep of serverEpisodes ?? []) {
+    serverById.set(sep.id, sep);
+    serverBySlot.set(`${sep.seasonNumber || 1}:${sep.number}`, sep);
+  }
+
+  for (const season of seasons) {
+    for (const ep of season.episodes) {
+      if (explicitUserDirtyIds.has(ep.id)) {
+        dirtyEpisodeIds.add(ep.id);
+        continue;
+      }
+
+      const matchedServer =
+        serverById.get(ep.id) ?? serverBySlot.get(`${season.number}:${ep.number}`);
+
+      if (!matchedServer) {
+        dirtyEpisodeIds.add(ep.id);
+        continue;
+      }
+
+      const openingStartDiffers =
+        (ep.openingStartSeconds ?? null) !== (matchedServer.openingStartSeconds ?? null);
+      const openingEndDiffers =
+        (ep.openingEndSeconds ?? null) !== (matchedServer.openingEndSeconds ?? null);
+      const publishDiffers = Boolean(ep.published) !== Boolean(matchedServer.published);
+
+      if (openingStartDiffers || openingEndDiffers || publishDiffers) {
+        dirtyEpisodeIds.add(ep.id);
+      } else {
+        dirtyEpisodeIds.delete(ep.id);
+      }
+    }
+  }
+
+  return dirtyEpisodeIds;
 }
 
 /**

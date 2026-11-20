@@ -193,7 +193,7 @@ export async function fetchTheIntroDbOpening(
 
   const idKind = tvdbId ? "tvdb" : "tmdb";
   const idValue = (tvdbId ?? tmdbId)!;
-  const cacheKey = `hikari:theintrodb:v4:${idKind}:${idValue}:s${season}:e${episode}`;
+  const cacheKey = `hikari:theintrodb:v4d:${idKind}:${idValue}:s${season}:e${episode}`;
   const redis = resolveRedis(options);
 
   const cached = await readOpeningRedisJson<OpeningSuggestion>(redis, cacheKey);
@@ -209,7 +209,7 @@ export async function fetchTheIntroDbOpening(
   const fetchFn = options?.fetchFn ?? fetch;
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const queryParam = tvdbId ? `tvdb_id=${tvdbId}` : `tmdb_id=${tmdbId}`;
-  const url = `https://api.theintrodb.org/v4/media?${queryParam}&season=${season}&episode=${episode}`;
+  const url = `https://api.theintrodb.org/v4/media?${queryParam}&season=${season}&episode=${episode}&details=true`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -257,22 +257,38 @@ export async function fetchTheIntroDbOpening(
     }
 
     const data = (await res.json()) as {
+      group_duration_ms?: number | null;
       intro?: Array<{
         start_ms?: number | null;
         end_ms?: number | null;
         confidence?: number | null;
+        submission_count?: number | null;
       }>;
     };
 
+    const effectiveEpLenSec =
+      options?.episodeLengthSeconds && options.episodeLengthSeconds > 0
+        ? options.episodeLengthSeconds
+        : typeof data?.group_duration_ms === "number" &&
+            Number.isFinite(data.group_duration_ms) &&
+            data.group_duration_ms > 0
+          ? Math.round(data.group_duration_ms / 1000)
+          : undefined;
+
     const intros = Array.isArray(data?.intro) ? data.intro : [];
-    let validIntro: { startSeconds: number; endSeconds: number; confidence: number | null } | null = null;
+    let validIntro: {
+      startSeconds: number;
+      endSeconds: number;
+      confidence: number | null;
+      submissionCount: number | null;
+    } | null = null;
 
     for (const item of intros) {
       if (!item || typeof item !== "object") continue;
       const startSeconds = millisecondsToSeconds(item.start_ms);
       const endSeconds = millisecondsToSeconds(item.end_ms);
       if (startSeconds === null || endSeconds === null) continue;
-      if (!validateOpeningInterval(startSeconds, endSeconds, options?.episodeLengthSeconds)) {
+      if (!validateOpeningInterval(startSeconds, endSeconds, effectiveEpLenSec)) {
         continue;
       }
       validIntro = {
@@ -281,6 +297,10 @@ export async function fetchTheIntroDbOpening(
         confidence:
           typeof item.confidence === "number" && Number.isFinite(item.confidence)
             ? item.confidence
+            : null,
+        submissionCount:
+          typeof item.submission_count === "number" && Number.isFinite(item.submission_count)
+            ? Math.max(0, Math.round(item.submission_count))
             : null,
       };
       break;
@@ -311,7 +331,7 @@ export async function fetchTheIntroDbOpening(
       source: "theintrodb",
       sourceLabel: SOURCE_LABELS.theintrodb,
       confidence: validIntro.confidence,
-      submissionCount: null,
+      submissionCount: validIntro.submissionCount,
       status: "found",
       message: "Sugestão encontrada via TheIntroDB.",
     };
@@ -431,6 +451,12 @@ export async function fetchIntroDbOpening(
 
     const data = (await res.json()) as {
       no_intro?: boolean;
+      start_sec?: number | null;
+      end_sec?: number | null;
+      start_ms?: number | null;
+      end_ms?: number | null;
+      confidence?: number | null;
+      submission_count?: number | null;
       intro?: {
         start_sec?: number | null;
         end_sec?: number | null;
@@ -453,18 +479,25 @@ export async function fetchIntroDbOpening(
       return noIntroRes;
     }
 
+    const introObj =
+      data?.intro && typeof data.intro === "object"
+        ? data.intro
+        : typeof data?.start_sec === "number" || typeof data?.end_sec === "number"
+          ? data
+          : null;
+
     const rawStartSec =
-      typeof data?.intro?.start_sec === "number" && Number.isFinite(data.intro.start_sec)
-        ? data.intro.start_sec
-        : typeof data?.intro?.start_ms === "number" && Number.isFinite(data.intro.start_ms)
-          ? data.intro.start_ms / 1000
+      typeof introObj?.start_sec === "number" && Number.isFinite(introObj.start_sec)
+        ? introObj.start_sec
+        : typeof introObj?.start_ms === "number" && Number.isFinite(introObj.start_ms)
+          ? introObj.start_ms / 1000
           : null;
 
     const rawEndSec =
-      typeof data?.intro?.end_sec === "number" && Number.isFinite(data.intro.end_sec)
-        ? data.intro.end_sec
-        : typeof data?.intro?.end_ms === "number" && Number.isFinite(data.intro.end_ms)
-          ? data.intro.end_ms / 1000
+      typeof introObj?.end_sec === "number" && Number.isFinite(introObj.end_sec)
+        ? introObj.end_sec
+        : typeof introObj?.end_ms === "number" && Number.isFinite(introObj.end_ms)
+          ? introObj.end_ms / 1000
           : null;
 
     if (rawStartSec === null || rawEndSec === null) {
@@ -495,12 +528,12 @@ export async function fetchIntroDbOpening(
     }
 
     const confidence =
-      typeof data?.intro?.confidence === "number" && Number.isFinite(data.intro.confidence)
-        ? data.intro.confidence
+      typeof introObj?.confidence === "number" && Number.isFinite(introObj.confidence)
+        ? introObj.confidence
         : null;
     const submissionCount =
-      typeof data?.intro?.submission_count === "number" && Number.isFinite(data.intro.submission_count)
-        ? Math.max(0, Math.round(data.intro.submission_count))
+      typeof introObj?.submission_count === "number" && Number.isFinite(introObj.submission_count)
+        ? Math.max(0, Math.round(introObj.submission_count))
         : null;
 
     const foundResult: OpeningSuggestion = {
@@ -648,7 +681,7 @@ export async function fetchOpeningSuggestionsCascade(
       );
     }
 
-    const cascadeCacheKey = `hikari:opening:cascade:v1:${primaryAnimeKey}:s${seasonNumber}:e${episodeNumber}:len${epLen}`;
+    const cascadeCacheKey = `hikari:opening:cascade:v2:${primaryAnimeKey}:s${seasonNumber}:e${episodeNumber}:len${epLen}`;
     const cachedCascade = await readOpeningRedisJson<OpeningSuggestion>(redis, cascadeCacheKey);
     if (cachedCascade && typeof cachedCascade === "object" && typeof cachedCascade.found === "boolean") {
       return {
@@ -726,7 +759,8 @@ export async function fetchOpeningSuggestionsCascade(
     const isMovie = resolvedIds.mediaType === "MOVIE";
 
     // 2. TheIntroDB (primeiro fallback)
-    const tidbSeason = resolveExternalSeasonNumber(seasonNumber, resolvedIds.tvdbSeason ?? resolvedIds.tmdbSeason);
+    const tidbBaseSeason = resolvedIds.tvdbId ? resolvedIds.tvdbSeason : resolvedIds.tmdbSeason;
+    const tidbSeason = resolveExternalSeasonNumber(seasonNumber, tidbBaseSeason);
     if (
       !isMovie &&
       !rateLimitedProviders.has("theintrodb") &&

@@ -30,6 +30,7 @@ import {
   getOpeningSuggestionKey,
   mergeLoadedOpeningSuggestions,
   parseReliableEpisodeDurationSeconds,
+  reconcileDirtyEpisodeIdsAfterFormPopulation,
   type OpeningSuggestionEntry,
 } from "./opening-admin-state.ts";
 import type { LocalAnime } from "./types.ts";
@@ -127,7 +128,7 @@ describe("Opening Timestamps — AniSkip, TheIntroDB, IntroDB, ID Mapping & Admi
     assert.equal(parseReliableEpisodeDurationSeconds(null), 0);
   });
 
-  test("1. Consulta AniSkip envia types[]=op e types[]=mixed-op e prioriza op sobre mixed-op", async () => {
+  test("1. Consulta AniSkip envia types=op e types=mixed-op (OpenAPI 3.0) e prioriza op sobre mixed-op", async () => {
     const requestedUrls: string[] = [];
     const fetchMock: typeof fetch = async (input) => {
       requestedUrls.push(String(input));
@@ -154,8 +155,8 @@ describe("Opening Timestamps — AniSkip, TheIntroDB, IntroDB, ID Mapping & Admi
     });
 
     assert.equal(requestedUrls.length, 1);
-    assert.match(requestedUrls[0], /types\[\]=op/);
-    assert.match(requestedUrls[0], /types\[\]=mixed-op/);
+    assert.match(requestedUrls[0], /types=op/);
+    assert.match(requestedUrls[0], /types=mixed-op/);
     assert.equal(res.found, true);
     assert.equal(res.skipType, "op");
     assert.equal(res.openingStartSeconds, 207);
@@ -185,15 +186,15 @@ describe("Opening Timestamps — AniSkip, TheIntroDB, IntroDB, ID Mapping & Admi
   test("2. Envio correto de episodeLength, inclusive zero", async () => {
     assert.equal(
       buildAniSkipSkipTimesUrl(34572, 1),
-      "https://api.aniskip.com/v2/skip-times/34572/1?types[]=op&types[]=mixed-op&episodeLength=0",
+      "https://api.aniskip.com/v2/skip-times/34572/1?types=op&types=mixed-op&episodeLength=0",
     );
     assert.equal(
       buildAniSkipSkipTimesUrl(34572, 1, 0),
-      "https://api.aniskip.com/v2/skip-times/34572/1?types[]=op&types[]=mixed-op&episodeLength=0",
+      "https://api.aniskip.com/v2/skip-times/34572/1?types=op&types=mixed-op&episodeLength=0",
     );
     assert.equal(
       buildAniSkipSkipTimesUrl(34572, 1, 1434.2),
-      "https://api.aniskip.com/v2/skip-times/34572/1?types[]=op&types[]=mixed-op&episodeLength=1434",
+      "https://api.aniskip.com/v2/skip-times/34572/1?types=op&types=mixed-op&episodeLength=1434",
     );
 
     const urls: string[] = [];
@@ -255,7 +256,7 @@ describe("Opening Timestamps — AniSkip, TheIntroDB, IntroDB, ID Mapping & Admi
     assert.equal(neg2.fromCache, true);
     assert.equal(negCalls, 1);
 
-    const negEntry = redis.store.get("hikari:aniskip:v3:34572:99:len0:op-mixed");
+    const negEntry = redis.store.get("hikari:aniskip:v4:34572:99:len0:op-mixed");
     assert.equal(negEntry?.ex, ANISKIP_NEGATIVE_CACHE_TTL_SEC);
   });
 
@@ -404,7 +405,7 @@ describe("Opening Timestamps — AniSkip, TheIntroDB, IntroDB, ID Mapping & Admi
     assert.equal(cascadeTimeout.suggestions[0]?.found, false);
     assert.equal(cascadeTimeout.suggestions[0]?.status, "timeout");
     assert.equal(
-      redis.store.has("hikari:opening:cascade:v1:mal:34572:s1:e11:len0"),
+      redis.store.has("hikari:opening:cascade:v2:mal:34572:s1:e11:len0"),
       false,
     );
   });
@@ -482,11 +483,13 @@ describe("Opening Timestamps — AniSkip, TheIntroDB, IntroDB, ID Mapping & Admi
             assert.match(url, /tvdb_id=331753/);
             assert.match(url, /season=1/);
             assert.match(url, /episode=2/);
+            assert.match(url, /details=true/);
             return mockJsonResponse({
               tvdb_id: 331753,
               season: 1,
               episode: 2,
-              intro: [{ start_ms: 202993, end_ms: 293041 }],
+              group_duration_ms: 1434000,
+              intro: [{ start_ms: 202993, end_ms: 293041, confidence: 0.96, submission_count: 5 }],
             });
           }
           throw new Error(`IntroDB não deveria ser chamado quando TheIntroDB já encontrou: ${url}`);
@@ -499,6 +502,8 @@ describe("Opening Timestamps — AniSkip, TheIntroDB, IntroDB, ID Mapping & Admi
     assert.equal(hitTidb.suggestions[0]?.endSeconds, 293);
     assert.equal(hitTidb.suggestions[0]?.startTime, "03:23");
     assert.equal(hitTidb.suggestions[0]?.endTime, "04:53");
+    assert.equal(hitTidb.suggestions[0]?.confidence, 0.96);
+    assert.equal(hitTidb.suggestions[0]?.submissionCount, 5);
     assert.equal(calledUrlsFallback.some((u) => u.includes("introdb.app")), false);
   });
 
@@ -606,7 +611,7 @@ describe("Opening Timestamps — AniSkip, TheIntroDB, IntroDB, ID Mapping & Admi
     assert.equal(mapped.imdbId, "tt2560140");
     assert.equal(armCalls, 1);
     assert.equal(
-      redis.store.get("hikari:opening:ext-ids:v1:mal:25777")?.ex,
+      redis.store.get("hikari:opening:ext-ids:v2:mal:25777")?.ex,
       EXTERNAL_IDS_POSITIVE_CACHE_TTL_SEC,
     );
 
@@ -643,6 +648,52 @@ describe("Opening Timestamps — AniSkip, TheIntroDB, IntroDB, ID Mapping & Admi
     assert.equal(resolveExternalSeasonNumber(1, 2), 2);
     assert.equal(resolveExternalSeasonNumber(2, 1), 2);
     assert.equal(resolveExternalSeasonNumber(1, null), 1);
+
+    // Yuna retorna apenas MAL/AniList sem TVDB/IMDb -> deve consultar ARM para complementar IDs externos
+    const partialMerged = await resolveExternalAnimeIds(
+      { anilistId: 154587 },
+      {
+        redis: null,
+        fetchFn: async (input) => {
+          const url = String(input);
+          if (url.includes("relations.yuna.moe")) {
+            return mockJsonResponse({ myanimelist: 52991, anilist: 154587, media: "TV" });
+          }
+          if (url.includes("arm.haglund.dev")) {
+            return mockJsonResponse({
+              myanimelist: 52991,
+              anilist: 154587,
+              thetvdb: 424536,
+              "thetvdb-season": 1,
+              imdb: "tt22248376",
+            });
+          }
+          return mockJsonResponse({}, 404);
+        },
+      },
+    );
+    assert.equal(partialMerged.malId, 52991);
+    assert.equal(partialMerged.tvdbId, 424536);
+    assert.equal(partialMerged.imdbId, "tt22248376");
+    assert.equal(partialMerged.source, "arm");
+
+    // Se Yuna retorna parcial e ARM falha com 500 -> NÃO grava cache de 30 dias com resultado incompleto
+    const transientRedis = new MockRedis();
+    const partialOnTransientErr = await resolveExternalAnimeIds(
+      { anilistId: 154587 },
+      {
+        redis: transientRedis,
+        fetchFn: async (input) => {
+          const url = String(input);
+          if (url.includes("relations.yuna.moe")) {
+            return mockJsonResponse({ myanimelist: 52991, anilist: 154587 });
+          }
+          return mockJsonResponse({}, 500);
+        },
+      },
+    );
+    assert.equal(partialOnTransientErr.malId, 52991);
+    assert.equal(transientRedis.store.size, 0);
 
     // Se TVDB não for resolvido, pula TheIntroDB e continua para IntroDB
     const skippedTidb = await fetchOpeningSuggestionsCascade(
@@ -718,7 +769,7 @@ describe("Opening Timestamps — AniSkip, TheIntroDB, IntroDB, ID Mapping & Admi
     assert.equal(res.suggestions[0]?.startSeconds, null);
     assert.equal(res.suggestions[0]?.endSeconds, null);
     assert.equal(
-      redis.store.get("hikari:opening:cascade:v1:mal:34572:s1:e1:len0")?.ex,
+      redis.store.get("hikari:opening:cascade:v2:mal:34572:s1:e1:len0")?.ex,
       PROVIDER_NEGATIVE_CACHE_TTL_SEC,
     );
   });
@@ -789,5 +840,77 @@ describe("Opening Timestamps — AniSkip, TheIntroDB, IntroDB, ID Mapping & Admi
     assert.equal(updatedAnime.seasons[0].episodes[1].openingEndSeconds, 297);
     assert.equal(dirtyIds.has("ep-2"), true);
     assert.equal(dirtyIds.has("ep-1"), false);
+  });
+
+  test("16. Reconciliação de dirtyEpisodeIds após setForm(): preserva episódios preenchidos automaticamente", () => {
+    const dirtyIds = new Set<string>(["ep-stale"]);
+    const explicitDirty = new Set<string>();
+
+    const seasons = [
+      {
+        id: "season-1",
+        number: 1,
+        title: "Temporada 1",
+        episodes: [
+          {
+            id: "ep-1",
+            number: 1,
+            title: "Episódio 1",
+            published: true,
+            openingStartSeconds: 181,
+            openingEndSeconds: 271,
+          },
+          {
+            id: "ep-2",
+            number: 2,
+            title: "Episódio 2",
+            published: false,
+            openingStartSeconds: null,
+            openingEndSeconds: null,
+          },
+          {
+            id: "ep-imported-3",
+            number: 3,
+            title: "Episódio 3 (Importado/Duplicado)",
+            published: false,
+            openingStartSeconds: 90,
+            openingEndSeconds: 180,
+          },
+        ],
+      },
+    ];
+
+    const serverEpisodes = [
+      {
+        id: "ep-1",
+        seasonNumber: 1,
+        number: 1,
+        published: true,
+        openingStartSeconds: 181,
+        openingEndSeconds: 271,
+      },
+      {
+        id: "ep-2",
+        seasonNumber: 1,
+        number: 2,
+        published: false,
+        openingStartSeconds: 50,
+        openingEndSeconds: 140,
+      },
+    ];
+
+    reconcileDirtyEpisodeIdsAfterFormPopulation(dirtyIds, seasons, serverEpisodes, explicitDirty);
+
+    // ep-1 já bate exatamente com o banco -> permanece limpo (sem regravação desnecessária)
+    assert.equal(dirtyIds.has("ep-1"), false);
+    // ep-2 diverge do snapshot do servidor -> marcado para persistência
+    assert.equal(dirtyIds.has("ep-2"), true);
+    // ep-imported-3 veio do setForm() (não existe ainda no servidor) -> garantido em dirtyIds
+    assert.equal(dirtyIds.has("ep-imported-3"), true);
+
+    // Edição explícita do usuário em ep-1 deve permanecer dirty mesmo batendo com snapshot antigo
+    explicitDirty.add("ep-1");
+    reconcileDirtyEpisodeIdsAfterFormPopulation(dirtyIds, seasons, serverEpisodes, explicitDirty);
+    assert.equal(dirtyIds.has("ep-1"), true);
   });
 });
