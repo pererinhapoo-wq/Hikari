@@ -78,6 +78,13 @@ import {
   type EpisodeCandidateState,
 } from "@/components/admin/anime-editor/editor-seasons";
 import { EditorMobileBar } from "@/components/admin/anime-editor/editor-mobile-bar";
+import {
+  discardOpeningSuggestion,
+  getOpeningSuggestionKey,
+  mergeLoadedOpeningSuggestions,
+  parseReliableEpisodeDurationSeconds,
+  type OpeningSuggestionEntry,
+} from "@/lib/opening-admin-state";
 
 export const Route = createFileRoute("/admin/$id")({
   validateSearch: (raw: Record<string, unknown>): { importId?: string } => ({
@@ -251,92 +258,114 @@ function AdminEditor() {
   }>({ status: "idle" });
 
   const [openingSuggestions, setOpeningSuggestions] = useState<
-    Record<
-      number,
-      {
-        found: boolean;
-        startSeconds: number | null;
-        endSeconds: number | null;
-        startTime: string;
-        endTime: string;
-      }
-    >
+    Record<string, OpeningSuggestionEntry>
   >({});
   const [isFetchingOpening, setIsFetchingOpening] = useState(false);
 
   const handleFetchOpeningSuggestions = async () => {
-    const malId = current.malId;
-    if (!malId || malId <= 0) {
-      toast.error("Este anime não possui um MAL ID válido cadastrado para consultar o AniSkip.");
+    const malId = current.malId ?? null;
+    const anilistId = current.anilistId ?? null;
+    const kitsuId = current.kitsuId ?? null;
+
+    if (!malId && !anilistId && !kitsuId) {
+      toast.error(
+        "Este anime precisa de MAL ID, AniList ID ou Kitsu ID cadastrado para buscar sugestões de opening.",
+      );
       return;
     }
 
-    const episodeNumbers = Array.from(
-      new Set(
-        current.seasons.flatMap((s) => s.episodes.map((e) => e.number)),
-      ),
-    ).sort((a, b) => a - b);
+    const seenKeys = new Set<string>();
+    const episodeQueries: Array<{
+      seasonNumber: number;
+      episodeNumber: number;
+      episodeLengthSeconds: number;
+    }> = [];
+    const previousSeasonMaxEpisodes: Record<number, number> = {};
+    let runningMaxEp = 0;
 
-    if (episodeNumbers.length === 0) {
+    const sortedSeasons = [...current.seasons].sort((a, b) => a.number - b.number);
+    for (const season of sortedSeasons) {
+      previousSeasonMaxEpisodes[season.number] = runningMaxEp;
+      for (const ep of season.episodes) {
+        if (!ep.number || ep.number <= 0) continue;
+        if (ep.number > runningMaxEp) {
+          runningMaxEp = ep.number;
+        }
+        const key = getOpeningSuggestionKey(season.number, ep.number);
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
+        episodeQueries.push({
+          seasonNumber: season.number,
+          episodeNumber: ep.number,
+          episodeLengthSeconds: parseReliableEpisodeDurationSeconds(ep.duration),
+        });
+      }
+    }
+
+    if (episodeQueries.length === 0) {
       toast.error("Nenhum episódio encontrado para consultar sugestões.");
       return;
     }
 
     setIsFetchingOpening(true);
-    toast.info("Consultando sugestões de opening no AniSkip...");
+    toast.info("Consultando sugestões de opening (AniSkip → TheIntroDB → IntroDB)...");
 
     try {
-      const res = await fetch("/api/admin/opening-suggestions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ malId, episodeNumbers }),
-      });
+      const CHUNK_SIZE = 25;
+      let totalFound = 0;
+      let totalTransientErrors = 0;
 
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || `Erro HTTP ${res.status}`);
+      for (let i = 0; i < episodeQueries.length; i += CHUNK_SIZE) {
+        const chunk = episodeQueries.slice(i, i + CHUNK_SIZE);
+        const res = await fetch("/api/admin/opening-suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            malId,
+            anilistId,
+            kitsuId,
+            episodes: chunk,
+            previousSeasonMaxEpisodes,
+          }),
+        });
+
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}));
+          throw new Error(json.error || `Erro HTTP ${res.status}`);
+        }
+
+        const data = (await res.json()) as {
+          suggestionsByKey?: Record<string, OpeningSuggestionEntry>;
+        };
+
+        const incoming = data.suggestionsByKey || {};
+        for (const item of Object.values(incoming)) {
+          if (item.found) totalFound += 1;
+          else if (
+            item.status === "rate_limited" ||
+            item.status === "timeout" ||
+            item.status === "error"
+          ) {
+            totalTransientErrors += 1;
+          }
+        }
+
+        // Atualiza apenas as sugestões exibidas para revisão manual (nunca altera form/timestamps silenciosamente)
+        setOpeningSuggestions((prev) => mergeLoadedOpeningSuggestions(prev, incoming));
       }
 
-      const data = (await res.json()) as {
-        suggestions: Record<
-          number,
-          {
-            found: boolean;
-            startSeconds: number | null;
-            endSeconds: number | null;
-            startTime: string;
-            endTime: string;
-          }
-        >;
-      };
-
-      setOpeningSuggestions(data.suggestions || {});
-
-      setForm((prev) => {
-        if (!prev) return prev;
-        const nextSeasons = prev.seasons.map((season) => ({
-          ...season,
-          episodes: season.episodes.map((ep) => {
-            const sug = data.suggestions[ep.number];
-            if (
-              sug &&
-              sug.found &&
-              (ep.openingStartSeconds == null || ep.openingStartSeconds === undefined)
-            ) {
-              return {
-                ...ep,
-                openingStartSeconds: sug.startSeconds,
-                openingEndSeconds: sug.endSeconds,
-              };
-            }
-            return ep;
-          }),
-        }));
-        return { ...prev, seasons: nextSeasons };
-      });
-
-      toast.success("Sugestões de opening carregadas com sucesso!");
+      if (totalFound > 0) {
+        toast.success(
+          `${totalFound} sugestão(ões) de opening encontrada(s). Revise e clique em "Aplicar sugestão" para aprovar.`,
+        );
+      } else if (totalTransientErrors > 0) {
+        toast.warning(
+          "Algumas fontes falharam temporariamente ou atingiram limite. Tente novamente em instantes.",
+        );
+      } else {
+        toast.info("Nenhuma sugestão de opening encontrada nas fontes consultadas.");
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha ao buscar sugestões de opening.");
     } finally {
@@ -350,11 +379,24 @@ function AdminEditor() {
     start: number | null,
     end: number | null,
   ) => {
+    if (
+      typeof start !== "number" ||
+      typeof end !== "number" ||
+      start < 0 ||
+      end <= start
+    ) {
+      toast.error("Sugestão inválida para aplicação.");
+      return;
+    }
     patchEpisode(seasonId, episodeId, {
       openingStartSeconds: start,
       openingEndSeconds: end,
     });
-    toast.success("Sugestão de opening aplicada com sucesso!");
+    toast.success("Sugestão de opening aplicada! Clique em Salvar para gravar no banco.");
+  };
+
+  const handleDiscardOpeningSuggestion = (seasonNumber: number, episodeNumber: number) => {
+    setOpeningSuggestions((prev) => discardOpeningSuggestion(prev, seasonNumber, episodeNumber));
   };
 
   const initializedRouteKeyRef = useRef<string | null>(null);
@@ -2103,6 +2145,7 @@ function AdminEditor() {
           isFetchingOpening={isFetchingOpening}
           openingSuggestions={openingSuggestions}
           onApplyOpeningSuggestion={handleApplyOpeningSuggestion}
+          onDiscardOpeningSuggestion={handleDiscardOpeningSuggestion}
         />
       )}
 

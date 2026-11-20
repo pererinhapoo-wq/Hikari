@@ -52,6 +52,10 @@ import {
   validateHikariPlayerEpisodeId,
 } from "@/lib/hikari-player";
 import { cn } from "@/lib/utils";
+import {
+  getOpeningSuggestionKey,
+  type OpeningSuggestionEntry,
+} from "@/lib/opening-admin-state";
 
 export interface EpisodeCandidateState {
   loading: boolean;
@@ -107,22 +111,14 @@ interface EditorSeasonsProps {
   onThumbnailClear?: (sid: string, ep: Episode) => void;
   onFetchOpeningSuggestions?: () => Promise<void>;
   isFetchingOpening?: boolean;
-  openingSuggestions?: Record<
-    number,
-    {
-      found: boolean;
-      startSeconds: number | null;
-      endSeconds: number | null;
-      startTime: string;
-      endTime: string;
-    }
-  >;
+  openingSuggestions?: Record<string, OpeningSuggestionEntry>;
   onApplyOpeningSuggestion?: (
     seasonId: string,
     episodeId: string,
     start: number | null,
     end: number | null,
   ) => void;
+  onDiscardOpeningSuggestion?: (seasonNumber: number, episodeNumber: number) => void;
 }
 
 function formatSecs(secs: number | null | undefined): string {
@@ -188,6 +184,7 @@ export function EditorSeasons({
   isFetchingOpening,
   openingSuggestions,
   onApplyOpeningSuggestion,
+  onDiscardOpeningSuggestion,
 }: EditorSeasonsProps) {
   const [activeSeasonTab, setActiveSeasonTab] = useState<string>("all");
   const [collapsedSeasons, setCollapsedSeasons] = useState<Record<string, boolean>>({});
@@ -329,12 +326,12 @@ export function EditorSeasons({
               {isFetchingOpening ? (
                 <>
                   <Loader2 className="mr-1.5 size-4 animate-spin" />
-                  <span>Buscando AniSkip…</span>
+                  <span>Buscando sugestões…</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="mr-1.5 size-4 text-purple-300" />
-                  <span>Buscar Sugestões de Opening (AniSkip)</span>
+                  <span>Buscar Sugestões de Opening</span>
                 </>
               )}
             </Button>
@@ -743,38 +740,153 @@ export function EditorSeasons({
                                 />
                               </Field>
 
-                              {openingSuggestions?.[ep.number] && (
-                                <div className="flex flex-col justify-end sm:col-span-6 lg:col-span-6">
-                                  {openingSuggestions[ep.number].found ? (
-                                    <div className="flex items-center justify-between rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs">
-                                      <div className="text-purple-200">
-                                        <span className="font-semibold">AniSkip OP:</span>{" "}
-                                        {openingSuggestions[ep.number].startTime} — {openingSuggestions[ep.number].endTime}
+                              {(() => {
+                                const sugKey = getOpeningSuggestionKey(season.number, ep.number);
+                                const suggestion =
+                                  openingSuggestions?.[sugKey] ??
+                                  openingSuggestions?.[String(ep.number)];
+                                if (!suggestion) return null;
+
+                                const isAlreadyApplied =
+                                  suggestion.found &&
+                                  ep.openingStartSeconds === suggestion.startSeconds &&
+                                  ep.openingEndSeconds === suggestion.endSeconds;
+
+                                const confidencePct =
+                                  suggestion.confidence !== null && suggestion.confidence !== undefined
+                                    ? suggestion.confidence <= 1
+                                      ? Math.round(suggestion.confidence * 100)
+                                      : Math.round(suggestion.confidence)
+                                    : null;
+
+                                const statusBadgeLabel =
+                                  suggestion.status === "found"
+                                    ? isAlreadyApplied
+                                      ? "Aplicada nos campos"
+                                      : "Sugestão pronta"
+                                    : suggestion.status === "no_intro"
+                                      ? "Sem opening confirmada"
+                                      : suggestion.status === "rate_limited"
+                                        ? "Limite atingido (429)"
+                                        : suggestion.status === "timeout"
+                                          ? "Tempo esgotado"
+                                          : suggestion.status === "error"
+                                            ? "Falha temporária"
+                                            : "Não encontrada";
+
+                                return (
+                                  <div className="flex flex-col justify-end sm:col-span-6 lg:col-span-6">
+                                    {suggestion.found ? (
+                                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs">
+                                        <div className="space-y-0.5 text-purple-100">
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className="font-semibold">
+                                              {suggestion.sourceLabel ?? "Fonte"}:
+                                            </span>
+                                            <span className="studio-mono font-semibold text-white">
+                                              {suggestion.startTime} — {suggestion.endTime}
+                                            </span>
+                                            <span className="rounded bg-purple-500/25 px-1.5 py-0.5 text-[10px] font-medium text-purple-100">
+                                              {statusBadgeLabel}
+                                            </span>
+                                          </div>
+                                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-purple-200/80">
+                                            <span>Ep. {ep.number}</span>
+                                            {confidencePct !== null && (
+                                              <span>· Confiança: {confidencePct}%</span>
+                                            )}
+                                            {suggestion.submissionCount !== null && (
+                                              <span>
+                                                · {suggestion.submissionCount}{" "}
+                                                {suggestion.submissionCount === 1
+                                                  ? "contribuição"
+                                                  : "contribuições"}
+                                              </span>
+                                            )}
+                                            {suggestion.remappedFrom && (
+                                              <span>
+                                                · Remapeado (MAL #
+                                                {suggestion.remappedFrom.targetMalId} Ep.{" "}
+                                                {suggestion.remappedFrom.targetEpisodeNumber})
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5">
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 border-purple-500/40 bg-purple-500/20 px-2.5 text-[11px] text-purple-100 hover:bg-purple-500/30"
+                                            onClick={() =>
+                                              onApplyOpeningSuggestion?.(
+                                                season.id,
+                                                ep.id,
+                                                suggestion.startSeconds,
+                                                suggestion.endSeconds,
+                                              )
+                                            }
+                                          >
+                                            {isAlreadyApplied ? "Reaplicar" : "Aplicar sugestão"}
+                                          </Button>
+                                          {onDiscardOpeningSuggestion && (
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              variant="ghost"
+                                              className="h-7 px-2 text-[11px] text-purple-200/80 hover:bg-white/10 hover:text-white"
+                                              onClick={() =>
+                                                onDiscardOpeningSuggestion(
+                                                  season.number,
+                                                  ep.number,
+                                                )
+                                              }
+                                              title="Descartar sugestão sem alterar os horários"
+                                            >
+                                              Descartar
+                                            </Button>
+                                          )}
+                                        </div>
                                       </div>
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 border-purple-500/40 bg-purple-500/20 px-2.5 text-[11px] text-purple-100 hover:bg-purple-500/30"
-                                        onClick={() =>
-                                          onApplyOpeningSuggestion?.(
-                                            season.id,
-                                            ep.id,
-                                            openingSuggestions[ep.number].startSeconds,
-                                            openingSuggestions[ep.number].endSeconds,
-                                          )
-                                        }
-                                      >
-                                        Aplicar sugestão
-                                      </Button>
-                                    </div>
-                                  ) : (
-                                    <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-[var(--color-muted)]">
-                                      <span>AniSkip: Nenhuma opening encontrada.</span>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                                    ) : (
+                                      <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-[var(--color-muted)]">
+                                        <div className="space-y-0.5">
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className="font-medium text-[var(--color-fg)]">
+                                              Ep. {ep.number} · {statusBadgeLabel}
+                                            </span>
+                                            {suggestion.sourceLabel && (
+                                              <span className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px]">
+                                                {suggestion.sourceLabel}
+                                              </span>
+                                            )}
+                                          </div>
+                                          {suggestion.message && (
+                                            <p className="text-[11px] text-[var(--color-muted)]">
+                                              {suggestion.message}
+                                            </p>
+                                          )}
+                                        </div>
+                                        {onDiscardOpeningSuggestion && (
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-7 shrink-0 px-2 text-[11px] text-[var(--color-muted)] hover:bg-white/10 hover:text-white"
+                                            onClick={() =>
+                                              onDiscardOpeningSuggestion(season.number, ep.number)
+                                            }
+                                            aria-label="Descartar aviso de busca"
+                                          >
+                                            <X className="size-3.5" />
+                                          </Button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
 
                               {/* Players 1, 2 e 3 com Upload B2 */}
                               {[
