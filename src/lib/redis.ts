@@ -26,16 +26,135 @@ export function getRedisClient(): Redis | null {
   return redisClient;
 }
 
+const REDIS_TIMEOUT_MS = 2500;
+const REDIS_SUCCESS_SAMPLE_RATE = 0.1;
+
+type RedisTelemetryStatus = "success" | "error" | "timeout";
+
+function sanitizeRedisErrorMessage(err: unknown): {
+  errorName: string;
+  errorMessage: string;
+} {
+  const errorName =
+    err instanceof Error && err.name ? err.name : "UnknownError";
+  let message =
+    err instanceof Error
+      ? err.message
+      : typeof err === "string"
+        ? err
+        : "Unknown Redis error";
+
+  if (restUrl) {
+    message = message.split(restUrl).join("[REDACTED_URL]");
+  }
+  if (restToken) {
+    message = message.split(restToken).join("[REDACTED]");
+  }
+
+  const sanitized = message
+    .replace(/https?:\/\/[^\s"']+/gi, "[REDACTED_URL]")
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
+    .replace(
+      /\b(token|auth|password|passwd|secret|key|apikey|api_key)\s*[:=]\s*[^\s,;]+/gi,
+      "$1=[REDACTED]",
+    )
+    .replace(
+      /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+      "[REDACTED_EMAIL]",
+    )
+    .slice(0, 240);
+
+  return {
+    errorName,
+    errorMessage: sanitized,
+  };
+}
+
+function emitRedisTelemetry(
+  operation: string,
+  durationMs: number,
+  status: RedisTelemetryStatus,
+  err?: unknown,
+): void {
+  if (status === "success" && Math.random() >= REDIS_SUCCESS_SAMPLE_RATE) {
+    return;
+  }
+
+  try {
+    const payload: Record<string, unknown> = {
+      telemetry: true,
+      op: "redis",
+      operation,
+      durationMs,
+      status,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (status === "error" || status === "timeout") {
+      const { errorName, errorMessage } = sanitizeRedisErrorMessage(err);
+      payload.errorName = errorName;
+      payload.errorMessage = errorMessage;
+    }
+
+    console.warn(JSON.stringify(payload));
+  } catch {
+    // Ignora falhas de logging para preservar fail-open
+  }
+}
+
+async function withRedisTimeout<T>(
+  promise: Promise<T>,
+  operation: string,
+): Promise<T> {
+  const start = performance.now();
+  let timerId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+
+  void promise.catch(() => {});
+
+  try {
+    const result = await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timerId = setTimeout(() => {
+          timedOut = true;
+          reject(new Error("Redis timeout"));
+        }, REDIS_TIMEOUT_MS);
+      }),
+    ]);
+    const durationMs = Math.round(performance.now() - start);
+    emitRedisTelemetry(operation, durationMs, "success");
+    return result;
+  } catch (err) {
+    const durationMs = Math.round(performance.now() - start);
+    const isTimeout =
+      timedOut ||
+      (err instanceof Error &&
+        (err.message === "Redis timeout" || err.name === "TimeoutError"));
+    emitRedisTelemetry(
+      operation,
+      durationMs,
+      isTimeout ? "timeout" : "error",
+      err,
+    );
+    throw err;
+  } finally {
+    if (timerId !== undefined) {
+      clearTimeout(timerId);
+    }
+  }
+}
+
 const CATALOG_REDIS_KEY = "hikari:catalog:index:v1";
 const CATALOG_REDIS_TTL_SEC = 900; // 15 minutos
 
 export async function getRedisCatalogIndex(): Promise<DbCatalogAnimeRow[] | null> {
   if (!redisClient || typeof window !== "undefined") return null;
   try {
-    const data = await Promise.race([
+    const data = await withRedisTimeout(
       redisClient.get<DbCatalogAnimeRow[]>(CATALOG_REDIS_KEY),
-      new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-    ]);
+      "getRedisCatalogIndex",
+    );
     if (Array.isArray(data)) {
       return data;
     }
@@ -50,10 +169,10 @@ export async function getRedisCatalogIndex(): Promise<DbCatalogAnimeRow[] | null
 export async function setRedisCatalogIndex(rows: DbCatalogAnimeRow[]): Promise<void> {
   if (!redisClient || typeof window !== "undefined" || !Array.isArray(rows)) return;
   try {
-    await Promise.race([
+    await withRedisTimeout(
       redisClient.set(CATALOG_REDIS_KEY, rows, { ex: CATALOG_REDIS_TTL_SEC }),
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-    ]);
+      "setRedisCatalogIndex",
+    );
   } catch (err) {
     console.warn("[redis] Aviso ao salvar índice do catálogo no Redis:", err instanceof Error ? err.message : err);
   }
@@ -62,10 +181,10 @@ export async function setRedisCatalogIndex(rows: DbCatalogAnimeRow[]): Promise<v
 export async function invalidateRedisCatalogIndex(): Promise<void> {
   if (!redisClient || typeof window !== "undefined") return;
   try {
-    await Promise.race([
+    await withRedisTimeout(
       redisClient.del(CATALOG_REDIS_KEY),
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-    ]);
+      "invalidateRedisCatalogIndex",
+    );
   } catch (err) {
     console.warn("[redis] Aviso ao invalidar índice do catálogo no Redis:", err instanceof Error ? err.message : err);
   }
@@ -77,10 +196,10 @@ const BADGES_REDIS_TTL_SEC = 180; // 3 minutos (180 segundos)
 export async function getRedisCatalogBadges(): Promise<Array<{ key: string; value: string }> | null> {
   if (!redisClient || typeof window !== "undefined") return null;
   try {
-    const data = await Promise.race([
+    const data = await withRedisTimeout(
       redisClient.get<Array<{ key: string; value: string }>>(BADGES_REDIS_KEY),
-      new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-    ]);
+      "getRedisCatalogBadges",
+    );
     if (Array.isArray(data)) {
       return data;
     }
@@ -94,10 +213,10 @@ export async function getRedisCatalogBadges(): Promise<Array<{ key: string; valu
 export async function setRedisCatalogBadges(rows: Array<{ key: string; value: string }>): Promise<void> {
   if (!redisClient || typeof window !== "undefined" || !Array.isArray(rows)) return;
   try {
-    await Promise.race([
+    await withRedisTimeout(
       redisClient.set(BADGES_REDIS_KEY, rows, { ex: BADGES_REDIS_TTL_SEC }),
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-    ]);
+      "setRedisCatalogBadges",
+    );
   } catch (err) {
     console.warn("[redis] Aviso ao salvar badges no Redis:", err instanceof Error ? err.message : err);
   }
@@ -106,10 +225,10 @@ export async function setRedisCatalogBadges(rows: Array<{ key: string; value: st
 export async function invalidateRedisCatalogBadges(): Promise<void> {
   if (!redisClient || typeof window !== "undefined") return;
   try {
-    await Promise.race([
+    await withRedisTimeout(
       redisClient.del(BADGES_REDIS_KEY),
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-    ]);
+      "invalidateRedisCatalogBadges",
+    );
   } catch (err) {
     console.warn("[redis] Aviso ao invalidar badges no Redis:", err instanceof Error ? err.message : err);
   }
@@ -122,10 +241,10 @@ export async function getRedisCatalogEpisodes(animeId: string): Promise<CatalogE
   if (!redisClient || typeof window !== "undefined" || !animeId) return null;
   const key = `${EPISODES_REDIS_KEY_PREFIX}${animeId.trim()}:v1`;
   try {
-    const data = await Promise.race([
+    const data = await withRedisTimeout(
       redisClient.get<CatalogEpisodesResult>(key),
-      new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-    ]);
+      "getRedisCatalogEpisodes",
+    );
     if (data && typeof data === "object") {
       return data;
     }
@@ -140,10 +259,10 @@ export async function setRedisCatalogEpisodes(animeId: string, data: CatalogEpis
   if (!redisClient || typeof window !== "undefined" || !animeId || !data) return;
   const key = `${EPISODES_REDIS_KEY_PREFIX}${animeId.trim()}:v1`;
   try {
-    await Promise.race([
+    await withRedisTimeout(
       redisClient.set(key, data, { ex: EPISODES_REDIS_TTL_SEC }),
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-    ]);
+      "setRedisCatalogEpisodes",
+    );
   } catch (err) {
     console.warn("[redis] Aviso ao salvar episódios no Redis:", err instanceof Error ? err.message : err);
   }
@@ -155,10 +274,10 @@ export async function invalidateRedisCatalogEpisodes(animeId?: string): Promise<
     const cleanId = animeId?.trim();
     if (cleanId) {
       const key = `${EPISODES_REDIS_KEY_PREFIX}${cleanId}:v1`;
-      await Promise.race([
+      await withRedisTimeout(
         redisClient.del(key),
-        new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-      ]);
+        "invalidateRedisCatalogEpisodes",
+      );
     }
   } catch (err) {
     console.warn("[redis] Aviso ao invalidar episódios no Redis:", err instanceof Error ? err.message : err);
@@ -188,10 +307,10 @@ export async function getRedisCatalogSearch(
 
   const key = buildSearchRedisKey(clean, limit);
   try {
-    const data = await Promise.race([
+    const data = await withRedisTimeout(
       redisClient.get<SlimAnime[]>(key),
-      new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-    ]);
+      "getRedisCatalogSearch",
+    );
     if (Array.isArray(data)) {
       return data;
     }
@@ -213,10 +332,10 @@ export async function setRedisCatalogSearch(
 
   const key = buildSearchRedisKey(clean, limit);
   try {
-    await Promise.race([
+    await withRedisTimeout(
       redisClient.set(key, items, { ex: SEARCH_REDIS_TTL_SEC }),
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-    ]);
+      "setRedisCatalogSearch",
+    );
   } catch (err) {
     console.warn("[redis] Aviso ao salvar pesquisa no Redis:", err instanceof Error ? err.message : err);
   }
@@ -228,26 +347,26 @@ export async function invalidateRedisCatalogSearch(query?: string): Promise<void
     const clean = query ? normalizeCatalogSearchQuery(query) : "";
     if (clean) {
       const pattern = `${SEARCH_REDIS_KEY_PREFIX}${encodeURIComponent(clean)}:*`;
-      const keys = await Promise.race([
+      const keys = await withRedisTimeout(
         redisClient.keys(pattern),
-        new Promise<string[]>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-      ]);
+        "invalidateRedisCatalogSearch.keys",
+      );
       if (Array.isArray(keys) && keys.length > 0) {
-        await Promise.race([
+        await withRedisTimeout(
           redisClient.del(...keys),
-          new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-        ]);
+          "invalidateRedisCatalogSearch.del",
+        );
       }
     } else {
-      const keys = await Promise.race([
+      const keys = await withRedisTimeout(
         redisClient.keys(`${SEARCH_REDIS_KEY_PREFIX}*`),
-        new Promise<string[]>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-      ]);
+        "invalidateRedisCatalogSearch.keys",
+      );
       if (Array.isArray(keys) && keys.length > 0) {
-        await Promise.race([
+        await withRedisTimeout(
           redisClient.del(...keys),
-          new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 2500)),
-        ]);
+          "invalidateRedisCatalogSearch.del",
+        );
       }
     }
   } catch (err) {
@@ -259,7 +378,6 @@ const DETAIL_REDIS_KEY_PREFIX = "hikari:catalog:detail:v1:";
 const DETAIL_GLOBAL_GEN_KEY = "hikari:catalog:detail:gen:global:v1";
 const DETAIL_ID_GEN_PREFIX = "hikari:catalog:detail:gen:id:v1:";
 const DETAIL_REDIS_TTL_SEC = 1800; // 30 minutos (1800 segundos)
-const REDIS_TIMEOUT_MS = 2500;
 const DETAIL_CAS_MAX_ATTEMPTS = 4;
 
 export type RedisAnimeDetailFence = {
@@ -389,21 +507,6 @@ const INCR_GLOBAL_GEN_SCRIPT = `
 return ":" .. tostring(redis.call("INCR", KEYS[1]))
 `;
 
-async function withRedisTimeout<T>(promise: Promise<T>): Promise<T> {
-  let timerId: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timerId = setTimeout(() => reject(new Error("Redis timeout")), REDIS_TIMEOUT_MS);
-      }),
-    ]);
-  } finally {
-    if (timerId !== undefined) {
-      clearTimeout(timerId);
-    }
-  }
-}
 
 function extractPrefixedRaw(value: unknown): string | null {
   if (typeof value === "string" && value.startsWith(":")) {
@@ -560,6 +663,7 @@ export async function captureRedisAnimeDetailFence(
   try {
     const res = await withRedisTimeout(
       redisClient.eval<never[], unknown[]>(CAPTURE_FENCE_SCRIPT, keys, []),
+      "captureRedisAnimeDetailFence",
     );
     if (!Array.isArray(res) || res.length !== keys.length) {
       return null;
@@ -609,6 +713,7 @@ export async function getRedisAnimeDetailWithFence(
         keys,
         [],
       ),
+      "getRedisAnimeDetailWithFence",
     );
 
     if (!Array.isArray(res)) {
@@ -667,7 +772,10 @@ export async function getRedisAnimeDetail(id: string): Promise<Anime | null> {
   if (!cleanId) return null;
   const key = `${DETAIL_REDIS_KEY_PREFIX}${cleanId}`;
   try {
-    const data = await withRedisTimeout(redisClient.get<Anime>(key));
+    const data = await withRedisTimeout(
+      redisClient.get<Anime>(key),
+      "getRedisAnimeDetail",
+    );
     if (data && typeof data === "object" && typeof data.id === "string") {
       return data;
     }
@@ -713,6 +821,7 @@ export async function setRedisAnimeDetail(
         [key, ...fenceKeys],
         [initialRaw, String(DETAIL_REDIS_TTL_SEC), ...fenceArgs],
       ),
+      "setRedisAnimeDetail.setIfMissingOrRead",
     );
 
     if (!Array.isArray(initialRes)) {
@@ -747,6 +856,7 @@ export async function setRedisAnimeDetail(
           [key, ...fenceKeys],
           [expectedRaw, nextRaw, ...fenceArgs],
         ),
+        "setRedisAnimeDetail.casUpdate",
       );
 
       if (!Array.isArray(casRes)) return "failed";
@@ -791,6 +901,7 @@ export async function updateRedisAnimeDetailAtomic(
         [key, DETAIL_GLOBAL_GEN_KEY, idGenKey],
         [],
       ),
+      "updateRedisAnimeDetailAtomic.readRawAndFence",
     );
 
     if (!Array.isArray(readRes) || readRes[0] === "missing") {
@@ -830,6 +941,7 @@ export async function updateRedisAnimeDetailAtomic(
           [key, DETAIL_GLOBAL_GEN_KEY, idGenKey],
           [expectedRaw, nextRaw, globalGen, idGen],
         ),
+        "updateRedisAnimeDetailAtomic.casUpdate",
       );
 
       if (!Array.isArray(casRes)) {
@@ -912,6 +1024,7 @@ export async function invalidateRedisAnimeDetail(
           [...genKeys, ...detailKeys],
           [String(genKeys.length)],
         ),
+        "invalidateRedisAnimeDetail.ids",
       );
     } else {
       // Incrementa primeiro a geração global atomicamente para fechar imediatamente
@@ -922,15 +1035,20 @@ export async function invalidateRedisAnimeDetail(
           [DETAIL_GLOBAL_GEN_KEY],
           [],
         ),
+        "invalidateRedisAnimeDetail.incrGlobalGen",
       );
       const keys = await withRedisTimeout(
         redisClient.keys(`${DETAIL_REDIS_KEY_PREFIX}*`),
+        "invalidateRedisAnimeDetail.keys",
       );
       if (Array.isArray(keys) && keys.length > 0) {
         const CHUNK_SIZE = 200;
         for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
           const batch = keys.slice(i, i + CHUNK_SIZE);
-          await withRedisTimeout(redisClient.del(...batch));
+          await withRedisTimeout(
+            redisClient.del(...batch),
+            "invalidateRedisAnimeDetail.del",
+          );
         }
       }
     }
@@ -1013,10 +1131,14 @@ function decodeHomeEnvelope<T>(raw: string): T | null {
   }
 }
 
-async function readHomeRedisEnvelope<T>(key: string): Promise<T | null> {
+async function readHomeRedisEnvelope<T>(
+  key: string,
+  operation: string,
+): Promise<T | null> {
   if (!redisClient || typeof window !== "undefined") return null;
   const res = await withRedisTimeout(
     redisClient.eval<never[], unknown>(GET_HOME_CACHE_SCRIPT, [key], []),
+    operation,
   );
   const raw = extractPrefixedRaw(res);
   if (!raw) return null;
@@ -1028,6 +1150,7 @@ async function writeHomeRedisEnvelope(
   ttlSec: number,
   fetchedAt: number,
   data: unknown,
+  operation: string,
 ): Promise<RedisHomeWriteStatus> {
   if (!redisClient || typeof window !== "undefined") {
     return "unavailable";
@@ -1043,6 +1166,7 @@ async function writeHomeRedisEnvelope(
       [key],
       [payload, String(safeTs), String(ttlSec)],
     ),
+    operation,
   );
   if (!Array.isArray(res)) return "failed";
   if (res[0] === "inserted") return "inserted";
@@ -1103,7 +1227,10 @@ export async function getRedisHomeCatalog(
 
   const key = `${HOME_CATALOG_REDIS_KEY_PREFIX}${cleanDay}`;
   try {
-    const parsed = await readHomeRedisEnvelope<HomeCatalog>(key);
+    const parsed = await readHomeRedisEnvelope<HomeCatalog>(
+      key,
+      "getRedisHomeCatalog",
+    );
     return isValidAniListHomeCatalog(parsed) ? parsed : null;
   } catch (err) {
     console.warn(
@@ -1132,6 +1259,7 @@ export async function setRedisHomeCatalog(
       HOME_CATALOG_REDIS_TTL_SEC,
       fetchedAt,
       catalog,
+      "setRedisHomeCatalog",
     );
   } catch (err) {
     console.warn(
@@ -1151,7 +1279,10 @@ export async function getRedisHomeTodayRaw<T extends HomeTodayRawEntryShape>(
 
   const key = `${HOME_TODAY_RAW_REDIS_KEY_PREFIX}${cleanDay}`;
   try {
-    const parsed = await readHomeRedisEnvelope<unknown[]>(key);
+    const parsed = await readHomeRedisEnvelope<unknown[]>(
+      key,
+      "getRedisHomeTodayRaw",
+    );
     if (!Array.isArray(parsed) || parsed.length === 0) return null;
     const valid = parsed.filter(isValidTodayRawEntry) as T[];
     return valid.length > 0 ? valid : null;
@@ -1186,6 +1317,7 @@ export async function setRedisHomeTodayRaw<T extends HomeTodayRawEntryShape>(
       HOME_TODAY_RAW_REDIS_TTL_SEC,
       fetchedAt,
       valid,
+      "setRedisHomeTodayRaw",
     );
   } catch (err) {
     console.warn(
@@ -1206,7 +1338,10 @@ export async function getRedisHomeSeason(
 
   const key = `${HOME_SEASON_REDIS_KEY_PREFIX}${Math.floor(year)}:${cleanSeason}`;
   try {
-    const parsed = await readHomeRedisEnvelope<SlimAnime[]>(key);
+    const parsed = await readHomeRedisEnvelope<SlimAnime[]>(
+      key,
+      "getRedisHomeSeason",
+    );
     return isValidAniListSlimList(parsed) ? parsed : null;
   } catch (err) {
     console.warn(
@@ -1241,6 +1376,7 @@ export async function setRedisHomeSeason(
       HOME_SEASON_REDIS_TTL_SEC,
       fetchedAt,
       items,
+      "setRedisHomeSeason",
     );
   } catch (err) {
     console.warn(
@@ -1393,6 +1529,7 @@ async function readPublicEpisodesWithFence<T extends HomeEpisodesResult | Public
   valueKey: string,
   genKey: string,
   logLabel: string,
+  operation: string,
 ): Promise<RedisPublicEpisodesReadResult<T>> {
   if (!redisClient || typeof window !== "undefined") {
     return { status: "unavailable", data: null, fence: null };
@@ -1405,6 +1542,7 @@ async function readPublicEpisodesWithFence<T extends HomeEpisodesResult | Public
         [valueKey, genKey],
         [],
       ),
+      operation,
     );
 
     if (!Array.isArray(res) || res.length < 2) {
@@ -1424,6 +1562,7 @@ async function readPublicEpisodesWithFence<T extends HomeEpisodesResult | Public
           [genKey],
           [],
         ),
+        `${operation}.captureFence`,
       );
       const genToken = Array.isArray(genRes) ? extractGenToken(genRes[0]) : null;
       if (!genToken) {
@@ -1458,6 +1597,7 @@ async function writePublicEpisodesWithFence(
   fence: string | null,
   fetchedAt: number,
   logLabel: string,
+  operation: string,
 ): Promise<RedisPublicEpisodesWriteStatus> {
   if (!redisClient || typeof window !== "undefined") {
     return "unavailable";
@@ -1488,6 +1628,7 @@ async function writePublicEpisodesWithFence(
         [valueKey, genKey],
         [payload, fence, String(safeTs), String(ttlSec)],
       ),
+      operation,
     );
 
     if (!Array.isArray(res)) return "failed";
@@ -1512,6 +1653,7 @@ export async function getRedisHomePublicEpisodesWithFence(): Promise<
     HOME_EPISODES_REDIS_KEY,
     HOME_EPISODES_GEN_KEY,
     "episódios públicos da Home",
+    "getRedisHomePublicEpisodesWithFence",
   );
 }
 
@@ -1528,6 +1670,7 @@ export async function setRedisHomePublicEpisodes(
     fence,
     fetchedAt,
     "episódios públicos da Home",
+    "setRedisHomePublicEpisodes",
   );
 }
 
@@ -1540,6 +1683,7 @@ export async function invalidateRedisHomePublicEpisodes(): Promise<void> {
         [HOME_EPISODES_GEN_KEY, HOME_EPISODES_REDIS_KEY],
         [],
       ),
+      "invalidateRedisHomePublicEpisodes",
     );
   } catch (err) {
     console.warn(
@@ -1568,6 +1712,7 @@ export async function getRedisPublicCatalogEpisodesWithFence(
     valueKey,
     PUBLIC_CATALOG_EPISODES_GEN_KEY,
     "listagem pública /episodes",
+    "getRedisPublicCatalogEpisodesWithFence",
   );
 }
 
@@ -1587,6 +1732,7 @@ export async function setRedisPublicCatalogEpisodes(
     fence,
     fetchedAt,
     "listagem pública /episodes",
+    "setRedisPublicCatalogEpisodes",
   );
 }
 
@@ -1599,6 +1745,7 @@ export async function invalidateRedisPublicCatalogEpisodes(): Promise<void> {
         [PUBLIC_CATALOG_EPISODES_GEN_KEY, PUBLIC_CATALOG_EPISODES_REDIS_KEY],
         [],
       ),
+      "invalidateRedisPublicCatalogEpisodes",
     );
   } catch (err) {
     console.warn(
@@ -1629,6 +1776,7 @@ export async function getRedisEpisodeSource(
   try {
     const data = await withRedisTimeout(
       redisClient.get<CachedEpisodeSourcePayload>(key),
+      "getRedisEpisodeSource",
     );
     if (data && typeof data === "object") {
       return data;
@@ -1659,6 +1807,7 @@ export async function setRedisEpisodeSource(
   try {
     await withRedisTimeout(
       redisClient.set(key, payload, { ex: safeTtl }),
+      "setRedisEpisodeSource",
     );
   } catch (err) {
     console.warn(
@@ -1685,6 +1834,7 @@ export async function invalidateRedisEpisodeSource(
         [sourceKey, genKey],
         [],
       ),
+      "invalidateRedisEpisodeSource",
     );
   } catch (err) {
     console.warn(
@@ -1699,7 +1849,10 @@ export async function getRedisSegMode(host: string): Promise<string | null> {
   const clean = host?.trim().toLowerCase();
   if (!clean) return null;
   try {
-    return await withRedisTimeout(redisClient.get<string>(`segmode:${clean}`));
+    return await withRedisTimeout(
+      redisClient.get<string>(`segmode:${clean}`),
+      "getRedisSegMode",
+    );
   } catch {
     return null;
   }
@@ -1716,6 +1869,7 @@ export async function setRedisSegMode(
   try {
     await withRedisTimeout(
       redisClient.set(`segmode:${clean}`, mode, { ex: ttl }),
+      "setRedisSegMode",
     );
   } catch {
     // fail-open
@@ -1729,7 +1883,10 @@ export async function getRedisPlaylistCache(
   const clean = url?.trim();
   if (!clean) return null;
   try {
-    return await withRedisTimeout(redisClient.get<string>(`p:${clean}`));
+    return await withRedisTimeout(
+      redisClient.get<string>(`p:${clean}`),
+      "getRedisPlaylistCache",
+    );
   } catch {
     return null;
   }
@@ -1746,6 +1903,7 @@ export async function setRedisPlaylistCache(
   try {
     await withRedisTimeout(
       redisClient.set(`p:${clean}`, content, { ex: ttl }),
+      "setRedisPlaylistCache",
     );
   } catch {
     // fail-open
@@ -1761,6 +1919,7 @@ export async function getRedisCircuitBreaker(
   try {
     const val = await withRedisTimeout(
       redisClient.get<number>(`cb:${clean}`),
+      "getRedisCircuitBreaker",
     );
     return Number(val) || 0;
   } catch {
@@ -1776,9 +1935,15 @@ export async function incrementRedisCircuitBreaker(
   const clean = episodeId?.trim();
   if (!clean) return 0;
   try {
-    const count = await withRedisTimeout(redisClient.incr(`cb:${clean}`));
+    const count = await withRedisTimeout(
+      redisClient.incr(`cb:${clean}`),
+      "incrementRedisCircuitBreaker.incr",
+    );
     if (count === 1) {
-      await withRedisTimeout(redisClient.expire(`cb:${clean}`, ttl));
+      await withRedisTimeout(
+        redisClient.expire(`cb:${clean}`, ttl),
+        "incrementRedisCircuitBreaker.expire",
+      );
     }
     return Number(count) || 0;
   } catch {
@@ -1793,7 +1958,10 @@ export async function resetRedisCircuitBreaker(
   const clean = episodeId?.trim();
   if (!clean) return;
   try {
-    await withRedisTimeout(redisClient.del(`cb:${clean}`));
+    await withRedisTimeout(
+      redisClient.del(`cb:${clean}`),
+      "resetRedisCircuitBreaker",
+    );
   } catch {
     // fail-open
   }
@@ -1862,6 +2030,7 @@ export async function acquireEpisodeResolutionLock(
         [lockKey, genKey],
         [token, String(EPISODE_LOCK_TTL_MS)],
       ),
+      "acquireEpisodeResolutionLock",
     );
     if (Array.isArray(res) && res.length >= 2) {
       const status = res[0];
@@ -1894,6 +2063,7 @@ export async function releaseEpisodeResolutionLock(
         [lockKey],
         [token],
       ),
+      "releaseEpisodeResolutionLock",
     );
   } catch (err) {
     console.warn(
@@ -1928,6 +2098,7 @@ export async function setRedisEpisodeSourceWithFence(
         [sourceKey, genKey],
         [raw, generation, String(safeTtl)],
       ),
+      "setRedisEpisodeSourceWithFence",
     );
     if (Array.isArray(res)) {
       if (res[0] === "updated") return "updated";
@@ -2033,6 +2204,7 @@ export async function recordProgressInRedis(
             String(PROGRESS_QUEUE_MAX_INDEX),
           ],
         ),
+        "recordProgressInRedis",
       );
       return { accepted: Number(res) === 1 };
     } catch (err) {
@@ -2069,6 +2241,7 @@ export async function getProgressFromRedis(
     try {
       const data = await withRedisTimeout(
         redisClient.hgetall<Record<string, string>>(hashKey),
+        "getProgressFromRedis",
       );
       if (data && data.position !== undefined) {
         return {
@@ -2117,6 +2290,7 @@ export async function drainProgressFromQueue(
           [PROGRESS_QUEUE_KEY],
           [String(safeLimit)],
         ),
+        "drainProgressFromQueue.pop",
       );
       if (Array.isArray(popped)) {
         for (const item of popped) {
@@ -2189,6 +2363,7 @@ export async function drainProgressFromQueue(
       }
       const results = await withRedisTimeout(
         pipe.exec<Array<Record<string, string> | null>>(),
+        "drainProgressFromQueue.hgetallBatch",
       );
 
       for (let i = 0; i < parsedEntries.length; i++) {
@@ -2248,7 +2423,7 @@ export async function cleanupDrainedProgressHashes(
         const hashKey = `prog:${item.userKey}:${item.episodeId}`;
         pipe.eval(CLEANUP_DRAINED_HASH_SCRIPT, [hashKey], [item.updated_at]);
       }
-      await withRedisTimeout(pipe.exec());
+      await withRedisTimeout(pipe.exec(), "cleanupDrainedProgressHashes");
     } catch (err) {
       console.warn("[redis] Falha ao limpar hashes drenados (HDEL):", err);
     }
@@ -2278,7 +2453,10 @@ const CALENDAR_REDIS_TTL_SEC = 1800; // 30 minutos
 export async function getRedisCalendarGen(): Promise<string> {
   if (!redisClient || typeof window !== "undefined") return "0";
   try {
-    const gen = await withRedisTimeout(redisClient.get<string | number>(CALENDAR_GEN_KEY));
+    const gen = await withRedisTimeout(
+      redisClient.get<string | number>(CALENDAR_GEN_KEY),
+      "getRedisCalendarGen",
+    );
     return gen !== null && gen !== undefined ? String(gen) : "0";
   } catch (err) {
     console.warn("[redis] Falha ao ler geração do calendário:", err instanceof Error ? err.message : err);
@@ -2293,7 +2471,10 @@ export async function getRedisCalendarSchedule<T = unknown>(weekKey: string): Pr
     const pipe = redisClient.pipeline();
     pipe.get<string | number>(CALENDAR_GEN_KEY);
     pipe.get<{ gen: string; data: T } | string>(key);
-    const results = await withRedisTimeout(pipe.exec<[string | number | null, unknown]>());
+    const results = await withRedisTimeout(
+      pipe.exec<[string | number | null, unknown]>(),
+      "getRedisCalendarSchedule",
+    );
 
     const curGen = results[0] !== null && results[0] !== undefined ? String(results[0]) : "0";
     const cached = results[1];
@@ -2327,7 +2508,10 @@ export async function setRedisCalendarSchedule<T = unknown>(weekKey: string, dat
   try {
     const curGen = await getRedisCalendarGen();
     const payload = JSON.stringify({ gen: curGen, data });
-    await withRedisTimeout(redisClient.set(key, payload, { ex: CALENDAR_REDIS_TTL_SEC }));
+    await withRedisTimeout(
+      redisClient.set(key, payload, { ex: CALENDAR_REDIS_TTL_SEC }),
+      "setRedisCalendarSchedule",
+    );
   } catch (err) {
     console.warn("[redis] Falha ao salvar calendário no Redis:", err instanceof Error ? err.message : err);
   }
@@ -2336,7 +2520,10 @@ export async function setRedisCalendarSchedule<T = unknown>(weekKey: string, dat
 export async function invalidateRedisCalendar(): Promise<void> {
   if (!redisClient || typeof window !== "undefined") return;
   try {
-    await withRedisTimeout(redisClient.incr(CALENDAR_GEN_KEY));
+    await withRedisTimeout(
+      redisClient.incr(CALENDAR_GEN_KEY),
+      "invalidateRedisCalendar",
+    );
   } catch (err) {
     console.warn("[redis] Falha ao incrementar geração do calendário:", err instanceof Error ? err.message : err);
   }
@@ -2617,6 +2804,7 @@ export async function getRedisAnimeCreditsWithFence(
   try {
     const res = await withRedisTimeout(
       client.eval<never[], unknown[]>(GET_ENVELOPE_OR_FENCE_SCRIPT, keys, []),
+      "getRedisAnimeCreditsWithFence",
     );
     if (!Array.isArray(res) || res.length !== 2 + fenceIds.length) {
       return { status: "failed", credits: null, fence: null };
@@ -2705,6 +2893,7 @@ export async function setRedisAnimeCredits(
         [valueKey, ...fenceKeys],
         [raw, String(CREDITS_REDIS_TTL_SEC), ...fenceArgs],
       ),
+      "setRedisAnimeCredits",
     );
     if (!Array.isArray(res)) return "failed";
     if (res[0] === "fenced") return "fenced";
@@ -2742,6 +2931,7 @@ export async function invalidateRedisAnimeCredits(
           genKeys,
           [String(genKeys.length)],
         ),
+        "invalidateRedisAnimeCredits.ids",
       );
     } else {
       await withRedisTimeout(
@@ -2750,14 +2940,19 @@ export async function invalidateRedisAnimeCredits(
           [CREDITS_GLOBAL_GEN_KEY],
           [],
         ),
+        "invalidateRedisAnimeCredits.incrGlobalGen",
       );
       const keys = await withRedisTimeout(
         client.keys(`${CREDITS_REDIS_KEY_PREFIX}*`),
+        "invalidateRedisAnimeCredits.keys",
       );
       if (Array.isArray(keys) && keys.length > 0) {
         const CHUNK_SIZE = 200;
         for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
-          await withRedisTimeout(client.del(...keys.slice(i, i + CHUNK_SIZE)));
+          await withRedisTimeout(
+            client.del(...keys.slice(i, i + CHUNK_SIZE)),
+            "invalidateRedisAnimeCredits.del",
+          );
         }
       }
     }
@@ -2799,6 +2994,7 @@ export async function getRedisAnimeJikanEpisodesWithFence(
   try {
     const res = await withRedisTimeout(
       client.eval<never[], unknown[]>(GET_ENVELOPE_OR_FENCE_SCRIPT, keys, []),
+      "getRedisAnimeJikanEpisodesWithFence",
     );
     if (!Array.isArray(res) || res.length !== 2 + fenceIds.length) {
       return { status: "failed", seasons: null, fence: null };
@@ -2887,6 +3083,7 @@ export async function setRedisAnimeJikanEpisodes(
         [valueKey, ...fenceKeys],
         [raw, String(JIKAN_EPISODES_REDIS_TTL_SEC), ...fenceArgs],
       ),
+      "setRedisAnimeJikanEpisodes",
     );
     if (!Array.isArray(res)) return "failed";
     if (res[0] === "fenced") return "fenced";
@@ -2938,6 +3135,7 @@ export async function invalidateRedisAnimeJikanEpisodes(
           [...genKeys, ...Array.from(directValueKeys)],
           [String(genKeys.length)],
         ),
+        "invalidateRedisAnimeJikanEpisodes.ids",
       );
     } else {
       await withRedisTimeout(
@@ -2946,14 +3144,19 @@ export async function invalidateRedisAnimeJikanEpisodes(
           [JIKAN_EPISODES_GLOBAL_GEN_KEY],
           [],
         ),
+        "invalidateRedisAnimeJikanEpisodes.incrGlobalGen",
       );
       const keys = await withRedisTimeout(
         client.keys(`${JIKAN_EPISODES_REDIS_KEY_PREFIX}*`),
+        "invalidateRedisAnimeJikanEpisodes.keys",
       );
       if (Array.isArray(keys) && keys.length > 0) {
         const CHUNK_SIZE = 200;
         for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
-          await withRedisTimeout(client.del(...keys.slice(i, i + CHUNK_SIZE)));
+          await withRedisTimeout(
+            client.del(...keys.slice(i, i + CHUNK_SIZE)),
+            "invalidateRedisAnimeJikanEpisodes.del",
+          );
         }
       }
     }
