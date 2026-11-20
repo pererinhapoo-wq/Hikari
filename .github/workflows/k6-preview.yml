@@ -1,0 +1,41 @@
+
+name: Hikari Preview Load Test
+
+on:
+  push:
+    branches:
+      - test/k6-preview
+    paths:
+      - '.github/workflows/k6-preview.yml'
+      - 'scripts/load-test/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hikari-k6-preview
+  cancel-in-progress: false
+
+jobs:
+  load-test:
+    name: Preview — Etapa 1 (10 VUs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Validate target
+        shell: bash
+        run: |
+          test "$BASE_URL" = "https://grokhikari-hhkwuv4f6-pererinhapoo-2486.vercel.app"
+          echo "Preview target validated"
+
+      - name: Run Stage 1
+        env:
+          BASE_URL: https://grokhikari-hhkwuv4f6-pererinhapoo-2486.vercel.app
+        run: k6 run scripts/load-test/hikari-preview.js
