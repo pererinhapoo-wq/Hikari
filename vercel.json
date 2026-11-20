@@ -10,10 +10,5 @@
       ]
     }
   ],
-  "crons": [
-    {
-      "path": "/api/cron/cleanup-progress",
-      "schedule": "0 3 * * *"
-    }
-  ]
+  "crons": []
 }

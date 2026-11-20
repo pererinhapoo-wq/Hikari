@@ -810,15 +810,15 @@ export function hydrateAnimeWatchedEpisodes(
   userId: string,
   animeIds: string[],
   episodeIds: string[],
-): void {
-  if (typeof window === "undefined" || !userId) return;
+): boolean {
+  if (typeof window === "undefined" || !userId) return false;
   const cleanIds = Array.from(
     new Set(animeIds.map((id) => id.trim()).filter(Boolean)),
   );
-  if (cleanIds.length === 0) return;
+  if (cleanIds.length === 0) return false;
 
   if (useHikariStore.getState().currentUserId !== userId) {
-    return;
+    return false;
   }
 
   activeWatchedSyncUserId = userId;
@@ -846,6 +846,7 @@ export function hydrateAnimeWatchedEpisodes(
   for (const cid of cleanIds) {
     syncedAnimeWatchedKeys.add(`${userId}::${cid}`);
   }
+  return true;
 }
 
 /**

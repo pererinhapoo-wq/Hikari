@@ -15,8 +15,17 @@ type CachedAnimeTrackingEntry = {
   cachedAt: number;
 };
 
+type InFlightAnimeInitialStateEntry = {
+  promise: Promise<unknown>;
+  epoch: number;
+  startSeq: number;
+  settled: boolean;
+  settledWithNull: boolean;
+};
+
 const animeTrackingCache = new Map<string, CachedAnimeTrackingEntry>();
 const inFlightAnimeTracking = new Map<string, Promise<UserAnimeTrackingItem[]>>();
+const inFlightAnimeInitialState = new Map<string, InFlightAnimeInitialStateEntry>();
 const paginatedTrackingCache = new Map<string, CachedPaginatedTrackingEntry>();
 const inFlightPaginatedTracking = new Map<string, Promise<unknown>>();
 const lastTrackingMutationSeqByUser = new Map<string, number>();
@@ -29,6 +38,8 @@ let hasSeenAuthenticatedUser = false;
 let trackingCacheEpoch = 0;
 let monotonicSeq = 0;
 let lastUserResetSeq = 0;
+let initialStateRequestSeq = 0;
+const MAX_INFLIGHT_INITIAL_ENTRIES = 8;
 
 function nextSeq(): number {
   monotonicSeq += 1;
@@ -61,9 +72,12 @@ export function setActiveTrackingCacheUser(userId: string | null): void {
   if (activeTrackingUserId === normalized) return;
   const prevUserId = activeTrackingUserId;
   activeTrackingUserId = normalized;
-  trackingCacheEpoch += 1;
   if (prevUserId !== null || (hasSeenAuthenticatedUser && normalized !== null)) {
     lastUserResetSeq = nextSeq();
+  }
+  if (normalized === null || prevUserId !== null) {
+    trackingCacheEpoch += 1;
+    inFlightAnimeInitialState.clear();
   }
   if (normalized !== null) {
     hasSeenAuthenticatedUser = true;
@@ -84,11 +98,141 @@ export function clearAllTrackingClientCaches(): void {
   lastUserResetSeq = nextSeq();
   animeTrackingCache.clear();
   inFlightAnimeTracking.clear();
+  inFlightAnimeInitialState.clear();
   paginatedTrackingCache.clear();
   inFlightPaginatedTracking.clear();
   lastTrackingMutationSeqByUser.clear();
   lastAnimeMutationSeqByKey.clear();
   loaderInitialFetchSeqByKey.clear();
+}
+
+export function registerInFlightAnimeInitialState<T>(
+  promise: Promise<T | null>,
+  epoch = trackingCacheEpoch,
+): {
+  requestId: string;
+  promise: Promise<T | null>;
+  isSettled: () => boolean;
+} {
+  if (!isBrowser()) {
+    return {
+      requestId: "",
+      promise,
+      isSettled: () => true,
+    };
+  }
+
+  while (inFlightAnimeInitialState.size >= MAX_INFLIGHT_INITIAL_ENTRIES) {
+    const oldestKey = inFlightAnimeInitialState.keys().next().value;
+    if (!oldestKey) break;
+    inFlightAnimeInitialState.delete(oldestKey);
+  }
+
+  initialStateRequestSeq += 1;
+  const requestId = `init-${initialStateRequestSeq}`;
+  const startSeq = nextSeq();
+
+  const entry: InFlightAnimeInitialStateEntry = {
+    promise,
+    epoch,
+    startSeq,
+    settled: false,
+    settledWithNull: false,
+  };
+
+  const trackedPromise = promise.then(
+    (res) => {
+      entry.settled = true;
+      entry.settledWithNull = res == null;
+      return res;
+    },
+    () => {
+      entry.settled = true;
+      entry.settledWithNull = true;
+      return null;
+    },
+  );
+  entry.promise = trackedPromise;
+  inFlightAnimeInitialState.set(requestId, entry);
+
+  const cleanupTimer = setTimeout(() => {
+    if (inFlightAnimeInitialState.get(requestId) === entry) {
+      inFlightAnimeInitialState.delete(requestId);
+    }
+  }, 30_000);
+  if (
+    typeof cleanupTimer === "object" &&
+    cleanupTimer !== null &&
+    "unref" in cleanupTimer &&
+    typeof (cleanupTimer as { unref?: () => void }).unref === "function"
+  ) {
+    (cleanupTimer as { unref: () => void }).unref();
+  }
+
+  return {
+    requestId,
+    promise: trackedPromise,
+    isSettled: () => entry.settled,
+  };
+}
+
+export function getInFlightAnimeInitialState<T>(
+  requestId: string | null | undefined,
+): {
+  promise: Promise<T | null>;
+  epoch: number;
+  startSeq: number;
+} | null {
+  if (!isBrowser() || !requestId) return null;
+  const entry = inFlightAnimeInitialState.get(requestId);
+  if (!entry) return null;
+  if (entry.epoch !== trackingCacheEpoch) {
+    inFlightAnimeInitialState.delete(requestId);
+    return null;
+  }
+  if (entry.settled && entry.settledWithNull) {
+    inFlightAnimeInitialState.delete(requestId);
+    return null;
+  }
+  return {
+    promise: entry.promise as Promise<T | null>,
+    epoch: entry.epoch,
+    startSeq: entry.startSeq,
+  };
+}
+
+export function consumeInFlightAnimeInitialState(
+  requestId: string | null | undefined,
+): void {
+  if (!requestId) return;
+  inFlightAnimeInitialState.delete(requestId);
+}
+
+export function clearInFlightAnimeInitialState(
+  requestId: string | null | undefined,
+): void {
+  if (!requestId) return;
+  inFlightAnimeInitialState.delete(requestId);
+}
+
+export function hasTrackedMutationSince(
+  startSeq: number,
+  userId: string | null | undefined,
+  candidateIds: string[],
+): boolean {
+  if (!isBrowser() || !userId) return true;
+  if (lastUserResetSeq > startSeq) return true;
+  if ((lastTrackingMutationSeqByUser.get(userId) ?? 0) > startSeq) {
+    return true;
+  }
+  for (const rawId of candidateIds) {
+    const clean = rawId.trim();
+    if (!clean) continue;
+    if ((lastAnimeMutationSeqByKey.get(makeAnimeKey(userId, clean)) ?? 0) > startSeq) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function recordInitialAnimeTrackingLoaded(

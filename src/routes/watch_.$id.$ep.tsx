@@ -39,9 +39,7 @@ import {
   resolveEpisodes,
 } from "@/lib/catalog-episodes";
 import {
-  isWatchPlayableMediaUrl,
   resolveEpisodeThumbnailUrl,
-  resolvePlayableStreamUrl,
   selectEpisodeForWatch,
 } from "@/lib/published-episodes";
 import {
@@ -138,34 +136,7 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
     const remoteEps = (remote?.seasons ?? []).flatMap((s) => s.episodes ?? []);
     const targetRemoteEp =
       remoteEps.find((e) => e.number === epNum);
-
-    const streamCandidates = [
-      targetCatalogEp?.videoUrl,
-      targetCatalogEp?.videoUrl2,
-      targetCatalogEp?.videoUrl3,
-      targetCatalogEp?.videoUrl4,
-      targetCatalogEp?.videoUrl5,
-      targetRemoteEp?.videoUrl,
-      targetRemoteEp?.videoUrl2,
-      targetRemoteEp?.videoUrl3,
-      targetRemoteEp?.videoUrl4,
-      targetRemoteEp?.videoUrl5,
-    ];
-
     const externalOriginSet = new Set<string>();
-    for (const rawCandidate of streamCandidates) {
-      if (!rawCandidate || !isWatchPlayableMediaUrl(rawCandidate)) continue;
-      const resolvedUrl = resolvePlayableStreamUrl(rawCandidate);
-      if (!resolvedUrl) continue;
-      try {
-        const parsed = new URL(resolvedUrl);
-        if (parsed.protocol === "https:" || parsed.protocol === "http:") {
-          externalOriginSet.add(parsed.origin);
-        }
-      } catch {
-        // ignora URL inválida
-      }
-    }
 
     const rawPoster =
       targetCatalogEp?.thumbnail?.trim() ||

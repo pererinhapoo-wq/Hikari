@@ -140,12 +140,18 @@ import {
   invalidatePublicProfileCacheByUserId,
 } from "@/lib/profile-client-cache";
 import {
+  clearInFlightAnimeInitialState,
+  consumeInFlightAnimeInitialState,
   fetchAnimeTrackingSingleflight,
   getCachedAnimeTracking,
+  getInFlightAnimeInitialState,
+  getTrackingCacheEpoch,
+  hasTrackedMutationSince,
   invalidatePaginatedTrackingCache,
   isInitialAnimeTrackingFresh,
   markTrackingMutated,
   recordInitialAnimeTrackingLoaded,
+  registerInFlightAnimeInitialState,
   seedAnimeTrackingCache,
 } from "@/lib/tracking-client-cache";
 import { cn, stripHtml, youtubeIdFrom } from "@/lib/utils";
@@ -339,7 +345,11 @@ export const Route = createFileRoute("/anime/$id")({
           m.warmAnimeBannerOnClient(params.id, null),
         );
       }
-      return { remote: null, initialUserStatus: null };
+      return {
+        remote: null,
+        initialUserStatus: null,
+        initialStateRequestId: undefined as string | undefined,
+      };
     }
 
     const detailKey = `detail:v7:${params.id}`;
@@ -390,6 +400,7 @@ export const Route = createFileRoute("/anime/$id")({
       : [];
 
     let initialUserStatus: AnimeUserInitialState | null = null;
+    let initialStateRequestId: string | undefined;
     const fetchUserPromise = fetchAnimeUserInitialState({
       data: {
         animeId: remote?.id || params.id,
@@ -399,37 +410,41 @@ export const Route = createFileRoute("/anime/$id")({
     }).catch(() => null);
 
     if (typeof window !== "undefined") {
+      const requestEpoch = getTrackingCacheEpoch();
+      const handle = registerInFlightAnimeInitialState(
+        fetchUserPromise,
+        requestEpoch,
+      );
       const knownViewer = getKnownViewerId();
       const localCachedUser = getAnimeUserClientCache(
         candidateIds,
         knownViewer ?? undefined,
       );
-      if (localCachedUser) {
-        // Se já temos cache local recente do usuário (LRU), resolve imediatamente sem travar
-        initialUserStatus = await Promise.race([
-          fetchUserPromise,
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 80)),
-        ]);
-      } else {
-        // Primeira navegação na sessão: aguarda até 250ms antes de liberar a rota para renderização
-        initialUserStatus = await Promise.race([
-          fetchUserPromise,
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
-        ]);
-      }
+      const timeoutMs = localCachedUser ? 80 : 250;
+      initialUserStatus = await Promise.race([
+        handle.promise,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+      ]);
       if (initialUserStatus?.userId) {
+        clearInFlightAnimeInitialState(handle.requestId);
         recordInitialAnimeTrackingLoaded(
           initialUserStatus.userId,
           candidateIds,
           initialUserStatus,
         );
+      } else if (handle.isSettled()) {
+        clearInFlightAnimeInitialState(handle.requestId);
+      } else {
+        // Timeout atingido enquanto fetchUserPromise segue em andamento:
+        // entrega o requestId para reutilizar a mesma resposta e evitar consulta duplicada
+        initialStateRequestId = handle.requestId;
       }
     } else {
       // No SSR aguarda completamente para garantir consistência no HTML
       initialUserStatus = await fetchUserPromise;
     }
 
-    return { remote, initialUserStatus };
+    return { remote, initialUserStatus, initialStateRequestId };
   },
   head: ({ loaderData, params }) => {
     const remote = loaderData?.remote ?? null;
@@ -726,13 +741,14 @@ const TrailerFacade = memo(function TrailerFacade({
 
 function AnimePage() {
   const { id } = Route.useParams();
-  const { remote, initialUserStatus } = Route.useLoaderData();
+  const { remote, initialUserStatus, initialStateRequestId } = Route.useLoaderData();
   return (
     <AnimePageContent
       key={id}
       id={id}
       remote={remote}
       initialUserStatus={initialUserStatus}
+      initialStateRequestId={initialStateRequestId}
     />
   );
 }
@@ -741,10 +757,12 @@ function AnimePageContent({
   id,
   remote: rawRemote,
   initialUserStatus,
+  initialStateRequestId,
 }: {
   id: string;
   remote: Anime | null;
   initialUserStatus?: AnimeUserInitialState | null;
+  initialStateRequestId?: string;
 }) {
   const activeAnimeIdRef = useRef(id);
   activeAnimeIdRef.current = id;
@@ -1501,6 +1519,9 @@ function AnimePageContent({
     }
 
     if (!user?.id) {
+      if (initialStateRequestId) {
+        clearInFlightAnimeInitialState(initialStateRequestId);
+      }
       setTrackingStatus(null);
       setTrackingEpisodesWatched(0);
       setTrackingScore(null);
@@ -1524,6 +1545,12 @@ function AnimePageContent({
     const idsSet = new Set(idsToQuery);
     const trackingVersionAtStart = trackingMutationVersionRef.current;
     const favoriteVersionAtStart = favoriteMutationVersionRef.current;
+
+    // Garante que o store já reflita o usuário autenticado antes de hidratar episódios assistidos
+    // (evita que este useEffect filho rode antes do Shell e aborte hydrateAnimeWatchedEpisodes).
+    if (useHikariStore.getState().currentUserId !== currentUserId) {
+      useHikariStore.getState().setCurrentUserId(currentUserId);
+    }
 
     const currentTitle = animeModalTitle.toLowerCase().trim();
     const romaji = animeRomajiTitle.toLowerCase().trim();
@@ -1575,27 +1602,20 @@ function AnimePageContent({
       }
     };
 
-    const cachedTracking = getCachedAnimeTracking(currentUserId, idsToQuery);
-    const freshInitial = Boolean(
-      initialUserStatus &&
-        initialUserStatus.userId === currentUserId &&
-        isInitialAnimeTrackingFresh(currentUserId, idsToQuery, initialUserStatus),
-    );
-
-    if (freshInitial && initialUserStatus) {
+    const applyAuthoritativeInitialState = (state: AnimeUserInitialState) => {
       hydrateAnimeWatchedEpisodes(
         currentUserId,
         idsToQuery,
-        initialUserStatus.watchedEpisodeIds ?? [],
+        state.watchedEpisodeIds ?? [],
       );
       const snap = animeTrackingSnapshotRef.current ?? null;
-      const initialItem: UserAnimeTrackingItem | null = initialUserStatus.tracking
+      const initialItem: UserAnimeTrackingItem | null = state.tracking
         ? {
             userId: currentUserId,
-            animeId: initialUserStatus.tracking.animeId,
-            status: initialUserStatus.tracking.status,
-            score: initialUserStatus.tracking.score ?? null,
-            episodesWatched: initialUserStatus.tracking.episodesWatched ?? 0,
+            animeId: state.tracking.animeId,
+            status: state.tracking.status,
+            score: state.tracking.score ?? null,
+            episodesWatched: state.tracking.episodesWatched ?? 0,
             title: animeModalTitle,
             titleRomaji: animeRomajiTitle || null,
             titleEnglish: animeEnglishTitle || null,
@@ -1608,25 +1628,49 @@ function AnimePageContent({
             animeStatus: snap?.status || null,
             startedAt: null,
             completedAt: null,
-            createdAt: initialUserStatus.tracking.createdAt || "",
-            updatedAt: initialUserStatus.tracking.updatedAt || "",
+            createdAt: state.tracking.createdAt || "",
+            updatedAt: state.tracking.updatedAt || "",
             animeSnapshot: snap,
           }
         : null;
       seedAnimeTrackingCache(currentUserId, idsToQuery, initialItem);
+      if (state.continueEpisode !== undefined) {
+        saveAnimeUserClientCache(
+          idsToQuery,
+          { continueEpisode: state.continueEpisode },
+          currentUserId,
+        );
+      }
       if (trackingMutationVersionRef.current === trackingVersionAtStart) {
         applyTrackingState(initialItem);
       }
       setHydratedTrackingUserId(currentUserId);
-    } else if (cachedTracking) {
-      if (trackingMutationVersionRef.current === trackingVersionAtStart) {
-        applyTrackingState(cachedTracking.item);
+    };
+
+    const cachedTracking = getCachedAnimeTracking(currentUserId, idsToQuery);
+    const freshInitial = Boolean(
+      initialUserStatus &&
+        initialUserStatus.userId === currentUserId &&
+        isInitialAnimeTrackingFresh(currentUserId, idsToQuery, initialUserStatus),
+    );
+    const inFlightInitial =
+      !freshInitial && initialStateRequestId
+        ? getInFlightAnimeInitialState<AnimeUserInitialState>(initialStateRequestId)
+        : null;
+
+    const fallbackFetchTrackingAndWatched = () => {
+      const latestCached = getCachedAnimeTracking(currentUserId, idsToQuery);
+      if (latestCached) {
+        if (trackingMutationVersionRef.current === trackingVersionAtStart) {
+          applyTrackingState(latestCached.item);
+        }
+        setHydratedTrackingUserId(currentUserId);
+        void syncAuthenticatedWatchedEpisodes(currentUserId, animePrimaryId, {
+          candidateIds: idsToQuery,
+        });
+        return;
       }
-      setHydratedTrackingUserId(currentUserId);
-      void syncAuthenticatedWatchedEpisodes(currentUserId, animePrimaryId, {
-        candidateIds: idsToQuery,
-      });
-    } else {
+
       void Promise.all([
         fetchAnimeTrackingSingleflight(
           currentUserId,
@@ -1661,6 +1705,51 @@ function AnimePageContent({
           candidateIds: idsToQuery,
         }),
       ]);
+    };
+
+    if (freshInitial && initialUserStatus) {
+      applyAuthoritativeInitialState(initialUserStatus);
+    } else if (inFlightInitial) {
+      if (cachedTracking && trackingMutationVersionRef.current === trackingVersionAtStart) {
+        applyTrackingState(cachedTracking.item);
+        setHydratedTrackingUserId(currentUserId);
+      }
+      void inFlightInitial.promise.then((resolved) => {
+        if (!active) return;
+        consumeInFlightAnimeInitialState(initialStateRequestId);
+        if (trackingMutationVersionRef.current !== trackingVersionAtStart) {
+          return;
+        }
+        if (
+          resolved &&
+          resolved.userId === currentUserId &&
+          getTrackingCacheEpoch() === inFlightInitial.epoch &&
+          !hasTrackedMutationSince(
+            inFlightInitial.startSeq,
+            currentUserId,
+            idsToQuery,
+          )
+        ) {
+          recordInitialAnimeTrackingLoaded(
+            currentUserId,
+            idsToQuery,
+            resolved,
+          );
+          applyAuthoritativeInitialState(resolved);
+          return;
+        }
+        fallbackFetchTrackingAndWatched();
+      });
+    } else if (cachedTracking) {
+      if (trackingMutationVersionRef.current === trackingVersionAtStart) {
+        applyTrackingState(cachedTracking.item);
+      }
+      setHydratedTrackingUserId(currentUserId);
+      void syncAuthenticatedWatchedEpisodes(currentUserId, animePrimaryId, {
+        candidateIds: idsToQuery,
+      });
+    } else {
+      fallbackFetchTrackingAndWatched();
     }
 
     // 2. Busca favoritos oficiais do perfil (anime, personagens, estúdios, pessoas)
@@ -1745,6 +1834,7 @@ function AnimePageContent({
     animeNativeTitle,
     candidateAnimeIdsKey,
     initialUserStatus,
+    initialStateRequestId,
   ]);
 
   const isEntityFavorited = useCallback(
