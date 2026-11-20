@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { traceServerFn } from "@/lib/telemetry";
 
 import {
   currentAnimeSeason,
@@ -1919,79 +1920,81 @@ export const fetchAnimeEpisodes = createServerFn({
       animeId: z.string().optional(),
     }),
   )
-  .handler(async ({ data }) => {
-    const { malId, animeId } = data;
-    if (!malId || !Number.isFinite(malId)) {
-      return [];
-    }
-
-    try {
-      const seasons = await jikanEpisodes(malId, animeId);
-      const cleanAnimeId = animeId?.trim();
-      if (cleanAnimeId && seasons.length > 0 && seasons[0]?.episodes?.length) {
-        const titleMap = new Map<number, { title: string; aired?: string }>();
-        for (const ep of seasons[0].episodes) {
-          const cleanTitle = ep.title?.trim();
-          if (cleanTitle && cleanTitle !== `Episódio ${ep.number}`) {
-            titleMap.set(ep.number, { title: cleanTitle, aired: ep.aired });
-          }
-        }
-
-        if (titleMap.size > 0) {
-          const detailKey = `detail:v7:${cleanAnimeId}`;
-          const localCached = fromCache<Anime>(detailKey);
-
-          const redisRes = await updateRedisAnimeDetailAtomic(
-            cleanAnimeId,
-            (current) => mergeEpisodeTitlesIntoAnime(current, titleMap),
-          );
-
-          if (redisRes.status === "fenced") {
-            evictLocalDetailCacheAliases(cleanAnimeId, localCached);
-          } else if (redisRes.status === "updated" || redisRes.status === "unchanged") {
-            const refDetail = redisRes.detail ?? localCached;
-            if (refDetail) {
-              syncLocalDetailCacheAliases(cleanAnimeId, refDetail);
-            }
-
-            const aliasIds = collectDetailAliasIds(cleanAnimeId, {
-              serverCatalogId: refDetail?.serverCatalogId,
-              anilistId: refDetail?.anilistId,
-              malId: refDetail?.malId ?? malId,
-              kitsuId: refDetail?.kitsuId,
-            });
-
-            if (aliasIds.length > 0) {
-              await Promise.all(
-                aliasIds.map(async (aliasId) => {
-                  const aliasRes = await updateRedisAnimeDetailAtomic(
-                    aliasId,
-                    (current) => mergeEpisodeTitlesIntoAnime(current, titleMap),
-                  );
-                  if (aliasRes.status === "fenced") {
-                    domainCaches.get("detail")?.delete(`detail:v7:${aliasId}`);
-                  } else if (
-                    aliasRes.detail &&
-                    (aliasRes.status === "updated" || aliasRes.status === "unchanged")
-                  ) {
-                    syncLocalDetailCacheAliases(aliasId, aliasRes.detail);
-                  }
-                }),
-              );
-            }
-          } else if (localCached) {
-            const mergedLocal = mergeEpisodeTitlesIntoAnime(localCached, titleMap);
-            if (mergedLocal) {
-              toCache(detailKey, mergedLocal);
-            }
-          }
-        }
+  .handler(async ({ data }) =>
+    traceServerFn("fetchAnimeEpisodes", async () => {
+      const { malId, animeId } = data;
+      if (!malId || !Number.isFinite(malId)) {
+        return [];
       }
-      return seasons;
-    } catch {
-      return [];
-    }
-  });
+
+      try {
+        const seasons = await jikanEpisodes(malId, animeId);
+        const cleanAnimeId = animeId?.trim();
+        if (cleanAnimeId && seasons.length > 0 && seasons[0]?.episodes?.length) {
+          const titleMap = new Map<number, { title: string; aired?: string }>();
+          for (const ep of seasons[0].episodes) {
+            const cleanTitle = ep.title?.trim();
+            if (cleanTitle && cleanTitle !== `Episódio ${ep.number}`) {
+              titleMap.set(ep.number, { title: cleanTitle, aired: ep.aired });
+            }
+          }
+
+          if (titleMap.size > 0) {
+            const detailKey = `detail:v7:${cleanAnimeId}`;
+            const localCached = fromCache<Anime>(detailKey);
+
+            const redisRes = await updateRedisAnimeDetailAtomic(
+              cleanAnimeId,
+              (current) => mergeEpisodeTitlesIntoAnime(current, titleMap),
+            );
+
+            if (redisRes.status === "fenced") {
+              evictLocalDetailCacheAliases(cleanAnimeId, localCached);
+            } else if (redisRes.status === "updated" || redisRes.status === "unchanged") {
+              const refDetail = redisRes.detail ?? localCached;
+              if (refDetail) {
+                syncLocalDetailCacheAliases(cleanAnimeId, refDetail);
+              }
+
+              const aliasIds = collectDetailAliasIds(cleanAnimeId, {
+                serverCatalogId: refDetail?.serverCatalogId,
+                anilistId: refDetail?.anilistId,
+                malId: refDetail?.malId ?? malId,
+                kitsuId: refDetail?.kitsuId,
+              });
+
+              if (aliasIds.length > 0) {
+                await Promise.all(
+                  aliasIds.map(async (aliasId) => {
+                    const aliasRes = await updateRedisAnimeDetailAtomic(
+                      aliasId,
+                      (current) => mergeEpisodeTitlesIntoAnime(current, titleMap),
+                    );
+                    if (aliasRes.status === "fenced") {
+                      domainCaches.get("detail")?.delete(`detail:v7:${aliasId}`);
+                    } else if (
+                      aliasRes.detail &&
+                      (aliasRes.status === "updated" || aliasRes.status === "unchanged")
+                    ) {
+                      syncLocalDetailCacheAliases(aliasId, aliasRes.detail);
+                    }
+                  }),
+                );
+              }
+            } else if (localCached) {
+              const mergedLocal = mergeEpisodeTitlesIntoAnime(localCached, titleMap);
+              if (mergedLocal) {
+                toCache(detailKey, mergedLocal);
+              }
+            }
+          }
+        }
+        return seasons;
+      } catch {
+        return [];
+      }
+    }),
+  );
 
 type JikanPictureItem = {
   jpg?: {
@@ -3395,66 +3398,68 @@ export const fetchAnimeCredits = createServerFn({
       animeId: z.string().optional(),
     }),
   )
-  .handler(async ({ data }) => {
-    const credits = await resolveAnimeCredits(data);
-    const cleanAnimeId = data.animeId?.trim();
-    if (
-      cleanAnimeId &&
-      credits &&
-      (credits.characters.length > 0 ||
-        credits.staff.length > 0 ||
-        credits.studios.length > 0)
-    ) {
-      const detailKey = `detail:v7:${cleanAnimeId}`;
-      const localCached = fromCache<Anime>(detailKey);
+  .handler(async ({ data }) =>
+    traceServerFn("fetchAnimeCredits", async () => {
+      const credits = await resolveAnimeCredits(data);
+      const cleanAnimeId = data.animeId?.trim();
+      if (
+        cleanAnimeId &&
+        credits &&
+        (credits.characters.length > 0 ||
+          credits.staff.length > 0 ||
+          credits.studios.length > 0)
+      ) {
+        const detailKey = `detail:v7:${cleanAnimeId}`;
+        const localCached = fromCache<Anime>(detailKey);
 
-      const redisRes = await updateRedisAnimeDetailAtomic(
-        cleanAnimeId,
-        (current) => mergeCreditsIntoAnime(current, credits),
-      );
+        const redisRes = await updateRedisAnimeDetailAtomic(
+          cleanAnimeId,
+          (current) => mergeCreditsIntoAnime(current, credits),
+        );
 
-      if (redisRes.status === "fenced") {
-        evictLocalDetailCacheAliases(cleanAnimeId, localCached);
-      } else if (redisRes.status === "updated" || redisRes.status === "unchanged") {
-        const refDetail = redisRes.detail ?? localCached;
-        if (refDetail) {
-          syncLocalDetailCacheAliases(cleanAnimeId, refDetail);
-        }
+        if (redisRes.status === "fenced") {
+          evictLocalDetailCacheAliases(cleanAnimeId, localCached);
+        } else if (redisRes.status === "updated" || redisRes.status === "unchanged") {
+          const refDetail = redisRes.detail ?? localCached;
+          if (refDetail) {
+            syncLocalDetailCacheAliases(cleanAnimeId, refDetail);
+          }
 
-        const aliasIds = collectDetailAliasIds(cleanAnimeId, {
-          serverCatalogId: refDetail?.serverCatalogId,
-          anilistId: refDetail?.anilistId ?? credits.anilistId ?? data.anilistId,
-          malId: refDetail?.malId ?? credits.malId ?? data.malId,
-          kitsuId: refDetail?.kitsuId ?? credits.kitsuId ?? data.kitsuId,
-        });
+          const aliasIds = collectDetailAliasIds(cleanAnimeId, {
+            serverCatalogId: refDetail?.serverCatalogId,
+            anilistId: refDetail?.anilistId ?? credits.anilistId ?? data.anilistId,
+            malId: refDetail?.malId ?? credits.malId ?? data.malId,
+            kitsuId: refDetail?.kitsuId ?? credits.kitsuId ?? data.kitsuId,
+          });
 
-        if (aliasIds.length > 0) {
-          await Promise.all(
-            aliasIds.map(async (aliasId) => {
-              const aliasRes = await updateRedisAnimeDetailAtomic(
-                aliasId,
-                (current) => mergeCreditsIntoAnime(current, credits),
-              );
-              if (aliasRes.status === "fenced") {
-                domainCaches.get("detail")?.delete(`detail:v7:${aliasId}`);
-              } else if (
-                aliasRes.detail &&
-                (aliasRes.status === "updated" || aliasRes.status === "unchanged")
-              ) {
-                syncLocalDetailCacheAliases(aliasId, aliasRes.detail);
-              }
-            }),
-          );
-        }
-      } else if (localCached) {
-        const mergedLocal = mergeCreditsIntoAnime(localCached, credits);
-        if (mergedLocal) {
-          toCache(detailKey, mergedLocal);
+          if (aliasIds.length > 0) {
+            await Promise.all(
+              aliasIds.map(async (aliasId) => {
+                const aliasRes = await updateRedisAnimeDetailAtomic(
+                  aliasId,
+                  (current) => mergeCreditsIntoAnime(current, credits),
+                );
+                if (aliasRes.status === "fenced") {
+                  domainCaches.get("detail")?.delete(`detail:v7:${aliasId}`);
+                } else if (
+                  aliasRes.detail &&
+                  (aliasRes.status === "updated" || aliasRes.status === "unchanged")
+                ) {
+                  syncLocalDetailCacheAliases(aliasId, aliasRes.detail);
+                }
+              }),
+            );
+          }
+        } else if (localCached) {
+          const mergedLocal = mergeCreditsIntoAnime(localCached, credits);
+          if (mergedLocal) {
+            toCache(detailKey, mergedLocal);
+          }
         }
       }
-    }
-    return credits;
-  });
+      return credits;
+    }),
+  );
 
 async function fetchAniMediaByMalId(
   malId: number,
@@ -4879,13 +4884,15 @@ async function fetchTodayScheduleFromAni(): Promise<SlimAnime[]> {
 
 export const fetchTodaySchedule = createServerFn({
   method: "GET",
-}).handler(async (): Promise<SlimAnime[] | null> => {
-  try {
-    return await fetchTodayScheduleFromAni();
-  } catch {
-    return null;
-  }
-});
+}).handler(async (): Promise<SlimAnime[] | null> =>
+  traceServerFn("fetchTodaySchedule", async () => {
+    try {
+      return await fetchTodayScheduleFromAni();
+    } catch {
+      return null;
+    }
+  }),
+);
 
 async function fetchHomeFromAni(): Promise<HomeCatalog> {
   const {
