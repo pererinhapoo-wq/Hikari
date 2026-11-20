@@ -644,12 +644,13 @@ export async function searchLocalCatalogAnime(
          LEFT JOIN "anime_alias" a ON a."anime_id" = c."id"
          WHERE c."hidden" = false
            AND (
-             c."search_blob" ILIKE ${pattern} ESCAPE '\\'
-             OR c."title_norm" ILIKE ${pattern} ESCAPE '\\'
-             OR a."alias_norm" ILIKE ${pattern} ESCAPE '\\'
+             c."search_blob" ILIKE $1 ESCAPE '\\'
+             OR c."title_norm" ILIKE $1 ESCAPE '\\'
+             OR a."alias_norm" ILIKE $1 ESCAPE '\\'
            )
          ORDER BY c."updatedAt" DESC
-         LIMIT ${safeLimit};`,
+         LIMIT $2;`,
+        [pattern, safeLimit],
       );
 
       if (!rows || rows.length === 0) return [];
