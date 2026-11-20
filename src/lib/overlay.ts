@@ -177,6 +177,22 @@ export function mergeSeasonsWithRemote(
             normalizeHikariPlayerEpisodeId(lep.hikariPlayerEpisodeId) ??
             normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ??
             undefined,
+          ...(lep.openingStartSeconds !== undefined || rep.openingStartSeconds !== undefined
+            ? {
+                openingStartSeconds:
+                  lep.openingStartSeconds !== undefined
+                    ? lep.openingStartSeconds
+                    : rep.openingStartSeconds,
+              }
+            : {}),
+          ...(lep.openingEndSeconds !== undefined || rep.openingEndSeconds !== undefined
+            ? {
+                openingEndSeconds:
+                  lep.openingEndSeconds !== undefined
+                    ? lep.openingEndSeconds
+                    : rep.openingEndSeconds,
+              }
+            : {}),
         });
       } else if (lep) {
         mergedEpisodes.push(lep);
@@ -234,6 +250,12 @@ function sanitizeRemoteEpisodeForAdmin(rep: Episode): Episode {
     videoUrl5: v5,
     hikariPlayerEpisodeId:
       normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ?? undefined,
+    ...(rep.openingStartSeconds !== undefined
+      ? { openingStartSeconds: rep.openingStartSeconds }
+      : {}),
+    ...(rep.openingEndSeconds !== undefined
+      ? { openingEndSeconds: rep.openingEndSeconds }
+      : {}),
     published: Boolean(rep.published === true && hasPlayable),
   };
 }
@@ -319,6 +341,22 @@ export function mergeSeasonsWithRemoteForAdmin(
             normalizeHikariPlayerEpisodeId(lep.hikariPlayerEpisodeId) ??
             normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ??
             undefined,
+          ...(lep.openingStartSeconds !== undefined || rep.openingStartSeconds !== undefined
+            ? {
+                openingStartSeconds:
+                  lep.openingStartSeconds !== undefined
+                    ? lep.openingStartSeconds
+                    : rep.openingStartSeconds,
+              }
+            : {}),
+          ...(lep.openingEndSeconds !== undefined || rep.openingEndSeconds !== undefined
+            ? {
+                openingEndSeconds:
+                  lep.openingEndSeconds !== undefined
+                    ? lep.openingEndSeconds
+                    : rep.openingEndSeconds,
+              }
+            : {}),
         });
       } else if (lep) {
         mergedEpisodes.push(lep);

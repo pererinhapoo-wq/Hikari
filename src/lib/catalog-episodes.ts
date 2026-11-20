@@ -212,6 +212,8 @@ export async function executeGetCatalogEpisodes(
           "videoUrl4",
           "videoUrl5",
           "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+          "opening_start_seconds" AS "openingStartSeconds",
+          "opening_end_seconds" AS "openingEndSeconds",
           "published",
           "publishedAt",
           "createdAt",
@@ -315,6 +317,8 @@ export interface PublicEpisodeRow {
   videoUrl4: string | null;
   videoUrl5: string | null;
   hikariPlayerEpisodeId?: string | null;
+  openingStartSeconds?: number | null;
+  openingEndSeconds?: number | null;
   published: boolean;
   publishedAt: string | null;
   createdAt: string;
@@ -412,6 +416,8 @@ async function queryPublicCatalogEpisodesFromDb(
            e."videoUrl4",
            e."videoUrl5",
            e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+           e."opening_start_seconds" AS "openingStartSeconds",
+           e."opening_end_seconds" AS "openingEndSeconds",
            e."published",
            e."publishedAt",
            e."createdAt",
@@ -839,6 +845,8 @@ export async function executeGetPaginatedPublicCatalogEpisodes(
         e."videoUrl4",
         e."videoUrl5",
         e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+        e."opening_start_seconds" AS "openingStartSeconds",
+        e."opening_end_seconds" AS "openingEndSeconds",
         e."published",
         e."publishedAt",
         e."createdAt",
@@ -1217,6 +1225,10 @@ export function buildResolvedSeasons(
               : rep.videoUrl5?.trim() || sanitizePlayableVideoUrl(lep.videoUrl5) || undefined,
             hikariPlayerEpisodeId:
               normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ?? undefined,
+            openingStartSeconds:
+              typeof rep.openingStartSeconds === "number" ? rep.openingStartSeconds : null,
+            openingEndSeconds:
+              typeof rep.openingEndSeconds === "number" ? rep.openingEndSeconds : null,
             aired:
               lep.aired ||
               (rep.publishedAt ? new Date(rep.publishedAt).toLocaleDateString("pt-BR") : undefined),
@@ -1240,6 +1252,10 @@ export function buildResolvedSeasons(
           videoUrl5: rep.videoUrl5?.trim() || localByIdMatch?.videoUrl5?.trim() || undefined,
           hikariPlayerEpisodeId:
             normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ?? undefined,
+          openingStartSeconds:
+            typeof rep.openingStartSeconds === "number" ? rep.openingStartSeconds : null,
+          openingEndSeconds:
+            typeof rep.openingEndSeconds === "number" ? rep.openingEndSeconds : null,
           aired:
             localByIdMatch?.aired ||
             (rep.publishedAt ? new Date(rep.publishedAt).toLocaleDateString("pt-BR") : undefined),
@@ -1408,6 +1424,10 @@ export function catalogItemToEpisode(item: CatalogEpisodeItem): Episode {
     videoUrl5: item.videoUrl5?.trim() || undefined,
     hikariPlayerEpisodeId:
       normalizeHikariPlayerEpisodeId(item.hikariPlayerEpisodeId) ?? undefined,
+    openingStartSeconds:
+      typeof item.openingStartSeconds === "number" ? item.openingStartSeconds : null,
+    openingEndSeconds:
+      typeof item.openingEndSeconds === "number" ? item.openingEndSeconds : null,
     published: item.published ?? false,
     aired: item.publishedAt
       ? new Date(item.publishedAt).toLocaleDateString("pt-BR")

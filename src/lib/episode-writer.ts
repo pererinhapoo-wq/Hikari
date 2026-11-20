@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { Episode } from "@/lib/types";
 import { getBearerToken } from "@/lib/auth/client";
 import { addTombstone, clearTombstone } from "@/lib/catalog-storage";
@@ -43,6 +44,125 @@ export interface EpisodePayload {
   animeTitle?: string | null;
 }
 
+export const episodePostSchema = z
+  .object({
+    id: z.string().trim().min(1, "id é obrigatório").max(128, "id muito longo"),
+    animeId: z.string().trim().min(1, "animeId é obrigatório").max(128, "animeId muito longo"),
+    seasonNumber: z.number().int().min(1, "seasonNumber deve ser >= 1").default(1),
+    number: z.number().int().min(0, "number deve ser >= 0"),
+    title: z.string().max(255).optional().nullable(),
+    thumbnail: z.string().max(4096).optional().nullable(),
+    duration: z.string().max(64).optional().nullable(),
+    synopsis: z.string().max(10000).optional().nullable(),
+    videoUrl: z.string().max(2048).optional().nullable(),
+    videoUrl2: z.string().max(2048).optional().nullable(),
+    videoUrl3: z.string().max(2048).optional().nullable(),
+    videoUrl4: z.string().max(2048).optional().nullable(),
+    videoUrl5: z.string().max(2048).optional().nullable(),
+    hikariPlayerEpisodeId: z.string().max(255).optional().nullable(),
+    openingStartSeconds: z
+      .number()
+      .int()
+      .min(0, "Início da opening não pode ser negativo")
+      .optional()
+      .nullable(),
+    openingEndSeconds: z
+      .number()
+      .int()
+      .min(0, "Fim da opening não pode ser negativo")
+      .optional()
+      .nullable(),
+    published: z.boolean().default(false),
+    replaceSources: z.boolean().optional().default(false),
+    replaceThumbnail: z.boolean().optional().default(false),
+    animeTitle: z.string().max(255).optional().nullable(),
+    sources: z
+      .array(
+        z.object({
+          provider: z.string().trim().max(64).optional(),
+          externalId: z.string().trim().min(1).max(2048),
+          lang: z.enum(["sub", "dub"], {
+            message: "Selecione o idioma da fonte (legendado ou dublado).",
+          }),
+          quality: z.string().trim().max(32).optional().nullable(),
+          priority: z.number().int().min(0).max(1000).optional().default(0),
+        }),
+      )
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.openingStartSeconds != null && data.openingEndSeconds != null) {
+        return data.openingEndSeconds > data.openingStartSeconds;
+      }
+      return true;
+    },
+    {
+      message: "O fim da opening deve ser maior que o início.",
+      path: ["openingEndSeconds"],
+    },
+  );
+
+export function resolveOpeningTimestampsPatch(
+  incoming: {
+    openingStartSeconds?: number | null;
+    openingEndSeconds?: number | null;
+  },
+  existing?: {
+    openingStartSeconds?: number | null;
+    openingEndSeconds?: number | null;
+  } | null,
+):
+  | {
+      valid: true;
+      hasOpeningStartField: boolean;
+      hasOpeningEndField: boolean;
+      openingStartSeconds: number | null;
+      openingEndSeconds: number | null;
+    }
+  | {
+      valid: false;
+      error: string;
+    } {
+  const hasOpeningStartField = incoming.openingStartSeconds !== undefined;
+  const hasOpeningEndField = incoming.openingEndSeconds !== undefined;
+  const openingStartSeconds = hasOpeningStartField
+    ? (incoming.openingStartSeconds ?? null)
+    : (existing?.openingStartSeconds ?? null);
+  const openingEndSeconds = hasOpeningEndField
+    ? (incoming.openingEndSeconds ?? null)
+    : (existing?.openingEndSeconds ?? null);
+
+  if (
+    (openingStartSeconds !== null && openingStartSeconds < 0) ||
+    (openingEndSeconds !== null && openingEndSeconds < 0)
+  ) {
+    return {
+      valid: false,
+      error: "Os tempos da opening não podem ser negativos.",
+    };
+  }
+
+  if (
+    openingStartSeconds !== null &&
+    openingEndSeconds !== null &&
+    openingEndSeconds <= openingStartSeconds
+  ) {
+    return {
+      valid: false,
+      error: "O fim da opening deve ser maior que o início.",
+    };
+  }
+
+  return {
+    valid: true,
+    hasOpeningStartField,
+    hasOpeningEndField,
+    openingStartSeconds,
+    openingEndSeconds,
+  };
+}
+
 export interface OutboxOperation {
   id: string;
   type: "upsert" | "delete";
@@ -74,6 +194,8 @@ export interface PersistEpisodeResult {
   published?: boolean;
   publishedAt?: string | null;
   hikariPlayerEpisodeId?: string | null;
+  openingStartSeconds?: number | null;
+  openingEndSeconds?: number | null;
   status: "synced" | "pending" | "conflict";
   error?: string;
 }
@@ -501,8 +623,12 @@ export async function persistEpisode(
     videoUrl4: episode.videoUrl4 || null,
     videoUrl5: episode.videoUrl5 || null,
     hikariPlayerEpisodeId: normalizeHikariPlayerEpisodeId(episode.hikariPlayerEpisodeId),
-    openingStartSeconds: episode.openingStartSeconds ?? null,
-    openingEndSeconds: episode.openingEndSeconds ?? null,
+    ...(episode.openingStartSeconds !== undefined
+      ? { openingStartSeconds: episode.openingStartSeconds }
+      : {}),
+    ...(episode.openingEndSeconds !== undefined
+      ? { openingEndSeconds: episode.openingEndSeconds }
+      : {}),
     published: isPublished,
     replaceSources: true,
     replaceThumbnail: Boolean(options?.replaceThumbnail),
@@ -522,6 +648,8 @@ export async function persistEpisode(
       let serverPublished: boolean = isPublished;
       let serverPublishedAt: string | null = null;
       let serverHikariPlayerEpisodeId: string | null | undefined = undefined;
+      let serverOpeningStartSeconds: number | null | undefined = undefined;
+      let serverOpeningEndSeconds: number | null | undefined = undefined;
       try {
         const j = await res.json();
         if (j?.episodeId || j?.canonicalId) {
@@ -537,6 +665,12 @@ export async function persistEpisode(
           serverHikariPlayerEpisodeId = normalizeHikariPlayerEpisodeId(
             j.hikariPlayerEpisodeId,
           );
+        }
+        if (j?.openingStartSeconds !== undefined) {
+          serverOpeningStartSeconds = j.openingStartSeconds;
+        }
+        if (j?.openingEndSeconds !== undefined) {
+          serverOpeningEndSeconds = j.openingEndSeconds;
         }
       } catch {
         // ignore
@@ -567,6 +701,8 @@ export async function persistEpisode(
         published: serverPublished,
         publishedAt: serverPublishedAt,
         hikariPlayerEpisodeId: serverHikariPlayerEpisodeId,
+        openingStartSeconds: serverOpeningStartSeconds,
+        openingEndSeconds: serverOpeningEndSeconds,
         status: "synced",
       };
     }

@@ -184,6 +184,10 @@ export function EditorSeasons({
   thumbnailEditModes,
   onThumbnailChange,
   onThumbnailClear,
+  onFetchOpeningSuggestions,
+  isFetchingOpening,
+  openingSuggestions,
+  onApplyOpeningSuggestion,
 }: EditorSeasonsProps) {
   const [activeSeasonTab, setActiveSeasonTab] = useState<string>("all");
   const [collapsedSeasons, setCollapsedSeasons] = useState<Record<string, boolean>>({});
