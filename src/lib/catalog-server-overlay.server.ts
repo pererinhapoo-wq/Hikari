@@ -7,6 +7,7 @@ import {
   setRedisCatalogSearch,
   invalidateRedisCatalogSearch,
   normalizeCatalogSearchQuery,
+  scheduleRedisBackgroundWrite,
 } from "@/lib/redis";
 import { isCustomImageUrl, type Anime, type HomeCatalog, type Season, type SlimAnime } from "@/lib/types";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
@@ -173,7 +174,10 @@ export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
       }
 
       // Salvar de forma assíncrona no Redis (sem bloquear a resposta)
-      void setRedisCatalogIndex(rows).catch(() => {});
+      scheduleRedisBackgroundWrite(
+        setRedisCatalogIndex(rows),
+        "setRedisCatalogIndex",
+      );
 
       const index = buildCatalogIndexFromRows(rows);
       if (requestEpoch === catalogIndexCacheEpoch) {
@@ -682,7 +686,10 @@ export async function searchLocalCatalogAnime(
       }));
 
       // 5. Salva no Redis e na memória local
-      void setRedisCatalogSearch(clean, safeLimit, results).catch(() => {});
+      scheduleRedisBackgroundWrite(
+        setRedisCatalogSearch(clean, safeLimit, results),
+        "setRedisCatalogSearch",
+      );
       localSearchCache.set(cacheKey, { data: results, timestamp: Date.now() });
       pruneLocalSearchCache();
 

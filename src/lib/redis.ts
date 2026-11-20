@@ -145,6 +145,78 @@ async function withRedisTimeout<T>(
   }
 }
 
+const TANSTACK_EVENT_STORAGE_KEY = Symbol.for("tanstack-start:event-storage");
+
+type RedisWaitUntilFn = (promise: Promise<unknown>) => void;
+
+interface VercelRuntimeContextLike {
+  waitUntil?: RedisWaitUntilFn;
+}
+
+interface RuntimeRequestWithWaitUntil {
+  waitUntil?: RedisWaitUntilFn;
+  runtime?: {
+    vercel?: {
+      context?: VercelRuntimeContextLike;
+    };
+  };
+}
+
+interface TanStackEventStorageLike {
+  getStore?: () => { request?: RuntimeRequestWithWaitUntil } | undefined;
+}
+
+export function scheduleRedisBackgroundWrite(
+  promise: Promise<unknown>,
+  operation?: string,
+): void {
+  const safePromise = Promise.resolve(promise).catch(() => {});
+
+  if (typeof window !== "undefined") {
+    void safePromise;
+    return;
+  }
+
+  let registered = false;
+
+  try {
+    const storage = (
+      globalThis as Record<symbol, TanStackEventStorageLike | undefined>
+    )[TANSTACK_EVENT_STORAGE_KEY];
+    const request = storage?.getStore?.()?.request;
+    const vercelContext = request?.runtime?.vercel?.context;
+
+    if (vercelContext && typeof vercelContext.waitUntil === "function") {
+      vercelContext.waitUntil(safePromise);
+      registered = true;
+    } else if (request && typeof request.waitUntil === "function") {
+      request.waitUntil(safePromise);
+      registered = true;
+    }
+  } catch {
+    // Fail-open: mantém execução em background sem quebrar a requisição
+  }
+
+  if (!registered) {
+    void safePromise;
+  }
+
+  try {
+    console.warn(
+      JSON.stringify({
+        telemetry: true,
+        op: "redis",
+        event: "background_write",
+        operation: operation ?? "unknown",
+        waitUntil: registered,
+        timestamp: new Date().toISOString(),
+      }),
+    );
+  } catch {
+    // Ignora falhas de logging para preservar fail-open
+  }
+}
+
 const CATALOG_REDIS_KEY = "hikari:catalog:index:v1";
 const CATALOG_REDIS_TTL_SEC = 900; // 15 minutos
 

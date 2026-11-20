@@ -12,6 +12,7 @@ import {
   getRedisPublicCatalogEpisodesWithFence,
   setRedisPublicCatalogEpisodes,
   invalidateRedisPublicCatalogEpisodes,
+  scheduleRedisBackgroundWrite,
 } from "@/lib/redis";
 import {
   readTombstones,
@@ -255,7 +256,10 @@ export async function executeGetCatalogEpisodes(
     };
 
     if (!wantUnpublished) {
-      void setRedisCatalogEpisodes(cleanId, result).catch(() => {});
+      scheduleRedisBackgroundWrite(
+        setRedisCatalogEpisodes(cleanId, result),
+        "setRedisCatalogEpisodes",
+      );
     }
 
     return result;
