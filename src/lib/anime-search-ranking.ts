@@ -164,37 +164,99 @@ function normalizeComparableScore(score: number | null | undefined): number {
   return score <= 10 ? score * 10 : score;
 }
 
+export const HOME_MIN_TITLES_WITH_EPISODES = 12;
+
+export function sortByHasEpisodeFirst<T extends { hasEpisode?: boolean }>(
+  items: T[],
+): T[] {
+  if (!Array.isArray(items) || items.length <= 1) {
+    return items;
+  }
+  const withEpisode: T[] = [];
+  const withoutEpisode: T[] = [];
+  for (const item of items) {
+    if (item.hasEpisode === true) {
+      withEpisode.push(item);
+    } else {
+      withoutEpisode.push(item);
+    }
+  }
+  return [...withEpisode, ...withoutEpisode];
+}
+
+export function countDistinctTitlesWithEpisode(
+  lists: ReadonlyArray<ReadonlyArray<{ id: string; hasEpisode?: boolean }>>,
+): number {
+  const seen = new Set<string>();
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (item && item.hasEpisode === true && !seen.has(item.id)) {
+        seen.add(item.id);
+      }
+    }
+  }
+  return seen.size;
+}
+
+export function selectHomeSectionItems<T extends { hasEpisode?: boolean }>(
+  items: T[],
+  totalHomeWithEpisodes?: number,
+): T[] {
+  if (!Array.isArray(items) || items.length === 0) {
+    return [];
+  }
+  const withEpisode = items.filter((item) => item.hasEpisode === true);
+  const effectiveWithEpCount =
+    typeof totalHomeWithEpisodes === "number"
+      ? totalHomeWithEpisodes
+      : withEpisode.length;
+
+  if (
+    effectiveWithEpCount >= HOME_MIN_TITLES_WITH_EPISODES ||
+    withEpisode.length >= HOME_MIN_TITLES_WITH_EPISODES
+  ) {
+    return withEpisode;
+  }
+
+  const withoutEpisode = items.filter((item) => item.hasEpisode !== true);
+  const needed = HOME_MIN_TITLES_WITH_EPISODES - withEpisode.length;
+  return [...withEpisode, ...withoutEpisode.slice(0, needed)];
+}
+
 export function rankSearchResults(
   items: SlimAnime[],
   query?: string,
 ): SlimAnime[] {
   if (!query?.trim()) {
-    return items;
+    return sortByHasEpisodeFirst(items);
   }
 
   const normalizedQuery = query.trim();
 
-  return [...items]
-    .map((anime, index) => ({
-      anime,
-      relevance: searchScore(anime, normalizedQuery),
-      popularity:
-        typeof anime.popularity === "number" && Number.isFinite(anime.popularity)
-          ? anime.popularity
-          : -1,
-      rating: normalizeComparableScore(anime.score),
-      minTitleLen: getShortestTitleLength(anime),
-      index,
-    }))
-    .sort(
-      (a, b) =>
-        b.relevance - a.relevance ||
-        b.popularity - a.popularity ||
-        b.rating - a.rating ||
-        a.minTitleLen - b.minTitleLen ||
-        a.index - b.index,
-    )
-    .map((item) => item.anime);
+  return sortByHasEpisodeFirst(
+    [...items]
+      .map((anime, index) => ({
+        anime,
+        relevance: searchScore(anime, normalizedQuery),
+        popularity:
+          typeof anime.popularity === "number" && Number.isFinite(anime.popularity)
+            ? anime.popularity
+            : -1,
+        rating: normalizeComparableScore(anime.score),
+        minTitleLen: getShortestTitleLength(anime),
+        index,
+      }))
+      .sort(
+        (a, b) =>
+          b.relevance - a.relevance ||
+          b.popularity - a.popularity ||
+          b.rating - a.rating ||
+          a.minTitleLen - b.minTitleLen ||
+          a.index - b.index,
+      )
+      .map((item) => item.anime),
+  );
 }
 
 export function sortSearchResultsByOption(
@@ -202,27 +264,35 @@ export function sortSearchResultsByOption(
   sort?: string,
 ): SlimAnime[] {
   if (sort === "POPULARITY_DESC") {
-    return [...items].sort(
-      (a, b) => (b.popularity ?? -1) - (a.popularity ?? -1),
-    );
-  }
-  if (sort === "SCORE_DESC") {
-    return [...items].sort(
-      (a, b) =>
-        normalizeComparableScore(b.score) - normalizeComparableScore(a.score),
-    );
-  }
-  if (sort === "START_DATE_DESC") {
-    return [...items].sort((a, b) => (b.year ?? -1) - (a.year ?? -1));
-  }
-  if (sort === "TITLE_ROMAJI") {
-    return [...items].sort((a, b) =>
-      (a.titles.romaji || a.titles.english).localeCompare(
-        b.titles.romaji || b.titles.english,
+    return sortByHasEpisodeFirst(
+      [...items].sort(
+        (a, b) => (b.popularity ?? -1) - (a.popularity ?? -1),
       ),
     );
   }
-  return items;
+  if (sort === "SCORE_DESC") {
+    return sortByHasEpisodeFirst(
+      [...items].sort(
+        (a, b) =>
+          normalizeComparableScore(b.score) - normalizeComparableScore(a.score),
+      ),
+    );
+  }
+  if (sort === "START_DATE_DESC") {
+    return sortByHasEpisodeFirst(
+      [...items].sort((a, b) => (b.year ?? -1) - (a.year ?? -1)),
+    );
+  }
+  if (sort === "TITLE_ROMAJI") {
+    return sortByHasEpisodeFirst(
+      [...items].sort((a, b) =>
+        (a.titles.romaji || a.titles.english).localeCompare(
+          b.titles.romaji || b.titles.english,
+        ),
+      ),
+    );
+  }
+  return sortByHasEpisodeFirst(items);
 }
 
 export function getCanonicalAnimeSearchKeys(anime: SlimAnime): string[] {
@@ -262,7 +332,9 @@ export function mergeLocalAndRemoteSearchResults(
   }
 
   if (!sort || sort === "SEARCH_MATCH") {
-    return query?.trim() ? rankSearchResults(combined, query) : combined;
+    return query?.trim()
+      ? rankSearchResults(combined, query)
+      : sortByHasEpisodeFirst(combined);
   }
 
   return sortSearchResultsByOption(combined, sort);

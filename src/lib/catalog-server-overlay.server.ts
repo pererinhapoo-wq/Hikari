@@ -12,6 +12,11 @@ import {
 import { isCustomImageUrl, type Anime, type HomeCatalog, type Season, type SlimAnime } from "@/lib/types";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { loadAnimeRecentBadgesFromDb } from "@/lib/catalog-badges";
+import {
+  countDistinctTitlesWithEpisode,
+  selectHomeSectionItems,
+  sortByHasEpisodeFirst,
+} from "@/lib/anime-search-ranking";
 
 export interface DbCatalogAnimeRow {
   id: string;
@@ -35,6 +40,7 @@ export interface DbCatalogAnimeRow {
   hidden: boolean;
   score: number | null;
   updatedAt: string | Date | null;
+  hasEpisode?: boolean;
 }
 
 export function toTimestampMs(val: unknown): number {
@@ -132,7 +138,11 @@ export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
     try {
       // 1. Tentar consultar no Upstash Redis (cache compartilhado)
       const redisRows = await getRedisCatalogIndex();
-      if (Array.isArray(redisRows) && redisRows.length > 0) {
+      if (
+        Array.isArray(redisRows) &&
+        redisRows.length > 0 &&
+        redisRows.every((r) => typeof r.hasEpisode === "boolean")
+      ) {
         const index = buildCatalogIndexFromRows(redisRows);
         if (requestEpoch === catalogIndexCacheEpoch) {
           cachedCatalogIndex = { data: index, timestamp: Date.now() };
@@ -144,29 +154,35 @@ export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
       const sql = await getSql();
       const rows = await sql.query<DbCatalogAnimeRow>(
         `SELECT
-           "id",
-           "title",
-           "anilistId",
-           "malId",
-           "kitsuId",
-           "titleRomaji",
-           "titleEnglish",
-           "titleNative",
-           "cover",
-           "banner",
-           "synopsis",
-           "format",
-           "status",
-           "episodesCount",
-           "year",
-           "season",
-           "genres",
-           "trailerId",
-           "hidden",
-           "score",
-           "updatedAt"
-         FROM "catalog_anime"
-         ORDER BY "updatedAt" DESC;`,
+           a."id",
+           a."title",
+           a."anilistId",
+           a."malId",
+           a."kitsuId",
+           a."titleRomaji",
+           a."titleEnglish",
+           a."titleNative",
+           a."cover",
+           a."banner",
+           a."synopsis",
+           a."format",
+           a."status",
+           a."episodesCount",
+           a."year",
+           a."season",
+           a."genres",
+           a."trailerId",
+           a."hidden",
+           a."score",
+           a."updatedAt",
+           EXISTS (
+             SELECT 1
+             FROM "catalog_episode" e
+             WHERE e."animeId" = a."id"
+               AND e."published" = true
+           ) AS "hasEpisode"
+         FROM "catalog_anime" a
+         ORDER BY a."updatedAt" DESC;`,
       );
 
       if (!rows || rows.length === 0) {
@@ -330,6 +346,7 @@ function mergeRowIntoSlim(item: SlimAnime, row: DbCatalogAnimeRow): SlimAnime {
     score: row.score ?? item.score,
     catalogUpdatedAt: updatedAtMs || item.catalogUpdatedAt,
     serverCatalogId: row.id,
+    hasEpisode: Boolean(row.hasEpisode),
   };
 }
 
@@ -341,13 +358,21 @@ export async function applyDbCatalogOverlayToSlimList(
   }
   const index = await loadCatalogIndex();
   if (!index) {
-    return items;
+    return items.map((item) =>
+      item.hasEpisode === false ? item : { ...item, hasEpisode: false },
+    );
   }
 
   let changed = false;
   const next = items.map((item) => {
     const match = findMatchingRow(index, item);
-    if (!match) return item;
+    if (!match) {
+      if (item.hasEpisode === false) {
+        return item;
+      }
+      changed = true;
+      return { ...item, hasEpisode: false };
+    }
     changed = true;
     return mergeRowIntoSlim(item, match);
   });
@@ -359,24 +384,42 @@ export async function applyDbCatalogOverlayToHome(
   catalog: HomeCatalog,
 ): Promise<HomeCatalog> {
   const index = await loadCatalogIndex();
-  if (!index) {
-    return catalog;
-  }
 
-  const mapList = (list: SlimAnime[]): SlimAnime[] =>
+  const enrichList = (list: SlimAnime[]): SlimAnime[] =>
     list.map((item) => {
-      const match = findMatchingRow(index, item);
-      return match ? mergeRowIntoSlim(item, match) : item;
+      const match = index ? findMatchingRow(index, item) : undefined;
+      return match
+        ? mergeRowIntoSlim(item, match)
+        : { ...item, hasEpisode: false };
     });
+
+  const todaySchedule = enrichList(catalog.todaySchedule);
+  const trending = enrichList(catalog.trending);
+  const popular = enrichList(catalog.popular);
+  const top = enrichList(catalog.top);
+  const season = enrichList(catalog.season);
+  const releases = enrichList(catalog.releases);
+
+  const primaryEmAlta =
+    trending.some((item) => item.hasEpisode === true) ||
+    !popular.some((item) => item.hasEpisode === true)
+      ? trending
+      : popular;
+
+  const homeWithEpisodeCount = countDistinctTitlesWithEpisode([
+    todaySchedule,
+    primaryEmAlta,
+    season,
+  ]);
 
   return {
     ...catalog,
-    todaySchedule: mapList(catalog.todaySchedule),
-    trending: mapList(catalog.trending),
-    popular: mapList(catalog.popular),
-    top: mapList(catalog.top),
-    season: mapList(catalog.season),
-    releases: mapList(catalog.releases),
+    todaySchedule: selectHomeSectionItems(todaySchedule, homeWithEpisodeCount),
+    trending: selectHomeSectionItems(trending, homeWithEpisodeCount),
+    popular: selectHomeSectionItems(popular, homeWithEpisodeCount),
+    top: selectHomeSectionItems(top, homeWithEpisodeCount),
+    season: selectHomeSectionItems(season, homeWithEpisodeCount),
+    releases: selectHomeSectionItems(releases, homeWithEpisodeCount),
   };
 }
 
@@ -518,6 +561,7 @@ async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | null> {
       staff: [],
       catalogUpdatedAt: updatedAtMs || undefined,
       serverCatalogId: row.id,
+      hasEpisode: episodeRows.length > 0,
       ...(recentBadges ? { recentBadges } : {}),
     };
   } catch (err) {
@@ -545,8 +589,24 @@ export async function applyDbCatalogOverlayToDetail(
     allowExternalFallback: !match,
   });
 
+  const mappedRecommendations = Array.isArray(detail.recommendations)
+    ? sortByHasEpisodeFirst(
+        detail.recommendations.map((rec) => {
+          const recMatch = index ? findMatchingRow(index, rec) : undefined;
+          return recMatch
+            ? mergeRowIntoSlim(rec, recMatch)
+            : { ...rec, hasEpisode: false };
+        }),
+      )
+    : [];
+
   if (!match) {
-    return recentBadges ? { ...detail, recentBadges } : detail;
+    return {
+      ...detail,
+      hasEpisode: false,
+      recommendations: mappedRecommendations,
+      ...(recentBadges ? { recentBadges } : {}),
+    };
   }
 
   const mergedSlim = mergeRowIntoSlim(detail, match);
@@ -558,6 +618,7 @@ export async function applyDbCatalogOverlayToDetail(
   return {
     ...detail,
     ...mergedSlim,
+    recommendations: mappedRecommendations,
     ...(recentBadges ? { recentBadges } : {}),
     resolvedMobileBanner: bannerWasCustomized
       ? {
@@ -631,7 +692,11 @@ export async function searchLocalCatalogAnime(
     try {
       // 3. Consulta no Upstash Redis (cache compartilhado)
       const redisResult = await getRedisCatalogSearch(clean, safeLimit);
-      if (Array.isArray(redisResult) && redisResult.length > 0) {
+      if (
+        Array.isArray(redisResult) &&
+        redisResult.length > 0 &&
+        redisResult.every((r) => typeof r.hasEpisode === "boolean")
+      ) {
         localSearchCache.set(cacheKey, { data: redisResult, timestamp: Date.now() });
         pruneLocalSearchCache();
         return redisResult;
@@ -643,7 +708,14 @@ export async function searchLocalCatalogAnime(
       const pattern = `%${escaped}%`;
 
       const rows = await sql.query<DbCatalogAnimeRow>(
-        `SELECT DISTINCT c.*
+        `SELECT DISTINCT
+           c.*,
+           EXISTS (
+             SELECT 1
+             FROM "catalog_episode" e
+             WHERE e."animeId" = c."id"
+               AND e."published" = true
+           ) AS "hasEpisode"
          FROM "catalog_anime" c
          LEFT JOIN "anime_alias" a ON a."anime_id" = c."id"
          WHERE c."hidden" = false
@@ -652,7 +724,7 @@ export async function searchLocalCatalogAnime(
              OR c."title_norm" ILIKE $1 ESCAPE '\\'
              OR a."alias_norm" ILIKE $1 ESCAPE '\\'
            )
-         ORDER BY c."updatedAt" DESC
+         ORDER BY "hasEpisode" DESC, c."updatedAt" DESC
          LIMIT $2;`,
         [pattern, safeLimit],
       );
@@ -682,6 +754,7 @@ export async function searchLocalCatalogAnime(
         trailerId: row.trailerId?.trim() || null,
         catalogUpdatedAt: toTimestampMs(row.updatedAt),
         serverCatalogId: row.id,
+        hasEpisode: Boolean(row.hasEpisode),
         source: "local" as const,
       }));
 

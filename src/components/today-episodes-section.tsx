@@ -10,8 +10,13 @@ import {
 import { AnimeCard } from "@/components/anime-card";
 import { useHorizontalRailImageLimit } from "@/components/anime-row";
 import { fetchTodaySchedule } from "@/lib/api";
+import { selectHomeSectionItems } from "@/lib/anime-search-ranking";
 import { useHikariStore } from "@/lib/store";
-import { localToAnime, type SlimAnime } from "@/lib/types";
+import {
+  hasLocalPublishedEpisodes,
+  localToAnime,
+  type SlimAnime,
+} from "@/lib/types";
 
 const TIMEZONE_BR = "America/Recife";
 const PERIODIC_SYNC_MS = 15 * 60 * 1000; // 15 minutos
@@ -40,8 +45,10 @@ function getMsUntilNextRecifeMidnight(): number {
 
 export function TodayEpisodesSection({
   initialItems,
+  homeWithEpisodeCount,
 }: {
   initialItems: SlimAnime[];
+  homeWithEpisodeCount?: number;
 }) {
   const router = useRouter();
   const locals = useHikariStore((s) => s.animes);
@@ -153,9 +160,18 @@ export function TodayEpisodesSection({
         ? localByAnilist.get(item.anilistId)
         : undefined;
 
+      const hasEpisodes =
+        item.hasEpisode === true ||
+        Boolean(
+          localOverride &&
+            (localOverride.hasEpisode === true ||
+              hasLocalPublishedEpisodes(localOverride.seasons)),
+        );
+
       if (!localOverride) {
         result.push({
           ...item,
+          hasEpisode: hasEpisodes,
           todayEpisode: nextEpisode,
           todayUpcomingEpisodes: remainingEpisodes,
         });
@@ -166,6 +182,7 @@ export function TodayEpisodesSection({
       const localHasTitle = Boolean(mappedLocal.titles.english || mappedLocal.titles.romaji);
       result.push({
         ...item,
+        hasEpisode: hasEpisodes,
         titles: {
           romaji: mappedLocal.titles.romaji || item.titles.romaji,
           english: mappedLocal.titles.english || (localHasTitle ? "" : item.titles.english),
@@ -180,12 +197,13 @@ export function TodayEpisodesSection({
 
     result.sort(
       (a, b) =>
+        Number(b.hasEpisode === true) - Number(a.hasEpisode === true) ||
         (a.todayEpisode?.airingAt ?? Number.MAX_SAFE_INTEGER) -
-        (b.todayEpisode?.airingAt ?? Number.MAX_SAFE_INTEGER),
+          (b.todayEpisode?.airingAt ?? Number.MAX_SAFE_INTEGER),
     );
 
-    return result;
-  }, [scheduleSource, locals, nowSeconds]);
+    return selectHomeSectionItems(result, homeWithEpisodeCount);
+  }, [scheduleSource, locals, nowSeconds, homeWithEpisodeCount]);
 
   // Agendamento exato para o próximo horário de exibição (sem polling curto)
   const nextAiringAt = activeItems[0]?.todayEpisode?.airingAt ?? null;
@@ -274,6 +292,10 @@ export function TodayEpisodesSection({
     undefined,
     loadedDayKeyRef.current,
   );
+
+  if (activeItems.length === 0) {
+    return null;
+  }
 
   return (
     <section className="space-y-3.5 sm:space-y-4">

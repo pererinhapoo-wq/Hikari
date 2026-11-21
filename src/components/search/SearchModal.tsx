@@ -28,6 +28,7 @@ import {
   getCanonicalAnimeSearchKeys,
   mergeLocalAndRemoteSearchResults,
   searchScore,
+  sortByHasEpisodeFirst,
 } from "@/lib/anime-search-ranking";
 import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { useHikariStore } from "@/lib/store";
@@ -697,7 +698,7 @@ export function SearchModal({
           }
           additions.push(item);
         }
-        return [...prev, ...additions];
+        return sortByHasEpisodeFirst([...prev, ...additions]);
       });
 
       setAnimePage(nextPage);

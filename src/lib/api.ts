@@ -41,6 +41,7 @@ import {
   normalizeSearchText,
   rankSearchResults,
   searchScore,
+  sortByHasEpisodeFirst,
 } from "@/lib/anime-search-ranking";
 
 import {
@@ -4891,7 +4892,16 @@ export const fetchTodaySchedule = createServerFn({
 }).handler(async (): Promise<SlimAnime[] | null> =>
   traceServerFn("fetchTodaySchedule", async () => {
     try {
-      return await fetchTodayScheduleFromAni();
+      const items = await fetchTodayScheduleFromAni();
+      try {
+        const { applyDbCatalogOverlayToSlimList } = await import(
+          "@/lib/catalog-server-overlay.server"
+        );
+        const overlaid = await applyDbCatalogOverlayToSlimList(items);
+        return sortByHasEpisodeFirst(overlaid);
+      } catch {
+        return sortByHasEpisodeFirst(items);
+      }
     } catch {
       return null;
     }
@@ -5310,9 +5320,10 @@ export const fetchSeasonSection = createServerFn({
     const { applyDbCatalogOverlayToSlimList } = await import(
       "@/lib/catalog-server-overlay.server"
     );
-    return await applyDbCatalogOverlayToSlimList(items);
+    const overlaid = await applyDbCatalogOverlayToSlimList(items);
+    return sortByHasEpisodeFirst(overlaid);
   } catch {
-    return items;
+    return sortByHasEpisodeFirst(items);
   }
 });
 
@@ -6371,9 +6382,10 @@ export const searchCatalog =
           const { applyDbCatalogOverlayToSlimList } = await import(
             "@/lib/catalog-server-overlay.server"
           );
+          const overlaid = await applyDbCatalogOverlayToSlimList(result.items);
           return {
             ...result,
-            items: await applyDbCatalogOverlayToSlimList(result.items),
+            items: sortByHasEpisodeFirst(overlaid),
           };
         } catch {
           return result;
@@ -8344,9 +8356,10 @@ export const fetchBrowse =
           const { applyDbCatalogOverlayToSlimList } = await import(
             "@/lib/catalog-server-overlay.server"
           );
+          const overlaid = await applyDbCatalogOverlayToSlimList(result.items);
           return {
             ...result,
-            items: await applyDbCatalogOverlayToSlimList(result.items),
+            items: sortByHasEpisodeFirst(overlaid),
           };
         } catch {
           return result;

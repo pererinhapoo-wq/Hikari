@@ -790,6 +790,7 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       studios: mergedStudios,
       characters: mergedCharacters,
       staff: mergedStaff,
+      hasEpisode: Boolean(remote.hasEpisode || local.hasEpisode),
       source: "local",
     };
   }
@@ -842,6 +843,7 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       studios: mergedStudios,
       characters: mergedCharacters,
       staff: mergedStaff,
+      hasEpisode: Boolean(remote.hasEpisode || local.hasEpisode),
     };
   }
 

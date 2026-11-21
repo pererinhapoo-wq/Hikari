@@ -990,8 +990,8 @@ function SearchPage() {
     }
 
     // Sem consulta ou páginas seguintes: preserva a ordenação natural do catálogo remoto
-    // e inclui eventuais itens exclusivamente locais apenas ao final, sem promovê-los.
-    return mergeLocalAndRemoteSearchResults(remote, localHits);
+    // (ou ordenação explícita selecionada) mantendo títulos com episódio primeiro.
+    return mergeLocalAndRemoteSearchResults(remote, localHits, undefined, search.sort);
   }, [
     activeTab,
     currentPage,

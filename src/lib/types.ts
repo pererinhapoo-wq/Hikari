@@ -73,6 +73,7 @@ export type SlimAnime = {
   staff?: AnimeStaff[];
   catalogUpdatedAt?: number;
   serverCatalogId?: string;
+  hasEpisode?: boolean;
   recentBadges?: AnimeRecentBadges;
 };
 
@@ -175,6 +176,7 @@ export type LocalAnime = {
   characters?: AnimeCharacter[];
   staff?: AnimeStaff[];
   serverCatalogId?: string;
+  hasEpisode?: boolean;
   recentBadges?: AnimeRecentBadges;
 };
 
@@ -244,6 +246,15 @@ export function displayTitle(
   return english || romaji || rawTitle || native || "Sem título";
 }
 
+export function hasLocalPublishedEpisodes(seasons?: Season[] | null): boolean {
+  if (!Array.isArray(seasons)) return false;
+  return seasons.some(
+    (season) =>
+      Array.isArray(season?.episodes) &&
+      season.episodes.some((ep) => ep?.published === true),
+  );
+}
+
 export function localToAnime(local: LocalAnime): Anime {
   return {
     id: local.id,
@@ -275,6 +286,7 @@ export function localToAnime(local: LocalAnime): Anime {
     staff: local.staff ?? [],
     catalogUpdatedAt: local.updatedAt || undefined,
     serverCatalogId: local.serverCatalogId,
+    hasEpisode: local.hasEpisode ?? hasLocalPublishedEpisodes(local.seasons),
     ...(local.recentBadges ? { recentBadges: normalizeAnimeRecentBadges(local.recentBadges) } : {}),
   };
 }
@@ -576,6 +588,7 @@ export function animeToLocal(
       (Array.isArray(fullAnime.staff) && fullAnime.staff.length > 0
         ? fullAnime.staff
         : undefined),
+    hasEpisode: anime.hasEpisode ?? existing?.hasEpisode,
     recentBadges:
       fullAnime.recentBadges !== undefined
         ? normalizeAnimeRecentBadges(fullAnime.recentBadges)

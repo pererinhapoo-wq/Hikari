@@ -109,7 +109,8 @@ import {
   staffRoleLabel,
   statusLabel,
 } from "@/lib/labels";
-import { mergeDetail } from "@/lib/overlay";
+import { mergeDetail, overlayList } from "@/lib/overlay";
+import { sortByHasEpisodeFirst } from "@/lib/anime-search-ranking";
 import {
   analyzeBannerFramingAndTheme,
   hasAdminCustomBanner,
@@ -2970,10 +2971,25 @@ function AnimePageContent({
   const isReleasing = anime?.status === "RELEASING";
   const yt = youtubeIdFrom(anime?.trailerId);
 
-  const episodeCount =
+  const hasCanonicalDbEpisodes = Boolean(
+    catalogEpisodes &&
+      Array.isArray(catalogEpisodes.episodes) &&
+      catalogEpisodes.episodes.length > 0,
+  );
+  const hasPublishedSeasonEpisodes = allEpisodes.some(
+    (ep) => ep.published === true,
+  );
+  const hasAvailableEpisodes = Boolean(
+    hasCanonicalDbEpisodes ||
+      hasPublishedSeasonEpisodes ||
+      (anime?.hasEpisode === true && allEpisodes.length > 0),
+  );
+
+  const rawEpisodeCount =
     effectiveEpisodes?.length ||
     anime?.episodesCount ||
     0;
+  const episodeCount = hasAvailableEpisodes ? rawEpisodeCount : 0;
 
   /*
    * CONTINUAR
@@ -3307,11 +3323,9 @@ function AnimePageContent({
                   {formatLabel(anime.format)}
                 </span>
 
-                {episodeCount > 0 && (
-                  <span className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                    {episodeCount} episódios
-                  </span>
-                )}
+                <span className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                  {episodeCount} {episodeCount === 1 ? "episódio" : "episódios"}
+                </span>
 
                 {statusLabel(anime.status) && (
                   <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/20 bg-purple-950/40 px-2.5 py-1 text-xs font-medium text-purple-300">
@@ -3346,48 +3360,50 @@ function AnimePageContent({
 
               {/* BOTÕES DE AÇÃO */}
               <div className="mt-5 flex flex-wrap items-center gap-2.5 sm:gap-3">
-                <Link
-                  to="/watch/$id/$ep"
-                  params={{
-                    id: anime.id,
-                    ep: `ep-${continueTarget?.number || 1}`,
-                  }}
-                  className={cn(
-                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 px-5 sm:px-6 text-sm sm:text-base font-semibold text-white shadow-[0_4px_20px_rgba(168,85,247,0.35)] transition-[color,background-color,border-color,box-shadow,filter,transform] duration-250 ease-out select-none touch-manipulation [-webkit-tap-highlight-color:transparent] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
-                    "[@media(hover:hover)]:hover:from-purple-500 [@media(hover:hover)]:hover:to-purple-400 [@media(hover:hover)]:hover:shadow-[0_4px_26px_rgba(168,85,247,0.5)] [@media(hover:hover)]:hover:brightness-110",
-                    "[@media(hover:hover)]:motion-safe:hover:scale-[1.02] [@media(hover:hover)]:motion-safe:active:scale-[0.96]",
-                    "active:brightness-125 active:shadow-[0_0_28px_rgba(168,85,247,0.65)]",
-                    isWatchPressing && "[@media(hover:hover)]:motion-safe:scale-[0.96] brightness-125 shadow-[0_0_28px_rgba(168,85,247,0.65)]"
-                  )}
-                  onClick={(e) => {
-                    setIsWatchPressing(true);
-                    setTimeout(() => {
-                      setIsWatchPressing(false);
-                    }, 250);
+                {hasAvailableEpisodes && (
+                  <Link
+                    to="/watch/$id/$ep"
+                    params={{
+                      id: anime.id,
+                      ep: `ep-${continueTarget?.number || 1}`,
+                    }}
+                    className={cn(
+                      "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 px-5 sm:px-6 text-sm sm:text-base font-semibold text-white shadow-[0_4px_20px_rgba(168,85,247,0.35)] transition-[color,background-color,border-color,box-shadow,filter,transform] duration-250 ease-out select-none touch-manipulation [-webkit-tap-highlight-color:transparent] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+                      "[@media(hover:hover)]:hover:from-purple-500 [@media(hover:hover)]:hover:to-purple-400 [@media(hover:hover)]:hover:shadow-[0_4px_26px_rgba(168,85,247,0.5)] [@media(hover:hover)]:hover:brightness-110",
+                      "[@media(hover:hover)]:motion-safe:hover:scale-[1.02] [@media(hover:hover)]:motion-safe:active:scale-[0.96]",
+                      "active:brightness-125 active:shadow-[0_0_28px_rgba(168,85,247,0.65)]",
+                      isWatchPressing && "[@media(hover:hover)]:motion-safe:scale-[0.96] brightness-125 shadow-[0_0_28px_rgba(168,85,247,0.65)]"
+                    )}
+                    onClick={(e) => {
+                      setIsWatchPressing(true);
+                      setTimeout(() => {
+                        setIsWatchPressing(false);
+                      }, 250);
 
-                    if (
-                      !e.metaKey &&
-                      !e.altKey &&
-                      !e.ctrlKey &&
-                      !e.shiftKey &&
-                      e.button === 0
-                    ) {
-                      e.preventDefault();
-                      void navigate({
-                        to: "/watch/$id/$ep",
-                        params: {
-                          id: anime.id,
-                          ep: `ep-${continueTarget?.number || 1}`,
-                        },
-                      });
-                    }
-                  }}
-                >
-                  <Play className="size-4 fill-current pointer-events-none transition-transform duration-250 ease-out [@media(hover:hover)]:group-hover:scale-105" />
-                  <span id="hikari-watch-btn-text" suppressHydrationWarning>
-                    {watchButtonLabel}
-                  </span>
-                </Link>
+                      if (
+                        !e.metaKey &&
+                        !e.altKey &&
+                        !e.ctrlKey &&
+                        !e.shiftKey &&
+                        e.button === 0
+                      ) {
+                        e.preventDefault();
+                        void navigate({
+                          to: "/watch/$id/$ep",
+                          params: {
+                            id: anime.id,
+                            ep: `ep-${continueTarget?.number || 1}`,
+                          },
+                        });
+                      }
+                    }}
+                  >
+                    <Play className="size-4 fill-current pointer-events-none transition-transform duration-250 ease-out [@media(hover:hover)]:group-hover:scale-105" />
+                    <span id="hikari-watch-btn-text" suppressHydrationWarning>
+                      {watchButtonLabel}
+                    </span>
+                  </Link>
+                )}
 
                 {/* 1. BOTÃO MINHA COLEÇÃO (IDENTIDADE PRÓPRIA & REUTILIZA MODAL DO PERFIL) */}
                 <button
@@ -3460,8 +3476,7 @@ function AnimePageContent({
                             COLLECTION_STATUS_CONFIG[trackingStatus].pillText,
                           )}
                         >
-                          {trackingEpisodesWatched}
-                          {anime.episodesCount ? `/${anime.episodesCount}` : ""} eps
+                          {trackingEpisodesWatched}/{episodeCount} eps
                         </span>
                       )}
                       <ChevronDown className="size-3.5 opacity-60 transition-transform duration-200 group-hover:translate-y-0.5 ml-0.5" />
@@ -3651,7 +3666,7 @@ function AnimePageContent({
       )}
 
       {/* EPISÓDIOS (ACIMA DO ELENCO) */}
-      {currentSeason && (
+      {(hasAvailableEpisodes ? Boolean(currentSeason) : true) && (
         <section id="episodes" className="mt-12">
           <div className="flex items-end justify-between gap-4">
             <div>
@@ -3664,9 +3679,12 @@ function AnimePageContent({
 
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs sm:text-sm text-zinc-400">
                 <span className="inline-flex items-center rounded-md border border-white/5 bg-white/5 px-2.5 py-1 text-zinc-300">
-                  {episodeCount} episódios disponíveis
+                  {episodeCount}{" "}
+                  {episodeCount === 1
+                    ? "episódio disponível"
+                    : "episódios disponíveis"}
                 </span>
-                {user && (
+                {hasAvailableEpisodes && user && (
                   <>
                     <span className="text-zinc-600">·</span>
                     <span className="inline-flex items-center rounded-md border border-purple-500/20 bg-purple-950/40 px-2.5 py-1 font-medium text-purple-300">
@@ -3679,11 +3697,22 @@ function AnimePageContent({
           </div>
 
           <div className="mt-5">
-            <EpisodeGrid
-              episodes={effectiveEpisodes ?? currentSeason.episodes}
-              animeId={anime.id}
-              watchedEpisodes={watchedEpisodes}
-            />
+            {hasAvailableEpisodes && currentSeason ? (
+              <EpisodeGrid
+                episodes={effectiveEpisodes ?? currentSeason.episodes}
+                animeId={anime.id}
+                watchedEpisodes={watchedEpisodes}
+              />
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-[#100e1b]/80 px-5 py-7 sm:px-6">
+                <p className="text-sm sm:text-base font-semibold text-zinc-100">
+                  Episódios indisponíveis no momento
+                </p>
+                <p className="mt-1 text-xs sm:text-sm text-zinc-400">
+                  Este título ainda não possui episódios disponíveis para reprodução no catálogo.
+                </p>
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -6253,6 +6282,14 @@ const RelatedSection = memo(function RelatedSection({
   recommendations: SlimAnime[];
 }) {
   const railRef = useRef<HTMLDivElement>(null);
+  const locals = useHikariStore((s) => s.animes);
+  const orderedRecommendations = useMemo(
+    () =>
+      sortByHasEpisodeFirst(
+        overlayList(recommendations, locals, { includeExtras: false }),
+      ),
+    [recommendations, locals],
+  );
 
   const {
     renderedLimit,
@@ -6260,14 +6297,14 @@ const RelatedSection = memo(function RelatedSection({
     advance: advanceImgLimit,
   } = useProgressiveRail({
     railRef,
-    totalCount: recommendations.length,
+    totalCount: orderedRecommendations.length,
     itemStridePx: 132,
     initialRenderCount: 8,
     initialImageCount: 6,
     resetKey: animeId,
   });
 
-  if (recommendations.length === 0) {
+  if (orderedRecommendations.length === 0) {
     return null;
   }
 
@@ -6290,7 +6327,7 @@ const RelatedSection = memo(function RelatedSection({
           </h2>
         </div>
 
-        {recommendations.length > 3 && (
+        {orderedRecommendations.length > 3 && (
           <div className="hidden sm:flex items-center gap-1.5">
             <button
               type="button"
@@ -6316,7 +6353,7 @@ const RelatedSection = memo(function RelatedSection({
         ref={railRef}
         className="rail -mx-4 px-4 sm:-mx-6 sm:px-6"
       >
-        {recommendations.slice(0, renderedLimit).map((r, index) => (
+        {orderedRecommendations.slice(0, renderedLimit).map((r, index) => (
           <AnimeCard
             key={r.id}
             anime={r}

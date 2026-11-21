@@ -1179,7 +1179,14 @@ export function overlaySlim<
       const direct = locals.find((a) => !a.hidden && a.id === r.id);
       if (direct) {
         usedLocalIds.add(direct.id);
-        const item = toLocalItem(direct);
+        const rawItem = toLocalItem(direct) as T & { hasEpisode?: boolean };
+        const remoteHasEp = (r as T & { hasEpisode?: boolean }).hasEpisode;
+        const item = {
+          ...rawItem,
+          ...(typeof remoteHasEp === "boolean" || typeof rawItem.hasEpisode === "boolean"
+            ? { hasEpisode: Boolean(remoteHasEp || rawItem.hasEpisode) }
+            : {}),
+        } as T;
         return mapMatched ? mapMatched(item, r, direct) : item;
       }
 
@@ -1202,7 +1209,14 @@ export function overlaySlim<
 
         if (aniLocal) {
           usedLocalIds.add(aniLocal.id);
-          const item = toLocalItem(aniLocal);
+          const rawItem = toLocalItem(aniLocal) as T & { hasEpisode?: boolean };
+          const remoteHasEp = (r as T & { hasEpisode?: boolean }).hasEpisode;
+          const item = {
+            ...rawItem,
+            ...(typeof remoteHasEp === "boolean" || typeof rawItem.hasEpisode === "boolean"
+              ? { hasEpisode: Boolean(remoteHasEp || rawItem.hasEpisode) }
+              : {}),
+          } as T;
           return mapMatched ? mapMatched(item, r, aniLocal) : item;
         }
       }

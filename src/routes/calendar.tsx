@@ -272,6 +272,12 @@ export const fetchWeeklyScheduleFn = createServerFn({ method: "GET" })
          WHERE s."airingAt" >= to_timestamp($1)
            AND s."airingAt" <= to_timestamp($2)
            AND (a."hidden" IS NOT TRUE)
+           AND EXISTS (
+             SELECT 1
+             FROM "catalog_episode" e
+             WHERE e."animeId" = a."id"
+               AND e."published" = true
+           )
          ORDER BY s."airingAt" ASC;`,
         [start, end],
       );

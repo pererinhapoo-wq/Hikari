@@ -34,6 +34,7 @@ import {
   overlayList,
   overlaySeasonList,
 } from "@/lib/overlay";
+import { sortByHasEpisodeFirst } from "@/lib/anime-search-ranking";
 import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
 
 import { useHikariStore } from "@/lib/store";
@@ -673,11 +674,12 @@ function BrowsePage() {
       "genres" &&
     genre
   ) {
-    const items =
+    const items = sortByHasEpisodeFirst(
       overlayList(
         accumulatedItems,
         locals,
-      );
+      ),
+    );
 
     return (
       <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
@@ -766,23 +768,25 @@ function BrowsePage() {
   const isSeasonTransitioning =
     isSeasonPage && (uiSeason !== activeSeason || uiYear !== activeYear);
 
-  const items = isSeasonPage
-    ? overlaySeasonList(
-        accumulatedItems,
-        locals,
-        activeSeason,
-        activeYear,
-      )
-    : section === "trending" || section === "popular" || section === "top"
-      ? overlayList(
+  const items = sortByHasEpisodeFirst(
+    isSeasonPage
+      ? overlaySeasonList(
           accumulatedItems,
           locals,
-          { includeExtras: false },
+          activeSeason,
+          activeYear,
         )
-      : overlayList(
-          accumulatedItems,
-          locals,
-        );
+      : section === "trending" || section === "popular" || section === "top"
+        ? overlayList(
+            accumulatedItems,
+            locals,
+            { includeExtras: false },
+          )
+        : overlayList(
+            accumulatedItems,
+            locals,
+          ),
+  );
 
   const sectionMeta = {
     popular: {

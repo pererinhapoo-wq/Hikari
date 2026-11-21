@@ -7,8 +7,16 @@ import {
 import { fetchHomeCatalog, fetchSeasonSection } from "@/lib/api";
 import { useHikariStore } from "@/lib/store";
 import { overlayList, overlaySeasonList } from "@/lib/overlay";
+import {
+  countDistinctTitlesWithEpisode,
+  selectHomeSectionItems,
+} from "@/lib/anime-search-ranking";
 import { currentAnimeSeason, type OfficialAnimeSeason } from "@/lib/utils";
-import { localToAnime, type SlimAnime } from "@/lib/types";
+import {
+  hasLocalPublishedEpisodes,
+  localToAnime,
+  type SlimAnime,
+} from "@/lib/types";
 
 import { getAnimeLogo } from "@/lib/anime-logos";
 import {
@@ -28,27 +36,46 @@ import { getHomePublicEpisodes } from "@/lib/home-episodes.functions";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { SectionReveal } from "@/components/section-reveal";
 
-function pickHeroItems(trending: SlimAnime[], popular: SlimAnime[]): SlimAnime[] {
+function pickHeroItems(
+  trending: SlimAnime[],
+  popular: SlimAnime[],
+  fallbackCatalog: SlimAnime[] = [],
+): SlimAnime[] {
   const seen = new Set<string>();
-  const merged: SlimAnime[] = [];
-  for (const item of [...trending, ...popular]) {
+  const catalog: SlimAnime[] = [];
+  for (const item of [...trending, ...popular, ...fallbackCatalog]) {
     if (!item || seen.has(item.id)) continue;
-    const hasImage = Boolean(item.banner?.trim() || item.cover?.trim());
-    if (!hasImage) continue;
     seen.add(item.id);
-    merged.push(item);
+    catalog.push(item);
   }
-  const withDistinctBanner = merged.filter((a) => {
-    const banner = a.banner?.trim();
-    const cover = a.cover?.trim();
-    return Boolean(banner && cover && banner !== cover);
-  });
-  const withoutDistinctBanner = merged.filter((a) => {
-    const banner = a.banner?.trim();
-    const cover = a.cover?.trim();
-    return !(banner && cover && banner !== cover);
-  });
-  return [...withDistinctBanner, ...withoutDistinctBanner].slice(0, 8);
+
+  const withEpisodeMerged = catalog.filter(
+    (item) =>
+      item.hasEpisode === true &&
+      Boolean(item.banner?.trim() || item.cover?.trim()),
+  );
+
+  if (withEpisodeMerged.length > 0) {
+    const withDistinctBanner = withEpisodeMerged.filter((a) => {
+      const banner = a.banner?.trim();
+      const cover = a.cover?.trim();
+      return Boolean(banner && cover && banner !== cover);
+    });
+    const withoutDistinctBanner = withEpisodeMerged.filter((a) => {
+      const banner = a.banner?.trim();
+      const cover = a.cover?.trim();
+      return !(banner && cover && banner !== cover);
+    });
+    return [...withDistinctBanner, ...withoutDistinctBanner].slice(0, 8);
+  }
+
+  const firstWithBanner = catalog.find((item) => Boolean(item.banner?.trim()));
+  if (firstWithBanner) {
+    return [firstWithBanner];
+  }
+
+  const firstWithCover = catalog.find((item) => Boolean(item.cover?.trim()));
+  return firstWithCover ? [firstWithCover] : [];
 }
 
 export const Route = createFileRoute("/")({
@@ -78,6 +105,7 @@ export const Route = createFileRoute("/")({
     const heroCandidates = pickHeroItems(
       loaderData?.trending ?? [],
       loaderData?.popular ?? [],
+      loaderData?.season ?? [],
     );
     const featured = heroCandidates[0] ?? null;
     if (!featured) {
@@ -303,20 +331,47 @@ function Home() {
   const locals = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
 
-  const trending = useMemo(
+  const rawTrending = useMemo(
     () => overlayList(data.trending, locals, { includeExtras: false }),
     [data.trending, locals],
   );
-  const popular = useMemo(
+  const rawPopular = useMemo(
     () => overlayList(data.popular, locals, { includeExtras: false }),
     [data.popular, locals],
   );
-  const emAltaItems = trending.length > 0 ? trending : popular;
+  const resolvedSeasonCode = data.seasonCode || currentAnimeSeason().season;
+  const rawSeason = useMemo(
+    () =>
+      overlaySeasonList(
+        data.season ?? [],
+        locals,
+        resolvedSeasonCode,
+        data.seasonYear,
+      ),
+    [data.season, locals, resolvedSeasonCode, data.seasonYear],
+  );
+  const rawTodaySchedule = useMemo(
+    () => overlayList(data.todaySchedule ?? [], locals, { includeExtras: false }),
+    [data.todaySchedule, locals],
+  );
+
+  const emAltaSource = useMemo(() => {
+    const trendingHasEp = rawTrending.some((item) => item.hasEpisode === true);
+    const popularHasEp = rawPopular.some((item) => item.hasEpisode === true);
+    if (trendingHasEp || !popularHasEp) {
+      return rawTrending.length > 0 ? rawTrending : rawPopular;
+    }
+    return rawPopular;
+  }, [rawTrending, rawPopular]);
 
   // Animes Recém-Adicionados: animes incluídos no catálogo próprio do Hikari com data real (createdAt),
-  // ordenados do mais recente para o mais antigo
+  // ordenados do mais recente para o mais antigo (apenas os que possuem episódios)
   const recentlyAddedAnimes = useMemo(() => {
-    const visibleLocals = locals.filter((a) => !a.hidden);
+    const visibleLocals = locals.filter(
+      (a) =>
+        !a.hidden &&
+        (a.hasEpisode === true || hasLocalPublishedEpisodes(a.seasons)),
+    );
     const withValidCreatedAt = visibleLocals.filter(
       (a) =>
         typeof a.createdAt === "number" &&
@@ -334,9 +389,25 @@ function Home() {
       .map(localToAnime);
   }, [locals]);
 
+  const homeWithEpisodeCount = useMemo(
+    () =>
+      countDistinctTitlesWithEpisode([
+        rawTodaySchedule,
+        emAltaSource,
+        rawSeason,
+        recentlyAddedAnimes,
+      ]),
+    [rawTodaySchedule, emAltaSource, rawSeason, recentlyAddedAnimes],
+  );
+
+  const emAltaItems = useMemo(
+    () => selectHomeSectionItems(emAltaSource, homeWithEpisodeCount),
+    [emAltaSource, homeWithEpisodeCount],
+  );
+
   const featuredItems = useMemo(
-    () => pickHeroItems(data.trending, data.popular),
-    [data.trending, data.popular],
+    () => pickHeroItems(rawTrending, rawPopular, rawSeason),
+    [rawTrending, rawPopular, rawSeason],
   );
   const featured = featuredItems[0];
 
@@ -367,31 +438,36 @@ function Home() {
           anime={featured}
           animes={featuredItems}
         />
-      ) : (
-        <HomePending />
-      )}
+      ) : null}
 
       {/* 1. Episódios de Hoje (prioritário na primeira visualização) */}
-      <TodayEpisodesSection initialItems={data.todaySchedule ?? []} />
+      <TodayEpisodesSection
+        initialItems={data.todaySchedule ?? []}
+        homeWithEpisodeCount={homeWithEpisodeCount}
+      />
 
       {/* 2. Em Alta */}
-      <SectionReveal minHeight="260px" rootMargin="300px 0px" lazy={false}>
-        <AnimeRow
-          title="Em Alta"
-          items={emAltaItems}
-          showBookmark={false}
-          showRank={false}
-          priorityCount={0}
-        />
-      </SectionReveal>
+      {emAltaItems.length > 0 && (
+        <SectionReveal minHeight="260px" rootMargin="300px 0px" lazy={false}>
+          <AnimeRow
+            title="Em Alta"
+            items={emAltaItems}
+            showBookmark={false}
+            showRank={false}
+            priorityCount={0}
+          />
+        </SectionReveal>
+      )}
 
       {/* 3. Episódios Recentes (publicados pelo administrador) */}
-      <SectionReveal minHeight="380px" rootMargin="300px 0px" lazy={false}>
-        <RecentEpisodesSection
-          serverStatus={data.publicEpisodesStatus}
-          initialEpisodes={recentEpisodes}
-        />
-      </SectionReveal>
+      {(recentEpisodes.length > 0 || data.publicEpisodesStatus === "error") && (
+        <SectionReveal minHeight="380px" rootMargin="300px 0px" lazy={false}>
+          <RecentEpisodesSection
+            serverStatus={data.publicEpisodesStatus}
+            initialEpisodes={recentEpisodes}
+          />
+        </SectionReveal>
+      )}
 
       {/* 4. Animes Recém-Adicionados (renderiza apenas quando há itens cadastrados) */}
       {hydrated && recentlyAddedAnimes.length > 0 && (
@@ -407,14 +483,13 @@ function Home() {
       )}
 
       {/* 5. Animes da Temporada */}
-      <SectionReveal minHeight="260px" rootMargin="300px 0px" lazy={false}>
-        <SeasonAnimeRow
-          seasonName={data.seasonName}
-          seasonYear={data.seasonYear}
-          seasonCode={data.seasonCode}
-          initialItems={data.season && data.season.length > 0 ? data.season : []}
-        />
-      </SectionReveal>
+      <SeasonAnimeRow
+        seasonName={data.seasonName}
+        seasonYear={data.seasonYear}
+        seasonCode={data.seasonCode}
+        initialItems={data.season && data.season.length > 0 ? data.season : []}
+        homeWithEpisodeCount={homeWithEpisodeCount}
+      />
     </div>
   );
 }
@@ -424,11 +499,13 @@ function SeasonAnimeRow({
   seasonYear,
   seasonCode,
   initialItems = [],
+  homeWithEpisodeCount,
 }: {
   seasonName: string;
   seasonYear: number;
   seasonCode?: OfficialAnimeSeason;
   initialItems?: SlimAnime[];
+  homeWithEpisodeCount: number;
 }) {
   const locals = useHikariStore((s) => s.animes);
   const [seasonItems, setSeasonItems] = useState<SlimAnime[]>(initialItems);
@@ -457,20 +534,30 @@ function SeasonAnimeRow({
   const resolvedSeasonCode = seasonCode || currentAnimeSeason().season;
 
   const season = useMemo(
-    () => overlaySeasonList(seasonItems, locals, resolvedSeasonCode, seasonYear),
-    [seasonItems, locals, resolvedSeasonCode, seasonYear],
+    () =>
+      selectHomeSectionItems(
+        overlaySeasonList(seasonItems, locals, resolvedSeasonCode, seasonYear),
+        homeWithEpisodeCount,
+      ),
+    [seasonItems, locals, resolvedSeasonCode, seasonYear, homeWithEpisodeCount],
   );
 
+  if (season.length === 0) {
+    return null;
+  }
+
   return (
-    <AnimeRow
-      title="Animes da Temporada"
-      tag={`${seasonName} ${seasonYear}`}
-      href="/browse/season"
-      items={season}
-      loading={loading}
-      showBookmark={false}
-      showRank={false}
-      priorityCount={0}
-    />
+    <SectionReveal minHeight="260px" rootMargin="300px 0px" lazy={false}>
+      <AnimeRow
+        title="Animes da Temporada"
+        tag={`${seasonName} ${seasonYear}`}
+        href="/browse/season"
+        items={season}
+        loading={loading}
+        showBookmark={false}
+        showRank={false}
+        priorityCount={0}
+      />
+    </SectionReveal>
   );
 }
