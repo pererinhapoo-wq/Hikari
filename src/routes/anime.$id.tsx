@@ -81,7 +81,7 @@ const DeferredAnimeComments = lazy(
 );
 import { SectionReveal } from "@/components/section-reveal";
 import { useScrollLock } from "@/lib/scroll-lock";
-import { anilistImage } from "@/lib/image-utils";
+import { anilistImage, getSmallImageFallback } from "@/lib/image-utils";
 import {
   buildCleanCanonical,
   buildTVSeriesJsonLd,
@@ -3240,22 +3240,18 @@ function AnimePageContent({
               <div className="relative aspect-2/3 w-28 max-sm:min-[380px]:w-32 sm:w-44 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/35 sm:translate-y-8.5">
                 {(() => {
                   const posterUrl = anime.cover || null;
-                  const anilist320 = anilistImage(posterUrl, 320);
-                  const anilist460 = anilistImage(posterUrl, 460);
-                  const anilist640 = anilistImage(posterUrl, 640);
-                  const srcSet = posterUrl ? `${anilist320} 320w, ${anilist460} 460w, ${anilist640} 640w` : undefined;
+                  const coverSrc = posterUrl ? anilistImage(posterUrl, 180) : null;
                   return (
                     <HikariImage
                       key={`poster-${anime.id}-${posterUrl}`}
-                      src={anilist640}
-                      srcSet={srcSet}
-                      sizes="(min-width: 640px) 176px, 112px"
+                      src={coverSrc}
+                      fallbackSrc={getSmallImageFallback(posterUrl, coverSrc)}
                       alt={title}
-                      width={460}
-                      height={690}
+                      width={180}
+                      height={270}
                       priority={false}
-                      loading="eager"
-                      fetchPriority="auto"
+                      loading="lazy"
+                      fetchPriority="low"
                       decoding="async"
                       fallbackClassName="bg-elevated"
                       className="size-full object-cover"
@@ -4569,7 +4565,7 @@ const EPISODES_PAGE_SIZE = 60;
 
 const EpisodeGridItem = memo(function EpisodeGridItem({
   ep,
-  index,
+  index: _index,
   animeId,
   watched,
   isSelecting,
@@ -4586,9 +4582,7 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
 }) {
   const rawThumb = resolveEpisodeThumbnailUrl(ep);
   const imgSrc = rawThumb ? anilistImage(rawThumb, 320) : null;
-  const fallbackSrc =
-    rawThumb && imgSrc && imgSrc !== rawThumb ? rawThumb : undefined;
-  const isFirstSix = index < 6;
+  const fallbackSrc = getSmallImageFallback(rawThumb, imgSrc);
 
   return (
     <li className="episode-card-cv">
@@ -4628,10 +4622,10 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
             key={imgSrc ?? `ep-thumb-${animeId}-${ep.id}`}
             src={imgSrc}
             fallbackSrc={fallbackSrc}
-            loading={isFirstSix ? "eager" : "lazy"}
+            loading="lazy"
             decoding="async"
-            fetchPriority={isFirstSix ? "auto" : "low"}
-            defer={Boolean(imgSrc && (!isFirstSix || !loadImage))}
+            fetchPriority="low"
+            defer={Boolean(imgSrc && !loadImage)}
             alt={ep.title ? `Episódio ${ep.number}: ${ep.title}` : `Episódio ${ep.number}`}
             width={320}
             height={180}
@@ -4964,6 +4958,8 @@ const InformacoesAdicionaisSection = memo(function InformacoesAdicionaisSection(
   );
 });
 
+const INITIAL_GALLERY_LIMIT = 6;
+
 const ImagensSection = memo(function ImagensSection({
   animeId,
   images,
@@ -4980,6 +4976,7 @@ const ImagensSection = memo(function ImagensSection({
   malId?: number | null;
 }) {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [showAllImages, setShowAllImages] = useState(false);
   const [extraPictures, setExtraPictures] = useState<string[]>(() => {
     return malId ? clientPicturesCache.get(malId) ?? [] : [];
   });
@@ -4987,7 +4984,7 @@ const ImagensSection = memo(function ImagensSection({
 
   // Busca em segundo plano na API Jikan (MyAnimeList) caso o anime possua poucas imagens carregadas
   useEffect(() => {
-    if (!malId || (images && images.length >= 3)) return;
+    if (!malId || (!showAllImages && images && images.length >= INITIAL_GALLERY_LIMIT)) return;
 
     const cached = clientPicturesCache.get(malId);
     if (cached && cached.length > 0) {
@@ -5019,7 +5016,7 @@ const ImagensSection = memo(function ImagensSection({
     return () => {
       isMounted = false;
     };
-  }, [malId, images]);
+  }, [malId, images, showAllImages]);
 
   const validImages = useMemo(() => {
     const raw = [...(images ?? []), ...extraPictures];
@@ -5051,13 +5048,23 @@ const ImagensSection = memo(function ImagensSection({
     return result;
   }, [images, extraPictures, bannerUrl, coverUrl]);
 
+  const displayedImages = useMemo(
+    () =>
+      showAllImages
+        ? validImages
+        : validImages.slice(0, INITIAL_GALLERY_LIMIT),
+    [validImages, showAllImages],
+  );
+
+  const hasHiddenImages = validImages.length > INITIAL_GALLERY_LIMIT;
+
   const { limit: visibleImgLimit, advance: advanceImgLimit } =
     useHorizontalRailImageLimit(
       railRef,
-      validImages.length,
+      displayedImages.length,
       158,
-      10,
-      animeId,
+      INITIAL_GALLERY_LIMIT,
+      `${animeId}-${showAllImages ? "all" : "preview"}`,
     );
 
   const closeModal = useCallback(() => {
@@ -5119,55 +5126,78 @@ const ImagensSection = memo(function ImagensSection({
             </h2>
           </div>
 
-          {validImages.length > 2 && (
-            <div className="hidden sm:flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
+            {hasHiddenImages && (
               <button
                 type="button"
-                onClick={() => scroll("left")}
-                aria-label="Rolar imagens para a esquerda"
-                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+                onClick={() => setShowAllImages((prev) => !prev)}
+                aria-expanded={showAllImages}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-[#0f0d18] px-3 py-1.5 text-xs font-semibold text-purple-200 [@media(hover:hover)]:hover:border-purple-400/60 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
               >
-                <ChevronLeft className="size-4" />
+                {showAllImages
+                  ? "Mostrar menos"
+                  : `Ver todas (${validImages.length})`}
               </button>
-              <button
-                type="button"
-                onClick={() => scroll("right")}
-                aria-label="Rolar imagens para a direita"
-                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-          )}
+            )}
+
+            {displayedImages.length > 2 && (
+              <div className="hidden sm:flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => scroll("left")}
+                  aria-label="Rolar imagens para a esquerda"
+                  className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scroll("right")}
+                  aria-label="Rolar imagens para a direita"
+                  className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+                >
+                  <ChevronRight className="size-4" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div
           ref={railRef}
           className="rail -mx-4 flex gap-3.5 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
         >
-          {validImages.map((imgUrl, idx) => (
-            <button
-              key={`${imgUrl}-${idx}`}
-              type="button"
-              onClick={() => setSelectedImage(imgUrl)}
-              className="group relative h-52 sm:h-60 w-36 sm:w-44 shrink-0 overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0e0c1a] shadow-md [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/60 [@media(hover:hover)]:hover:shadow-[0_8px_30px_rgba(168,85,247,0.25)] cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 p-2 flex flex-col items-center justify-center"
-            >
-              <div className="relative size-full flex items-center justify-center overflow-hidden rounded-xl bg-[#07060d]">
-                <HikariImage
-                  src={anilistImage(imgUrl, 480)}
-                  defer={idx >= visibleImgLimit}
-                  alt={`Arte promocional de ${title} (${idx + 1})`}
-                  fallbackClassName="bg-[#07060d]"
-                  className="size-full object-contain [@media(hover:hover)]:group-hover:scale-105"
-                />
-              </div>
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity flex items-end p-2.5 pointer-events-none">
-                <span className="text-[11px] font-semibold text-purple-200 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
-                  Ampliar arte
-                </span>
-              </div>
-          </button>
-        ))}
+          {displayedImages.map((imgUrl, idx) => {
+            const gallerySrc = anilistImage(imgUrl, 400);
+            return (
+              <button
+                key={`${imgUrl}-${idx}`}
+                type="button"
+                onClick={() => setSelectedImage(imgUrl)}
+                className="group relative h-52 sm:h-60 w-36 sm:w-44 shrink-0 overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0e0c1a] shadow-md [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/60 [@media(hover:hover)]:hover:shadow-[0_8px_30px_rgba(168,85,247,0.25)] cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 p-2 flex flex-col items-center justify-center"
+              >
+                <div className="relative size-full flex items-center justify-center overflow-hidden rounded-xl bg-[#07060d]">
+                  <HikariImage
+                    src={gallerySrc}
+                    fallbackSrc={getSmallImageFallback(imgUrl, gallerySrc)}
+                    width={400}
+                    loading="lazy"
+                    decoding="async"
+                    fetchPriority="low"
+                    defer={showAllImages && idx >= visibleImgLimit}
+                    alt={`Arte promocional de ${title} (${idx + 1})`}
+                    fallbackClassName="bg-[#07060d]"
+                    className="size-full object-contain [@media(hover:hover)]:group-hover:scale-105"
+                  />
+                </div>
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity flex items-end p-2.5 pointer-events-none">
+                  <span className="text-[11px] font-semibold text-purple-200 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
+                    Ampliar arte
+                  </span>
+                </div>
+              </button>
+            );
+          })}
       </div>
 
       {selectedImage && (
@@ -5233,6 +5263,7 @@ const ElencoSection = memo(function ElencoSection({
     railRef,
     totalCount: validCharacters.length,
     itemStridePx: 128,
+    initialRenderCount: 10,
     isMobile,
     resetKey: animeId,
   });
@@ -5333,7 +5364,12 @@ const ElencoCard = memo(function ElencoCard({
       {/* Imagem retangular do personagem (elemento visual principal, nunca circular) */}
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
         <HikariImage
-          src={anilistImage(char.image, 320)}
+          src={anilistImage(char.image, 160)}
+          width={160}
+          height={213}
+          loading="lazy"
+          decoding="async"
+          fetchPriority="low"
           defer={Boolean(char.image && !loadImage)}
           alt={charName}
           fallbackClassName="bg-[#0d0c16]"
@@ -5559,6 +5595,7 @@ const DubladoresSection = memo(function DubladoresSection({
     railRef,
     totalCount: displayVoiceActors.length,
     itemStridePx: 128,
+    initialRenderCount: 10,
     isMobile,
     resetKey: `${animeId}-vas-${activeLang}`,
   });
@@ -5745,7 +5782,12 @@ const DubladorCard = memo(function DubladorCard({
       {/* Imagem retangular do dublador (foto real da pessoa) */}
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
         <HikariImage
-          src={anilistImage(item.vaImage, 320)}
+          src={anilistImage(item.vaImage, 160)}
+          width={160}
+          height={213}
+          loading="lazy"
+          decoding="async"
+          fetchPriority="low"
           defer={Boolean(item.vaImage && !loadImage)}
           alt={item.vaName}
           fallbackClassName="bg-[#0d0c16]"
@@ -6143,7 +6185,12 @@ const StaffCard = memo(function StaffCard({
         {isStudio ? (
           <div className="relative flex size-full items-center justify-center p-2.5 sm:p-3 bg-[#0d0c16]">
             <HikariImage
-              src={anilistImage(item.image, 320)}
+              src={anilistImage(item.image, 160)}
+              width={160}
+              height={213}
+              loading="lazy"
+              decoding="async"
+              fetchPriority="low"
               defer={Boolean(item.image && !loadImage)}
               alt={item.name}
               fallbackClassName="bg-[#0d0c16]"
@@ -6152,7 +6199,12 @@ const StaffCard = memo(function StaffCard({
           </div>
         ) : (
           <HikariImage
-            src={anilistImage(item.image, 320)}
+            src={anilistImage(item.image, 160)}
+            width={160}
+            height={213}
+            loading="lazy"
+            decoding="async"
+            fetchPriority="low"
             defer={Boolean(item.image && !loadImage)}
             alt={item.name}
             fallbackClassName="bg-[#0d0c16]"
@@ -6202,14 +6254,18 @@ const RelatedSection = memo(function RelatedSection({
 }) {
   const railRef = useRef<HTMLDivElement>(null);
 
-  const { limit: visibleImgLimit, advance: advanceImgLimit } =
-    useHorizontalRailImageLimit(
-      railRef,
-      recommendations.length,
-      132,
-      Math.max(16, recommendations.length),
-      animeId,
-    );
+  const {
+    renderedLimit,
+    imageLimit: visibleImgLimit,
+    advance: advanceImgLimit,
+  } = useProgressiveRail({
+    railRef,
+    totalCount: recommendations.length,
+    itemStridePx: 132,
+    initialRenderCount: 8,
+    initialImageCount: 6,
+    resetKey: animeId,
+  });
 
   if (recommendations.length === 0) {
     return null;
@@ -6260,10 +6316,14 @@ const RelatedSection = memo(function RelatedSection({
         ref={railRef}
         className="rail -mx-4 px-4 sm:-mx-6 sm:px-6"
       >
-        {recommendations.map((r, index) => (
+        {recommendations.slice(0, renderedLimit).map((r, index) => (
           <AnimeCard
             key={r.id}
             anime={r}
+            imageWidth={120}
+            loading="lazy"
+            fetchPriority="low"
+            priority={false}
             showBookmark={false}
             loadImage={index < visibleImgLimit}
           />

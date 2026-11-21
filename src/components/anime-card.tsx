@@ -27,6 +27,7 @@ export const AnimeCard = memo(function AnimeCard({
   defer,
   loading,
   fetchPriority,
+  imageWidth,
   showScoreBadge: _showScoreBadge = false,
 }: {
   anime: SlimAnime;
@@ -39,6 +40,7 @@ export const AnimeCard = memo(function AnimeCard({
   defer?: boolean;
   loading?: "eager" | "lazy";
   fetchPriority?: "high" | "low" | "auto";
+  imageWidth?: number;
   showScoreBadge?: boolean;
 }) {
   const { user } = useCurrentUserState();
@@ -61,7 +63,15 @@ export const AnimeCard = memo(function AnimeCard({
 
   const coverVariant =
     size === "sm" ? "card-sm" : size === "lg" ? "card-lg" : "card-md";
-  const coverAttrs = getResponsiveCoverAttrs(anime.cover, coverVariant);
+  const coverAttrs = getResponsiveCoverAttrs(
+    anime.cover,
+    coverVariant,
+    priority,
+    imageWidth,
+  );
+  const attrWidth =
+    imageWidth ?? (size === "sm" ? 120 : size === "lg" ? 180 : 160);
+  const attrHeight = Math.round(attrWidth * 1.5);
 
   const primaryGenre = anime.genres?.[0]
     ? GENRE_PT[anime.genres[0]] || anime.genres[0]
@@ -84,14 +94,15 @@ export const AnimeCard = memo(function AnimeCard({
             src={anime.cover ? coverAttrs.src : null}
             srcSet={anime.cover ? coverAttrs.srcSet : undefined}
             sizes={anime.cover ? coverAttrs.sizes : undefined}
-            fallbackSrc={coverAttrs.fallbackSrc ? anime.cover : undefined}
+            fallbackSrc={coverAttrs.fallbackSrc}
             priority={priority}
             defer={defer ?? (!priority || !loadImage)}
-            loading={loading}
-            fetchPriority={fetchPriority}
+            loading={loading ?? coverAttrs.loading}
+            decoding="async"
+            fetchPriority={fetchPriority ?? coverAttrs.fetchPriority}
             alt={title}
-            width={230}
-            height={345}
+            width={attrWidth}
+            height={attrHeight}
             fallbackClassName="bg-[#0d0c16]"
             className="size-full object-cover group-hover:scale-[1.03] group-active:scale-[1.01] motion-reduce:transform-none"
           />
