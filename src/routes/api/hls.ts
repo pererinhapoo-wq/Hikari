@@ -226,7 +226,8 @@ async function handleHlsProxy(req: Request): Promise<Response> {
           headers: {
             "content-type": "application/vnd.apple.mpegurl",
             ...CORS,
-            "cache-control": "public, max-age=5",
+            "cache-control": "public, max-age=5, stale-while-revalidate=30",
+            "cdn-cache-control": "public, max-age=5, stale-while-revalidate=30",
           },
         });
       }
@@ -253,7 +254,8 @@ async function handleHlsProxy(req: Request): Promise<Response> {
         headers: {
           "content-type": "application/vnd.apple.mpegurl",
           ...CORS,
-          "cache-control": "public, max-age=5",
+          "cache-control": "public, max-age=5, stale-while-revalidate=30",
+          "cdn-cache-control": "public, max-age=5, stale-while-revalidate=30",
         },
       });
     }
@@ -270,7 +272,8 @@ async function handleHlsProxy(req: Request): Promise<Response> {
       headers: {
         "content-type": "application/vnd.apple.mpegurl",
         ...CORS,
-        "cache-control": "public, max-age=5",
+        "cache-control": "public, max-age=5, stale-while-revalidate=30",
+        "cdn-cache-control": "public, max-age=5, stale-while-revalidate=30",
       },
     });
   }
@@ -305,7 +308,8 @@ async function handleHlsProxy(req: Request): Promise<Response> {
   if (cr) out.set("content-range", cr);
   const cl = res.headers.get("content-length");
   if (cl) out.set("content-length", cl);
-  out.set("cache-control", "public, max-age=3600, immutable");
+  out.set("cache-control", "public, max-age=31536000, immutable");
+  out.set("cdn-cache-control", "public, max-age=31536000, immutable");
 
   return new Response(upstreamMethod === "HEAD" ? null : res.body, {
     status: res.status,

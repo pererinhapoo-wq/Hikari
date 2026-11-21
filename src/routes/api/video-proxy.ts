@@ -314,6 +314,8 @@ export const Route = createFileRoute("/api/video-proxy")({
               }
               const rewritten = rewriteHlsPlaylist(text, finalUrl, explicitRef);
               outHeaders.set("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8");
+              outHeaders.set("Cache-Control", "public, max-age=5, stale-while-revalidate=30");
+              outHeaders.set("CDN-Cache-Control", "public, max-age=5, stale-while-revalidate=30");
               return new Response(rewritten, {
                 status: 200,
                 headers: outHeaders,
@@ -327,6 +329,8 @@ export const Route = createFileRoute("/api/video-proxy")({
             if (contentRange) outHeaders.set("Content-Range", contentRange);
             const contentLength = upstream.headers.get("content-length");
             if (contentLength) outHeaders.set("Content-Length", contentLength);
+            outHeaders.set("Cache-Control", "public, max-age=31536000, immutable");
+            outHeaders.set("CDN-Cache-Control", "public, max-age=31536000, immutable");
 
             return new Response(upstream.body, {
               status: upstream.status === 206 ? 206 : 200,

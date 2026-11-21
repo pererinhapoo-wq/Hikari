@@ -12,34 +12,56 @@ export default async function cacheControlMiddleware(
 
   if (res instanceof Response) {
     const headers = new Headers(res.headers);
+    
+    // Regra 4: Vary: Accept-Encoding mantido; nunca Vary: Cookie.
     headers.set("Vary", "Accept-Encoding");
 
-    if (
-      path.startsWith("/api/") ||
-      path.includes("progresso") ||
-      path.includes("favoritos") ||
-      path.includes("sessao") ||
-      path.includes("session")
-    ) {
-      headers.set("Cache-Control", "private, no-store");
-    } else if (path.startsWith("/watch/")) {
-      headers.set(
-        "Cache-Control",
-        "public, s-maxage=600, stale-while-revalidate=86400",
-      );
-    } else if (
-      path === "/" ||
-      path.startsWith("/browse") ||
-      path.startsWith("/anime/") ||
-      path === "/calendar" ||
-      path === "/episodes" ||
-      path.startsWith("/season/") ||
-      path.startsWith("/search")
-    ) {
-      headers.set(
-        "Cache-Control",
-        "public, s-maxage=300, stale-while-revalidate=86400",
-      );
+    // Regra 1 & 3: Excluir /api/proxy/stream, /api/embed, /api/hls do no-store automático.
+    // Deixa intacto se o handler já enviou Cache-Control (Regra 2).
+    const isMediaOrEmbedRoute =
+      path.startsWith("/api/proxy/stream") ||
+      path.startsWith("/api/embed") ||
+      path.startsWith("/api/hls");
+
+    const hasExistingCacheControl = headers.has("Cache-Control");
+
+    if (!hasExistingCacheControl && !isMediaOrEmbedRoute) {
+      if (
+        path.startsWith("/admin") ||
+        path.startsWith("/login") ||
+        path.startsWith("/api/") ||
+        path.includes("progresso") ||
+        path.includes("favoritos") ||
+        path.includes("sessao") ||
+        path.includes("session")
+      ) {
+        headers.set("Cache-Control", "private, no-store");
+      } else if (path.startsWith("/anime/")) {
+        headers.set(
+          "Cache-Control",
+          "public, s-maxage=60, stale-while-revalidate=300, stale-if-error=86400",
+        );
+        headers.set(
+          "CDN-Cache-Control",
+          "public, s-maxage=60, stale-while-revalidate=300, stale-if-error=86400",
+        );
+      } else if (
+        path === "/" ||
+        path.startsWith("/browse") ||
+        path.startsWith("/search") ||
+        path === "/calendar" ||
+        path === "/episodes" ||
+        path.startsWith("/news")
+      ) {
+        headers.set(
+          "Cache-Control",
+          "public, s-maxage=300, stale-while-revalidate=900, stale-if-error=86400",
+        );
+        headers.set(
+          "CDN-Cache-Control",
+          "public, s-maxage=300, stale-while-revalidate=900, stale-if-error=86400",
+        );
+      }
     }
 
     return new Response(res.body, {
