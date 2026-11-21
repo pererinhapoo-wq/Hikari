@@ -640,6 +640,7 @@ const MAX_LOCAL_SEARCH_ENTRIES = 200;
 
 const localSearchCache = new Map<string, LocalSearchCacheEntry>();
 const localSearchInFlightPromises = new Map<string, Promise<SlimAnime[]>>();
+let localSearchCacheEpoch = 0;
 
 function pruneLocalSearchCache(): void {
   if (localSearchCache.size > MAX_LOCAL_SEARCH_ENTRIES) {
@@ -651,6 +652,7 @@ function pruneLocalSearchCache(): void {
 }
 
 export function invalidateLocalCatalogSearchCache(query?: string): void {
+  localSearchCacheEpoch += 1;
   if (query) {
     const clean = normalizeCatalogSearchQuery(query);
     for (const key of localSearchCache.keys()) {
@@ -688,17 +690,21 @@ export async function searchLocalCatalogAnime(
     return inFlight;
   }
 
+  const requestEpoch = localSearchCacheEpoch;
+  let flightPromiseRef: Promise<SlimAnime[]> | null = null;
+
   const flightPromise = (async (): Promise<SlimAnime[]> => {
     try {
       // 3. Consulta no Upstash Redis (cache compartilhado)
       const redisResult = await getRedisCatalogSearch(clean, safeLimit);
       if (
         Array.isArray(redisResult) &&
-        redisResult.length > 0 &&
         redisResult.every((r) => typeof r.hasEpisode === "boolean")
       ) {
-        localSearchCache.set(cacheKey, { data: redisResult, timestamp: Date.now() });
-        pruneLocalSearchCache();
+        if (requestEpoch === localSearchCacheEpoch) {
+          localSearchCache.set(cacheKey, { data: redisResult, timestamp: Date.now() });
+          pruneLocalSearchCache();
+        }
         return redisResult;
       }
 
@@ -729,52 +735,58 @@ export async function searchLocalCatalogAnime(
         [pattern, safeLimit],
       );
 
-      if (!rows || rows.length === 0) return [];
+      const results: SlimAnime[] =
+        !rows || rows.length === 0
+          ? []
+          : rows.map((row) => ({
+              id: row.id,
+              anilistId: row.anilistId ?? undefined,
+              malId: row.malId ?? undefined,
+              kitsuId: row.kitsuId ?? undefined,
+              titles: {
+                romaji: row.titleRomaji?.trim() || row.title?.trim() || "",
+                english: row.titleEnglish?.trim() || "",
+                native: row.titleNative?.trim() || "",
+              },
+              cover: stripCatalogImageVersion(row.cover),
+              banner: stripCatalogImageVersion(row.banner),
+              synopsis: row.synopsis?.trim() || "",
+              format: row.format?.trim() || "TV",
+              status: row.status?.trim() || "FINISHED",
+              episodesCount: row.episodesCount ?? null,
+              season: row.season?.trim() || null,
+              year: row.year ?? null,
+              genres: Array.isArray(row.genres) ? row.genres : [],
+              score: row.score ?? null,
+              trailerId: row.trailerId?.trim() || null,
+              catalogUpdatedAt: toTimestampMs(row.updatedAt),
+              serverCatalogId: row.id,
+              hasEpisode: Boolean(row.hasEpisode),
+              source: "local" as const,
+            }));
 
-      const results = rows.map((row) => ({
-        id: row.id,
-        anilistId: row.anilistId ?? undefined,
-        malId: row.malId ?? undefined,
-        kitsuId: row.kitsuId ?? undefined,
-        titles: {
-          romaji: row.titleRomaji?.trim() || row.title?.trim() || "",
-          english: row.titleEnglish?.trim() || "",
-          native: row.titleNative?.trim() || "",
-        },
-        cover: stripCatalogImageVersion(row.cover),
-        banner: stripCatalogImageVersion(row.banner),
-        synopsis: row.synopsis?.trim() || "",
-        format: row.format?.trim() || "TV",
-        status: row.status?.trim() || "FINISHED",
-        episodesCount: row.episodesCount ?? null,
-        season: row.season?.trim() || null,
-        year: row.year ?? null,
-        genres: Array.isArray(row.genres) ? row.genres : [],
-        score: row.score ?? null,
-        trailerId: row.trailerId?.trim() || null,
-        catalogUpdatedAt: toTimestampMs(row.updatedAt),
-        serverCatalogId: row.id,
-        hasEpisode: Boolean(row.hasEpisode),
-        source: "local" as const,
-      }));
-
-      // 5. Salva no Redis e na memória local
-      scheduleRedisBackgroundWrite(
-        setRedisCatalogSearch(clean, safeLimit, results),
-        "setRedisCatalogSearch",
-      );
-      localSearchCache.set(cacheKey, { data: results, timestamp: Date.now() });
-      pruneLocalSearchCache();
+      // 5. Salva no Redis e na memória local (inclui [] como negative cache)
+      if (requestEpoch === localSearchCacheEpoch) {
+        scheduleRedisBackgroundWrite(
+          setRedisCatalogSearch(clean, safeLimit, results),
+          "setRedisCatalogSearch",
+        );
+        localSearchCache.set(cacheKey, { data: results, timestamp: Date.now() });
+        pruneLocalSearchCache();
+      }
 
       return results;
     } catch (err) {
       console.warn("[catalog-server-overlay] Erro na busca local otimizada de catalog_anime:", err);
       return localSearchCache.get(cacheKey)?.data ?? [];
     } finally {
-      localSearchInFlightPromises.delete(cacheKey);
+      if (localSearchInFlightPromises.get(cacheKey) === flightPromiseRef) {
+        localSearchInFlightPromises.delete(cacheKey);
+      }
     }
   })();
 
+  flightPromiseRef = flightPromise;
   localSearchInFlightPromises.set(cacheKey, flightPromise);
   return flightPromise;
 }
