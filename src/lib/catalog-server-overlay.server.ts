@@ -4,7 +4,8 @@ import {
   setRedisCatalogIndex,
   invalidateRedisCatalogIndex,
   getRedisCatalogSearch,
-  setRedisCatalogSearch,
+  setRedisCatalogSearchWithGen,
+  captureSearchGen,
   invalidateRedisCatalogSearch,
   normalizeCatalogSearchQuery,
   scheduleRedisBackgroundWrite,
@@ -708,6 +709,9 @@ export async function searchLocalCatalogAnime(
         return redisResult;
       }
 
+      // Capturar geração compartilhada no Redis ANTES da consulta ao banco
+      const observedGen = await captureSearchGen();
+
       // 4. Consulta no PostgreSQL
       const sql = await getSql();
       const escaped = clean.replace(/[\\%_]/g, "\\$&");
@@ -765,11 +769,11 @@ export async function searchLocalCatalogAnime(
               source: "local" as const,
             }));
 
-      // 5. Salva no Redis e na memória local (inclui [] como negative cache)
+      // 5. Salva no Redis (validado por geração) e na memória local (inclui [] como negative cache)
       if (requestEpoch === localSearchCacheEpoch) {
         scheduleRedisBackgroundWrite(
-          setRedisCatalogSearch(clean, safeLimit, results),
-          "setRedisCatalogSearch",
+          setRedisCatalogSearchWithGen(clean, safeLimit, results, observedGen),
+          "setRedisCatalogSearchWithGen",
         );
         localSearchCache.set(cacheKey, { data: results, timestamp: Date.now() });
         pruneLocalSearchCache();

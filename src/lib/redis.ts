@@ -367,11 +367,40 @@ export function normalizeCatalogSearchQuery(query?: string): string {
 }
 
 const SEARCH_REDIS_KEY_PREFIX = "hikari:catalog:search:v1:";
+const SEARCH_REDIS_GEN_KEY = "hikari:catalog:search:gen:v1";
 const SEARCH_REDIS_TTL_SEC = 60; // 60 segundos
+
+const CAPTURE_SEARCH_GEN_SCRIPT = `
+return tostring(redis.call("GET", KEYS[1]) or "0")
+`;
+
+const SET_SEARCH_WITH_GEN_SCRIPT = `
+local currentGen = tostring(redis.call("GET", KEYS[2]) or "0")
+if currentGen ~= tostring(ARGV[2]) then
+  return {"fenced"}
+end
+redis.call("SET", KEYS[1], ARGV[1], "EX", tonumber(ARGV[3]))
+return {"updated"}
+`;
 
 function buildSearchRedisKey(normalizedQuery: string, limit: number): string {
   const safeLimit = Math.min(Math.max(1, Math.floor(limit) || 12), 50);
   return `${SEARCH_REDIS_KEY_PREFIX}${encodeURIComponent(normalizedQuery)}:${safeLimit}`;
+}
+
+export async function captureSearchGen(): Promise<string> {
+  if (!redisClient || typeof window !== "undefined") return "0";
+  try {
+    const res = await withRedisTimeout(
+      redisClient.eval<never[], unknown>(CAPTURE_SEARCH_GEN_SCRIPT, [SEARCH_REDIS_GEN_KEY], []),
+      "captureSearchGen",
+    );
+    const token = extractGenToken(res);
+    return token || "0";
+  } catch (err) {
+    console.warn("[redis] Aviso ao capturar geração de busca no Redis (fallback para '0'):", err instanceof Error ? err.message : err);
+    return "0";
+  }
 }
 
 export async function getRedisCatalogSearch(
@@ -418,11 +447,45 @@ export async function setRedisCatalogSearch(
   }
 }
 
+export async function setRedisCatalogSearchWithGen(
+  query: string,
+  limit: number,
+  items: SlimAnime[],
+  observedGen: string,
+): Promise<boolean> {
+  if (!redisClient || typeof window !== "undefined" || !Array.isArray(items)) return false;
+  const clean = normalizeCatalogSearchQuery(query);
+  if (!clean || clean.length < 2 || clean.length > 100) return false;
+
+  const key = buildSearchRedisKey(clean, limit);
+  const serialized = JSON.stringify(items);
+  try {
+    const res = await withRedisTimeout(
+      redisClient.eval<string[], unknown[]>(
+        SET_SEARCH_WITH_GEN_SCRIPT,
+        [key, SEARCH_REDIS_GEN_KEY],
+        [serialized, observedGen, String(SEARCH_REDIS_TTL_SEC)],
+      ),
+      "setRedisCatalogSearchWithGen",
+    );
+    return Array.isArray(res) && res[0] === "updated";
+  } catch (err) {
+    console.warn("[redis] Aviso ao salvar pesquisa com geração no Redis:", err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
 export async function invalidateRedisCatalogSearch(query?: string): Promise<void> {
   if (!redisClient || typeof window !== "undefined") return;
   try {
     const clean = query ? normalizeCatalogSearchQuery(query) : "";
     if (clean) {
+      // Invalidação específica de query: incrementa geração global e limpa padrão correspondente
+      await withRedisTimeout(
+        redisClient.eval<never[], unknown>(INCR_GLOBAL_GEN_SCRIPT, [SEARCH_REDIS_GEN_KEY], []),
+        "invalidateRedisCatalogSearch.incrGen",
+      );
+      // Opcional: del direto da chave específica se houver
       const pattern = `${SEARCH_REDIS_KEY_PREFIX}${encodeURIComponent(clean)}:*`;
       const keys = await withRedisTimeout(
         redisClient.keys(pattern),
@@ -435,16 +498,11 @@ export async function invalidateRedisCatalogSearch(query?: string): Promise<void
         );
       }
     } else {
-      const keys = await withRedisTimeout(
-        redisClient.keys(`${SEARCH_REDIS_KEY_PREFIX}*`),
-        "invalidateRedisCatalogSearch.keys",
+      // Invalidação global: incrementa geração atômica (invalidando todas as gravações pendentes antigas)
+      await withRedisTimeout(
+        redisClient.eval<never[], unknown>(INCR_GLOBAL_GEN_SCRIPT, [SEARCH_REDIS_GEN_KEY], []),
+        "invalidateRedisCatalogSearch.incrGen",
       );
-      if (Array.isArray(keys) && keys.length > 0) {
-        await withRedisTimeout(
-          redisClient.del(...keys),
-          "invalidateRedisCatalogSearch.del",
-        );
-      }
     }
   } catch (err) {
     console.warn("[redis] Aviso ao invalidar pesquisa no Redis:", err instanceof Error ? err.message : err);
