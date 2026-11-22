@@ -30,6 +30,7 @@ import { anilistImage, getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { mergeDetail } from "@/lib/overlay";
 import { buildCleanCanonical, buildWatchJsonLd, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { useHikariStore } from "@/lib/store";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 import {
   buildResolvedSeasons,
   executeGetCatalogEpisodes,
@@ -413,6 +414,7 @@ function WatchPage() {
           <Link
             to="/anime/$id"
             params={{ id: anime.id }}
+            onClick={triggerMonetagSmartLinkOnNavigationClick}
             className="group relative block aspect-[2/3] w-14 sm:w-16 shrink-0 overflow-hidden rounded-none border border-white/15 bg-elevated transition-transform hover:scale-[1.02]"
             aria-label={title}
           >
@@ -447,6 +449,7 @@ function WatchPage() {
               <Link
                 to="/anime/$id"
                 params={{ id: anime.id }}
+                onClick={triggerMonetagSmartLinkOnNavigationClick}
                 className="transition-colors hover:text-[#c084fc]"
               >
                 {title}
@@ -479,6 +482,7 @@ function WatchPage() {
                 to="/watch/$id/$ep"
                 replace
                 params={{ id: anime.id, ep: `ep-${prev.number}` }}
+                onClick={triggerMonetagSmartLinkOnNavigationClick}
               >
                 <ChevronLeft className="size-4 mr-1 shrink-0 text-white/70" />
                 <span className="truncate">Episódio anterior</span>
@@ -506,6 +510,7 @@ function WatchPage() {
             <Link
               to="/anime/$id"
               params={{ id: anime.id }}
+              onClick={triggerMonetagSmartLinkOnNavigationClick}
               className="flex size-full items-center justify-center text-center font-bold leading-none select-none"
               aria-label="Ver detalhes do anime"
               title="Ver detalhes do anime"
@@ -524,6 +529,7 @@ function WatchPage() {
                 to="/watch/$id/$ep"
                 replace
                 params={{ id: anime.id, ep: `ep-${next.number}` }}
+                onClick={triggerMonetagSmartLinkOnNavigationClick}
               >
                 <span className="truncate">Próximo episódio</span>
                 <ChevronRight className="size-4 ml-1 shrink-0 text-white/70" />

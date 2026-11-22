@@ -15,6 +15,7 @@ import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import type { MyProfileComment, UserActivityItem } from "@/lib/profile.functions";
 import { cn } from "@/lib/utils";
 import type { TrackingStatus } from "@/types/profile-tracking";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 
 interface ProfileRecentActivitiesProps {
   activityItems?: UserActivityItem[];
@@ -267,6 +268,7 @@ export function ProfileRecentActivities({
                           <Link
                             to="/anime/$id"
                             params={{ id: comm.animeId }}
+                            onClick={triggerMonetagSmartLinkOnNavigationClick}
                             className="truncate font-semibold text-sm sm:text-base text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:hover:text-violet-300"
                             title={animeTitle}
                           >
@@ -291,6 +293,7 @@ export function ProfileRecentActivities({
                           search={{
                             comment: comm.id,
                           }}
+                          onClick={triggerMonetagSmartLinkOnNavigationClick}
                           className="inline-flex items-center gap-1 rounded-md bg-violet-500/20 px-2 py-0.5 text-[11px] font-bold text-violet-300 ring-1 ring-violet-500/30 hover:bg-violet-500/30 transition-colors"
                         >
                           Episódio {epNum}
@@ -337,6 +340,7 @@ export function ProfileRecentActivities({
                     search={{
                       comment: comm.id,
                     }}
+                    onClick={triggerMonetagSmartLinkOnNavigationClick}
                     className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-zinc-200 transition-all hover:border-violet-500/40 hover:bg-violet-600 hover:text-white"
                     title="Ver comentário no player do episódio"
                   >
@@ -396,6 +400,7 @@ export function ProfileRecentActivities({
                       <Link
                         to="/anime/$id"
                         params={{ id: act.resourceId }}
+                        onClick={triggerMonetagSmartLinkOnNavigationClick}
                         className="truncate font-semibold text-sm sm:text-base text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:hover:text-violet-300"
                         title={act.resourceTitle}
                       >
@@ -474,6 +479,7 @@ export function ProfileRecentActivities({
                       id: act.resourceId,
                       ep: `ep-${epNum}`,
                     }}
+                    onClick={triggerMonetagSmartLinkOnNavigationClick}
                     className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-zinc-200 transition-all hover:border-violet-500/40 hover:bg-violet-600 hover:text-white"
                   >
                     <Play className="size-3.5 fill-current" />

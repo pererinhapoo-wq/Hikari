@@ -7,6 +7,7 @@ import { genreLabel, scoreLabel, seasonLabel, statusLabel } from "@/lib/labels";
 import { getAnimeLogo } from "@/lib/anime-logos";
 import { anilistImage, withCatalogImageVersion } from "@/lib/image-utils";
 import { useSynchronizedImageRef } from "@/lib/presentation-sync";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 
 /**
  * Determina o total de temporadas confirmadas para o anime em formato compacto (ex.: "S1–S3").
@@ -738,6 +739,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
                   }),
                 );
               }}
+              onClick={triggerMonetagSmartLinkOnNavigationClick}
               className="group relative inline-flex items-center justify-center gap-2 h-9 sm:h-10 px-4.5 sm:px-5.5 rounded-xl sm:rounded-2xl bg-gradient-to-r from-purple-600 via-purple-500 to-fuchsia-600 active:opacity-90 text-white font-bold text-xs sm:text-sm tracking-wide border border-white/20 shadow-[0_4px_20px_rgba(168,85,247,0.38)] cursor-pointer select-none touch-manipulation [-webkit-tap-highlight-color:transparent] transition-opacity duration-140 ease-out motion-reduce:transition-none"
             >
               <span
@@ -771,6 +773,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
                 }),
               );
             }}
+            onClick={triggerMonetagSmartLinkOnNavigationClick}
             className="hero-btn-action group inline-flex items-center justify-center gap-1.5 h-9 sm:h-10 px-3.5 sm:px-4.5 rounded-xl sm:rounded-2xl bg-black/75 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-black/85 border border-white/25 [@media(hover:hover)_and_(pointer:fine)]:hover:border-white/40 text-white font-semibold text-xs sm:text-sm tracking-wide shadow-[0_2px_12px_rgba(0,0,0,0.5)] cursor-pointer select-none"
           >
             <Info className="size-3.5 sm:size-4 text-purple-200 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-white shrink-0 transition-colors motion-reduce:transition-none" />

@@ -15,6 +15,7 @@ import {
 import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import type { MyProfileComment } from "@/lib/profile.functions";
 import { useScrollLock } from "@/lib/scroll-lock";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 
 interface ProfileCommentsSpaceProps {
   comments: MyProfileComment[];
@@ -287,6 +288,7 @@ export function ProfileCommentsSpace({
                           <Link
                             to="/anime/$id"
                             params={{ id: comment.animeId }}
+                            onClick={triggerMonetagSmartLinkOnNavigationClick}
                             className="truncate font-semibold text-sm text-zinc-200 transition-colors hover:text-violet-300"
                             title={comment.animeTitle}
                           >
@@ -307,6 +309,7 @@ export function ProfileCommentsSpace({
                           search={{
                             comment: comment.id,
                           }}
+                          onClick={triggerMonetagSmartLinkOnNavigationClick}
                           className="rounded-md bg-violet-500/15 px-2 py-0.5 text-[11px] font-bold text-violet-300 transition-colors hover:bg-violet-500/25 ring-1 ring-violet-500/30"
                         >
                           Episódio {epNum}
@@ -460,6 +463,7 @@ export function ProfileCommentsSpace({
                     search={{
                       comment: comment.id,
                     }}
+                    onClick={triggerMonetagSmartLinkOnNavigationClick}
                     className="text-xs text-violet-400 hover:text-violet-300 transition-colors flex items-center gap-1"
                   >
                     <span>Ver no episódio</span>

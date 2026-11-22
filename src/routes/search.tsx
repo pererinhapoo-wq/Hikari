@@ -29,6 +29,7 @@ import {
   fetchGenres,
   searchCatalog,
 } from "@/lib/api";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 import {
   getCachedAnimeSearch,
   setCachedAnimeSearch,
@@ -1680,6 +1681,7 @@ function SearchAnimeResultCard({ anime }: { anime: SlimAnime }) {
       <Link
         to="/anime/$id"
         params={{ id: anime.id }}
+        onClick={triggerMonetagSmartLinkOnNavigationClick}
         className="
           block
           outline-none
@@ -1839,6 +1841,7 @@ function SearchPersonResultCard({
     <Link
       to="/anime/$id"
       params={{ id: String(animeId) }}
+      onClick={triggerMonetagSmartLinkOnNavigationClick}
       className="
         block
         outline-none
@@ -1936,6 +1939,7 @@ function SearchCharacterResultCard({
     <Link
       to="/anime/$id"
       params={{ id: String(animeId) }}
+      onClick={triggerMonetagSmartLinkOnNavigationClick}
       className="
         block
         outline-none

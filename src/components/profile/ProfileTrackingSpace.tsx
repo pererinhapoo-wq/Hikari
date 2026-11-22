@@ -22,6 +22,7 @@ import {
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { clearAnimeUserClientCache } from "@/lib/anime-user-client-cache";
 import { invalidateWatchedEpisodesCache } from "@/lib/store";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 import {
   getCachedPaginatedTracking,
   invalidatePaginatedTrackingCache,
@@ -189,6 +190,7 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
         params={{ id: item.animeId }}
         onClick={(e) => {
           onCardClick(e, item.animeId);
+          triggerMonetagSmartLinkOnNavigationClick(e);
         }}
         className="
           block
@@ -266,6 +268,7 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
           params={{ id: item.animeId }}
           onClick={(e) => {
             onCardClick(e, item.animeId);
+            triggerMonetagSmartLinkOnNavigationClick(e);
           }}
           className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
           title={item.title}

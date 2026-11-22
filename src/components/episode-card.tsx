@@ -9,6 +9,7 @@ import {
   type PublishedEpisode,
 } from "@/lib/published-episodes";
 import { cn } from "@/lib/utils";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 
 export const EpisodeCard = memo(function EpisodeCard({
   episode,
@@ -56,6 +57,7 @@ export const EpisodeCard = memo(function EpisodeCard({
         params={{ id: episode.animeId, ep: `ep-${episode.episodeNumber || 1}` }}
         preload="intent"
         resetScroll={true}
+        onClick={triggerMonetagSmartLinkOnNavigationClick}
         className={cn(
           "block group select-none touch-manipulation [-webkit-tap-highlight-color:transparent] focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/80 rounded-lg sm:rounded-xl",
           "motion-safe:transition-[transform,opacity] motion-safe:duration-150 motion-safe:active:scale-[0.98] motion-safe:active:opacity-85 motion-reduce:transition-none motion-reduce:transform-none",

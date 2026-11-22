@@ -16,6 +16,7 @@ import {
 import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import { cn } from "@/lib/utils";
 import type { UserActivityItem } from "@/lib/profile.functions";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 import type {
   TrackingStatus,
   WatchedEpisodeItem,
@@ -349,6 +350,7 @@ export function ProfileHistorySpace({
                         <Link
                           to="/anime/$id"
                           params={{ id: entry.resourceId }}
+                          onClick={triggerMonetagSmartLinkOnNavigationClick}
                           className="truncate font-semibold text-sm sm:text-base text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:hover:text-violet-300"
                           title={entry.resourceTitle}
                         >
@@ -450,6 +452,7 @@ export function ProfileHistorySpace({
                       id: entry.resourceId,
                       ep: `ep-${epNum}`,
                     }}
+                    onClick={triggerMonetagSmartLinkOnNavigationClick}
                     className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-zinc-200 transition-all group-hover:border-violet-500/40 group-hover:bg-violet-600 group-hover:text-white"
                   >
                     <Play className="size-3.5 fill-current" />

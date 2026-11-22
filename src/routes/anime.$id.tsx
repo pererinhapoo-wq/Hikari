@@ -18,6 +18,7 @@ import type {
 } from "@/types/profile-tracking";
 import type { FavoriteTargetType } from "@/types/favorite";
 import { CardFavoriteButton } from "@/components/anime/CardFavoriteButton";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 import {
   Suspense,
   createContext,
@@ -3429,6 +3430,7 @@ function AnimePageContent({
                         !e.shiftKey &&
                         e.button === 0
                       ) {
+                        triggerMonetagSmartLinkOnNavigationClick(e);
                         e.preventDefault();
                         void navigate({
                           to: "/watch/$id/$ep",
@@ -4311,6 +4313,7 @@ function SeasonSelector({
                         return;
                       }
 
+                      triggerMonetagSmartLinkOnNavigationClick(e);
                       setPendingSeasonId(season.id);
                       closeDropdown();
                     }}
@@ -4664,7 +4667,10 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
           ep: `ep-${ep.number}`,
         }}
         preload="intent"
-        onClick={() => onSelect(ep.id)}
+        onClick={(e) => {
+          triggerMonetagSmartLinkOnNavigationClick(e);
+          onSelect(ep.id);
+        }}
         className={cn(
           "group relative flex gap-3 rounded-xl border p-2.5 select-none touch-manipulation [-webkit-tap-highlight-color:transparent] [contain:layout_paint_style] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/80",
           "motion-safe:transition-[border-color,background-color,box-shadow] [@media(hover:hover)]:motion-safe:transition-[transform,border-color,background-color,box-shadow] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:transform-none",

@@ -23,6 +23,7 @@ import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import { HikariImage } from "@/components/ui/hikari-image";
 import { getStudioLogo } from "@/lib/studio-logos";
 import { cn } from "@/lib/utils";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favorite";
 
 interface ProfileOverviewFavoritesProps {
@@ -378,9 +379,13 @@ const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
     return item.subtitle;
   }, [item.subtitle, item.nativeTitle]);
 
-  const handleClick = useCallback(() => {
-    onCardClick(item);
-  }, [onCardClick, item]);
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      triggerMonetagSmartLinkOnNavigationClick(e);
+      onCardClick(item);
+    },
+    [onCardClick, item],
+  );
 
   return (
     <button
@@ -831,7 +836,10 @@ function EntityDetailModal({
                 <Link
                   to="/anime/$id"
                   params={{ id: entity.targetId }}
-                  onClick={onClose}
+                  onClick={(e) => {
+                    triggerMonetagSmartLinkOnNavigationClick(e);
+                    onClose();
+                  }}
                   className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-semibold text-white transition-all hover:bg-purple-500 shadow-[0_4px_16px_rgba(168,85,247,0.3)] active:scale-95"
                 >
                   <Film className="size-3.5" />

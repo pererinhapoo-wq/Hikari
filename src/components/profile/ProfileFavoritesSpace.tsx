@@ -16,6 +16,7 @@ import {
 } from "@/components/anime/EntityWorksExpansion";
 import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import { cn } from "@/lib/utils";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 import type {
   FavoriteTargetType,
   ProfileFavoriteItem,
@@ -172,7 +173,11 @@ const FavoriteGridCard = React.memo(function FavoriteGridCard({
 
   if (targetLink) {
     return (
-      <Link to={targetLink} className="block outline-none">
+      <Link
+        to={targetLink}
+        onClick={triggerMonetagSmartLinkOnNavigationClick}
+        className="block outline-none"
+      >
         {cardContent}
       </Link>
     );

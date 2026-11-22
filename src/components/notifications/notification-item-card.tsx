@@ -33,6 +33,7 @@ import {
 } from "@/lib/profile-client-cache";
 import type { LocalAnime } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 
 export type NotificationItem = {
   id: string;
@@ -1385,7 +1386,10 @@ export function NotificationItemCard({
         search={{
           comment: notification.commentId ?? undefined,
         }}
-        onClick={handleActivate}
+        onClick={(e) => {
+          triggerMonetagSmartLinkOnNavigationClick(e);
+          handleActivate();
+        }}
         className={interactiveWrapperClass}
       >
         {innerContent}
@@ -1402,7 +1406,10 @@ export function NotificationItemCard({
         search={{
           comment: notification.commentId ?? undefined,
         }}
-        onClick={handleActivate}
+        onClick={(e) => {
+          triggerMonetagSmartLinkOnNavigationClick(e);
+          handleActivate();
+        }}
         className={interactiveWrapperClass}
       >
         {innerContent}

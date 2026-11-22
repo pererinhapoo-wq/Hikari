@@ -28,6 +28,7 @@ import {
   fetchAutomaticNews,
   type AutomaticNewsItem,
 } from "@/lib/news-api";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 
 export const Route = createFileRoute(
   "/news",
@@ -2082,6 +2083,7 @@ function NewsPage() {
                   key={item.id}
                   to="/anime/$id"
                   params={{ id: String(item.id) }}
+                  onClick={triggerMonetagSmartLinkOnNavigationClick}
                   className="block min-w-0"
                 >
                   <article
@@ -2142,6 +2144,7 @@ function NewsPage() {
                   key={`${item.id}-${item.airingAt}-${item.episode}`}
                   to="/anime/$id"
                   params={{ id: String(item.id) }}
+                  onClick={triggerMonetagSmartLinkOnNavigationClick}
                   className="block min-w-0"
                 >
                   <article

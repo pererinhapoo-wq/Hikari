@@ -13,6 +13,7 @@ import {
   getWeekInfoSaoPaulo,
 } from "@/lib/calendar-timezone";
 import { HikariImage } from "@/components/ui/hikari-image";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 
 /* =========================================================
    TIPOS DE DADOS DO CALENDÁRIO
@@ -160,6 +161,7 @@ function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
     <Link
       to="/anime/$id"
       params={{ id: targetAnimeParam }}
+      onClick={triggerMonetagSmartLinkOnNavigationClick}
       className="group relative flex flex-col md:flex-row min-w-0 w-full overflow-hidden rounded-xl md:rounded-2xl border border-purple-500/15 bg-[#100e1b] p-1.5 sm:p-2 md:p-3 transition-all duration-200 hover:border-purple-400/50 hover:bg-[#151224] hover:shadow-[0_8px_24px_rgba(168,85,247,0.18)] active:scale-[0.98] active:brightness-110 motion-reduce:transition-none motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50"
     >
       {/* Imagem de Capa */}

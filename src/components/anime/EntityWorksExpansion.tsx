@@ -12,6 +12,7 @@ import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import { HikariImage } from "@/components/ui/hikari-image";
 import { getStudioLogo } from "@/lib/studio-logos";
 import { cn } from "@/lib/utils";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 
 export interface SelectedEntityTarget {
   type: "studio" | "dublador" | "staff" | "person";
@@ -143,6 +144,7 @@ export const StudioAnimeCard = memo(function StudioAnimeCard({
       <Link
         to="/anime/$id"
         params={{ id: anime.id }}
+        onClick={triggerMonetagSmartLinkOnNavigationClick}
         className="
           block
           outline-none
@@ -228,6 +230,7 @@ export const DubladorAnimeCard = memo(function DubladorAnimeCard({
       <Link
         to="/anime/$id"
         params={{ id: work.anime.id }}
+        onClick={triggerMonetagSmartLinkOnNavigationClick}
         className="
           block
           outline-none
@@ -308,6 +311,7 @@ export const StaffAnimeCard = memo(function StaffAnimeCard({
       <Link
         to="/anime/$id"
         params={{ id: work.anime.id }}
+        onClick={triggerMonetagSmartLinkOnNavigationClick}
         className="
           block
           outline-none

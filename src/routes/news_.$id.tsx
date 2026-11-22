@@ -28,6 +28,7 @@ import {
   type AnimeInfo,
   type NewsItem,
 } from "@/lib/news-detail-data";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 
 export const Route = createFileRoute(
   "/news_/$id",
@@ -940,6 +941,7 @@ function NewsDetailsPage() {
                           .anime
                           .id,
                       }}
+                      onClick={triggerMonetagSmartLinkOnNavigationClick}
                       className="
                         inline-flex
                         w-fit

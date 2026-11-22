@@ -15,6 +15,7 @@ import { FORMAT_PT, GENRE_PT } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { useHikariStore } from "@/lib/store";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 
 export const AnimeCard = memo(function AnimeCard({
   anime,
@@ -93,6 +94,7 @@ export const AnimeCard = memo(function AnimeCard({
         params={{ id: anime.id }}
         preload={disableHoverPreload ? false : "intent"}
         draggable={disableLinkDrag ? false : undefined}
+        onClick={triggerMonetagSmartLinkOnNavigationClick}
         className={cn(
           "block outline-none focus-visible:ring-2 focus-visible:ring-purple-400 motion-reduce:transition-none motion-reduce:transform-none -webkit-tap-highlight-color-transparent",
           disableLinkDrag && "select-none",

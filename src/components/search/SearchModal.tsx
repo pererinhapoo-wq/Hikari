@@ -8,6 +8,7 @@ import {
   X,
 } from "lucide-react";
 import { searchCatalog } from "@/lib/api";
+import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 import { searchUsers, type SearchUserItem } from "@/lib/profile.functions";
 import {
   getCachedAnimeSearch,
@@ -1210,7 +1211,10 @@ export function SearchModal({
                         key={anime.id}
                         to="/anime/$id"
                         params={{ id: anime.id }}
-                        onClick={handleClose}
+                        onClick={(e) => {
+                          triggerMonetagSmartLinkOnNavigationClick(e);
+                          handleClose();
+                        }}
                         className="sr-item group"
                       >
                         <SearchPoster
@@ -1416,7 +1420,10 @@ export function SearchModal({
                         key={person.id}
                         to="/anime/$id"
                         params={{ id: String(animeId) }}
-                        onClick={handleClose}
+                        onClick={(e) => {
+                          triggerMonetagSmartLinkOnNavigationClick(e);
+                          handleClose();
+                        }}
                         className="sr-item group"
                       >
                         {itemContent}
@@ -1494,7 +1501,10 @@ export function SearchModal({
                         key={character.id}
                         to="/anime/$id"
                         params={{ id: String(animeId) }}
-                        onClick={handleClose}
+                        onClick={(e) => {
+                          triggerMonetagSmartLinkOnNavigationClick(e);
+                          handleClose();
+                        }}
                         className="sr-item group"
                       >
                         {itemContent}
