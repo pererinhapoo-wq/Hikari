@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Info } from "lucide-react";
 import { buildHikariPlayerEpisodeUrl } from "@/lib/hikari-player";
 import { cn } from "@/lib/utils";
@@ -28,7 +28,6 @@ export function ElizabethHikariPlayerBanner({
   imageWebpSrcSet = ELIZABETH_PLAYER_BANNER_WEBP_SRCSET,
   className,
 }: ElizabethHikariPlayerBannerProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const [imageFailed, setImageFailed] = useState(false);
 
   // Garante construção/validação exclusivamente pelo helper seguro de src/lib/hikari-player.ts
@@ -45,42 +44,6 @@ export function ElizabethHikariPlayerBanner({
 
   const isClickable = Boolean(resolvedUrl);
 
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el || typeof window === "undefined") return;
-
-    const updatePauseState = (visible: boolean) => {
-      el.dataset.bannerPaused =
-        visible && document.visibilityState !== "hidden" ? "false" : "true";
-    };
-
-    let currentlyVisible = true;
-    let observer: IntersectionObserver | null = null;
-
-    if (typeof IntersectionObserver === "function") {
-      observer = new IntersectionObserver(
-        (entries) => {
-          const entry = entries[0];
-          if (!entry) return;
-          currentlyVisible = entry.isIntersecting;
-          updatePauseState(currentlyVisible);
-        },
-        { threshold: 0.05 },
-      );
-      observer.observe(el);
-    }
-
-    const handleVisibilityChange = () => {
-      updatePauseState(currentlyVisible);
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      observer?.disconnect();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
-
   const episodeLabel = episodeTitle?.trim()
     ? `Episódio ${episodeNumber} — ${episodeTitle.trim()}`
     : `Episódio ${episodeNumber}`;
@@ -90,7 +53,7 @@ export function ElizabethHikariPlayerBanner({
     : `Banner promocional da Elizabeth para ${animeTitle} (${episodeLabel}) — episódio ainda não disponível no Hikari Player`;
 
   const bannerStage = (
-    <div className="hikari-ep-banner-stage relative aspect-[1672/941] w-full overflow-hidden bg-[#08070d]">
+    <div className="relative aspect-[1672/941] w-full overflow-hidden bg-[#08070d]">
       {!imageFailed ? (
         <picture>
           {imageWebpSrcSet ? (
@@ -124,54 +87,6 @@ export function ElizabethHikariPlayerBanner({
         </div>
       )}
 
-      {/* D. Reflexo luminoso sutil ocasional na logo HIKARI */}
-      <div aria-hidden="true" className="hikari-ep-banner-logo-glint">
-        <div className="hikari-ep-banner-logo-glint-beam hikari-ep-banner-anim" />
-      </div>
-
-      {/* B1. Borda neon roxa animada ao redor da placa "ASSISTIR EPISÓDIO" */}
-      <div aria-hidden="true" className="hikari-ep-banner-assistir-mask">
-        <div className="hikari-ep-banner-assistir-border hikari-ep-banner-anim">
-          <span className="hikari-ep-banner-border-spinner hikari-ep-banner-assistir-spinner hikari-ep-banner-anim" />
-        </div>
-      </div>
-
-      {/* C. Brilho discreto pulsante no ícone de play (▷) */}
-      <div
-        aria-hidden="true"
-        className="hikari-ep-banner-play-glow hikari-ep-banner-anim"
-      />
-
-      {/* B2. Borda neon roxa animada ao redor do botão "Hikari Player" */}
-      <div
-        aria-hidden="true"
-        className="hikari-ep-banner-player-border hikari-ep-banner-anim"
-      >
-        <span className="hikari-ep-banner-border-spinner hikari-ep-banner-player-spinner hikari-ep-banner-anim" />
-      </div>
-
-      {/* A. Pétalas de sakura leves passando por faixas livres do cenário */}
-      <span
-        aria-hidden="true"
-        className="hikari-ep-banner-petal hikari-ep-banner-petal-1 hikari-ep-banner-anim"
-      />
-      <span
-        aria-hidden="true"
-        className="hikari-ep-banner-petal hikari-ep-banner-petal-2 hikari-ep-banner-anim"
-      />
-      <span
-        aria-hidden="true"
-        className="hikari-ep-banner-petal hikari-ep-banner-petal-3 hikari-ep-banner-anim"
-      />
-      <span
-        aria-hidden="true"
-        className="hikari-ep-banner-petal hikari-ep-banner-petal-4 hikari-ep-banner-anim"
-      />
-      <span
-        aria-hidden="true"
-        className="hikari-ep-banner-petal hikari-ep-banner-petal-5 hikari-ep-banner-anim"
-      />
-
       {isClickable ? (
         <div
           aria-hidden="true"
@@ -188,8 +103,6 @@ export function ElizabethHikariPlayerBanner({
 
   return (
     <div
-      ref={containerRef}
-      data-banner-paused="false"
       data-hikari-player-available={isClickable ? "true" : "false"}
       className={cn(
         "overflow-hidden rounded-2xl border bg-[#08070d] shadow-[0_20px_70px_rgba(0,0,0,0.45)]",

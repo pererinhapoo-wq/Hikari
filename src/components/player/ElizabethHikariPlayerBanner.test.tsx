@@ -26,11 +26,7 @@ describe("ElizabethHikariPlayerBanner", () => {
       /\/assets\/aistudio\/file_000000006650820e9806dd0a131836b5_fa589477\.png/,
     );
     assert.match(html, /width="1672" height="941"/);
-    assert.match(html, /hikari-ep-banner-assistir-border/);
-    assert.match(html, /hikari-ep-banner-player-border/);
-    assert.match(html, /hikari-ep-banner-play-glow/);
-    assert.match(html, /hikari-ep-banner-logo-glint/);
-    assert.match(html, /hikari-ep-banner-petal-1/);
+    assert.doesNotMatch(html, /hikari-ep-banner-/);
     assert.doesNotMatch(
       html,
       /Este episódio ainda não está disponível no Hikari Player/,
