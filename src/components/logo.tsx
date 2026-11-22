@@ -27,7 +27,6 @@ export const Logo = memo(function Logo({
   fetchPriority = "auto",
 }: LogoProps) {
   const containerSizeClasses = CONTAINER_SIZE_CLASSES[size];
-  const decodingMode = loading === "eager" ? "sync" : "async";
 
   const content = (
     <div
@@ -39,17 +38,23 @@ export const Logo = memo(function Logo({
       aria-label="HIKARI"
     >
       <div className="hikari-wordmark-aura" aria-hidden="true" />
-      <img
-        src="/assets/hikari-logo-final-transparent.png"
-        alt="HIKARI"
-        width={1672}
-        height={941}
-        className="relative z-[1] size-full object-contain"
-        loading={loading}
-        decoding={decodingMode}
-        fetchPriority={fetchPriority}
-        draggable={false}
-      />
+      <picture className="relative z-[1] block size-full">
+        <source
+          srcSet="/assets/hikari-logo-final-transparent.webp"
+          type="image/webp"
+        />
+        <img
+          src="/assets/hikari-logo-final-transparent.png"
+          alt="HIKARI"
+          width={640}
+          height={360}
+          className="size-full object-contain"
+          loading={loading}
+          decoding="async"
+          fetchPriority={fetchPriority}
+          draggable={false}
+        />
+      </picture>
       <div className="hikari-wordmark-neon" aria-hidden="true">
         <span className="hikari-wordmark-pulse" />
         <span className="hikari-wordmark-sweep" />

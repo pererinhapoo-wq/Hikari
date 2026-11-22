@@ -1669,10 +1669,10 @@ button, a, [role="button"] {
   pointer-events: none;
   z-index: 2;
   mix-blend-mode: screen;
-  -webkit-mask-image: url("/assets/hikari-logo-final-transparent.png");
+  -webkit-mask-image: url("/assets/hikari-logo-final-transparent.webp");
   -webkit-mask-size: 100% 100%;
   -webkit-mask-repeat: no-repeat;
-  mask-image: url("/assets/hikari-logo-final-transparent.png");
+  mask-image: url("/assets/hikari-logo-final-transparent.webp");
   mask-size: 100% 100%;
   mask-repeat: no-repeat;
   clip-path: polygon(11% 48.6%, 89% 48.6%, 89% 79.5%, 11% 79.5%);
@@ -1789,10 +1789,10 @@ button, a, [role="button"] {
   pointer-events: none;
   z-index: 2;
   mix-blend-mode: screen;
-  -webkit-mask-image: url("/assets/hikari-logo-final-transparent.png");
+  -webkit-mask-image: url("/assets/hikari-logo-final-transparent.webp");
   -webkit-mask-size: 100% 100%;
   -webkit-mask-repeat: no-repeat;
-  mask-image: url("/assets/hikari-logo-final-transparent.png");
+  mask-image: url("/assets/hikari-logo-final-transparent.webp");
   mask-size: 100% 100%;
   mask-repeat: no-repeat;
 }

@@ -198,8 +198,8 @@ function RootDocument() {
         <link
           rel="preload"
           as="image"
-          type="image/png"
-          href="/assets/hikari-logo-final-transparent.png"
+          type="image/webp"
+          href="/assets/hikari-logo-final-transparent.webp"
           fetchPriority="high"
         />
         <link rel="preconnect" href="https://s4.anilist.co" />
