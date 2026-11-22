@@ -788,6 +788,68 @@ function AnimePage() {
   );
 }
 
+const ANILIST_CANONICAL_ID_RE = /^anilist-(\d+)$/;
+const NUMERIC_ANILIST_ID_RE = /^\d+$/;
+
+function extractNormalizedAniListNumericId(
+  value: string | number | null | undefined,
+): string | null {
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value < 0) return null;
+    return String(value);
+  }
+  if (typeof value !== "string") return null;
+  const canonicalMatch = ANILIST_CANONICAL_ID_RE.exec(value);
+  if (canonicalMatch) return canonicalMatch[1];
+  if (NUMERIC_ANILIST_ID_RE.test(value)) return value;
+  return null;
+}
+
+function matchesRouteAnimeIdentifier(
+  rawRemote: Anime,
+  routeId: string,
+): boolean {
+  if (rawRemote.id === routeId) {
+    return true;
+  }
+  if (rawRemote.serverCatalogId && rawRemote.serverCatalogId === routeId) {
+    return true;
+  }
+  if (rawRemote.anilistId != null && String(rawRemote.anilistId) === routeId) {
+    return true;
+  }
+
+  const normalizedRouteAniListId = extractNormalizedAniListNumericId(routeId);
+  if (!normalizedRouteAniListId) {
+    return false;
+  }
+
+  if (
+    rawRemote.anilistId != null &&
+    NUMERIC_ANILIST_ID_RE.test(String(rawRemote.anilistId)) &&
+    String(rawRemote.anilistId) === normalizedRouteAniListId
+  ) {
+    return true;
+  }
+
+  const normalizedRemoteId = extractNormalizedAniListNumericId(rawRemote.id);
+  if (normalizedRemoteId && normalizedRemoteId === normalizedRouteAniListId) {
+    return true;
+  }
+
+  const normalizedServerCatalogId = extractNormalizedAniListNumericId(
+    rawRemote.serverCatalogId,
+  );
+  if (
+    normalizedServerCatalogId &&
+    normalizedServerCatalogId === normalizedRouteAniListId
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function AnimePageContent({
   id,
   remote: rawRemote,
@@ -806,13 +868,7 @@ function AnimePageContent({
 
   const remote = useMemo(() => {
     if (!rawRemote) return null;
-    if (
-      rawRemote.id === id ||
-      (rawRemote.anilistId != null && String(rawRemote.anilistId) === id)
-    ) {
-      return rawRemote;
-    }
-    return null;
+    return matchesRouteAnimeIdentifier(rawRemote, id) ? rawRemote : null;
   }, [rawRemote, id]);
   const search = Route.useSearch();
   const targetCommentId = search?.comment;
