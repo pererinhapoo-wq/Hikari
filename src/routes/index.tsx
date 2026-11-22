@@ -361,7 +361,7 @@ function Home() {
     [data.todaySchedule, locals],
   );
 
-  const emAltaSource = useMemo(() => {
+  const legacyEmAltaSource = useMemo(() => {
     const trendingHasEp = rawTrending.some((item) => item.hasEpisode === true);
     const popularHasEp = rawPopular.some((item) => item.hasEpisode === true);
     if (trendingHasEp || !popularHasEp) {
@@ -399,16 +399,36 @@ function Home() {
     () =>
       countDistinctTitlesWithEpisode([
         rawTodaySchedule,
-        emAltaSource,
+        legacyEmAltaSource,
         rawSeason,
         recentlyAddedAnimes,
       ]),
-    [rawTodaySchedule, emAltaSource, rawSeason, recentlyAddedAnimes],
+    [rawTodaySchedule, legacyEmAltaSource, rawSeason, recentlyAddedAnimes],
   );
 
+  const dynamicEmAltaItems = useMemo(() => {
+    const items = Array.isArray(data.emAltaItems) ? data.emAltaItems : [];
+    if (items.length === 0) return [];
+    const base =
+      locals.length > 0
+        ? overlayList(items, locals, {
+            includeExtras: false,
+            mapMatched: (mappedItem, remoteItem) =>
+              mappedItem.id.startsWith("local-") &&
+              !remoteItem.id.startsWith("local-")
+                ? { ...mappedItem, id: remoteItem.id }
+                : mappedItem,
+          })
+        : items;
+    return base.slice(0, 18);
+  }, [data.emAltaItems, locals]);
+
   const emAltaItems = useMemo(
-    () => selectHomeSectionItems(emAltaSource, homeWithEpisodeCount),
-    [emAltaSource, homeWithEpisodeCount],
+    () =>
+      dynamicEmAltaItems.length > 0
+        ? dynamicEmAltaItems
+        : selectHomeSectionItems(legacyEmAltaSource, homeWithEpisodeCount),
+    [dynamicEmAltaItems, legacyEmAltaSource, homeWithEpisodeCount],
   );
 
   const dynamicHeroItems = useMemo(() => {

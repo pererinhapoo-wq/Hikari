@@ -182,6 +182,7 @@ export type LocalAnime = {
 
 export type HomeCatalog = {
   heroItems?: SlimAnime[];
+  emAltaItems?: SlimAnime[];
   todaySchedule: SlimAnime[];
   trending: SlimAnime[];
   popular: SlimAnime[];

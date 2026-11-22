@@ -68,6 +68,9 @@ export function invalidateHomePublicEpisodesCache(): void {
   import("@/lib/home-hero.server")
     .then((m) => m.invalidateHomeHeroCache())
     .catch(() => {});
+  import("@/lib/home-trending.server")
+    .then((m) => m.invalidateHomeTrendingCache())
+    .catch(() => {});
 }
 
 async function queryHomePublicEpisodesFromDb(

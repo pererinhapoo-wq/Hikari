@@ -69,6 +69,7 @@ import {
   setRedisHomeSeason,
   invalidateRedisCalendar,
   invalidateRedisHeroBannerPool,
+  invalidateRedisHomeTrending,
   scheduleRedisBackgroundWrite,
   type RedisAnimeDetailFence,
   type RedisEvalClient,
@@ -621,6 +622,10 @@ function applyLocalServerCatalogInvalidation(
     m.invalidateHomeHeroLocalCache();
   }).catch(() => {});
 
+  import("@/lib/home-trending.server").then((m) => {
+    m.invalidateHomeTrendingLocalCache();
+  }).catch(() => {});
+
   const targetIds = collectCatalogInvalidationTargetIds(animeId, externalIds);
   const candidateDetailKeys = new Set<string>(
     targetIds.map((tid) => `detail:v7:${tid}`),
@@ -673,6 +678,10 @@ export function invalidateServerCatalogCaches(
   void invalidateRedisAnimeJikanEpisodes(animeId, externalIds).catch(() => {});
   void invalidateRedisCalendar().catch(() => {});
   void invalidateRedisHeroBannerPool().catch(() => {});
+  scheduleRedisBackgroundWrite(
+    invalidateRedisHomeTrending(),
+    "invalidateRedisHomeTrending",
+  );
 }
 
 export async function invalidateServerCatalogCachesAsync(
@@ -694,6 +703,7 @@ export async function invalidateServerCatalogCachesAsync(
     invalidateRedisAnimeJikanEpisodes(animeId, externalIds, redisOverride),
     ...(canIncrCalendarRedis ? [invalidateRedisCalendar()] : []),
     invalidateRedisHeroBannerPool(redisOverride),
+    invalidateRedisHomeTrending(redisOverride),
   ]);
 }
 
@@ -5171,7 +5181,7 @@ export const fetchHomeCatalog =
       const { todayKey } = getTodayRangeSaoPaulo();
       const key = `home:${todayKey}`;
 
-      const [rawCatalog, dbTodaySchedule, heroItems] = await Promise.all([
+      const [rawCatalog, dbTodaySchedule, heroItems, emAltaItems] = await Promise.all([
         withCache<HomeCatalog>(
           key,
           async () => {
@@ -5261,6 +5271,15 @@ export const fetchHomeCatalog =
             );
             return [];
           }),
+        import("@/lib/home-trending.server")
+          .then((m) => m.getHomeTrendingItems())
+          .catch((err) => {
+            console.warn(
+              "[Hikari] Falha segura ao selecionar ranking Em Alta (fallback para catálogo):",
+              err instanceof Error ? err.message : err,
+            );
+            return [];
+          }),
       ]);
 
       // A programação de hoje vem exclusivamente de PostgreSQL (catalog_airing_schedule) + Redis.
@@ -5279,10 +5298,18 @@ export const fetchHomeCatalog =
           "@/lib/catalog-server-overlay.server"
         );
         const overlaid = await applyDbCatalogOverlayToHome(catalog);
-        return heroItems.length > 0 ? { ...overlaid, heroItems } : overlaid;
+        return {
+          ...overlaid,
+          ...(heroItems.length > 0 ? { heroItems } : {}),
+          ...(emAltaItems.length > 0 ? { emAltaItems } : {}),
+        };
       } catch (err) {
         console.warn("[Hikari] Falha ao mesclar catálogo do banco na Home:", err);
-        return heroItems.length > 0 ? { ...catalog, heroItems } : catalog;
+        return {
+          ...catalog,
+          ...(heroItems.length > 0 ? { heroItems } : {}),
+          ...(emAltaItems.length > 0 ? { emAltaItems } : {}),
+        };
       }
     },
   );

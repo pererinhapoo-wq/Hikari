@@ -3876,3 +3876,162 @@ export async function invalidateRedisHeroBannerPool(
     );
   }
 }
+
+export const HOME_TRENDING_REDIS_KEY = "hikari:home:trending:v1";
+export const HOME_TRENDING_GEN_KEY = "hikari:home:trending:gen:v1";
+export const HOME_TRENDING_REDIS_TTL_SEC = 720; // 12 minutos
+
+export interface HomeTrendingPayload {
+  v: 1;
+  generatedAt: number;
+  items: SlimAnime[];
+}
+
+export interface RedisHomeTrendingReadResult {
+  status: "hit" | "miss" | "unavailable" | "failed";
+  payload: HomeTrendingPayload | null;
+  fence: string | null;
+}
+
+function isValidHomeTrendingPayload(raw: unknown): raw is HomeTrendingPayload {
+  if (!raw || typeof raw !== "object") return false;
+  const candidate = raw as Partial<HomeTrendingPayload>;
+  return (
+    candidate.v === 1 &&
+    typeof candidate.generatedAt === "number" &&
+    Number.isFinite(candidate.generatedAt) &&
+    Array.isArray(candidate.items) &&
+    candidate.items.length > 0 &&
+    candidate.items.every(
+      (item) =>
+        Boolean(item) &&
+        typeof item === "object" &&
+        typeof item.id === "string" &&
+        item.id.trim().length > 0,
+    )
+  );
+}
+
+export async function getRedisHomeTrendingWithFence(
+  redisOverride?: RedisEvalClient | null,
+): Promise<RedisHomeTrendingReadResult> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) {
+    return { status: "unavailable", payload: null, fence: null };
+  }
+
+  try {
+    const res = await withRedisTimeout(
+      client.eval<never[], unknown[]>(
+        GET_ENVELOPE_OR_FENCE_SCRIPT,
+        [HOME_TRENDING_REDIS_KEY, HOME_TRENDING_GEN_KEY],
+        [],
+      ),
+      "getRedisHomeTrendingWithFence",
+    );
+
+    if (!Array.isArray(res) || res.length < 2) {
+      return { status: "failed", payload: null, fence: null };
+    }
+
+    const globalGen = extractGenToken(res[1]);
+    if (!globalGen) {
+      return { status: "failed", payload: null, fence: null };
+    }
+
+    const raw = extractPrefixedRaw(res[0]);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as RedisScopedEnvelope<HomeTrendingPayload>;
+        if (
+          parsed &&
+          parsed.v === 1 &&
+          parsed.globalGen === globalGen &&
+          isValidHomeTrendingPayload(parsed.data)
+        ) {
+          return { status: "hit", payload: parsed.data, fence: globalGen };
+        }
+      } catch {
+        // Payload inválido no Redis: trata como miss para recalcular com segurança
+      }
+    }
+
+    return { status: "miss", payload: null, fence: globalGen };
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao buscar ranking Em Alta no Redis (fallback para Neon):",
+      err instanceof Error ? err.message : err,
+    );
+    return { status: "failed", payload: null, fence: null };
+  }
+}
+
+export async function setRedisHomeTrending(
+  payload: HomeTrendingPayload,
+  fence?: string | null,
+  redisOverride?: RedisEvalClient | null,
+): Promise<RedisScopedWriteStatus> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) {
+    return "unavailable";
+  }
+  if (!isValidHomeTrendingPayload(payload)) {
+    return "skipped";
+  }
+  if (fence === null) {
+    return "failed";
+  }
+
+  const activeGen = fence ?? "0";
+  const envelope: RedisScopedEnvelope<HomeTrendingPayload> = {
+    v: 1,
+    globalGen: activeGen,
+    idGens: {},
+    data: payload,
+  };
+
+  try {
+    const raw = JSON.stringify(envelope);
+    const res = await withRedisTimeout(
+      client.eval<string[], unknown[]>(
+        SET_ENVELOPE_WITH_FENCE_SCRIPT,
+        [HOME_TRENDING_REDIS_KEY, HOME_TRENDING_GEN_KEY],
+        [raw, String(HOME_TRENDING_REDIS_TTL_SEC), activeGen],
+      ),
+      "setRedisHomeTrending",
+    );
+    if (!Array.isArray(res)) return "failed";
+    if (res[0] === "fenced") return "fenced";
+    if (res[0] === "inserted") return "inserted";
+    return "failed";
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao salvar ranking Em Alta no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+    return "failed";
+  }
+}
+
+export async function invalidateRedisHomeTrending(
+  redisOverride?: RedisEvalClient | null,
+): Promise<void> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) return;
+
+  try {
+    await withRedisTimeout(
+      client.eval<[string], number>(
+        INVALIDATE_IDS_SCRIPT,
+        [HOME_TRENDING_GEN_KEY, HOME_TRENDING_REDIS_KEY],
+        ["1"],
+      ),
+      "invalidateRedisHomeTrending",
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao invalidar ranking Em Alta no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
