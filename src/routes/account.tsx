@@ -28,6 +28,7 @@ import {
 } from "@/lib/profile.functions";
 
 import { removeProfileFavorite } from "@/lib/profile-favorites.functions";
+import { getMyTrackingStatsSummary } from "@/lib/profile-tracking.functions";
 import {
   getCachedAccountProfileBundle,
   getKnownViewerId,
@@ -43,8 +44,11 @@ import type {
   ProfileFavoritesGrouped,
 } from "@/types/favorite";
 import {
+  applyTrackingItemDeltaToStats,
+  createEmptyTrackingStatsSummary,
   STATUS_CONFIG,
   STATUS_ORDER,
+  type AnimeTrackingStatsSummary,
   type TrackingStatus,
   type UserAnimeTrackingItem,
 } from "@/types/profile-tracking";
@@ -451,6 +455,7 @@ function AccountProfile() {
 
   // Server Functions
   const getAccountProfileBundleFn = useServerFn(getAccountProfileBundle);
+  const getMyTrackingStatsSummaryFn = useServerFn(getMyTrackingStatsSummary);
   const updateProfileFn = useServerFn(updateProfile);
   const followUserFn = useServerFn(followUser);
   const getFollowersFn = useServerFn(getProfileFollowers);
@@ -468,6 +473,14 @@ function AccountProfile() {
   const stableGetAccountBundle = useCallback(
     (...args: Parameters<typeof getAccountProfileBundleFn>) =>
       getAccountProfileBundleFnRef.current(...args),
+    [],
+  );
+
+  const getMyTrackingStatsSummaryFnRef = useRef(getMyTrackingStatsSummaryFn);
+  getMyTrackingStatsSummaryFnRef.current = getMyTrackingStatsSummaryFn;
+  const stableGetMyTrackingStatsSummary = useCallback(
+    (...args: Parameters<typeof getMyTrackingStatsSummaryFn>) =>
+      getMyTrackingStatsSummaryFnRef.current(...args),
     [],
   );
 
@@ -495,6 +508,7 @@ function AccountProfile() {
 
   // Contadores de sequência para controle de concorrência e descarte de respostas obsoletas
   const profileRequestIdRef = useRef(0);
+  const trackingStatsRequestIdRef = useRef(0);
   const commentsRequestIdRef = useRef(0);
   const activitiesRequestIdRef = useRef(0);
 
@@ -520,19 +534,20 @@ function AccountProfile() {
     else if (search.tab === "favorites") setActiveSpace("overview");
   }, [search.tab]);
 
-  // Acompanhamento de Animes (Necessário para a visão geral e contadores)
-  const [trackingItems, setTrackingItems] = useState<UserAnimeTrackingItem[]>(
-    () => initialBundle?.trackingItems ?? [],
+  // Resumo agregado de acompanhamento de animes (calculado no PostgreSQL)
+  const [trackingStats, setTrackingStats] = useState<AnimeTrackingStatsSummary | null>(
+    () => initialBundle?.trackingStats ?? null,
   );
   const [trackingLoading, setTrackingLoading] = useState<boolean>(() => !initialBundle);
   const [trackingLoaded, setTrackingLoaded] = useState<boolean>(() => Boolean(initialBundle));
   const [statusCounts, setStatusCounts] = useState<Record<"all" | TrackingStatus, number> | null>(null);
+  const lastKnownTrackingItemsRef = useRef<Map<string, UserAnimeTrackingItem>>(new Map());
 
   // Favoritos Canônicos (Necessário para a visão geral)
   const [favoritesGrouped, setFavoritesGrouped] = useState<ProfileFavoritesGrouped>(
     () => initialBundle?.favoritesGrouped ?? EMPTY_FAVORITES_GROUPED,
   );
-  const [favoritesItems, setFavoritesItems] = useState<ProfileFavoriteItem[]>(
+  const [, setFavoritesItems] = useState<ProfileFavoriteItem[]>(
     () => initialBundle?.favoritesItems ?? [],
   );
   const [favoritesLoading, setFavoritesLoading] = useState<boolean>(() => !initialBundle);
@@ -733,8 +748,14 @@ function AccountProfile() {
     };
   }, [search.connections, handleOpenConnections]);
 
+  const lastSyncedShellMetaRef = useRef<string>("");
   const syncShellProfileMeta = useCallback((p: UserProfile) => {
     if (typeof window === "undefined") return;
+    const metaKey = `${p.userId ?? ""}|${p.image ?? ""}|${p.nick ?? ""}`;
+    if (lastSyncedShellMetaRef.current === metaKey) {
+      return;
+    }
+    lastSyncedShellMetaRef.current = metaKey;
     if (p.userId) {
       setCachedProfileMeta(p.userId, {
         image: p.image ?? null,
@@ -755,7 +776,7 @@ function AccountProfile() {
     (bundle: AccountProfileBundle) => {
       setProfile(bundle.profile);
       setRequestsCount(bundle.requestsCount);
-      setTrackingItems(bundle.trackingItems);
+      setTrackingStats(bundle.trackingStats ?? createEmptyTrackingStatsSummary());
       setTrackingLoaded(true);
       setFavoritesGrouped(bundle.favoritesGrouped);
       setFavoritesItems(bundle.favoritesItems);
@@ -823,7 +844,6 @@ function AccountProfile() {
     profile,
     trackingLoaded,
     favoritesLoaded,
-    favoritesItems,
     applyAccountBundle,
     syncShellProfileMeta,
     stableGetAccountBundle,
@@ -1016,28 +1036,52 @@ function AccountProfile() {
   );
 
   const handleUpdateTrackingItem = useCallback(
-    (updated: UserAnimeTrackingItem, previousAnimeId?: string) => {
-      setTrackingItems((prev) => {
-        const matchIds = new Set<string>([updated.animeId]);
-        if (previousAnimeId) matchIds.add(previousAnimeId);
-        const next: UserAnimeTrackingItem[] = [];
-        let inserted = false;
-        for (const item of prev) {
-          if (matchIds.has(item.animeId)) {
-            if (!inserted) {
-              next.push(updated);
-              inserted = true;
-            }
-          } else {
-            next.push(item);
-          }
-        }
-        return inserted ? next : [updated, ...next];
-      });
-      invalidateAccountProfileCache(user?.id);
-      invalidatePublicProfileCache(profile?.nick);
+    (
+      updated: UserAnimeTrackingItem,
+      previousAnimeId?: string,
+      previousItem?: UserAnimeTrackingItem,
+      settled?: boolean,
+    ) => {
+      const lookupId = previousAnimeId ?? updated.animeId;
+      const resolvedPrev =
+        previousItem ??
+        lastKnownTrackingItemsRef.current.get(lookupId) ??
+        lastKnownTrackingItemsRef.current.get(updated.animeId) ??
+        null;
+
+      if (previousAnimeId && previousAnimeId !== updated.animeId) {
+        lastKnownTrackingItemsRef.current.delete(previousAnimeId);
+      }
+      lastKnownTrackingItemsRef.current.set(updated.animeId, updated);
+
+      if (resolvedPrev) {
+        setTrackingStats((prev) =>
+          applyTrackingItemDeltaToStats(
+            prev ?? createEmptyTrackingStatsSummary(),
+            resolvedPrev,
+            updated,
+          ),
+        );
+      }
+
+      if (settled !== false) {
+        invalidateAccountProfileCache(user?.id);
+        invalidatePublicProfileCache(profile?.nick);
+      }
+
+      if (settled === true || !resolvedPrev) {
+        const statsReqId = ++trackingStatsRequestIdRef.current;
+        void stableGetMyTrackingStatsSummary()
+          .then((freshStats) => {
+            if (statsReqId !== trackingStatsRequestIdRef.current) return;
+            setTrackingStats(freshStats);
+          })
+          .catch(() => {
+            // Mantém o delta otimista se a reconciliação em segundo plano falhar
+          });
+      }
     },
-    [user?.id, profile?.nick],
+    [user?.id, profile?.nick, stableGetMyTrackingStatsSummary],
   );
 
   const handleRemoveFavorite = useCallback(
@@ -1338,7 +1382,7 @@ function AccountProfile() {
     TAB_PREFETCHERS[space]?.();
   }, []);
 
-  if (isPending || !isClientReady) {
+  if (isPending || (!user && !isClientReady)) {
     return (
       <div className="w-full px-4 py-8 text-white">
         <div className="mx-auto max-w-6xl space-y-6">
@@ -1453,7 +1497,8 @@ function AccountProfile() {
     const cfg = STATUS_CONFIG[statusParam];
     const filteredCount =
       statusCounts?.[statusParam] ??
-      trackingItems.filter((i) => i.status === statusParam).length;
+      trackingStats?.counts[statusParam] ??
+      0;
 
     return (
       <div
@@ -1472,7 +1517,7 @@ function AccountProfile() {
               <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
                 Animes — {cfg.label}
               </h1>
-              {(!trackingLoading || statusCounts !== null) && (
+              {(!trackingLoading || statusCounts !== null || trackingStats !== null) && (
                 <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
                   {filteredCount}
                 </span>
@@ -1482,7 +1527,7 @@ function AccountProfile() {
 
           <Suspense fallback={<TrackingSpaceSkeleton hideFilterBar={true} />}>
             <LazyProfileTrackingSpace
-              items={trackingItems}
+              initialCounts={trackingStats?.counts}
               loading={trackingLoading}
               activeFilter={statusParam}
               hideFilterBar={true}
@@ -1528,8 +1573,6 @@ function AccountProfile() {
           followersCount={followersCount}
           followingCount={followingCount}
           requestsCount={requestsCount}
-          commentCount={effectiveCommentCount}
-          totalTrackingCount={trackingItems.length}
           favorites={userFavoritesList}
           onOpenEdit={handleOpenEdit}
           onRemoveBanner={handleRemoveBanner}
@@ -1545,7 +1588,7 @@ function AccountProfile() {
           onChangeSpace={handleSpaceChange}
           onPrefetchSpace={handlePrefetchSpace}
           counts={{
-            animes: trackingItems.length,
+            animes: trackingStats?.totalEntries ?? 0,
             comments: effectiveCommentCount,
             activity: effectiveActivityCount,
           }}
@@ -1557,7 +1600,7 @@ function AccountProfile() {
           {activeSpace === "overview" && (
             <Suspense fallback={<OverviewSpaceSkeleton />}>
               <LazyProfileOverviewSpace
-                trackingItems={trackingItems}
+                trackingStats={trackingStats}
                 favoritesGrouped={favoritesGrouped}
                 activityItems={activityItems}
                 comments={comments}
@@ -1576,7 +1619,7 @@ function AccountProfile() {
           {activeSpace === "animes" && (
             <Suspense fallback={<TrackingSpaceSkeleton />}>
               <LazyProfileTrackingSpace
-                items={trackingItems}
+                initialCounts={trackingStats?.counts}
                 loading={trackingLoading}
                 activeFilter={trackingFilter}
                 onFilterChange={setTrackingFilter}

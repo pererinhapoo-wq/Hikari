@@ -20,6 +20,8 @@ import {
   type WatchedEpisodeItem,
   type AnimeSnapshot,
   type TrackingStatus,
+  type AnimeTrackingStatsSummary,
+  createEmptyTrackingStatsSummary,
   getAnimeUserInitialStateSchema,
   type AnimeUserInitialState,
 } from "@/types/profile-tracking";
@@ -651,6 +653,134 @@ export const getPublicAnimeTracking = createServerFn({
       minimal: data.minimal,
     });
   });
+
+interface TrackingStatsAggRow {
+  status: string;
+  entryCount: number | string;
+  episodesSum: number | string;
+  scoredCount: number | string;
+  scoreSum: number | string;
+}
+
+const TRACKING_STATS_SUMMARY_QUERY = `
+  SELECT
+    "status",
+    COUNT(*)::int AS "entryCount",
+    COALESCE(SUM(GREATEST(0, COALESCE("episodesWatched", 0))), 0)::bigint AS "episodesSum",
+    COUNT(*) FILTER (WHERE "score" IS NOT NULL AND "score" > 0)::int AS "scoredCount",
+    COALESCE(SUM("score") FILTER (WHERE "score" IS NOT NULL AND "score" > 0), 0)::double precision AS "scoreSum"
+  FROM "user_anime_tracking"
+  WHERE "userId" = $1
+  GROUP BY "status";
+`;
+
+export function buildTrackingStatsSummaryFromRows(
+  rows: ReadonlyArray<TrackingStatsAggRow>,
+): AnimeTrackingStatsSummary {
+  const summary = createEmptyTrackingStatsSummary();
+  let totalEntries = 0;
+  let totalEpisodes = 0;
+  let totalScoredCount = 0;
+  let totalScoreSum = 0;
+
+  for (const row of rows) {
+    const count = Math.max(0, Number(row.entryCount) || 0);
+    if (row.status in summary.counts && row.status !== "all") {
+      summary.counts[row.status as TrackingStatus] = count;
+    }
+    totalEntries += count;
+    totalEpisodes += Math.max(0, Number(row.episodesSum) || 0);
+    totalScoredCount += Math.max(0, Number(row.scoredCount) || 0);
+    const rowScoreSum = Number(row.scoreSum);
+    if (Number.isFinite(rowScoreSum) && rowScoreSum > 0) {
+      totalScoreSum += rowScoreSum;
+    }
+  }
+
+  summary.counts.all = totalEntries;
+  summary.totalEntries = totalEntries;
+  summary.episodesWatched = totalEpisodes;
+  summary.scoredCount = totalScoredCount;
+  summary.scoreSum =
+    totalScoredCount > 0 ? Math.round(totalScoreSum * 100) / 100 : 0;
+  summary.meanScore =
+    totalScoredCount > 0
+      ? (summary.scoreSum / totalScoredCount).toFixed(1)
+      : null;
+
+  return summary;
+}
+
+/**
+ * 2a-stats. executeGetMyTrackingStatsSummary & getMyTrackingStatsSummary —
+ * Calcula estatísticas agregadas diretamente no PostgreSQL para o usuário autenticado,
+ * evitando transferir todos os registros de acompanhamento na abertura do perfil.
+ */
+export async function executeGetMyTrackingStatsSummary(
+  sql: Sql,
+  userId: string,
+): Promise<AnimeTrackingStatsSummary> {
+  const cleanUserId = (userId || "").trim();
+  if (!cleanUserId) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  const rows = await sql.query<TrackingStatsAggRow>(
+    TRACKING_STATS_SUMMARY_QUERY,
+    [cleanUserId],
+  );
+
+  return buildTrackingStatsSummaryFromRows(rows);
+}
+
+export const getMyTrackingStatsSummary = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<AnimeTrackingStatsSummary> => {
+    const sql = await getSql();
+    return executeGetMyTrackingStatsSummary(sql, context.userId);
+  });
+
+/**
+ * 2b-stats. executeGetPublicTrackingStatsSummary —
+ * Calcula estatísticas agregadas diretamente no PostgreSQL para perfis públicos,
+ * respeitando privacidade da conta e bloqueios mútuos avaliados no servidor.
+ */
+export async function executeGetPublicTrackingStatsSummary(
+  sql: Sql,
+  targetUserId: string,
+  viewerId: string | null,
+  options?: {
+    privacy?: EvaluatedPrivacy;
+  },
+): Promise<AnimeTrackingStatsSummary> {
+  const cleanTargetUserId = (targetUserId || "").trim();
+  if (!cleanTargetUserId) {
+    throw new Error("Usuário não informado.");
+  }
+
+  let privacy = options?.privacy;
+  if (!privacy) {
+    const { evaluateUserPrivacy } = await import("@/lib/profile.functions");
+    privacy = await evaluateUserPrivacy(sql, cleanTargetUserId, viewerId);
+  }
+
+  if (!privacy.canViewAccount) {
+    throw new Error("As estatísticas de animes deste perfil são privadas.");
+  }
+
+  if (privacy.isBlocked) {
+    throw new Error("Não foi possível acessar as estatísticas deste perfil.");
+  }
+
+  const rows = await sql.query<TrackingStatsAggRow>(
+    TRACKING_STATS_SUMMARY_QUERY,
+    [cleanTargetUserId],
+  );
+
+  return buildTrackingStatsSummaryFromRows(rows);
+}
 
 /**
  * 2b. getMyAnimeTrackingPaginated — Consultar acompanhamentos com paginação real

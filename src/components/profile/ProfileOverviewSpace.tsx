@@ -4,10 +4,14 @@ import { ProfileOverviewFavorites } from "@/components/profile/ProfileOverviewFa
 import { ProfileRecentActivities } from "@/components/profile/ProfileRecentActivities";
 import type { MyProfileComment, UserActivityItem } from "@/lib/profile.functions";
 import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favorite";
-import type { UserAnimeTrackingItem } from "@/types/profile-tracking";
+import type {
+  AnimeTrackingStatsSummary,
+  UserAnimeTrackingItem,
+} from "@/types/profile-tracking";
 
 interface ProfileOverviewSpaceProps {
-  trackingItems: UserAnimeTrackingItem[];
+  trackingStats?: AnimeTrackingStatsSummary | null;
+  trackingItems?: UserAnimeTrackingItem[];
   favoritesGrouped: ProfileFavoritesGrouped;
   activityItems?: UserActivityItem[];
   comments?: MyProfileComment[];
@@ -24,7 +28,8 @@ interface ProfileOverviewSpaceProps {
 }
 
 export function ProfileOverviewSpace({
-  trackingItems,
+  trackingStats = null,
+  trackingItems = [],
   favoritesGrouped,
   activityItems = [],
   comments = [],
@@ -94,10 +99,11 @@ export function ProfileOverviewSpace({
   return (
     <div className="space-y-10 sm:space-y-12">
       {/* Seção A: Anime Stats */}
-      {trackingLoading && trackingItems.length === 0 ? (
+      {trackingLoading && !trackingStats && trackingItems.length === 0 ? (
         <div className="h-64 sm:h-72 rounded-3xl bg-white/[0.03] border border-white/[0.05] animate-pulse" />
       ) : (
         <ProfileAnimeStats
+          stats={trackingStats}
           items={trackingItems}
           onUpdateItem={onUpdateItem}
           profileNick={profileNick}

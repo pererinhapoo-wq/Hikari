@@ -1,160 +1,87 @@
 import { Link } from "@tanstack/react-router";
 import { BarChart3 } from "lucide-react";
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import type {
+  AnimeTrackingStatsSummary,
   TrackingStatus,
   UserAnimeTrackingItem,
 } from "@/types/profile-tracking";
 
 interface ProfileAnimeStatsProps {
-  items: UserAnimeTrackingItem[];
+  stats?: AnimeTrackingStatsSummary | null;
+  items?: UserAnimeTrackingItem[];
   onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
   profileNick?: string;
 }
 
-const useIsomorphicLayoutEffect =
-  typeof window !== "undefined" ? useLayoutEffect : useEffect;
-
-interface AnimatedStatValueProps {
-  value: number;
-  decimals?: number;
-  suffix?: string;
-  exactText?: string;
-  durationMs?: number;
+function formatStaticInt(value: number): string {
+  return String(Math.round(Number.isFinite(value) ? value : 0));
 }
 
-/**
- * Contador numérico progressivo com requestAnimationFrame e atualização direta via ref,
- * evitando re-renderizações do React durante a animação e respeitando prefers-reduced-motion.
- */
-const AnimatedStatValue = React.memo(function AnimatedStatValue({
-  value,
-  decimals = 0,
-  suffix = "",
-  exactText,
-  durationMs = 560,
-}: AnimatedStatValueProps) {
-  const spanRef = useRef<HTMLSpanElement>(null);
-  const prevValueRef = useRef<number | null>(null);
-  const currentDisplayRef = useRef<number>(0);
-
-  const finalDisplay =
-    exactText ??
-    `${decimals > 0 ? value.toFixed(decimals) : String(Math.round(value))}${suffix}`;
-
-  useIsomorphicLayoutEffect(() => {
-    const node = spanRef.current;
-    if (!node) return;
-
-    const prefersReducedMotion =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-
-    if (prefersReducedMotion || typeof window === "undefined") {
-      prevValueRef.current = value;
-      currentDisplayRef.current = value;
-      node.textContent = finalDisplay;
-      return;
-    }
-
-    const startValue = prevValueRef.current === null ? 0 : prevValueRef.current;
-    if (startValue === value) {
-      prevValueRef.current = value;
-      currentDisplayRef.current = value;
-      node.textContent = finalDisplay;
-      return;
-    }
-
-    const formatNumber = (num: number) =>
-      `${decimals > 0 ? num.toFixed(decimals) : String(Math.round(num))}${suffix}`;
-
-    let rafId = 0;
-    const startTime = performance.now();
-
-    node.textContent = formatNumber(startValue);
-    currentDisplayRef.current = startValue;
-
-    const step = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(1, elapsed / durationMs);
-      // easeOutCubic para desaceleração suave ao atingir o valor real
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const current = startValue + (value - startValue) * eased;
-      currentDisplayRef.current = current;
-
-      if (progress < 1) {
-        node.textContent = formatNumber(current);
-        rafId = window.requestAnimationFrame(step);
-      } else {
-        prevValueRef.current = value;
-        currentDisplayRef.current = value;
-        node.textContent = finalDisplay;
-      }
-    };
-
-    rafId = window.requestAnimationFrame(step);
-
-    return () => {
-      if (rafId) {
-        window.cancelAnimationFrame(rafId);
-      }
-      prevValueRef.current = currentDisplayRef.current;
-    };
-  }, [value, decimals, suffix, finalDisplay, durationMs]);
-
-  return <span ref={spanRef}>{finalDisplay}</span>;
-});
-
 export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({
-  items,
+  stats: statsSummary,
+  items = [],
   profileNick,
 }: ProfileAnimeStatsProps) {
   const [hoveredStatus, setHoveredStatus] = useState<TrackingStatus | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<TrackingStatus | null>(null);
 
-  // Cálculo em passe único O(N) em memória com useMemo para listas grandes
+  // Cálculo O(1) direto do resumo agregado no PostgreSQL (com fallback O(N) caso apenas items seja fornecido)
   const stats = useMemo(() => {
     let watching = 0;
     let completed = 0;
     let onHold = 0;
     let dropped = 0;
     let planning = 0;
+    let len = 0;
     let episodesSum = 0;
-    let scoreSum = 0;
-    let scoreCount = 0;
+    let mean: string | null = null;
 
-    const len = items.length;
-    for (let i = 0; i < len; i++) {
-      const item = items[i];
-      switch (item.status) {
-        case "watching":
-          watching++;
-          break;
-        case "completed":
-          completed++;
-          break;
-        case "on_hold":
-          onHold++;
-          break;
-        case "dropped":
-          dropped++;
-          break;
-        case "planning":
-          planning++;
-          break;
-      }
+    if (statsSummary) {
+      watching = statsSummary.counts.watching ?? 0;
+      completed = statsSummary.counts.completed ?? 0;
+      onHold = statsSummary.counts.on_hold ?? 0;
+      dropped = statsSummary.counts.dropped ?? 0;
+      planning = statsSummary.counts.planning ?? 0;
+      len = statsSummary.totalEntries ?? 0;
+      episodesSum = statsSummary.episodesWatched ?? 0;
+      mean = statsSummary.meanScore ?? null;
+    } else {
+      let scoreSum = 0;
+      let scoreCount = 0;
+      len = items.length;
+      for (let i = 0; i < len; i++) {
+        const item = items[i];
+        switch (item.status) {
+          case "watching":
+            watching++;
+            break;
+          case "completed":
+            completed++;
+            break;
+          case "on_hold":
+            onHold++;
+            break;
+          case "dropped":
+            dropped++;
+            break;
+          case "planning":
+            planning++;
+            break;
+        }
 
-      if (item.episodesWatched) {
-        episodesSum += item.episodesWatched;
-      }
+        if (item.episodesWatched) {
+          episodesSum += item.episodesWatched;
+        }
 
-      if (typeof item.score === "number" && item.score > 0) {
-        scoreSum += item.score;
-        scoreCount++;
+        if (typeof item.score === "number" && item.score > 0) {
+          scoreSum += item.score;
+          scoreCount++;
+        }
       }
+      mean = scoreCount > 0 ? (scoreSum / scoreCount).toFixed(1) : null;
     }
 
-    const mean = scoreCount > 0 ? (scoreSum / scoreCount).toFixed(1) : null;
     const pctWatching = len > 0 ? (watching / len) * 100 : 0;
     const pctCompleted = len > 0 ? (completed / len) * 100 : 0;
     const pctOnHold = len > 0 ? (onHold / len) * 100 : 0;
@@ -176,7 +103,7 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({
       pctDropped,
       pctPlanning,
     };
-  }, [items]);
+  }, [statsSummary, items]);
 
   const {
     watchingCount,
@@ -321,12 +248,7 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({
           <span className="text-zinc-400 font-medium">Mean Score:</span>
           {meanScore ? (
             <span className="font-semibold text-white tabular-nums">
-              <AnimatedStatValue
-                value={Number(meanScore)}
-                decimals={1}
-                exactText={meanScore}
-                durationMs={560}
-              />
+              <span>{meanScore}</span>
             </span>
           ) : (
             <span className="font-semibold text-zinc-400">—</span>
@@ -344,16 +266,7 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({
             Distribuição por Status
           </span>
           <span className="text-zinc-500 tabular-nums">
-            {totalEntries > 0 ? (
-              <AnimatedStatValue
-                value={100}
-                suffix="%"
-                exactText="100%"
-                durationMs={600}
-              />
-            ) : (
-              "0 entradas"
-            )}
+            {totalEntries > 0 ? <span>100%</span> : "0 entradas"}
           </span>
         </div>
 
@@ -446,7 +359,7 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({
                   </span>
                 </div>
                 <span className="font-semibold tabular-nums shrink-0 text-zinc-200 transition-colors duration-200 group-hover:text-white">
-                  <AnimatedStatValue value={count} durationMs={520} />
+                  <span>{formatStaticInt(count)}</span>
                 </span>
               </Link>
             );
@@ -462,7 +375,7 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({
           >
             <span className="text-zinc-300">Total de entradas</span>
             <span className="font-bold text-white tabular-nums">
-              <AnimatedStatValue value={totalEntries} durationMs={560} />
+              <span>{formatStaticInt(totalEntries)}</span>
             </span>
           </div>
 
@@ -482,7 +395,7 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({
           >
             <span className="text-zinc-300">Episódios assistidos</span>
             <span className="font-bold text-violet-300 tabular-nums">
-              <AnimatedStatValue value={episodesWatched} durationMs={620} />
+              <span>{formatStaticInt(episodesWatched)}</span>
             </span>
           </div>
         </div>

@@ -433,3 +433,105 @@ export type AnimeUserInitialState = {
   watchedEpisodeIds: string[];
 };
 
+/**
+ * Resumo agregado de estatísticas de acompanhamento de animes calculado no PostgreSQL.
+ * Elimina a transferência completa das linhas de "user_anime_tracking" na abertura do perfil.
+ */
+export interface AnimeTrackingStatsSummary {
+  counts: Record<"all" | TrackingStatus, number>;
+  totalEntries: number;
+  episodesWatched: number;
+  scoredCount: number;
+  scoreSum: number;
+  meanScore: string | null;
+}
+
+export function createEmptyTrackingStatsSummary(): AnimeTrackingStatsSummary {
+  return {
+    counts: {
+      all: 0,
+      watching: 0,
+      completed: 0,
+      on_hold: 0,
+      dropped: 0,
+      planning: 0,
+    },
+    totalEntries: 0,
+    episodesWatched: 0,
+    scoredCount: 0,
+    scoreSum: 0,
+    meanScore: null,
+  };
+}
+
+export type TrackingStatsDeltaItem = Pick<
+  UserAnimeTrackingItem,
+  "status" | "score" | "episodesWatched"
+>;
+
+/**
+ * Atualiza incrementalmente o resumo agregado em memória após edição, adição ou remoção
+ * de um acompanhamento, mantendo exatamente as mesmas regras da agregação no PostgreSQL.
+ */
+export function applyTrackingItemDeltaToStats(
+  prevStats: AnimeTrackingStatsSummary,
+  prevItem: TrackingStatsDeltaItem | null | undefined,
+  nextItem: TrackingStatsDeltaItem | null | undefined,
+): AnimeTrackingStatsSummary {
+  const counts: Record<"all" | TrackingStatus, number> = { ...prevStats.counts };
+  let totalEntries = prevStats.totalEntries;
+  let episodesWatched = prevStats.episodesWatched;
+  let scoredCount = prevStats.scoredCount;
+  let scoreSum = prevStats.scoreSum;
+
+  if (prevItem) {
+    if (TRACKING_STATUSES.includes(prevItem.status)) {
+      counts[prevItem.status] = Math.max(0, (counts[prevItem.status] ?? 0) - 1);
+    }
+    totalEntries = Math.max(0, totalEntries - 1);
+    episodesWatched = Math.max(
+      0,
+      episodesWatched - Math.max(0, Number(prevItem.episodesWatched) || 0),
+    );
+    if (
+      typeof prevItem.score === "number" &&
+      Number.isFinite(prevItem.score) &&
+      prevItem.score > 0
+    ) {
+      scoredCount = Math.max(0, scoredCount - 1);
+      scoreSum =
+        scoredCount === 0 ? 0 : Math.max(0, scoreSum - prevItem.score);
+    }
+  }
+
+  if (nextItem) {
+    if (TRACKING_STATUSES.includes(nextItem.status)) {
+      counts[nextItem.status] = (counts[nextItem.status] ?? 0) + 1;
+    }
+    totalEntries += 1;
+    episodesWatched += Math.max(0, Number(nextItem.episodesWatched) || 0);
+    if (
+      typeof nextItem.score === "number" &&
+      Number.isFinite(nextItem.score) &&
+      nextItem.score > 0
+    ) {
+      scoredCount += 1;
+      scoreSum += nextItem.score;
+    }
+  }
+
+  counts.all = totalEntries;
+  const cleanScoreSum =
+    scoredCount > 0 ? Math.round(scoreSum * 100) / 100 : 0;
+  const meanScore =
+    scoredCount > 0 ? (cleanScoreSum / scoredCount).toFixed(1) : null;
+
+  return {
+    counts,
+    totalEntries,
+    episodesWatched,
+    scoredCount,
+    scoreSum: cleanScoreSum,
+    meanScore,
+  };
+}

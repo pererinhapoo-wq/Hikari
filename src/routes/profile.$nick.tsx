@@ -43,10 +43,11 @@ import {
 } from "@/lib/profile-client-cache";
 import type { ProfileFavoritesGrouped } from "@/types/favorite";
 import {
+  createEmptyTrackingStatsSummary,
   STATUS_CONFIG,
   STATUS_ORDER,
+  type AnimeTrackingStatsSummary,
   type TrackingStatus,
-  type UserAnimeTrackingItem,
 } from "@/types/profile-tracking";
 
 import { ProfileIdentityHeader } from "@/components/profile/ProfileIdentityHeader";
@@ -465,9 +466,9 @@ function PublicProfile() {
     return "overview";
   });
 
-  // Acompanhamento de animes para o Anime Stats do perfil visitado
-  const [trackingItems, setTrackingItems] = useState<UserAnimeTrackingItem[]>(
-    () => initialBundle?.trackingItems ?? [],
+  // Resumo agregado de acompanhamento de animes para o Anime Stats do perfil visitado
+  const [trackingStats, setTrackingStats] = useState<AnimeTrackingStatsSummary | null>(
+    () => initialBundle?.trackingStats ?? null,
   );
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [statusCounts, setStatusCounts] = useState<Record<"all" | TrackingStatus, number> | null>(null);
@@ -539,7 +540,7 @@ function PublicProfile() {
       setFollowersCount(bundle.profile.followersCount);
       setIsBlockedByMe(Boolean(bundle.profile.isBlockedByMe));
       setIsBlockedByTarget(Boolean(bundle.profile.isBlockedByTarget));
-      setTrackingItems(bundle.trackingItems || []);
+      setTrackingStats(bundle.trackingStats ?? createEmptyTrackingStatsSummary());
       setFavoritesGrouped(bundle.favoritesGrouped || EMPTY_FAVORITES_GROUPED);
       setError("");
       setLoading(false);
@@ -1486,7 +1487,8 @@ function PublicProfile() {
     const cfg = STATUS_CONFIG[statusParam];
     const filteredCount =
       statusCounts?.[statusParam] ??
-      trackingItems.filter((i) => i.status === statusParam).length;
+      trackingStats?.counts[statusParam] ??
+      0;
 
     return (
       <div
@@ -1505,7 +1507,7 @@ function PublicProfile() {
               <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
                 Animes — {cfg.label}
               </h1>
-              {(!trackingLoading || statusCounts !== null) && (
+              {(!trackingLoading || statusCounts !== null || trackingStats !== null) && (
                 <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
                   {filteredCount}
                 </span>
@@ -1516,6 +1518,7 @@ function PublicProfile() {
           <Suspense fallback={<WorksViewSkeleton />}>
             <LazyProfileTrackingSpace
               targetUserId={profile.userId}
+              initialCounts={trackingStats?.counts}
               readOnly={true}
               activeFilter={statusParam}
               hideFilterBar={true}
@@ -1571,8 +1574,6 @@ function PublicProfile() {
           onToggleVerification={handleToggleVerification}
           followersCount={followersCount}
           followingCount={followingCount}
-          commentCount={effectiveCommentCount}
-          totalTrackingCount={trackingItems.length}
           favorites={userFavoritesList}
           isBlockedByMe={isBlockedByMe}
           onBlockAction={handleToggleBlock}
@@ -1622,7 +1623,7 @@ function PublicProfile() {
               onChangeSpace={handleSpaceChange}
               onPrefetchSpace={handlePrefetchSpace}
               counts={{
-                animes: trackingItems.length,
+                animes: trackingStats?.totalEntries ?? 0,
                 comments: effectiveCommentCount,
                 activity: effectiveActivityCount,
               }}
@@ -1667,7 +1668,7 @@ function PublicProfile() {
                   {activeSpace === "overview" && (
                     <Suspense fallback={<OverviewSpaceSkeleton />}>
                       <LazyProfileOverviewSpace
-                        trackingItems={trackingItems}
+                        trackingStats={trackingStats}
                         favoritesGrouped={favoritesGrouped}
                         activityItems={activities}
                         comments={comments}

@@ -48,8 +48,14 @@ export type SortOption = "updatedAt" | "title" | "score" | "episodes";
 
 export interface ProfileTrackingSpaceProps {
   items?: UserAnimeTrackingItem[];
+  initialCounts?: Record<FilterOption, number> | null;
   loading?: boolean;
-  onUpdateItem?: (updatedItem: UserAnimeTrackingItem, previousAnimeId?: string) => void;
+  onUpdateItem?: (
+    updatedItem: UserAnimeTrackingItem,
+    previousAnimeId?: string,
+    previousItem?: UserAnimeTrackingItem,
+    settled?: boolean,
+  ) => void;
   activeFilter?: FilterOption;
   onFilterChange?: (filter: FilterOption) => void;
   hideFilterBar?: boolean;
@@ -344,6 +350,7 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
 
 export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
   items: initialItems,
+  initialCounts = null,
   loading: _initialLoadingProp = false,
   onUpdateItem,
   activeFilter,
@@ -446,6 +453,16 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
   });
 
   const fallbackCounts = useMemo<Record<FilterOption, number>>(() => {
+    if (initialCounts) {
+      return {
+        all: initialCounts.all ?? 0,
+        watching: initialCounts.watching ?? 0,
+        completed: initialCounts.completed ?? 0,
+        on_hold: initialCounts.on_hold ?? 0,
+        dropped: initialCounts.dropped ?? 0,
+        planning: initialCounts.planning ?? 0,
+      };
+    }
     const base: Record<FilterOption, number> = {
       all: initialItems?.length ?? 0,
       watching: 0,
@@ -462,7 +479,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       }
     }
     return base;
-  }, [initialItems]);
+  }, [initialCounts, initialItems]);
 
   const counts = serverCounts ?? fallbackCounts;
 
@@ -853,7 +870,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     };
 
     applyItemMutationToCache(updatedItem, previousItem.status, item.animeId);
-    onUpdateItem?.(updatedItem, item.animeId);
+    onUpdateItem?.(updatedItem, item.animeId, previousItem, false);
 
     try {
       const res = await upsertTrackingFn({
@@ -878,7 +895,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       };
 
       applyItemMutationToCache(finalItem, updatedItem.status, item.animeId);
-      onUpdateItem?.(finalItem, item.animeId);
+      onUpdateItem?.(finalItem, item.animeId, updatedItem, true);
       const ownerId = targetUserId ?? effectiveViewerId ?? getKnownViewerId();
       const affectedIds = Array.from(
         new Set(
@@ -918,7 +935,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       toast.success(`Episódio ${finalItem.episodesWatched}${maxEps ? ` de ${maxEps}` : ""} marcado!`);
     } catch (err) {
       applyItemMutationToCache(previousItem, updatedItem.status, item.animeId);
-      onUpdateItem?.(previousItem, item.animeId);
+      onUpdateItem?.(previousItem, item.animeId, updatedItem, false);
       toast.error(err instanceof Error ? err.message : "Erro ao atualizar episódios.");
     } finally {
       updatingIdsRef.current.delete(item.animeId);
@@ -952,7 +969,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     };
 
     applyItemMutationToCache(optimisticItem, previousItem.status, targetItem.animeId);
-    onUpdateItem?.(optimisticItem, targetItem.animeId);
+    onUpdateItem?.(optimisticItem, targetItem.animeId, previousItem, false);
 
     try {
       const res = await upsertTrackingFn({
@@ -977,7 +994,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       };
 
       applyItemMutationToCache(finalItem, optimisticItem.status, targetItem.animeId);
-      onUpdateItem?.(finalItem, targetItem.animeId);
+      onUpdateItem?.(finalItem, targetItem.animeId, optimisticItem, true);
       const ownerId = targetUserId ?? effectiveViewerId ?? getKnownViewerId();
       const affectedIds = Array.from(
         new Set(
@@ -1017,7 +1034,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       toast.success("Coleção atualizada com sucesso!");
     } catch (err) {
       applyItemMutationToCache(previousItem, optimisticItem.status, targetItem.animeId);
-      onUpdateItem?.(previousItem, targetItem.animeId);
+      onUpdateItem?.(previousItem, targetItem.animeId, optimisticItem, false);
       throw err;
     }
   }, [applyItemMutationToCache, editingItem, effectiveViewerId, isReadOnly, onUpdateItem, scopePrefix, targetUserId, upsertTrackingFn]);

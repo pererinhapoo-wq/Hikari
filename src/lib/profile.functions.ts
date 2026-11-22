@@ -12,11 +12,14 @@ import {
   executeGetPublicProfileFavorites,
 } from "@/lib/profile-favorites.functions";
 import {
-  executeGetMyAnimeTracking,
-  executeGetPublicAnimeTracking,
+  executeGetMyTrackingStatsSummary,
+  executeGetPublicTrackingStatsSummary,
 } from "@/lib/profile-tracking.functions";
 import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favorite";
-import type { UserAnimeTrackingItem } from "@/types/profile-tracking";
+import {
+  type AnimeTrackingStatsSummary,
+  createEmptyTrackingStatsSummary,
+} from "@/types/profile-tracking";
 
 export type SectionPrivacyLevel = "public" | "followers" | "private";
 export type AccountType = "public" | "private";
@@ -258,14 +261,14 @@ export interface PreloadedProfilePrivacyRow {
 export interface PublicProfileBundle {
   profile: PublicUserProfile;
   privacy: EvaluatedPrivacy;
-  trackingItems: UserAnimeTrackingItem[];
+  trackingStats: AnimeTrackingStatsSummary;
   favoritesGrouped: ProfileFavoritesGrouped;
   viewerUserId: string | null;
 }
 
 export interface AccountProfileBundle {
   profile: UserProfile;
-  trackingItems: UserAnimeTrackingItem[];
+  trackingStats: AnimeTrackingStatsSummary;
   favoritesItems: ProfileFavoriteItem[];
   favoritesGrouped: ProfileFavoritesGrouped;
   requestsCount: number;
@@ -1005,7 +1008,7 @@ export async function executeGetPublicProfileBundle(
         canManageVerification: false,
       }),
       privacy,
-      trackingItems: [],
+      trackingStats: createEmptyTrackingStatsSummary(),
       favoritesGrouped: createEmptyFavoritesGrouped(),
       viewerUserId,
     };
@@ -1019,7 +1022,7 @@ export async function executeGetPublicProfileBundle(
   const checkFollowedBy = Boolean(viewerUserId && !privacy.isBlocked);
   const checkViewerNick = Boolean(viewerUserId);
 
-  const [metaRows, trackingItems, favoritesRes] = await Promise.all([
+  const [metaRows, trackingStats, favoritesRes] = await Promise.all([
     sql<{
       commentCount: string;
       followersCount: string;
@@ -1077,11 +1080,10 @@ export async function executeGetPublicProfileBundle(
         end as "viewerNick"
     `,
     canFetchTracking
-      ? executeGetPublicAnimeTracking(sql, row.userId, viewerUserId, {
-          minimal: true,
+      ? executeGetPublicTrackingStatsSummary(sql, row.userId, viewerUserId, {
           privacy,
-        }).catch(() => [])
-      : Promise.resolve([]),
+        }).catch(() => createEmptyTrackingStatsSummary())
+      : Promise.resolve(createEmptyTrackingStatsSummary()),
     canFetchFavorites
       ? executeGetPublicProfileFavorites(sql, row.userId, viewerUserId, {
           privacy,
@@ -1104,7 +1106,7 @@ export async function executeGetPublicProfileBundle(
       canManageVerification: vNick === "pererinha",
     }),
     privacy,
-    trackingItems,
+    trackingStats,
     favoritesGrouped: favoritesRes.grouped,
     viewerUserId,
   };
@@ -1131,7 +1133,7 @@ export const getPublicProfileBundle = createServerFn({
 /**
  * Loader agregado para o próprio perfil (/account):
  * Valida sessão exclusivamente no servidor (cookie ou Bearer token) e reúne
- * perfil, contagem de solicitações, tracking mínimo e favoritos em paralelo.
+ * perfil, contagem de solicitações, resumo agregado de tracking e favoritos em paralelo.
  */
 export async function executeGetAccountProfileBundle(
   sql: Sql,
@@ -1142,16 +1144,16 @@ export async function executeGetAccountProfileBundle(
     throw new Error("Usuário não autenticado.");
   }
 
-  const [profile, requestsRes, trackingItems, favoritesRes] = await Promise.all([
+  const [profile, requestsRes, trackingStats, favoritesRes] = await Promise.all([
     executeGetProfile(sql, cleanUserId),
     executeGetReceivedFollowRequestsCount(sql, cleanUserId),
-    executeGetMyAnimeTracking(sql, cleanUserId, { minimal: true }),
+    executeGetMyTrackingStatsSummary(sql, cleanUserId),
     executeGetMyProfileFavorites(sql, cleanUserId, {}),
   ]);
 
   return {
     profile,
-    trackingItems,
+    trackingStats,
     favoritesItems: favoritesRes.items,
     favoritesGrouped: favoritesRes.grouped,
     requestsCount: requestsRes.count,

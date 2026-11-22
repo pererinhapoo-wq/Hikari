@@ -29,8 +29,6 @@ export interface ProfileIdentityHeaderProps {
   followersCount: number;
   followingCount: number;
   requestsCount?: number;
-  commentCount?: number;
-  totalTrackingCount?: number;
   favorites: string[];
   actions?: React.ReactNode;
   onBlockAction?: () => void;
@@ -82,18 +80,17 @@ export const ProfileIdentityHeader = memo(function ProfileIdentityHeader({
   );
 
   useIsomorphicLayoutEffect(() => {
+    let nextStatus: BannerLoadStatus = "loading";
     if (!bannerUrl) {
-      setBannerStatus("loaded");
-      return;
+      nextStatus = "loaded";
+    } else {
+      const img = bannerImgRef.current;
+      if (img && img.complete) {
+        nextStatus = img.naturalWidth > 0 ? "loaded" : "error";
+      }
     }
 
-    const img = bannerImgRef.current;
-    if (img && img.complete) {
-      setBannerStatus(img.naturalWidth > 0 ? "loaded" : "error");
-      return;
-    }
-
-    setBannerStatus("loading");
+    setBannerStatus((prev) => (prev === nextStatus ? prev : nextStatus));
   }, [bannerUrl]);
 
   // Fecha o menu de três pontinhos ao clicar fora ou pressionar Escape
