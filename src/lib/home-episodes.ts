@@ -65,6 +65,9 @@ export function invalidateHomePublicEpisodesCache(): void {
   homePublicEpisodesInFlightPromise = null;
   void invalidateRedisHomePublicEpisodes().catch(() => {});
   invalidatePublicCatalogEpisodesCache();
+  import("@/lib/home-hero.server")
+    .then((m) => m.invalidateHomeHeroCache())
+    .catch(() => {});
 }
 
 async function queryHomePublicEpisodesFromDb(

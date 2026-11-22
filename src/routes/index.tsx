@@ -102,11 +102,17 @@ export const Route = createFileRoute("/")({
     };
   },
   head: ({ loaderData }) => {
-    const heroCandidates = pickHeroItems(
-      loaderData?.trending ?? [],
-      loaderData?.popular ?? [],
-      loaderData?.season ?? [],
-    );
+    const serverHero = Array.isArray(loaderData?.heroItems)
+      ? loaderData.heroItems.slice(0, 8)
+      : [];
+    const heroCandidates =
+      serverHero.length > 0
+        ? serverHero
+        : pickHeroItems(
+            loaderData?.trending ?? [],
+            loaderData?.popular ?? [],
+            loaderData?.season ?? [],
+          );
     const featured = heroCandidates[0] ?? null;
     if (!featured) {
       return {};
@@ -405,9 +411,19 @@ function Home() {
     [emAltaSource, homeWithEpisodeCount],
   );
 
+  const dynamicHeroItems = useMemo(() => {
+    const items = Array.isArray(data.heroItems) ? data.heroItems : [];
+    if (items.length === 0) return [];
+    const base = locals.length > 0 ? overlayList(items, locals, { includeExtras: false }) : items;
+    return base.slice(0, 8);
+  }, [data.heroItems, locals]);
+
   const featuredItems = useMemo(
-    () => pickHeroItems(rawTrending, rawPopular, rawSeason),
-    [rawTrending, rawPopular, rawSeason],
+    () =>
+      dynamicHeroItems.length > 0
+        ? dynamicHeroItems
+        : pickHeroItems(rawTrending, rawPopular, rawSeason),
+    [dynamicHeroItems, rawTrending, rawPopular, rawSeason],
   );
   const featured = featuredItems[0];
 

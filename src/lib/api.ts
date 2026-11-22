@@ -68,6 +68,7 @@ import {
   getRedisHomeSeason,
   setRedisHomeSeason,
   invalidateRedisCalendar,
+  invalidateRedisHeroBannerPool,
   scheduleRedisBackgroundWrite,
   type RedisAnimeDetailFence,
   type RedisEvalClient,
@@ -616,6 +617,10 @@ function applyLocalServerCatalogInvalidation(
     m.invalidateLocalTodayScheduleCache();
   }).catch(() => {});
 
+  import("@/lib/home-hero.server").then((m) => {
+    m.invalidateHomeHeroLocalCache();
+  }).catch(() => {});
+
   const targetIds = collectCatalogInvalidationTargetIds(animeId, externalIds);
   const candidateDetailKeys = new Set<string>(
     targetIds.map((tid) => `detail:v7:${tid}`),
@@ -667,6 +672,7 @@ export function invalidateServerCatalogCaches(
   void invalidateRedisAnimeCredits(animeId, externalIds).catch(() => {});
   void invalidateRedisAnimeJikanEpisodes(animeId, externalIds).catch(() => {});
   void invalidateRedisCalendar().catch(() => {});
+  void invalidateRedisHeroBannerPool().catch(() => {});
 }
 
 export async function invalidateServerCatalogCachesAsync(
@@ -687,6 +693,7 @@ export async function invalidateServerCatalogCachesAsync(
     invalidateRedisAnimeCredits(animeId, externalIds, redisOverride),
     invalidateRedisAnimeJikanEpisodes(animeId, externalIds, redisOverride),
     ...(canIncrCalendarRedis ? [invalidateRedisCalendar()] : []),
+    invalidateRedisHeroBannerPool(redisOverride),
   ]);
 }
 
@@ -5164,7 +5171,7 @@ export const fetchHomeCatalog =
       const { todayKey } = getTodayRangeSaoPaulo();
       const key = `home:${todayKey}`;
 
-      const [rawCatalog, dbTodaySchedule] = await Promise.all([
+      const [rawCatalog, dbTodaySchedule, heroItems] = await Promise.all([
         withCache<HomeCatalog>(
           key,
           async () => {
@@ -5245,6 +5252,15 @@ export const fetchHomeCatalog =
             );
             return null;
           }),
+        import("@/lib/home-hero.server")
+          .then((m) => m.getHomeHeroItems())
+          .catch((err) => {
+            console.warn(
+              "[Hikari] Falha segura ao selecionar destaques do banner Hero (fallback para catálogo):",
+              err instanceof Error ? err.message : err,
+            );
+            return [];
+          }),
       ]);
 
       // A programação de hoje vem exclusivamente de PostgreSQL (catalog_airing_schedule) + Redis.
@@ -5262,10 +5278,11 @@ export const fetchHomeCatalog =
         const { applyDbCatalogOverlayToHome } = await import(
           "@/lib/catalog-server-overlay.server"
         );
-        return await applyDbCatalogOverlayToHome(catalog);
+        const overlaid = await applyDbCatalogOverlayToHome(catalog);
+        return heroItems.length > 0 ? { ...overlaid, heroItems } : overlaid;
       } catch (err) {
         console.warn("[Hikari] Falha ao mesclar catálogo do banco na Home:", err);
-        return catalog;
+        return heroItems.length > 0 ? { ...catalog, heroItems } : catalog;
       }
     },
   );

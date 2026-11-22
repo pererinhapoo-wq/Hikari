@@ -3703,13 +3703,176 @@ export function notifyJikanEpisodesRamInvalidation(ids: string[]): void {
   }
 }
 
+export const HERO_BANNER_REDIS_KEY = "hikari:home:hero-banner:v1";
+export const HERO_BANNER_GEN_KEY = "hikari:home:hero-banner:gen:v1";
+export const HERO_BANNER_REDIS_TTL_SEC = 1200; // 20 minutos
 
+export type HeroBannerBucket =
+  | "novidade"
+  | "episodio_novo"
+  | "engajamento"
+  | "preenchimento";
 
+export interface HeroBannerPoolItem {
+  anime: SlimAnime;
+  bucket: HeroBannerBucket;
+  score: number;
+  hasDistinctBanner: boolean;
+  titleKey: string;
+  rank: number;
+}
 
+export interface HeroBannerPoolPayload {
+  v: 1;
+  generatedAt: number;
+  items: HeroBannerPoolItem[];
+}
 
+export interface RedisHeroBannerPoolReadResult {
+  status: "hit" | "miss" | "unavailable" | "failed";
+  payload: HeroBannerPoolPayload | null;
+  fence: string | null;
+}
 
+function isValidHeroBannerPoolPayload(raw: unknown): raw is HeroBannerPoolPayload {
+  if (!raw || typeof raw !== "object") return false;
+  const candidate = raw as Partial<HeroBannerPoolPayload>;
+  return (
+    candidate.v === 1 &&
+    typeof candidate.generatedAt === "number" &&
+    Number.isFinite(candidate.generatedAt) &&
+    Array.isArray(candidate.items) &&
+    candidate.items.length > 0 &&
+    candidate.items.every(
+      (item) =>
+        Boolean(item) &&
+        typeof item === "object" &&
+        Boolean(item.anime?.id) &&
+        typeof item.bucket === "string",
+    )
+  );
+}
 
+export async function getRedisHeroBannerPoolWithFence(
+  redisOverride?: RedisEvalClient | null,
+): Promise<RedisHeroBannerPoolReadResult> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) {
+    return { status: "unavailable", payload: null, fence: null };
+  }
 
+  try {
+    const res = await withRedisTimeout(
+      client.eval<never[], unknown[]>(
+        GET_ENVELOPE_OR_FENCE_SCRIPT,
+        [HERO_BANNER_REDIS_KEY, HERO_BANNER_GEN_KEY],
+        [],
+      ),
+      "getRedisHeroBannerPoolWithFence",
+    );
 
+    if (!Array.isArray(res) || res.length < 2) {
+      return { status: "failed", payload: null, fence: null };
+    }
 
+    const globalGen = extractGenToken(res[1]);
+    if (!globalGen) {
+      return { status: "failed", payload: null, fence: null };
+    }
 
+    const raw = extractPrefixedRaw(res[0]);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as RedisScopedEnvelope<HeroBannerPoolPayload>;
+        if (
+          parsed &&
+          parsed.v === 1 &&
+          parsed.globalGen === globalGen &&
+          isValidHeroBannerPoolPayload(parsed.data)
+        ) {
+          return { status: "hit", payload: parsed.data, fence: globalGen };
+        }
+      } catch {
+        // Payload inválido no Redis: trata como miss para recalcular com segurança
+      }
+    }
+
+    return { status: "miss", payload: null, fence: globalGen };
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao buscar pool do banner Hero no Redis (fallback para Neon):",
+      err instanceof Error ? err.message : err,
+    );
+    return { status: "failed", payload: null, fence: null };
+  }
+}
+
+export async function setRedisHeroBannerPool(
+  payload: HeroBannerPoolPayload,
+  fence?: string | null,
+  redisOverride?: RedisEvalClient | null,
+): Promise<RedisScopedWriteStatus> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) {
+    return "unavailable";
+  }
+  if (!isValidHeroBannerPoolPayload(payload)) {
+    return "skipped";
+  }
+  if (fence === null) {
+    return "failed";
+  }
+
+  const activeGen = fence ?? "0";
+  const envelope: RedisScopedEnvelope<HeroBannerPoolPayload> = {
+    v: 1,
+    globalGen: activeGen,
+    idGens: {},
+    data: payload,
+  };
+
+  try {
+    const raw = JSON.stringify(envelope);
+    const res = await withRedisTimeout(
+      client.eval<string[], unknown[]>(
+        SET_ENVELOPE_WITH_FENCE_SCRIPT,
+        [HERO_BANNER_REDIS_KEY, HERO_BANNER_GEN_KEY],
+        [raw, String(HERO_BANNER_REDIS_TTL_SEC), activeGen],
+      ),
+      "setRedisHeroBannerPool",
+    );
+    if (!Array.isArray(res)) return "failed";
+    if (res[0] === "fenced") return "fenced";
+    if (res[0] === "inserted") return "inserted";
+    return "failed";
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao salvar pool do banner Hero no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+    return "failed";
+  }
+}
+
+export async function invalidateRedisHeroBannerPool(
+  redisOverride?: RedisEvalClient | null,
+): Promise<void> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) return;
+
+  try {
+    await withRedisTimeout(
+      client.eval<[string], number>(
+        INVALIDATE_IDS_SCRIPT,
+        [HERO_BANNER_GEN_KEY, HERO_BANNER_REDIS_KEY],
+        ["1"],
+      ),
+      "invalidateRedisHeroBannerPool",
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao invalidar pool do banner Hero no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
