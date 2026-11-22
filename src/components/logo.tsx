@@ -11,13 +11,13 @@ export interface LogoProps {
 }
 
 const CONTAINER_SIZE_CLASSES = {
-  sm: "h-[34px] sm:h-[38px] aspect-[16/9] min-w-[60px]",
-  md: "h-[44px] sm:h-[50px] aspect-[16/9] min-w-[78px]",
-  lg: "h-[52px] sm:h-[60px] aspect-[16/9] min-w-[92px]",
+  sm: "h-[54px] sm:h-[64px] aspect-[16/9] min-w-[96px]",
+  md: "h-[54px] min-[380px]:h-[60px] sm:h-[68px] md:h-[74px] aspect-[16/9] min-w-[96px]",
+  lg: "h-[56px] min-[380px]:h-[64px] sm:h-[74px] md:h-[82px] lg:h-[88px] aspect-[16/9] min-w-[100px]",
 } as const;
 
 /**
- * Identidade visual oficial HIKARI (versão definitiva unificada com Elizabeth, placa "tv", faíscas e fundo cinematográfico).
+ * Identidade visual oficial HIKARI (versão definitiva unificada com Elizabeth, placa "TV", faíscas e fundo transparente).
  */
 export const Logo = memo(function Logo({
   className,
@@ -38,17 +38,33 @@ export const Logo = memo(function Logo({
       )}
       aria-label="HIKARI"
     >
+      <div className="hikari-wordmark-aura" aria-hidden="true" />
       <img
-        src="/assets/hikari-logo-final.png"
+        src="/assets/hikari-logo-final-transparent.png"
         alt="HIKARI"
         width={1672}
         height={941}
-        className="size-full object-contain drop-shadow-[0_2px_12px_rgba(168,85,247,0.45)]"
+        className="relative z-[1] size-full object-contain"
         loading={loading}
         decoding={decodingMode}
         fetchPriority={fetchPriority}
         draggable={false}
       />
+      <div className="hikari-wordmark-neon" aria-hidden="true">
+        <span className="hikari-wordmark-pulse" />
+        <span className="hikari-wordmark-sweep" />
+      </div>
+      <div className="hikari-tv-frame" aria-hidden="true">
+        <span className="hikari-tv-frame-ring" />
+        <span className="hikari-tv-frame-corners" />
+      </div>
+      <div className="hikari-tv-screen" aria-hidden="true">
+        <span className="hikari-tv-board-pulse" />
+        <span className="hikari-tv-blackout" />
+        <span className="hikari-tv-surge" />
+        <span className="hikari-tv-sparks hikari-tv-sparks-t" />
+        <span className="hikari-tv-sparks hikari-tv-sparks-v" />
+      </div>
     </div>
   );
 

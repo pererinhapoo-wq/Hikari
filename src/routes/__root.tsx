@@ -199,7 +199,7 @@ function RootDocument() {
           rel="preload"
           as="image"
           type="image/png"
-          href="/assets/hikari-logo-final.png"
+          href="/assets/hikari-logo-final-transparent.png"
           fetchPriority="high"
         />
         <link rel="preconnect" href="https://s4.anilist.co" />

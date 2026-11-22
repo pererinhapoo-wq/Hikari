@@ -159,7 +159,7 @@ const ShellMain = memo(function ShellMain({
     <main
       className={cn(
         "mx-auto w-full max-w-6xl px-4 pb-5 sm:px-6 sm:pb-8",
-        isBannerPage && "-mt-14 sm:-mt-16",
+        isBannerPage && "-mt-16 sm:-mt-[78px] md:-mt-[84px] lg:-mt-[90px]",
       )}
     >
       <Outlet />
@@ -343,7 +343,7 @@ function HomeFooterLazy() {
               {/* Identidade Hikari / Descrição */}
               <div className="space-y-3.5 md:col-span-5">
                 <div className="flex items-center">
-                  <Logo size="md" loading="lazy" fetchPriority="low" />
+                  <Logo size="lg" loading="lazy" fetchPriority="low" />
                 </div>
                 <p className="max-w-sm text-xs sm:text-sm leading-relaxed text-muted">
                   {settings.site_description}
@@ -1484,7 +1484,7 @@ export function Shell() {
           menuOpen
         }
       >
-        <div className="relative mx-auto flex h-14 max-w-6xl items-center justify-between gap-1.5 min-[380px]:gap-3 px-3 min-[380px]:px-4 sm:h-16 sm:px-6">
+        <div className="relative mx-auto flex h-16 max-w-6xl items-center justify-between gap-1.5 min-[380px]:gap-3 px-3 min-[380px]:px-4 sm:h-[78px] md:h-[84px] lg:h-[90px] sm:px-6">
 
           {/* LADO ESQUERDO: Menu Mobile + Navegação Desktop */}
           <div className="flex min-w-0 shrink-0 items-center gap-1.5 min-[380px]:gap-3">
@@ -1537,7 +1537,7 @@ export function Shell() {
           {/* CENTRO: LOGO OFICIAL HIKARI (EXATAMENTE CENTRALIZADO) */}
           <div className="pointer-events-none absolute inset-y-0 left-1/2 flex -translate-x-1/2 items-center justify-center">
             <div className="pointer-events-auto flex shrink-0 items-center">
-              <Logo size="md" fetchPriority="high" />
+              <Logo size="lg" fetchPriority="high" />
             </div>
           </div>
 
@@ -1646,7 +1646,7 @@ export function Shell() {
             role="dialog"
             aria-label="Painel de notificações"
             className={cn(
-              "fixed right-3 sm:right-6 top-14 sm:top-16 z-50 flex w-[calc(100vw-1.5rem)] sm:w-[420px] max-w-[430px] origin-top-right flex-col overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0a0815]/98 shadow-[0_24px_70px_rgba(0,0,0,0.85)] backdrop-blur-2xl",
+              "fixed right-3 sm:right-6 top-16 sm:top-[78px] md:top-[84px] lg:top-[90px] z-50 flex w-[calc(100vw-1.5rem)] sm:w-[420px] max-w-[430px] origin-top-right flex-col overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0a0815]/98 shadow-[0_24px_70px_rgba(0,0,0,0.85)] backdrop-blur-2xl",
               "motion-safe:transition-[opacity,transform] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
               notificationsPanel.visible
                 ? "opacity-100 translate-y-0 scale-100"
@@ -1787,7 +1787,7 @@ export function Shell() {
             {/* CABEÇALHO DO MENU */}
             <div className="flex h-20 items-center justify-between border-b border-border px-5">
               <div onClick={() => setMenuOpen(false)}>
-                <Logo size="md" />
+                <Logo size="lg" />
               </div>
 
               <button
