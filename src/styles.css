@@ -1502,3 +1502,48 @@ button, a, [role="button"] {
   }
 }
 
+@keyframes electricFlicker {
+  0%, 18%, 22%, 25%, 53%, 57%, 93%, 100% {
+    opacity: 1;
+    text-shadow: 0 0 1px rgba(168, 85, 247, 0.6);
+  }
+  20%, 24%, 55%, 95% {
+    opacity: 0.2;
+    text-shadow: 0 0 4px rgba(239, 68, 68, 0.9), 0 0 8px rgba(59, 130, 246, 0.8);
+  }
+}
+
+@keyframes electricSpark1 {
+  0%, 70%, 100% { transform: translate(0, 0) scale(0); opacity: 0; }
+  72% { transform: translate(-8px, -4px) scale(1); opacity: 1; color: #a855f7; }
+  75% { transform: translate(6px, 3px) scale(0.8); opacity: 0.8; color: #3b82f6; }
+  78% { transform: translate(0, 0) scale(0); opacity: 0; }
+}
+
+@keyframes electricSpark2 {
+  0%, 40%, 100% { transform: translate(0, 0) scale(0); opacity: 0; }
+  43% { transform: translate(10px, -3px) scale(1); opacity: 1; color: #ef4444; }
+  46% { transform: translate(-6px, 4px) scale(0.7); opacity: 0.9; color: #fbbf24; }
+  50% { transform: translate(0, 0) scale(0); opacity: 0; }
+}
+
+.animate-electric-text {
+  animation: electricFlicker 4s steps(1, end) infinite;
+}
+
+.animate-electric-spark-1 {
+  animation: electricSpark1 3.2s ease-in-out infinite;
+}
+
+.animate-electric-spark-2 {
+  animation: electricSpark2 2.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-electric-text,
+  .animate-electric-spark-1,
+  .animate-electric-spark-2 {
+    animation: none !important;
+  }
+}
+
