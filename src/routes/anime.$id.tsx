@@ -348,20 +348,6 @@ export const Route = createFileRoute("/anime/$id")({
   staleTime: 1000 * 60 * 5,
   gcTime: 1000 * 60 * 15,
   loader: async ({ params }) => {
-    if (params.id.startsWith("local-")) {
-      if (typeof window !== "undefined") {
-        void import("@/lib/anime-banner-warmup").then((m) =>
-          m.warmAnimeBannerOnClient(params.id, null),
-        );
-      }
-      return {
-        remote: null,
-        catalogEpisodes: null,
-        initialUserStatus: null,
-        initialStateRequestId: undefined as string | undefined,
-      };
-    }
-
     const detailKey = `detail:v7:${params.id}`;
     const cachedRemote = fromCache<Anime | null>(detailKey, () =>
       fetchAnimeDetail({ data: { id: params.id } }),
