@@ -3,6 +3,37 @@ import { overlayList } from "@/lib/overlay";
 import { type LocalAnime } from "@/lib/types";
 
 const ANILIST_ENDPOINT = "https://graphql.anilist.co";
+export const ENTITY_SEARCH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
+const MAX_ENTITY_CACHE_ENTRIES = 100;
+
+type EntityCacheEntry<T> = {
+  data: T;
+  timestamp: number;
+};
+
+const peopleSearchCache = new Map<string, EntityCacheEntry<SearchEntitiesResult<SearchPersonItem>>>();
+const characterSearchCache = new Map<string, EntityCacheEntry<SearchEntitiesResult<SearchCharacterItem>>>();
+
+const peopleInFlight = new Map<string, Promise<SearchEntitiesResult<SearchPersonItem>>>();
+const characterInFlight = new Map<string, Promise<SearchEntitiesResult<SearchCharacterItem>>>();
+
+function normalizeEntityQuery(q?: string): string {
+  if (!q) return "";
+  return q.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getEntityCacheKey(query: string, page: number, perPage: number): string {
+  return `q=${normalizeEntityQuery(query)}|p=${page}|pp=${perPage}`;
+}
+
+function enforceEntityCacheLimit<T>(map: Map<string, EntityCacheEntry<T>>): void {
+  if (map.size > MAX_ENTITY_CACHE_ENTRIES) {
+    const firstKey = map.keys().next().value;
+    if (firstKey !== undefined) {
+      map.delete(firstKey);
+    }
+  }
+}
 
 export interface SearchCharacterItem {
   id: number;
@@ -96,101 +127,122 @@ export async function searchCharacters(
     return { items: [], page, hasNext: false };
   }
 
-  try {
-    const res = await fetch(ANILIST_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "User-Agent": "Hikari/1.0 (anime streaming platform; +https://hikari.app)",
-      },
-      body: JSON.stringify({
-        query: CHARACTERS_QUERY,
-        variables: {
-          search: clean,
-          page,
-          perPage,
+  const cacheKey = getEntityCacheKey(clean, page, perPage);
+  const cached = characterSearchCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < ENTITY_SEARCH_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const existingInFlight = characterInFlight.get(cacheKey);
+  if (existingInFlight) {
+    return existingInFlight;
+  }
+
+  const promise = (async (): Promise<SearchEntitiesResult<SearchCharacterItem>> => {
+    try {
+      const res = await fetch(ANILIST_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "User-Agent": "Hikari/1.0 (anime streaming platform; +https://hikari.app)",
         },
-      }),
-      signal: AbortSignal.timeout(7000),
-    });
+        body: JSON.stringify({
+          query: CHARACTERS_QUERY,
+          variables: {
+            search: clean,
+            page,
+            perPage,
+          },
+        }),
+        signal: AbortSignal.timeout(7000),
+      });
 
-    if (!res.ok) {
-      return searchCharactersLocalFallback(clean, page, perPage);
-    }
-
-    const json = (await res.json()) as {
-      data?: {
-        Page?: {
-          pageInfo?: { hasNextPage?: boolean };
-          characters?: Array<{
-            id: number;
-            name?: { full?: string; native?: string; userPreferred?: string };
-            image?: { large?: string; medium?: string };
-            media?: {
-              nodes?: Array<{
-                id: number;
-                title?: { romaji?: string; english?: string; userPreferred?: string };
-              }>;
-            };
-          }>;
-        };
-      };
-    };
-
-    const rawList = json.data?.Page?.characters ?? [];
-    const hasNext = Boolean(json.data?.Page?.pageInfo?.hasNextPage);
-
-    const items: SearchCharacterItem[] = rawList.map((c) => {
-      const bestMedia = c.media?.nodes?.[0];
-      const mediaTitle =
-        bestMedia?.title?.userPreferred ||
-        bestMedia?.title?.romaji ||
-        bestMedia?.title?.english ||
-        "Anime";
-
-      return {
-        id: c.id,
-        name: {
-          full: c.name?.full || c.name?.userPreferred || "Personagem",
-          native: c.name?.native,
-          userPreferred: c.name?.userPreferred,
-        },
-        image: {
-          large: c.image?.large,
-          medium: c.image?.medium,
-        },
-        role: "Personagem",
-        anime: bestMedia?.id
-          ? {
-              id: bestMedia.id,
-              title: mediaTitle,
-            }
-          : null,
-      };
-    });
-
-    // Se estiver na primeira página, mescla personagens locais correspondentes
-    if (page === 1) {
-      const localChars = getLocalCharacters(clean);
-      const seen = new Set<string>();
-      const merged: SearchCharacterItem[] = [];
-
-      for (const item of [...localChars, ...items]) {
-        const key = String(item.id);
-        if (!seen.has(key)) {
-          seen.add(key);
-          merged.push(item);
-        }
+      if (!res.ok) {
+        return searchCharactersLocalFallback(clean, page, perPage);
       }
 
-      return { items: merged, page, hasNext };
-    }
+      const json = (await res.json()) as {
+        data?: {
+          Page?: {
+            pageInfo?: { hasNextPage?: boolean };
+            characters?: Array<{
+              id: number;
+              name?: { full?: string; native?: string; userPreferred?: string };
+              image?: { large?: string; medium?: string };
+              media?: {
+                nodes?: Array<{
+                  id: number;
+                  title?: { romaji?: string; english?: string; userPreferred?: string };
+                }>;
+              };
+            }>;
+          };
+        };
+      };
 
-    return { items, page, hasNext };
-  } catch {
-    return searchCharactersLocalFallback(clean, page, perPage);
-  }
+      const rawList = json.data?.Page?.characters ?? [];
+      const hasNext = Boolean(json.data?.Page?.pageInfo?.hasNextPage);
+
+      const items: SearchCharacterItem[] = rawList.map((c) => {
+        const bestMedia = c.media?.nodes?.[0];
+        const mediaTitle =
+          bestMedia?.title?.userPreferred ||
+          bestMedia?.title?.romaji ||
+          bestMedia?.title?.english ||
+          "Anime";
+
+        return {
+          id: c.id,
+          name: {
+            full: c.name?.full || c.name?.userPreferred || "Personagem",
+            native: c.name?.native,
+            userPreferred: c.name?.userPreferred,
+          },
+          image: {
+            large: c.image?.large,
+            medium: c.image?.medium,
+          },
+          role: "Personagem",
+          anime: bestMedia?.id
+            ? {
+                id: bestMedia.id,
+                title: mediaTitle,
+              }
+            : null,
+        };
+      });
+
+      let finalResult: SearchEntitiesResult<SearchCharacterItem>;
+      if (page === 1) {
+        const localChars = getLocalCharacters(clean);
+        const seen = new Set<string>();
+        const merged: SearchCharacterItem[] = [];
+
+        for (const item of [...localChars, ...items]) {
+          const key = String(item.id);
+          if (!seen.has(key)) {
+            seen.add(key);
+            merged.push(item);
+          }
+        }
+        finalResult = { items: merged, page, hasNext };
+      } else {
+        finalResult = { items, page, hasNext };
+      }
+
+      characterSearchCache.set(cacheKey, { data: finalResult, timestamp: Date.now() });
+      enforceEntityCacheLimit(characterSearchCache);
+      return finalResult;
+    } catch {
+      return searchCharactersLocalFallback(clean, page, perPage);
+    } finally {
+      characterInFlight.delete(cacheKey);
+    }
+  })();
+
+  characterInFlight.set(cacheKey, promise);
+  return promise;
 }
 
 function getLocalCharacters(query: string): SearchCharacterItem[] {
@@ -312,118 +364,139 @@ export async function searchPeople(
     return { items: [], page, hasNext: false };
   }
 
-  try {
-    const res = await fetch(ANILIST_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "User-Agent": "Hikari/1.0 (anime streaming platform; +https://hikari.app)",
-      },
-      body: JSON.stringify({
-        query: STAFF_QUERY,
-        variables: {
-          search: clean,
-          page,
-          perPage,
+  const cacheKey = getEntityCacheKey(clean, page, perPage);
+  const cached = peopleSearchCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < ENTITY_SEARCH_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const existingInFlight = peopleInFlight.get(cacheKey);
+  if (existingInFlight) {
+    return existingInFlight;
+  }
+
+  const promise = (async (): Promise<SearchEntitiesResult<SearchPersonItem>> => {
+    try {
+      const res = await fetch(ANILIST_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "User-Agent": "Hikari/1.0 (anime streaming platform; +https://hikari.app)",
         },
-      }),
-      signal: AbortSignal.timeout(7000),
-    });
+        body: JSON.stringify({
+          query: STAFF_QUERY,
+          variables: {
+            search: clean,
+            page,
+            perPage,
+          },
+        }),
+        signal: AbortSignal.timeout(7000),
+      });
 
-    if (!res.ok) {
-      return searchPeopleLocalFallback(clean, page, perPage);
-    }
-
-    const json = (await res.json()) as {
-      data?: {
-        Page?: {
-          pageInfo?: { hasNextPage?: boolean };
-          staff?: Array<{
-            id: number;
-            name?: { full?: string; native?: string; userPreferred?: string };
-            image?: { large?: string; medium?: string };
-            primaryOccupations?: string[];
-            staffMedia?: {
-              edges?: Array<{
-                staffRole?: string;
-                node?: {
-                  id: number;
-                  title?: { romaji?: string; english?: string; userPreferred?: string };
-                };
-              }>;
-            };
-            characterMedia?: {
-              edges?: Array<{
-                node?: {
-                  id: number;
-                  title?: { romaji?: string; english?: string; userPreferred?: string };
-                };
-              }>;
-            };
-          }>;
-        };
-      };
-    };
-
-    const rawList = json.data?.Page?.staff ?? [];
-    const hasNext = Boolean(json.data?.Page?.pageInfo?.hasNextPage);
-
-    const items: SearchPersonItem[] = rawList.map((s) => {
-      const topStaffEdge = s.staffMedia?.edges?.[0];
-      const topCharEdge = s.characterMedia?.edges?.[0];
-      const bestMedia = topStaffEdge?.node || topCharEdge?.node;
-      const mediaTitle =
-        bestMedia?.title?.userPreferred ||
-        bestMedia?.title?.romaji ||
-        bestMedia?.title?.english ||
-        "Anime";
-
-      const role = topStaffEdge?.staffRole || (s.primaryOccupations?.[0] ? s.primaryOccupations[0] : "Equipe técnica");
-
-      return {
-        id: s.id,
-        name: {
-          full: s.name?.full || s.name?.userPreferred || "Profissional",
-          native: s.name?.native,
-          userPreferred: s.name?.userPreferred,
-        },
-        image: {
-          large: s.image?.large,
-          medium: s.image?.medium,
-        },
-        primaryOccupations: s.primaryOccupations || [],
-        role,
-        anime: bestMedia?.id
-          ? {
-              id: bestMedia.id,
-              title: mediaTitle,
-            }
-          : null,
-      };
-    });
-
-    // Se estiver na primeira página, mescla profissionais locais correspondentes
-    if (page === 1) {
-      const localStaff = getLocalPeople(clean);
-      const seen = new Set<string>();
-      const merged: SearchPersonItem[] = [];
-
-      for (const item of [...localStaff, ...items]) {
-        const key = String(item.id);
-        if (!seen.has(key)) {
-          seen.add(key);
-          merged.push(item);
-        }
+      if (!res.ok) {
+        return searchPeopleLocalFallback(clean, page, perPage);
       }
 
-      return { items: merged, page, hasNext };
-    }
+      const json = (await res.json()) as {
+        data?: {
+          Page?: {
+            pageInfo?: { hasNextPage?: boolean };
+            staff?: Array<{
+              id: number;
+              name?: { full?: string; native?: string; userPreferred?: string };
+              image?: { large?: string; medium?: string };
+              primaryOccupations?: string[];
+              staffMedia?: {
+                edges?: Array<{
+                  staffRole?: string;
+                  node?: {
+                    id: number;
+                    title?: { romaji?: string; english?: string; userPreferred?: string };
+                  };
+                }>;
+              };
+              characterMedia?: {
+                edges?: Array<{
+                  node?: {
+                    id: number;
+                    title?: { romaji?: string; english?: string; userPreferred?: string };
+                  };
+                }>;
+              };
+            }>;
+          };
+        };
+      };
 
-    return { items, page, hasNext };
-  } catch {
-    return searchPeopleLocalFallback(clean, page, perPage);
-  }
+      const rawList = json.data?.Page?.staff ?? [];
+      const hasNext = Boolean(json.data?.Page?.pageInfo?.hasNextPage);
+
+      const items: SearchPersonItem[] = rawList.map((s) => {
+        const topStaffEdge = s.staffMedia?.edges?.[0];
+        const topCharEdge = s.characterMedia?.edges?.[0];
+        const bestMedia = topStaffEdge?.node || topCharEdge?.node;
+        const mediaTitle =
+          bestMedia?.title?.userPreferred ||
+          bestMedia?.title?.romaji ||
+          bestMedia?.title?.english ||
+          "Anime";
+
+        const role = topStaffEdge?.staffRole || (s.primaryOccupations?.[0] ? s.primaryOccupations[0] : "Equipe técnica");
+
+        return {
+          id: s.id,
+          name: {
+            full: s.name?.full || s.name?.userPreferred || "Profissional",
+            native: s.name?.native,
+            userPreferred: s.name?.userPreferred,
+          },
+          image: {
+            large: s.image?.large,
+            medium: s.image?.medium,
+          },
+          primaryOccupations: s.primaryOccupations || [],
+          role,
+          anime: bestMedia?.id
+            ? {
+                id: bestMedia.id,
+                title: mediaTitle,
+              }
+            : null,
+        };
+      });
+
+      let finalResult: SearchEntitiesResult<SearchPersonItem>;
+      if (page === 1) {
+        const localStaff = getLocalPeople(clean);
+        const seen = new Set<string>();
+        const merged: SearchPersonItem[] = [];
+
+        for (const item of [...localStaff, ...items]) {
+          const key = String(item.id);
+          if (!seen.has(key)) {
+            seen.add(key);
+            merged.push(item);
+          }
+        }
+        finalResult = { items: merged, page, hasNext };
+      } else {
+        finalResult = { items, page, hasNext };
+      }
+
+      peopleSearchCache.set(cacheKey, { data: finalResult, timestamp: Date.now() });
+      enforceEntityCacheLimit(peopleSearchCache);
+      return finalResult;
+    } catch {
+      return searchPeopleLocalFallback(clean, page, perPage);
+    } finally {
+      peopleInFlight.delete(cacheKey);
+    }
+  })();
+
+  peopleInFlight.set(cacheKey, promise);
+  return promise;
 }
 
 function getLocalPeople(query: string): SearchPersonItem[] {

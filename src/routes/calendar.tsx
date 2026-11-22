@@ -3,9 +3,6 @@ import { createServerFn } from "@tanstack/react-start";
 import {
   AlertCircle,
   Calendar as CalendarIcon,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
   Film,
   RotateCcw,
 } from "lucide-react";
@@ -72,27 +69,6 @@ type WeekDayInfo = {
 ========================================================= */
 
 /**
- * Converte timestamp Unix (segundos) para horário formatado em "America/Recife" (UTC-3).
- * Retorna null se não houver horário confiável.
- */
-function formatTimeRecife(airingAt?: number | null): string | null {
-  if (!airingAt || typeof airingAt !== "number" || isNaN(airingAt) || airingAt <= 0) {
-    return null;
-  }
-  try {
-    const date = new Date(airingAt * 1000);
-    return date.toLocaleTimeString("pt-BR", {
-      timeZone: TIMEZONE_BR,
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Retorna a chave "YYYY-MM-DD" correspondente ao dia no fuso "America/Recife".
  */
 function getDayKeyRecife(dateOrTimestamp: Date | number): string {
@@ -119,7 +95,6 @@ function getWeekInfoRecife(offsetWeeks = 0): {
   startTimestamp: number;
   endTimestamp: number;
 } {
-  // Obtém o dia atual no fuso de Recife
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: TIMEZONE_BR,
     year: "numeric",
@@ -132,10 +107,7 @@ function getWeekInfoRecife(offsetWeeks = 0): {
     .split("-")
     .map(Number);
 
-  // Data base em UTC correspondente ao meio-dia da data local em Recife
   const baseDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay, 12, 0, 0));
-
-  // Dia da semana: 0=Domingo, 1=Segunda ... 6=Sábado
   const dayOfWeek = baseDate.getUTCDay();
   const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
 
@@ -164,7 +136,6 @@ function getWeekInfoRecife(offsetWeeks = 0): {
     const [, m, dayNum] = dateKey.split("-");
     const dateStr = `${dayNum}/${m}`;
 
-    // Data por extenso em português
     const [y, mon, dy] = dateKey.split("-").map(Number);
     const dateObj = new Date(y, mon - 1, dy);
     const fullDateStr = dateObj.toLocaleDateString("pt-BR", {
@@ -189,12 +160,11 @@ function getWeekInfoRecife(offsetWeeks = 0): {
   const lastDay = days[6];
   const weekRangeLabel = `${firstDay.dateStr} a ${lastDay.dateStr}`;
 
-  // Timestamps Unix com margem de segurança de 24h para consulta
   const mondayStartUTC = Date.UTC(
     Number(firstDay.dateKey.slice(0, 4)),
     Number(firstDay.dateKey.slice(5, 7)) - 1,
     Number(firstDay.dateKey.slice(8, 10)),
-    3, // 00:00 em Recife (UTC-3) corresponde a 03:00 UTC
+    3,
     0,
     0,
   );
@@ -202,7 +172,7 @@ function getWeekInfoRecife(offsetWeeks = 0): {
     Number(lastDay.dateKey.slice(0, 4)),
     Number(lastDay.dateKey.slice(5, 7)) - 1,
     Number(lastDay.dateKey.slice(8, 10)) + 1,
-    2, // 23:59:59 em Recife corresponde a 02:59:59 UTC do dia seguinte
+    2,
     59,
     59,
   );
@@ -216,7 +186,7 @@ function getWeekInfoRecife(offsetWeeks = 0): {
 }
 
 /* =========================================================
-   SERVER FUNCTION COM CACHE (UPSTASH REDIS E NEON POSTGRESQL)
+   SERVER FUNCTION COM CACHE (UPSTASH REDIS E NEON/FALLBACK)
 ========================================================= */
 
 export const fetchWeeklyScheduleFn = createServerFn({ method: "GET" })
@@ -225,13 +195,13 @@ export const fetchWeeklyScheduleFn = createServerFn({ method: "GET" })
     const { start, end, weekKey } = data;
     const effectiveWeekKey = weekKey || `${start}:${end}`;
 
-    // 1. Tenta recuperar do cache compartilhado no Redis (com validação de geração atômica)
+    // 1. Tenta recuperar do cache compartilhado no Redis
     const cachedRedis = await getRedisCalendarSchedule<AiringScheduleItem[]>(effectiveWeekKey);
     if (cachedRedis && Array.isArray(cachedRedis) && cachedRedis.length > 0) {
       return cachedRedis;
     }
 
-    // 2. Consulta tabela dedicada catalog_airing_schedule no PostgreSQL (Neon / PGLite local)
+    // 2. Tenta consultar tabela dedicada catalog_airing_schedule no PostgreSQL (Neon)
     try {
       const sql = await getSql();
       const rows = await sql.query<{
@@ -319,15 +289,120 @@ export const fetchWeeklyScheduleFn = createServerFn({ method: "GET" })
           };
         });
 
-        // Grava no Redis para requisições subsequentes
         await setRedisCalendarSchedule(effectiveWeekKey, dbItems);
         return dbItems;
       }
-      return [];
     } catch (dbErr) {
       console.error("[Hikari] Erro ao consultar catalog_airing_schedule no banco:", dbErr);
-      throw dbErr;
     }
+
+    // 3. Fallback robusto usando a mesma fonte de dados confiável da página inicial (compatível com a home)
+    try {
+      const { anilistGraphQL, CARD_FIELDS, isAdultAnime, isHentaiAnime } = await import("@/lib/api");
+
+      type WeeklyScheduleResponse = {
+        Page: {
+          pageInfo?: {
+            hasNextPage?: boolean;
+          };
+          airingSchedules?: Array<{
+            id: number;
+            airingAt: number;
+            episode: number;
+            media?: any;
+          }>;
+        };
+      };
+
+      const query = `
+        query WeeklyAiringSchedule($start: Int, $end: Int, $page: Int) {
+          Page(page: $page, perPage: 50) {
+            pageInfo {
+              hasNextPage
+            }
+            airingSchedules(
+              airingAt_greater: $start,
+              airingAt_lesser: $end,
+              sort: TIME
+            ) {
+              id
+              airingAt
+              episode
+              media {
+                ${CARD_FIELDS}
+              }
+            }
+          }
+        }
+      `;
+
+      const allSchedules: Array<{ id: number; airingAt: number; episode: number; media?: any }> = [];
+      for (let page = 1; page <= 5; page++) {
+        const res = await anilistGraphQL<WeeklyScheduleResponse>(query, {
+          start,
+          end,
+          page,
+        }).catch(() => null);
+
+        if (!res?.Page?.airingSchedules?.length) {
+          break;
+        }
+        allSchedules.push(...res.Page.airingSchedules);
+        if (!res.Page.pageInfo?.hasNextPage) {
+          break;
+        }
+      }
+
+      if (allSchedules.length > 0) {
+        const uniqueMap = new Map<number, AiringScheduleItem>();
+        for (const entry of allSchedules) {
+          const media = entry.media;
+          if (!media?.id) continue;
+          if (isAdultAnime(media) || isHentaiAnime(media)) continue;
+          if (typeof entry.airingAt !== "number" || entry.airingAt <= 0) continue;
+
+          const item: AiringScheduleItem = {
+            id: media.id * 10000 + entry.episode,
+            airingAt: entry.airingAt,
+            episode: entry.episode,
+            media: {
+              id: media.id,
+              idMal: media.idMal,
+              isAdult: media.isAdult,
+              format: media.format,
+              title: {
+                romaji: media.title?.romaji,
+                english: media.title?.english,
+                native: media.title?.native,
+              },
+              coverImage: {
+                extraLarge: media.coverImage?.extraLarge || media.coverImage?.large,
+                large: media.coverImage?.large,
+                medium: media.coverImage?.medium,
+                color: media.coverImage?.color,
+              },
+              bannerImage: media.bannerImage,
+              genres: media.genres,
+              status: media.status,
+            },
+          };
+
+          if (!uniqueMap.has(item.id)) {
+            uniqueMap.set(item.id, item);
+          }
+        }
+
+        const resultItems = Array.from(uniqueMap.values()).sort((a, b) => a.airingAt - b.airingAt);
+        if (resultItems.length > 0) {
+          await setRedisCalendarSchedule(effectiveWeekKey, resultItems);
+          return resultItems;
+        }
+      }
+    } catch (fallbackErr) {
+      console.error("[Hikari] Erro no fallback de agendamento semanal:", fallbackErr);
+    }
+
+    return [];
   });
 
 /* =========================================================
@@ -391,9 +466,9 @@ export const Route = createFileRoute("/calendar")({
 
 /* =========================================================
    COMPONENTE DO CARD DE ANIME NO CALENDÁRIO
-   - Sem botão "Ver animes"
-   - Imagem, título, episódio e horário em America/Recife
-   - Não ocupa 100% da largura em telas maiores (grade de 3 colunas)
+   - Sem horário exibido visualmente
+   - Imagem, título e episódio
+   - Grade de 3 colunas
 ========================================================= */
 
 function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
@@ -410,16 +485,13 @@ function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
     "";
   const coverAttrs = getResponsiveCoverAttrs(cover, "card-sm");
 
-  // Horário convertido para fuso America/Recife (UTC-3)
-  const timeFormatted = formatTimeRecife(item.airingAt);
-
   return (
     <Link
       to="/anime/$id"
       params={{ id: String(item.media.id) }}
       className="group relative flex flex-col md:flex-row min-w-0 w-full overflow-hidden rounded-xl md:rounded-2xl border border-purple-500/15 bg-[#100e1b] p-1.5 sm:p-2 md:p-3 transition-all duration-300 hover:border-purple-400/50 hover:bg-[#151224] hover:shadow-[0_8px_24px_rgba(168,85,247,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50"
     >
-      {/* Imagem de Capa (w-full no mobile para 3 colunas elegantes, w-20/24 no desktop) */}
+      {/* Imagem de Capa */}
       <div className="relative aspect-[2/3] w-full md:w-20 lg:w-24 shrink-0 overflow-hidden rounded-lg md:rounded-xl bg-[#0d0c16]">
         {cover ? (
           <img
@@ -441,22 +513,12 @@ function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
       {/* Informações do Anime */}
       <div className="flex min-w-0 flex-1 flex-col justify-between pt-1.5 md:pt-0 pl-0 md:pl-3">
         <div className="min-w-0">
-          {/* Badges: Episódio e Horário de Lançamento no Brasil */}
+          {/* Badges: Episódio */}
           <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 text-xs min-w-0">
             {typeof item.episode === "number" && item.episode > 0 && (
               <span className="inline-flex items-center rounded-md border border-purple-500/30 bg-purple-500/20 px-1.5 py-0.5 text-[9px] sm:text-[10.5px] md:text-xs font-semibold text-purple-300 shrink-0">
                 <span className="sm:hidden">Ep. {item.episode}</span>
                 <span className="hidden sm:inline">Episódio {item.episode}</span>
-              </span>
-            )}
-
-            {timeFormatted && (
-              <span
-                className="inline-flex items-center gap-0.5 sm:gap-1 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] sm:text-[10.5px] md:text-xs text-muted shrink-0"
-                title={`Horário de Brasília: ${timeFormatted}`}
-              >
-                <Clock className="size-2.5 sm:size-3 text-purple-400 shrink-0" />
-                <span className="tabular-nums">{timeFormatted}</span>
               </span>
             )}
           </div>
@@ -515,7 +577,7 @@ function CalendarPage() {
     }
   }, [initialSchedules, weekOffset]);
 
-  // Busca os lançamentos semanais exclusivamente via Server Function (Neon + Upstash Redis)
+  // Busca os lançamentos semanais via Server Function (Neon / Redis / Fallback)
   const loadScheduleData = async (targetOffset = weekOffset) => {
     setLoading(true);
     setError(null);
@@ -686,7 +748,7 @@ function CalendarPage() {
       </header>
 
       {/* =========================================================
-          DIAS DA SEMANA: SEGUNDA A DOMINGO (SEM SETAS LATERAIS)
+          DIAS DA SEMANA: SEGUNDA A DOMINGO (SEM O SELETOR INDEVIDO)
       ========================================================== */}
       <div className="space-y-3">
         <div className="flex items-center justify-between px-1 text-xs text-muted">
