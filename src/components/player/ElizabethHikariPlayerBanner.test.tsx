@@ -21,13 +21,16 @@ describe("ElizabethHikariPlayerBanner", () => {
     );
     assert.match(html, /target="_blank"/);
     assert.match(html, /rel="noopener noreferrer"/);
-    assert.match(html, /\/assets\/hikari-elizabeth-player-banner\.png/);
-    assert.match(html, /\/assets\/hikari-elizabeth-player-banner\.webp/);
+    assert.match(
+      html,
+      /\/assets\/aistudio\/file_000000006650820e9806dd0a131836b5_fa589477\.png/,
+    );
     assert.match(html, /width="1672" height="941"/);
-    assert.match(html, /hikari-ep-banner-cta-pulse/);
+    assert.match(html, /hikari-ep-banner-assistir-border/);
+    assert.match(html, /hikari-ep-banner-player-border/);
+    assert.match(html, /hikari-ep-banner-play-glow/);
     assert.match(html, /hikari-ep-banner-logo-glint/);
     assert.match(html, /hikari-ep-banner-petal-1/);
-    assert.match(html, /hikari-ep-banner-sparkle-1/);
     assert.doesNotMatch(
       html,
       /Este episódio ainda não está disponível no Hikari Player/,
@@ -48,12 +51,14 @@ describe("ElizabethHikariPlayerBanner", () => {
     assert.doesNotMatch(html, /<a\b/);
     assert.doesNotMatch(html, /href=/);
     assert.doesNotMatch(html, /https:\/\/hikari-player-2\.vercel\.app/);
-    assert.match(html, /\/assets\/hikari-elizabeth-player-banner\.png/);
+    assert.match(
+      html,
+      /\/assets\/aistudio\/file_000000006650820e9806dd0a131836b5_fa589477\.png/,
+    );
     assert.match(
       html,
       /Este episódio ainda não está disponível no Hikari Player\./,
     );
-    assert.doesNotMatch(html, /hikari-ep-banner-cta-pulse/);
   });
 
   it("3. Nunca gera link para associação inválida ou URL injetada", () => {

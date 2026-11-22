@@ -4,9 +4,8 @@ import { buildHikariPlayerEpisodeUrl } from "@/lib/hikari-player";
 import { cn } from "@/lib/utils";
 
 export const ELIZABETH_PLAYER_BANNER_IMAGE =
-  "/assets/hikari-elizabeth-player-banner.png" as const;
-export const ELIZABETH_PLAYER_BANNER_WEBP_SRCSET =
-  "/assets/hikari-elizabeth-player-banner-sm.webp 960w, /assets/hikari-elizabeth-player-banner.webp 1672w" as const;
+  "/assets/aistudio/file_000000006650820e9806dd0a131836b5_fa589477.png" as const;
+export const ELIZABETH_PLAYER_BANNER_WEBP_SRCSET = "" as const;
 
 export interface ElizabethHikariPlayerBannerProps {
   animeTitle: string;
@@ -125,23 +124,33 @@ export function ElizabethHikariPlayerBanner({
         </div>
       )}
 
-      {/* Camadas visuais leves (apenas transform e opacity) */}
-      <div
-        aria-hidden="true"
-        className="hikari-ep-banner-aura hikari-ep-banner-anim"
-      />
-
+      {/* D. Reflexo luminoso sutil ocasional na logo HIKARI */}
       <div aria-hidden="true" className="hikari-ep-banner-logo-glint">
         <div className="hikari-ep-banner-logo-glint-beam hikari-ep-banner-anim" />
       </div>
 
-      {isClickable ? (
-        <div
-          aria-hidden="true"
-          className="hikari-ep-banner-cta-pulse hikari-ep-banner-anim"
-        />
-      ) : null}
+      {/* B1. Borda neon roxa animada ao redor da placa "ASSISTIR EPISÓDIO" */}
+      <div aria-hidden="true" className="hikari-ep-banner-assistir-mask">
+        <div className="hikari-ep-banner-assistir-border hikari-ep-banner-anim">
+          <span className="hikari-ep-banner-border-spinner hikari-ep-banner-assistir-spinner hikari-ep-banner-anim" />
+        </div>
+      </div>
 
+      {/* C. Brilho discreto pulsante no ícone de play (▷) */}
+      <div
+        aria-hidden="true"
+        className="hikari-ep-banner-play-glow hikari-ep-banner-anim"
+      />
+
+      {/* B2. Borda neon roxa animada ao redor do botão "Hikari Player" */}
+      <div
+        aria-hidden="true"
+        className="hikari-ep-banner-player-border hikari-ep-banner-anim"
+      >
+        <span className="hikari-ep-banner-border-spinner hikari-ep-banner-player-spinner hikari-ep-banner-anim" />
+      </div>
+
+      {/* A. Pétalas de sakura leves passando por faixas livres do cenário */}
       <span
         aria-hidden="true"
         className="hikari-ep-banner-petal hikari-ep-banner-petal-1 hikari-ep-banner-anim"
@@ -163,27 +172,6 @@ export function ElizabethHikariPlayerBanner({
         className="hikari-ep-banner-petal hikari-ep-banner-petal-5 hikari-ep-banner-anim"
       />
 
-      <span
-        aria-hidden="true"
-        className="hikari-ep-banner-sparkle hikari-ep-banner-sparkle-1 hikari-ep-banner-anim"
-      />
-      <span
-        aria-hidden="true"
-        className="hikari-ep-banner-sparkle hikari-ep-banner-sparkle-2 hikari-ep-banner-anim"
-      />
-      <span
-        aria-hidden="true"
-        className="hikari-ep-banner-sparkle hikari-ep-banner-sparkle-3 hikari-ep-banner-anim"
-      />
-      <span
-        aria-hidden="true"
-        className="hikari-ep-banner-sparkle hikari-ep-banner-sparkle-4 hikari-ep-banner-anim"
-      />
-      <span
-        aria-hidden="true"
-        className="hikari-ep-banner-sparkle hikari-ep-banner-sparkle-5 hikari-ep-banner-anim"
-      />
-
       {isClickable ? (
         <div
           aria-hidden="true"
@@ -192,7 +180,7 @@ export function ElizabethHikariPlayerBanner({
       ) : (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[#08070d]/30"
+          className="pointer-events-none absolute inset-0 z-[5] bg-[#08070d]/30"
         />
       )}
     </div>
