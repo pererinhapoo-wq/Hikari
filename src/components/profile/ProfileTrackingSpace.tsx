@@ -233,8 +233,6 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
             className="
               size-full
               object-cover
-              [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
-              group-active:scale-[1.01]
               motion-reduce:transform-none
             "
           />

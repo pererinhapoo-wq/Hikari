@@ -223,7 +223,7 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({
         className="anime-stats-item-enter relative mb-4 flex items-center justify-between gap-3 border-b border-white/[0.06] pb-4"
       >
         <div className="flex items-center gap-2.5">
-          <div className="flex size-8 sm:size-9 items-center justify-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 shadow-[0_0_15px_rgba(139,92,246,0.2)] transition-transform duration-300 ease-out group-hover/stats:scale-105">
+          <div className="flex size-8 sm:size-9 items-center justify-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 shadow-[0_0_15px_rgba(139,92,246,0.2)]">
             <BarChart3 className="size-4" />
           </div>
           <h2 className="font-display text-lg sm:text-xl font-bold tracking-tight text-white">
@@ -351,7 +351,7 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({
                 <div className="flex items-center gap-2 min-w-0">
                   <span
                     className={`size-2 rounded-full shrink-0 transition-transform duration-200 ease-out ${
-                      isHighlighted ? "scale-125" : "group-hover:scale-125"
+                      isHighlighted ? "scale-125" : ""
                     } ${dotColor}`}
                   />
                   <span className="truncate transition-transform duration-200 ease-out group-hover:translate-x-0.5">
