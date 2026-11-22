@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useRouter } from "@tanstack/react-router";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronRight, Info, Play } from "lucide-react";
 
@@ -445,6 +445,19 @@ interface HeroSlideProps {
 }
 
 const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlideProps) {
+  const router = useRouter();
+  const lastPreloadAtRef = useRef<Record<string, number>>({});
+  const triggerRoutePreload = useCallback(
+    (cacheKey: string, preloadFn: () => Promise<unknown>) => {
+      const now = Date.now();
+      const last = lastPreloadAtRef.current[cacheKey] ?? 0;
+      if (now - last < 500) return;
+      lastPreloadAtRef.current[cacheKey] = now;
+      void preloadFn().catch(() => {});
+    },
+    [],
+  );
+
   const preferredTitle =
     anime.titles?.english?.trim() ||
     anime.titles?.romaji?.trim() ||
@@ -707,11 +720,32 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
             <Link
               to="/watch/$id/$ep"
               params={{ id: anime.id, ep: "ep-1" }}
-              preload="intent"
-              className="inline-flex items-center justify-center gap-2 h-9 sm:h-10 px-4.5 sm:px-5.5 rounded-xl sm:rounded-2xl bg-gradient-to-r from-purple-600 via-purple-500 to-fuchsia-600 [@media(hover:hover)]:hover:from-purple-500 [@media(hover:hover)]:hover:via-purple-400 [@media(hover:hover)]:hover:to-fuchsia-500 active:brightness-110 text-white font-bold text-xs sm:text-sm tracking-wide border border-white/20 shadow-[0_4px_20px_rgba(168,85,247,0.38)] [@media(hover:hover)]:hover:shadow-[0_4px_26px_rgba(168,85,247,0.55)] cursor-pointer select-none touch-manipulation [-webkit-tap-highlight-color:transparent] transition-[box-shadow,background-color,opacity,filter] duration-140 ease-out"
+              preload={false}
+              onFocus={() =>
+                triggerRoutePreload(`watch:${anime.id}`, () =>
+                  router.preloadRoute({
+                    to: "/watch/$id/$ep",
+                    params: { id: anime.id, ep: "ep-1" },
+                  }),
+                )
+              }
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                triggerRoutePreload(`watch:${anime.id}`, () =>
+                  router.preloadRoute({
+                    to: "/watch/$id/$ep",
+                    params: { id: anime.id, ep: "ep-1" },
+                  }),
+                );
+              }}
+              className="group relative inline-flex items-center justify-center gap-2 h-9 sm:h-10 px-4.5 sm:px-5.5 rounded-xl sm:rounded-2xl bg-gradient-to-r from-purple-600 via-purple-500 to-fuchsia-600 active:opacity-90 text-white font-bold text-xs sm:text-sm tracking-wide border border-white/20 shadow-[0_4px_20px_rgba(168,85,247,0.38)] cursor-pointer select-none touch-manipulation [-webkit-tap-highlight-color:transparent] transition-opacity duration-140 ease-out motion-reduce:transition-none"
             >
-              <Play className="size-3.5 sm:size-4 fill-white text-white shrink-0 pointer-events-none" />
-              <span>Assistir</span>
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -inset-px rounded-[inherit] bg-gradient-to-r from-purple-500 via-purple-400 to-fuchsia-500 border border-white/20 shadow-[0_4px_26px_rgba(168,85,247,0.55)] opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 transition-opacity duration-140 ease-out motion-reduce:transition-none"
+              />
+              <Play className="relative z-[1] size-3.5 sm:size-4 fill-white text-white shrink-0 pointer-events-none" />
+              <span className="relative z-[1]">Assistir</span>
             </Link>
           )}
 
@@ -719,11 +753,29 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
           <Link
             to="/anime/$id"
             params={{ id: anime.id }}
-            className="hero-btn-action group inline-flex items-center justify-center gap-1.5 h-9 sm:h-10 px-3.5 sm:px-4.5 rounded-xl sm:rounded-2xl bg-black/75 md:bg-black/60 hover:bg-black/80 border border-white/25 hover:border-white/40 text-white font-semibold text-xs sm:text-sm tracking-wide md:backdrop-blur-md shadow-[0_2px_12px_rgba(0,0,0,0.5)] cursor-pointer select-none"
+            preload={false}
+            onFocus={() =>
+              triggerRoutePreload(`anime:${anime.id}`, () =>
+                router.preloadRoute({
+                  to: "/anime/$id",
+                  params: { id: anime.id },
+                }),
+              )
+            }
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              triggerRoutePreload(`anime:${anime.id}`, () =>
+                router.preloadRoute({
+                  to: "/anime/$id",
+                  params: { id: anime.id },
+                }),
+              );
+            }}
+            className="hero-btn-action group inline-flex items-center justify-center gap-1.5 h-9 sm:h-10 px-3.5 sm:px-4.5 rounded-xl sm:rounded-2xl bg-black/75 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-black/85 border border-white/25 [@media(hover:hover)_and_(pointer:fine)]:hover:border-white/40 text-white font-semibold text-xs sm:text-sm tracking-wide shadow-[0_2px_12px_rgba(0,0,0,0.5)] cursor-pointer select-none"
           >
-            <Info className="size-3.5 sm:size-4 text-purple-200 group-hover:text-white shrink-0 transition-colors" />
+            <Info className="size-3.5 sm:size-4 text-purple-200 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-white shrink-0 transition-colors motion-reduce:transition-none" />
             <span className="[text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">Detalhes</span>
-            <ChevronRight className="size-3.5 sm:size-4 text-zinc-300 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
+            <ChevronRight className="size-3.5 sm:size-4 text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-white [@media(hover:hover)_and_(pointer:fine)]:group-hover:translate-x-0.5 transition-[color,transform] duration-140 ease-out shrink-0 motion-reduce:transition-none motion-reduce:transform-none" />
           </Link>
         </div>
       </div>
@@ -1169,49 +1221,58 @@ export function Hero({
       style={{ touchAction: "pan-y" }}
       className="relative -mx-4 overflow-hidden bg-black border-b border-white/5 shadow-[0_12px_40px_rgba(0,0,0,0.85)] sm:-mx-6 md:mx-0 md:rounded-3xl md:border md:border-white/10 md:shadow-[0_20px_50px_rgba(0,0,0,0.7)] min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end select-none touch-pan-y cursor-default [contain:layout_style]"
     >
-      {/* Camadas da transição ou anime ativo */}
-      {activeTransition ? (
-        <div className="relative size-full min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end">
-          {/* Camada inferior: Anime saindo com escurecimento perceptível, gradual e desvanecimento suave */}
-          <div
-            key={`outgoing-${activeTransition.fromIndex}-${items[activeTransition.fromIndex].id}`}
-            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity] [contain:paint] [transform:translateZ(0)]"
-            style={{
-              animation: "heroCrossfadeOut 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
-              backfaceVisibility: "hidden",
-            }}
-          >
-            <HeroSlide anime={items[activeTransition.fromIndex]} />
-            <div
-              className="absolute inset-0 size-full pointer-events-none bg-black will-change-[opacity] z-30 [transform:translateZ(0)]"
-              style={{
-                animation: "heroDarkenFade 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
-                backfaceVisibility: "hidden",
-              }}
-              aria-hidden="true"
-            />
-          </div>
+      {/* Camadas da transição ou anime ativo (key estável preserva instância entre idle e crossfade) */}
+      <div className="relative size-full min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end">
+        {(activeTransition
+          ? [
+              { slideIndex: activeTransition.fromIndex, role: "outgoing" as const },
+              { slideIndex: activeTransition.toIndex, role: "incoming" as const },
+            ]
+          : [{ slideIndex: activeIndex, role: "active" as const }]
+        ).map((slide) => {
+          const slideAnime = items[slide.slideIndex];
+          const isOutgoing = slide.role === "outgoing";
+          const isIncoming = slide.role === "incoming";
 
-          {/* Camada superior: Próximo anime surgindo suavemente sobre a imagem escurecida */}
-          <div
-            key={`incoming-${activeTransition.toIndex}-${items[activeTransition.toIndex].id}`}
-            className="relative size-full overflow-hidden z-20 will-change-[opacity] [contain:paint] [transform:translateZ(0)]"
-            style={{
-              animation: "heroCrossfadeIn 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
-              backfaceVisibility: "hidden",
-            }}
-          >
-            <HeroSlide anime={items[activeTransition.toIndex]} priority />
-          </div>
-        </div>
-      ) : (
-        <div
-          key={`active-${activeIndex}-${items[activeIndex].id}`}
-          className="relative size-full overflow-hidden z-10 [contain:paint]"
-        >
-          <HeroSlide anime={items[activeIndex]} priority />
-        </div>
-      )}
+          return (
+            <div
+              key={`slide-${slide.slideIndex}-${slideAnime.id}`}
+              className={
+                isOutgoing
+                  ? "absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity] [contain:paint] [transform:translateZ(0)]"
+                  : isIncoming
+                    ? "relative size-full overflow-hidden z-20 will-change-[opacity] [contain:paint] [transform:translateZ(0)]"
+                    : "relative size-full overflow-hidden z-10 [contain:paint]"
+              }
+              style={
+                isOutgoing
+                  ? {
+                      animation: "heroCrossfadeOut 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+                      backfaceVisibility: "hidden",
+                    }
+                  : isIncoming
+                    ? {
+                        animation: "heroCrossfadeIn 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+                        backfaceVisibility: "hidden",
+                      }
+                    : undefined
+              }
+            >
+              <HeroSlide anime={slideAnime} priority={!isOutgoing} />
+              {isOutgoing && (
+                <div
+                  className="absolute inset-0 size-full pointer-events-none bg-black will-change-[opacity] z-30 [transform:translateZ(0)]"
+                  style={{
+                    animation: "heroDarkenFade 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+                    backfaceVisibility: "hidden",
+                  }}
+                  aria-hidden="true"
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

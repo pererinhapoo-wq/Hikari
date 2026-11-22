@@ -189,23 +189,29 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
         onClick={() => setOpen((prev) => !prev)}
         className={cn(
           "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full select-none cursor-pointer",
-          "motion-safe:transition-[transform,box-shadow,ring-color] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
+          "motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
           open
             ? "ring-2 ring-[#c084fc] shadow-[0_0_20px_rgba(192,132,252,0.45)]"
-            : "ring-1 ring-purple-500/30 hover:ring-purple-400/60 hover:shadow-[0_0_16px_rgba(168,85,247,0.25)]",
+            : "ring-1 ring-purple-500/30",
         )}
         aria-label="Menu de perfil do usuário"
         aria-expanded={open}
         aria-haspopup="menu"
       >
+        {!open && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-purple-400/60 shadow-[0_0_16px_rgba(168,85,247,0.25)] opacity-0 motion-safe:transition-opacity motion-safe:duration-200 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 motion-reduce:transition-none"
+          />
+        )}
         {avatarSrc ? (
           <img
             src={avatarSrc}
             alt={displayName}
             referrerPolicy="no-referrer"
             onError={() => setImgError(true)}
-            className="size-full rounded-full object-cover motion-safe:transition-transform motion-safe:duration-300 group-hover:scale-105"
+            className="size-full rounded-full object-cover motion-safe:transition-transform motion-safe:duration-300 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transition-none motion-reduce:transform-none"
           />
         ) : (
           <div className="flex size-full items-center justify-center rounded-full bg-gradient-to-br from-[#261b45] to-[#120f24] text-xs sm:text-sm font-bold text-[#c084fc] shadow-inner ring-1 ring-purple-400/30">

@@ -1,5 +1,5 @@
-import React, { memo, useEffect, useRef } from "react";
-import { Link } from "@tanstack/react-router";
+import React, { memo, useCallback, useEffect, useRef } from "react";
+import { Link, useRouter } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
 export interface LogoProps {
@@ -67,7 +67,7 @@ export const Logo = memo(function Logo({
       ref={containerRef}
       data-paused="false"
       className={cn(
-        "hikari-animated-logo-container relative inline-flex items-center justify-center select-none transition-transform duration-200 ease-out group-hover:scale-[1.03]",
+        "hikari-animated-logo-container relative inline-flex items-center justify-center select-none transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:transform-none",
         containerSizeClasses,
         className,
       )}
@@ -123,16 +123,38 @@ export const Logo = memo(function Logo({
     return content;
   }
 
+  return <LogoHomeLink>{content}</LogoHomeLink>;
+});
+
+function LogoHomeLink({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const lastPreloadAtRef = useRef(0);
+
+  const preloadHomeOnIntent = useCallback(() => {
+    if (router.state.location.pathname === "/") return;
+    const now = Date.now();
+    if (now - lastPreloadAtRef.current < 500) return;
+    lastPreloadAtRef.current = now;
+    void router.preloadRoute({ to: "/" }).catch(() => {});
+  }, [router]);
+
   return (
     <Link
       to="/"
+      preload={false}
+      onFocus={preloadHomeOnIntent}
+      onPointerDown={(e) => {
+        if (e.button === 0) {
+          preloadHomeOnIntent();
+        }
+      }}
       className="inline-flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50 rounded-lg group"
       aria-label="HIKARI — Início"
     >
-      {content}
+      {children}
     </Link>
   );
-});
+}
 
 // Aliases para compatibilidade caso importados em componentes legados
 export const HikariWordmark = Logo;

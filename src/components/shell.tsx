@@ -1,6 +1,7 @@
 import {
   Link,
   Outlet,
+  useRouter,
   useRouterState,
 } from "@tanstack/react-router";
 
@@ -167,7 +168,7 @@ const ShellMain = memo(function ShellMain({
   );
 });
 
-function ShellHeaderWrapper({
+const ShellHeaderWrapper = memo(function ShellHeaderWrapper({
   pathname,
   isBannerPage,
   keepVisible,
@@ -326,7 +327,107 @@ function ShellHeaderWrapper({
       {children}
     </header>
   );
-}
+});
+
+const ShellDesktopNav = memo(function ShellDesktopNav({
+  pathname,
+  calendarEnabled,
+}: {
+  pathname: string;
+  calendarEnabled: boolean;
+}) {
+  const router = useRouter();
+  const lastPreloadAtRef = useRef<Record<string, number>>({});
+
+  const triggerRoutePreload = useCallback((to: "/" | "/calendar") => {
+    const now = Date.now();
+    const last = lastPreloadAtRef.current[to] ?? 0;
+    if (now - last < 500) return;
+    lastPreloadAtRef.current[to] = now;
+    void router.preloadRoute({ to }).catch(() => {});
+  }, [router]);
+
+  const isHome = pathname === "/";
+  const isCalendar = pathname.startsWith("/calendar");
+
+  return (
+    <nav className="hidden md:flex items-center gap-1" aria-label="Navegação principal">
+      {/* Início */}
+      <Link
+        to="/"
+        preload={false}
+        onFocus={() => {
+          if (!isHome) triggerRoutePreload("/");
+        }}
+        onPointerDown={(e) => {
+          if (e.button === 0 && !isHome) triggerRoutePreload("/");
+        }}
+        className={cn(
+          "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
+          isHome
+            ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+            : "text-muted [@media(hover:hover)_and_(pointer:fine)]:hover:bg-elevated/70 [@media(hover:hover)_and_(pointer:fine)]:hover:text-fg",
+        )}
+      >
+        <House className="size-4" />
+        <span>Início</span>
+      </Link>
+
+      {/* Calendário */}
+      {calendarEnabled && (
+        <Link
+          to="/calendar"
+          preload={false}
+          onFocus={() => {
+            if (!isCalendar) triggerRoutePreload("/calendar");
+          }}
+          onPointerDown={(e) => {
+            if (e.button === 0 && !isCalendar) triggerRoutePreload("/calendar");
+          }}
+          className={cn(
+            "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
+            isCalendar
+              ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+              : "text-muted [@media(hover:hover)_and_(pointer:fine)]:hover:bg-elevated/70 [@media(hover:hover)_and_(pointer:fine)]:hover:text-fg",
+          )}
+        >
+          <Calendar className="size-4" />
+          <span>Calendário</span>
+        </Link>
+      )}
+    </nav>
+  );
+});
+
+const NotificationsListContent = memo(function NotificationsListContent({
+  notifications,
+  onMarkAsRead,
+  onDelete,
+  onNavigate,
+}: {
+  notifications: NotificationItem[];
+  onMarkAsRead: (id: string) => void;
+  onDelete: (id: string) => void;
+  onNavigate: () => void;
+}) {
+  const localAnimes = useHikariStore((s) => s.animes);
+
+  return (
+    <>
+      {notifications.map((notification) => (
+        <LazyNotificationItemCard
+          key={notification.id}
+          notification={notification}
+          localAnimes={localAnimes}
+          compact
+          onMarkAsRead={onMarkAsRead}
+          onDelete={onDelete}
+          onNavigate={onNavigate}
+        />
+      ))}
+    </>
+  );
+});
 
 function HomeFooterLazy() {
   const { settings } = usePublicSettings();
@@ -432,7 +533,7 @@ function HomeFooterLazy() {
   );
 }
 
-function VisitorDropdownMenu({
+const VisitorDropdownMenu = memo(function VisitorDropdownMenu({
   onOpenLogin,
 }: {
   onOpenLogin: (mode?: "login" | "register") => void;
@@ -463,21 +564,29 @@ function VisitorDropdownMenu({
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        onMouseEnter={() => void prefetchLoginMenu()}
         onFocus={() => void prefetchLoginMenu()}
+        onPointerDown={(e) => {
+          if (e.button === 0) void prefetchLoginMenu();
+        }}
         className={cn(
           "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full select-none cursor-pointer",
-          "motion-safe:transition-[transform,box-shadow,ring-color] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
+          "motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
           open
             ? "ring-2 ring-[#c084fc] shadow-[0_0_20px_rgba(192,132,252,0.45)]"
-            : "ring-1 ring-purple-500/30 hover:ring-purple-400/60 hover:shadow-[0_0_16px_rgba(168,85,247,0.25)]",
+            : "ring-1 ring-purple-500/30",
         )}
         aria-label="Opções de conta"
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <CircleUserRound className="size-5 sm:size-5.5 text-[#c084fc] transition-transform duration-300 group-hover:scale-105" />
+        {!open && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-purple-400/60 shadow-[0_0_16px_rgba(168,85,247,0.25)] opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 motion-safe:transition-opacity motion-safe:duration-200 motion-reduce:transition-none"
+          />
+        )}
+        <CircleUserRound className="size-5 sm:size-5.5 text-[#c084fc] motion-safe:transition-transform motion-safe:duration-300 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transition-none motion-reduce:transform-none" />
       </button>
 
       {open && (
@@ -503,11 +612,11 @@ function VisitorDropdownMenu({
               }}
               className={cn(
                 "group flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-[13px] font-medium text-zinc-200",
-                "hover:bg-white/[0.08] hover:text-white cursor-pointer",
-                "motion-safe:transition-[background-color,color,transform] motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-[0.98]",
+                "[@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.08] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white cursor-pointer",
+                "motion-safe:transition-[background-color,color,transform] motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none",
               )}
             >
-              <div className="flex size-7 items-center justify-center rounded-lg bg-purple-500/15 text-purple-300 group-hover:bg-purple-500/25 group-hover:text-purple-200 transition-colors">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-purple-500/15 text-purple-300 [@media(hover:hover)_and_(pointer:fine)]:group-hover:bg-purple-500/25 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-200 transition-colors motion-reduce:transition-none">
                 <LogIn className="size-4" />
               </div>
               <span className="truncate">Entrar</span>
@@ -521,11 +630,11 @@ function VisitorDropdownMenu({
               }}
               className={cn(
                 "group flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-[13px] font-medium text-purple-200",
-                "hover:bg-purple-500/15 hover:text-white cursor-pointer",
-                "motion-safe:transition-[background-color,color,transform] motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-[0.98]",
+                "[@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-500/15 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white cursor-pointer",
+                "motion-safe:transition-[background-color,color,transform] motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none",
               )}
             >
-              <div className="flex size-7 items-center justify-center rounded-lg bg-purple-500/20 text-purple-300 group-hover:bg-purple-500/30 group-hover:text-white transition-colors">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-purple-500/20 text-purple-300 [@media(hover:hover)_and_(pointer:fine)]:group-hover:bg-purple-500/30 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-white transition-colors motion-reduce:transition-none">
                 <UserPlus className="size-4" />
               </div>
               <span className="truncate">Criar conta</span>
@@ -535,7 +644,7 @@ function VisitorDropdownMenu({
       )}
     </div>
   );
-}
+});
 
 export function Shell() {
   const pathname =
@@ -699,7 +808,6 @@ export function Shell() {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
 
-  const localAnimes = useHikariStore((s) => s.animes);
   const { settings } = usePublicSettings();
 
   const cinema = pathname.startsWith("/watch");
@@ -1384,6 +1492,32 @@ export function Shell() {
     }
   };
 
+  const handleOpenLogin = useCallback(
+    (mode: "login" | "register" = "login") => {
+      setLoginModalMode(mode);
+      setLoginModalOpen(true);
+    },
+    [],
+  );
+
+  const handleNotificationMarkAsRead = useCallback(
+    (id: string) => {
+      void markNotificationsAsRead([id]);
+    },
+    [markNotificationsAsRead],
+  );
+
+  const handleNotificationDelete = useCallback(
+    (id: string) => {
+      void deleteNotificationAction(id);
+    },
+    [deleteNotificationAction],
+  );
+
+  const handleNotificationNavigate = useCallback(() => {
+    setNotificationsOpen(false);
+  }, []);
+
 
   const hasRealUser = Boolean(
     user && !user.isDevFallback && user.id && user.id !== "dev-user",
@@ -1492,46 +1626,17 @@ export function Shell() {
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
-              className="flex size-9 min-[380px]:size-10 shrink-0 items-center justify-center rounded-xl text-fg hover:bg-elevated/70 transition-colors md:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
+              className="flex size-9 min-[380px]:size-10 shrink-0 items-center justify-center rounded-xl text-fg [@media(hover:hover)_and_(pointer:fine)]:hover:bg-elevated/70 transition-colors motion-reduce:transition-none md:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
               aria-label="Abrir menu de navegação"
             >
               <Menu className="size-5" />
             </button>
 
             {/* LINKS DE NAVEGAÇÃO DESKTOP */}
-            <nav className="hidden md:flex items-center gap-1" aria-label="Navegação principal">
-              {/* Início */}
-              <Link
-                to="/"
-                className={cn(
-                  "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
-                  pathname === "/"
-                    ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                    : "text-muted hover:bg-elevated/70 hover:text-fg",
-                )}
-              >
-                <House className="size-4" />
-                <span>Início</span>
-              </Link>
-
-              {/* Calendário */}
-              {settings.modules.calendar && (
-                <Link
-                  to="/calendar"
-                  className={cn(
-                    "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
-                    pathname.startsWith("/calendar")
-                      ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                      : "text-muted hover:bg-elevated/70 hover:text-fg",
-                  )}
-                >
-                  <Calendar className="size-4" />
-                  <span>Calendário</span>
-                </Link>
-              )}
-
-
-            </nav>
+            <ShellDesktopNav
+              pathname={pathname}
+              calendarEnabled={settings.modules.calendar}
+            />
           </div>
 
           {/* CENTRO: LOGO OFICIAL HIKARI (EXATAMENTE CENTRALIZADO) */}
@@ -1550,21 +1655,29 @@ export function Shell() {
                 onClick={() => {
                   setSearchOpen((value) => !value);
                 }}
-                onMouseEnter={() => void prefetchSearchModal()}
                 onFocus={() => void prefetchSearchModal()}
+                onPointerDown={(e) => {
+                  if (e.button === 0) void prefetchSearchModal();
+                }}
                 className={cn(
-                  "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full text-zinc-300 hover:text-white transition-all cursor-pointer select-none",
-                  "motion-safe:transition-[transform,box-shadow,ring-color,background-color] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
+                  "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white cursor-pointer select-none",
+                  "motion-safe:transition-[transform,background-color,color] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
                   searchOpen
                     ? "bg-purple-500/20 text-white ring-2 ring-[#c084fc] shadow-[0_0_20px_rgba(192,132,252,0.4)]"
-                    : "bg-white/[0.04] ring-1 ring-purple-500/30 hover:bg-white/[0.08] hover:ring-purple-400/60 hover:shadow-[0_0_16px_rgba(168,85,247,0.25)]",
+                    : "bg-white/[0.04] ring-1 ring-purple-500/30 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.08]",
                 )}
                 aria-label="Buscar"
                 title="Buscar (Ctrl+K)"
                 aria-expanded={searchOpen}
               >
-                <Search className="size-4 sm:size-4.5 text-purple-300 group-hover:text-white transition-colors" />
+                {!searchOpen && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-purple-400/60 shadow-[0_0_16px_rgba(168,85,247,0.25)] opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 motion-safe:transition-opacity motion-safe:duration-200 motion-reduce:transition-none"
+                  />
+                )}
+                <Search className="size-4 sm:size-4.5 text-purple-300 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-white transition-colors motion-reduce:transition-none" />
               </button>
             )}
 
@@ -1580,17 +1693,23 @@ export function Shell() {
                   }
                 }}
                 className={cn(
-                  "relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full text-zinc-300 hover:text-white transition-all cursor-pointer select-none",
-                  "motion-safe:transition-[transform,box-shadow,ring-color,background-color] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
+                  "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white cursor-pointer select-none",
+                  "motion-safe:transition-[transform,background-color,color] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
                   notificationsOpen
                     ? "bg-purple-500/20 text-white ring-2 ring-[#c084fc] shadow-[0_0_20px_rgba(192,132,252,0.4)]"
-                    : "bg-white/[0.04] ring-1 ring-purple-500/30 hover:bg-white/[0.08] hover:ring-purple-400/60 hover:shadow-[0_0_16px_rgba(168,85,247,0.25)]",
+                    : "bg-white/[0.04] ring-1 ring-purple-500/30 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.08]",
                 )}
                 aria-label="Notificações"
                 aria-expanded={notificationsOpen}
               >
-                <Bell className="size-4 sm:size-4.5 text-purple-300 group-hover:text-white transition-colors" />
+                {!notificationsOpen && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-purple-400/60 shadow-[0_0_16px_rgba(168,85,247,0.25)] opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 motion-safe:transition-opacity motion-safe:duration-200 motion-reduce:transition-none"
+                  />
+                )}
+                <Bell className="size-4 sm:size-4.5 text-purple-300 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-white transition-colors motion-reduce:transition-none" />
 
                 {notificationsPresentationReady && unreadCount > 0 && (
                   <span className="absolute -right-0.5 -top-0.5 flex min-w-4 h-4 sm:min-w-5 sm:h-5 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-rose-600 px-1 text-[9px] sm:text-[10px] font-bold leading-none text-white ring-2 ring-[#08070d] shadow-md tabular-nums animate-pulse">
@@ -1604,12 +1723,7 @@ export function Shell() {
             {user ? (
               <ProfileDropdownMenu user={user} />
             ) : (
-              <VisitorDropdownMenu
-                onOpenLogin={(mode = "login") => {
-                  setLoginModalMode(mode);
-                  setLoginModalOpen(true);
-                }}
-              />
+              <VisitorDropdownMenu onOpenLogin={handleOpenLogin} />
             )}
           </div>
         </div>
@@ -1688,7 +1802,7 @@ export function Shell() {
                   <button
                     type="button"
                     onClick={markAllNotificationsAsReadAction}
-                    className="inline-flex h-7 items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/15 px-2 text-[11px] font-semibold text-purple-200 hover:bg-purple-500/25 hover:text-white transition-all active:scale-95 cursor-pointer shadow-sm whitespace-nowrap"
+                    className="inline-flex h-7 items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/15 px-2 text-[11px] font-semibold text-purple-200 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-500/25 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white transition-[background-color,color,transform] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer shadow-sm whitespace-nowrap"
                     title="Marcar todas como lidas"
                   >
                     <CheckCheck className="size-3" />
@@ -1699,7 +1813,7 @@ export function Shell() {
                 <button
                   type="button"
                   onClick={() => setNotificationsOpen(false)}
-                  className="flex size-7 items-center justify-center rounded-md border border-white/5 bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white transition-colors cursor-pointer"
+                  className="flex size-7 items-center justify-center rounded-md border border-white/5 bg-white/[0.04] text-zinc-400 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.08] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white transition-colors motion-reduce:transition-none cursor-pointer"
                   aria-label="Fechar notificações"
                 >
                   <X className="size-3.5" />
@@ -1734,17 +1848,12 @@ export function Shell() {
                 className="max-h-[min(500px,calc(100dvh-8rem))] min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar"
               >
                 <Suspense fallback={null}>
-                  {notifications.map((notification) => (
-                    <LazyNotificationItemCard
-                      key={notification.id}
-                      notification={notification}
-                      localAnimes={localAnimes}
-                      compact
-                      onMarkAsRead={(id) => void markNotificationsAsRead([id])}
-                      onDelete={(id) => void deleteNotificationAction(id)}
-                      onNavigate={() => setNotificationsOpen(false)}
-                    />
-                  ))}
+                  <NotificationsListContent
+                    notifications={notifications}
+                    onMarkAsRead={handleNotificationMarkAsRead}
+                    onDelete={handleNotificationDelete}
+                    onNavigate={handleNotificationNavigate}
+                  />
                 </Suspense>
 
                 {/* SENTINELA INVISÍVEL PARA CARREGAMENTO AUTOMÁTICO POR LOTES */}
@@ -1853,9 +1962,11 @@ export function Shell() {
                         setLoginModalMode("login");
                         setLoginModalOpen(true);
                       }}
-                      onMouseEnter={() => void prefetchLoginMenu()}
                       onFocus={() => void prefetchLoginMenu()}
-                      className="flex w-full items-center gap-4 rounded-xl px-4 py-3.5 text-base font-semibold text-[#c084fc] hover:bg-elevated transition-colors text-left"
+                      onPointerDown={(e) => {
+                        if (e.button === 0) void prefetchLoginMenu();
+                      }}
+                      className="flex w-full items-center gap-4 rounded-xl px-4 py-3.5 text-base font-semibold text-[#c084fc] [@media(hover:hover)_and_(pointer:fine)]:hover:bg-elevated transition-colors motion-reduce:transition-none text-left"
                     >
                       <LogIn className="size-5" />
                       <span>Entrar</span>
