@@ -250,7 +250,7 @@ export function mapTodayScheduleRowsToSlimAnime(
       continue;
     }
 
-    const groupKey = row.animeId || `anilist-${row.anilistId}`;
+    const groupKey = row.animeId || (row.anilistId ? String(row.anilistId) : `anilist-${row.anilistId}`);
     if (row.animeId) specificAnimeIds.add(row.animeId);
     if (typeof row.anilistId === "number" && row.anilistId > 0) {
       specificAnilistIds.add(row.anilistId);
@@ -284,7 +284,7 @@ export function mapTodayScheduleRowsToSlimAnime(
     if (!firstEp) continue;
 
     items.push({
-      id: row.animeId || `anilist-${row.anilistId}`,
+      id: row.animeId || (row.anilistId ? String(row.anilistId) : `anilist-${row.anilistId}`),
       serverCatalogId: row.animeId,
       anilistId: row.anilistId,
       malId: row.malId ?? undefined,

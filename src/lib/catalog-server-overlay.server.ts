@@ -424,7 +424,7 @@ export async function applyDbCatalogOverlayToHome(
   };
 }
 
-async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | null> {
+export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | null> {
   try {
     const sql = await getSql();
     const rows = await sql.query<DbCatalogAnimeRow>(

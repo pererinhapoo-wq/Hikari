@@ -132,10 +132,10 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
       DEFAULT_OG_IMAGE;
 
     const targetCatalogEp =
-      catalogEpisodes?.episodes?.find((e) => e.number === epNum);
-    const remoteEps = (remote?.seasons ?? []).flatMap((s) => s.episodes ?? []);
+      catalogEpisodes?.episodes?.find((e: { number: number }) => e.number === epNum);
+    const remoteEps = (remote?.seasons ?? []).flatMap((s: Season) => s.episodes ?? []);
     const targetRemoteEp =
-      remoteEps.find((e) => e.number === epNum);
+      remoteEps.find((e: Episode) => e.number === epNum);
     const externalOriginSet = new Set<string>();
 
     const rawPoster =

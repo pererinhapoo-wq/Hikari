@@ -114,7 +114,7 @@ export const Route = createFileRoute("/admin/$id")({
     const primaryHasRemoteSeasons =
       Boolean(primary) &&
       primary?.source !== "local" &&
-      Boolean(primary?.seasons?.some((s) => s.episodes.length > 0));
+      Boolean(primary?.seasons?.some((s: { episodes: unknown[] }) => s.episodes.length > 0));
 
     if (!primary) {
       if (deps.importId) {

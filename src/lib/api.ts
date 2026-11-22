@@ -6886,14 +6886,18 @@ export const fetchAnimeDetail =
       async ({
         data,
       }) => {
-        const id = data.id?.trim() || "";
+        let id = data.id?.trim() || "";
         if (!id) {
           return null;
         }
 
+        if (id.startsWith("anilist-")) {
+          id = id.replace("anilist-", "").trim();
+        }
+
         const key = `detail:v7:${id}`;
 
-        if (id.startsWith("local-")) {
+        if (id.startsWith("local-") || (!/^\d+$/.test(id) && !id.startsWith("kitsu-") && !id.startsWith("mal-"))) {
           const localHit = inspectCache<Anime | null>(key);
           if (localHit.status === "fresh" && localHit.data) {
             return localHit.data;
@@ -6923,10 +6927,13 @@ export const fetchAnimeDetail =
                 : undefined;
 
           try {
-            const { applyDbCatalogOverlayToDetail } = await import(
+            const { applyDbCatalogOverlayToDetail, buildLocalAnimeFromDb } = await import(
               "@/lib/catalog-server-overlay.server"
             );
-            const localDetail = await applyDbCatalogOverlayToDetail(null, id);
+            let localDetail = await buildLocalAnimeFromDb(id);
+            if (!localDetail) {
+              localDetail = await applyDbCatalogOverlayToDetail(null, id);
+            }
             if (localDetail) {
               const writeStatus = await setRedisAnimeDetail(id, localDetail, localFence);
               if (writeStatus === "fenced") {
