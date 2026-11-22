@@ -432,7 +432,7 @@ const NotificationsListContent = memo(function NotificationsListContent({
 function HomeFooterLazy() {
   const { settings } = usePublicSettings();
   return (
-    <footer className="relative mt-12 w-full border-t border-purple-500/15 bg-gradient-to-b from-[#08070d] via-[#0d0b17] to-[#05040a] text-xs text-muted shadow-[0_-4px_24px_rgba(0,0,0,0.5)] [content-visibility:auto] [contain-intrinsic-size:auto_480px]">
+    <footer className="relative mt-12 w-full border-t border-purple-500/15 bg-gradient-to-b from-[#08070d] via-[#0d0b17] to-[#05040a] text-xs text-muted shadow-[0_-2px_12px_rgba(0,0,0,0.35)] md:shadow-[0_-4px_24px_rgba(0,0,0,0.5)] [content-visibility:auto] [contain-intrinsic-size:auto_480px]">
       {/* Brilho decorativo sutil no topo do rodapé */}
           <div
             className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#a855f7]/30 to-transparent"
@@ -465,7 +465,7 @@ function HomeFooterLazy() {
                     <li>
                       <Link
                         to="/sobre"
-                        className="text-muted transition-colors hover:text-[#c084fc]"
+                        className="text-muted [@media(hover:hover)_and_(pointer:fine)]:transition-colors [@media(hover:hover)_and_(pointer:fine)]:hover:text-[#c084fc] motion-reduce:transition-none"
                       >
                         Sobre o Hikari
                       </Link>
@@ -473,7 +473,7 @@ function HomeFooterLazy() {
                     <li>
                       <Link
                         to="/contato"
-                        className="text-muted transition-colors hover:text-[#c084fc]"
+                        className="text-muted [@media(hover:hover)_and_(pointer:fine)]:transition-colors [@media(hover:hover)_and_(pointer:fine)]:hover:text-[#c084fc] motion-reduce:transition-none"
                       >
                         Fale Conosco
                       </Link>
@@ -490,7 +490,7 @@ function HomeFooterLazy() {
                     <li>
                       <Link
                         to="/termos"
-                        className="text-muted transition-colors hover:text-[#c084fc]"
+                        className="text-muted [@media(hover:hover)_and_(pointer:fine)]:transition-colors [@media(hover:hover)_and_(pointer:fine)]:hover:text-[#c084fc] motion-reduce:transition-none"
                       >
                         Termos de Uso
                       </Link>
@@ -498,7 +498,7 @@ function HomeFooterLazy() {
                     <li>
                       <Link
                         to="/privacidade"
-                        className="text-muted transition-colors hover:text-[#c084fc]"
+                        className="text-muted [@media(hover:hover)_and_(pointer:fine)]:transition-colors [@media(hover:hover)_and_(pointer:fine)]:hover:text-[#c084fc] motion-reduce:transition-none"
                       >
                         Privacidade &amp; LGPD
                       </Link>
@@ -506,7 +506,7 @@ function HomeFooterLazy() {
                     <li>
                       <Link
                         to="/dmca"
-                        className="text-muted transition-colors hover:text-[#c084fc]"
+                        className="text-muted [@media(hover:hover)_and_(pointer:fine)]:transition-colors [@media(hover:hover)_and_(pointer:fine)]:hover:text-[#c084fc] motion-reduce:transition-none"
                       >
                         DMCA / Direitos
                       </Link>
