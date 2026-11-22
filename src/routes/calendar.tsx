@@ -160,7 +160,7 @@ function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
     <Link
       to="/anime/$id"
       params={{ id: targetAnimeParam }}
-      className="group relative flex flex-col md:flex-row min-w-0 w-full overflow-hidden rounded-xl md:rounded-2xl border border-purple-500/15 bg-[#100e1b] p-1.5 sm:p-2 md:p-3 transition-all duration-300 hover:border-purple-400/50 hover:bg-[#151224] hover:shadow-[0_8px_24px_rgba(168,85,247,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50"
+      className="group relative flex flex-col md:flex-row min-w-0 w-full overflow-hidden rounded-xl md:rounded-2xl border border-purple-500/15 bg-[#100e1b] p-1.5 sm:p-2 md:p-3 transition-all duration-200 hover:border-purple-400/50 hover:bg-[#151224] hover:shadow-[0_8px_24px_rgba(168,85,247,0.18)] active:scale-[0.98] active:brightness-110 motion-reduce:transition-none motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50"
     >
       {/* Imagem de Capa */}
       <div className="relative aspect-[2/3] w-full md:w-20 lg:w-24 shrink-0 overflow-hidden rounded-lg md:rounded-xl bg-[#0d0c16]">
@@ -370,7 +370,7 @@ function CalendarPage() {
       <header className="relative overflow-hidden rounded-3xl border border-purple-500/20 bg-gradient-to-r from-[#120f24] via-[#0d0b17] to-[#0a0814] p-6 sm:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.7)]">
         <div className="absolute -right-12 -top-12 size-64 rounded-full bg-purple-500/10 blur-3xl pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="inline-flex items-center gap-2 rounded-xl border border-purple-500/35 bg-purple-500/15 px-3 py-1 text-xs font-semibold text-purple-300 shadow-sm">
               <CalendarIcon className="size-3.5 text-purple-400" />
               <span>Programação Oficial</span>
@@ -378,9 +378,6 @@ function CalendarPage() {
             <h1 className="font-display text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-fg">
               Calendário da Semana
             </h1>
-            <p className="text-xs sm:text-sm text-muted max-w-xl leading-relaxed">
-              Acompanhe os lançamentos de episódios sincronizados com o horário de Brasília (America/Sao_Paulo).
-            </p>
           </div>
 
           <div className="flex items-center gap-2.5 self-start md:self-auto bg-black/40 border border-white/10 rounded-2xl p-1.5 backdrop-blur-md">
@@ -531,7 +528,7 @@ function CalendarPage() {
       {/* 3. LISTAGEM DO DIA SELECIONADO NA GRADE DE 3 COLUNAS */}
       {!loading && !error && activeDay && (
         <div>
-          <div className="mb-4 flex items-center justify-between border-b border-border/30 pb-3">
+          <div className="mb-4 flex w-full items-center justify-between border-b border-purple-500/25 pb-3">
             <div>
               <h2 className="text-lg font-bold text-fg capitalize">
                 {activeDay.fullDateStr}
