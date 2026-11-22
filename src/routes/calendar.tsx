@@ -12,6 +12,7 @@ import {
   getDayKeySaoPaulo,
   getWeekInfoSaoPaulo,
 } from "@/lib/calendar-timezone";
+import { HikariImage } from "@/components/ui/hikari-image";
 
 /* =========================================================
    TIPOS DE DADOS DO CALENDÁRIO
@@ -148,7 +149,8 @@ function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
     item.media.coverImage?.medium ||
     item.media.coverImage?.extraLarge ||
     "";
-  const coverAttrs = getResponsiveCoverAttrs(cover, "card-sm");
+  const coverVariant = "card-md";
+  const coverAttrs = getResponsiveCoverAttrs(cover, coverVariant);
   const targetAnimeParam =
     item.media.id > 0
       ? String(item.media.id)
@@ -162,21 +164,19 @@ function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
     >
       {/* Imagem de Capa */}
       <div className="relative aspect-[2/3] w-full md:w-20 lg:w-24 shrink-0 overflow-hidden rounded-lg md:rounded-xl bg-[#0d0c16]">
-        {cover ? (
-          <img
-            src={coverAttrs.src}
-            srcSet={coverAttrs.srcSet}
-            sizes="(min-width: 1024px) 96px, (min-width: 768px) 80px, (min-width: 640px) 126px, 106px"
-            alt={title}
-            className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-            loading="lazy"
-            decoding="async"
-          />
-        ) : (
-          <div className="flex size-full items-center justify-center text-subtle">
-            <Film className="size-5 sm:size-6" />
-          </div>
-        )}
+        <HikariImage
+          src={cover ? coverAttrs.src : null}
+          srcSet={cover ? coverAttrs.srcSet : undefined}
+          sizes="(min-width: 1024px) 96px, (min-width: 768px) 80px, (min-width: 640px) 126px, 106px"
+          fallbackSrc={coverAttrs.fallbackSrc}
+          alt={title}
+          width={160}
+          height={240}
+          fallbackClassName="bg-[#0d0c16]"
+          className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+          loading="lazy"
+          decoding="async"
+        />
       </div>
 
       {/* Informações do Anime */}
