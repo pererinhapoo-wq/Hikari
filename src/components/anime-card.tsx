@@ -29,6 +29,9 @@ export const AnimeCard = memo(function AnimeCard({
   fetchPriority,
   imageWidth,
   showScoreBadge: _showScoreBadge = false,
+  disableHoverPreload = false,
+  optimizedHover = false,
+  disableLinkDrag = false,
 }: {
   anime: SlimAnime;
   size?: "sm" | "md" | "lg";
@@ -42,6 +45,9 @@ export const AnimeCard = memo(function AnimeCard({
   fetchPriority?: "high" | "low" | "auto";
   imageWidth?: number;
   showScoreBadge?: boolean;
+  disableHoverPreload?: boolean;
+  optimizedHover?: boolean;
+  disableLinkDrag?: boolean;
 }) {
   const { user } = useCurrentUserState();
   const canBookmark = showBookmark && Boolean(user);
@@ -85,11 +91,25 @@ export const AnimeCard = memo(function AnimeCard({
       <Link
         to="/anime/$id"
         params={{ id: anime.id }}
-        preload="intent"
-        className="block outline-none focus-visible:ring-2 focus-visible:ring-purple-400 transition-all duration-150 ease-out active:scale-[0.96] active:brightness-110 [@media(hover:hover)]:hover:brightness-105 motion-reduce:transition-none motion-reduce:transform-none -webkit-tap-highlight-color-transparent"
+        preload={disableHoverPreload ? false : "intent"}
+        draggable={disableLinkDrag ? false : undefined}
+        className={cn(
+          "block outline-none focus-visible:ring-2 focus-visible:ring-purple-400 motion-reduce:transition-none motion-reduce:transform-none -webkit-tap-highlight-color-transparent",
+          disableLinkDrag && "select-none",
+          optimizedHover
+            ? "transition-transform duration-150 ease-out active:scale-[0.96]"
+            : "transition-all duration-150 ease-out active:scale-[0.96] active:brightness-110 [@media(hover:hover)]:hover:brightness-105",
+        )}
       >
         {/* Pôster vertical retangular com cantos retos (sem cantos arredondados) */}
-        <div className="relative aspect-[2/3] w-full overflow-hidden rounded-none bg-[#0d0c16] border border-white/10 shadow-sm transition-all duration-200 ease-out group-hover:border-purple-500/50 group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)] group-active:border-purple-400 group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]">
+        <div
+          className={cn(
+            "relative aspect-[2/3] w-full overflow-hidden rounded-none bg-[#0d0c16] border border-white/10 shadow-sm ease-out",
+            optimizedHover
+              ? "transition-colors duration-200 [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50 group-active:border-purple-400"
+              : "transition-all duration-200 group-hover:border-purple-500/50 group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)] group-active:border-purple-400 group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]",
+          )}
+        >
           <HikariImage
             src={anime.cover ? coverAttrs.src : null}
             srcSet={anime.cover ? coverAttrs.srcSet : undefined}
@@ -104,8 +124,19 @@ export const AnimeCard = memo(function AnimeCard({
             width={attrWidth}
             height={attrHeight}
             fallbackClassName="bg-[#0d0c16]"
-            className="size-full object-cover group-hover:scale-[1.03] group-active:scale-[1.01] motion-reduce:transform-none"
+            className={cn(
+              "size-full object-cover motion-reduce:transform-none",
+              optimizedHover
+                ? "[@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03] group-active:scale-[1.01]"
+                : "group-hover:scale-[1.03] group-active:scale-[1.01]",
+            )}
           />
+          {optimizedHover && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 rounded-none shadow-[inset_0_0_20px_rgba(168,85,247,0.38)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100 motion-reduce:transition-none"
+            />
+          )}
         </div>
 
         {/* Informações estritamente FORA do pôster */}
@@ -113,7 +144,12 @@ export const AnimeCard = memo(function AnimeCard({
           {/* Título abaixo do pôster */}
           <h3
             title={title}
-            className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+            className={cn(
+              "truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-active:text-purple-200",
+              optimizedHover
+                ? "duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 motion-reduce:transition-none"
+                : "group-hover:text-purple-300",
+            )}
           >
             {title}
           </h3>

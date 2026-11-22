@@ -1,14 +1,16 @@
 import { Link, useRouter } from "@tanstack/react-router";
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 
 import { AnimeCard } from "@/components/anime-card";
-import { useHorizontalRailImageLimit } from "@/components/anime-row";
 import { fetchTodaySchedule } from "@/lib/api";
 import {
   getDayKeySaoPaulo,
@@ -21,23 +23,29 @@ import {
   type SlimAnime,
 } from "@/lib/types";
 
-export function TodayEpisodesSection({
-  initialItems,
-}: {
-  initialItems: SlimAnime[];
-  homeWithEpisodeCount?: number;
-}) {
-  const router = useRouter();
-  const locals = useHikariStore((s) => s.animes);
+const DRAG_THRESHOLD_PX = 6;
 
-  const railRef = useRef<HTMLDivElement>(null);
-  const [scheduleSource, setScheduleSource] = useState<SlimAnime[]>(initialItems);
-  const [activeDayKey, setActiveDayKey] = useState<string>(() =>
-    getDayKeySaoPaulo(new Date()),
-  );
+export const TodayEpisodesSection = memo(
+  function TodayEpisodesSection({
+    initialItems,
+  }: {
+    initialItems: SlimAnime[];
+    homeWithEpisodeCount?: number;
+  }) {
+    const router = useRouter();
+    const locals = useHikariStore((s) => s.animes);
 
-  const loadedDayKeyRef = useRef<string>(getDayKeySaoPaulo(new Date()));
-  const syncInFlightRef = useRef(false);
+    const railRef = useRef<HTMLDivElement>(null);
+    const [scheduleSource, setScheduleSource] = useState<SlimAnime[]>(initialItems);
+    const [activeDayKey, setActiveDayKey] = useState<string>(() =>
+      getDayKeySaoPaulo(new Date()),
+    );
+
+    const loadedDayKeyRef = useRef<string>(getDayKeySaoPaulo(new Date()));
+    const syncInFlightRef = useRef(false);
+    const suppressNextClickRef = useRef(false);
+    const suppressClickTimerRef = useRef<number | null>(null);
+    const dragCleanupRef = useRef<(() => void) | null>(null);
 
   // Sincroniza quando o loader da rota atualiza os dados iniciais
   useEffect(() => {
@@ -224,13 +232,87 @@ export function TodayEpisodesSection({
 
   const displayedItems = useMemo(() => activeItems.slice(0, 12), [activeItems]);
 
-  // Carregamento progressivo com medição do layout em cache (sem Layout Thrashing no scroll)
-  const { limit: visibleImgLimit } = useHorizontalRailImageLimit(
-    railRef,
-    displayedItems.length,
-    undefined,
-    undefined,
-    loadedDayKeyRef.current,
+  // Limpa listeners/timers de arraste ao desmontar
+  useEffect(() => {
+    return () => {
+      dragCleanupRef.current?.();
+      dragCleanupRef.current = null;
+      if (suppressClickTimerRef.current !== null) {
+        window.clearTimeout(suppressClickTimerRef.current);
+        suppressClickTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Arraste horizontal exclusivo para mouse (preserva 100% do swipe nativo por toque e trackpad)
+  const handleRailPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.pointerType !== "mouse" || e.button !== 0) return;
+      const rail = railRef.current;
+      if (!rail || rail.scrollWidth <= rail.clientWidth) return;
+
+      dragCleanupRef.current?.();
+      if (suppressClickTimerRef.current !== null) {
+        window.clearTimeout(suppressClickTimerRef.current);
+        suppressClickTimerRef.current = null;
+      }
+      suppressNextClickRef.current = false;
+
+      const startX = e.clientX;
+      const startScrollLeft = rail.scrollLeft;
+      let didDrag = false;
+
+      const onPointerMove = (moveEvent: globalThis.PointerEvent) => {
+        if (moveEvent.pointerType !== "mouse") return;
+        const dx = moveEvent.clientX - startX;
+        if (!didDrag) {
+          if (Math.abs(dx) < DRAG_THRESHOLD_PX) return;
+          didDrag = true;
+          suppressNextClickRef.current = true;
+        }
+        moveEvent.preventDefault();
+        rail.scrollLeft = startScrollLeft - dx;
+      };
+
+      const finishDrag = () => {
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", finishDrag);
+        window.removeEventListener("pointercancel", finishDrag);
+        dragCleanupRef.current = null;
+
+        if (didDrag) {
+          suppressClickTimerRef.current = window.setTimeout(() => {
+            suppressNextClickRef.current = false;
+            suppressClickTimerRef.current = null;
+          }, 250);
+        }
+      };
+
+      dragCleanupRef.current = () => {
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", finishDrag);
+        window.removeEventListener("pointercancel", finishDrag);
+      };
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", finishDrag);
+      window.addEventListener("pointercancel", finishDrag);
+    },
+    [],
+  );
+
+  const handleRailClickCapture = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      if (!suppressNextClickRef.current) return;
+      suppressNextClickRef.current = false;
+      if (suppressClickTimerRef.current !== null) {
+        window.clearTimeout(suppressClickTimerRef.current);
+        suppressClickTimerRef.current = null;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    [],
   );
 
   return (
@@ -269,7 +351,9 @@ export function TodayEpisodesSection({
         /* Trilho compacto e proporcional ao layout original do Hikari */
         <div
           ref={railRef}
-          className="rail -mx-4 px-4 sm:-mx-6 sm:px-6 gap-2.5 sm:gap-3.5 md:gap-4 py-2 overscroll-x-contain"
+          onPointerDown={handleRailPointerDown}
+          onClickCapture={handleRailClickCapture}
+          className="rail select-none -mx-4 px-4 sm:-mx-6 sm:px-6 gap-2.5 sm:gap-3.5 md:gap-4 py-2 overscroll-x-contain"
         >
           {displayedItems.map((anime, index) => (
             <AnimeCard
@@ -281,7 +365,9 @@ export function TodayEpisodesSection({
               fetchPriority="low"
               showBookmark={false}
               showGenre={false}
-              loadImage={index < 3 || index < visibleImgLimit}
+              disableHoverPreload
+              optimizedHover
+              disableLinkDrag
             />
           ))}
           <div
@@ -292,4 +378,6 @@ export function TodayEpisodesSection({
       )}
     </section>
   );
-}
+  },
+  (prev, next) => prev.initialItems === next.initialItems,
+);
