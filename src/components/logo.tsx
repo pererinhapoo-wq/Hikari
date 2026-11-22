@@ -54,6 +54,16 @@ export const Logo = memo(function Logo({
         <span className="hikari-wordmark-pulse" />
         <span className="hikari-wordmark-sweep" />
       </div>
+      <div className="hikari-orbital-lines" aria-hidden="true">
+        <span className="hikari-orbital-seg hikari-orbital-seg--left-wing" />
+        <span className="hikari-orbital-seg hikari-orbital-seg--right-wing" />
+        <span className="hikari-orbital-seg hikari-orbital-seg--gap-h" />
+        <span className="hikari-orbital-seg hikari-orbital-seg--gap-hi" />
+        <span className="hikari-orbital-seg hikari-orbital-seg--gap-ik" />
+        <span className="hikari-orbital-seg hikari-orbital-seg--gap-ka" />
+        <span className="hikari-orbital-seg hikari-orbital-seg--gap-ar" />
+        <span className="hikari-orbital-seg hikari-orbital-seg--gap-ri" />
+      </div>
       <div className="hikari-tv-frame" aria-hidden="true">
         <span className="hikari-tv-frame-ring" />
         <span className="hikari-tv-frame-corners" />
