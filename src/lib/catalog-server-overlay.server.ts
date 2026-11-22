@@ -415,7 +415,7 @@ export async function applyDbCatalogOverlayToHome(
 
   return {
     ...catalog,
-    todaySchedule: selectHomeSectionItems(todaySchedule, homeWithEpisodeCount),
+    todaySchedule: sortByHasEpisodeFirst(todaySchedule),
     trending: selectHomeSectionItems(trending, homeWithEpisodeCount),
     popular: selectHomeSectionItems(popular, homeWithEpisodeCount),
     top: selectHomeSectionItems(top, homeWithEpisodeCount),

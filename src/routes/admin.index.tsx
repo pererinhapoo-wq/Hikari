@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowUpDown,
+  CalendarClock,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -116,6 +117,12 @@ const STUDIO_SHORTCUTS = [
     description: "Capas, banners e miniaturas",
     to: "/admin/images",
     icon: ImageIcon,
+  },
+  {
+    title: "Calendário Semanal",
+    description: "Recorrências por dia da semana",
+    to: "/admin/calendar",
+    icon: CalendarClock,
   },
   {
     title: "Usuários & Acessos",

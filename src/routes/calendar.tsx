@@ -8,17 +8,10 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { getResponsiveCoverAttrs } from "@/lib/image-utils";
-import { getSql } from "@/lib/db";
 import {
-  getRedisCalendarSchedule,
-  setRedisCalendarSchedule,
-} from "@/lib/redis";
-
-/* =========================================================
-   CONFIGURAÇÃO DE FUSO HORÁRIO: AMÉRICA/RECIFE (UTC-3)
-========================================================= */
-
-const TIMEZONE_BR = "America/Recife";
+  getDayKeySaoPaulo,
+  getWeekInfoSaoPaulo,
+} from "@/lib/calendar-timezone";
 
 /* =========================================================
    TIPOS DE DADOS DO CALENDÁRIO
@@ -26,6 +19,7 @@ const TIMEZONE_BR = "America/Recife";
 
 export type AiringMedia = {
   id: number;
+  animeId?: string | null;
   idMal?: number | null;
   isAdult?: boolean;
   format?: string | null;
@@ -50,140 +44,10 @@ export type AiringScheduleItem = {
   airingAt: number;
   timeUntilAiring?: number;
   episode: number;
+  isRecurring?: boolean;
+  recurrenceId?: string;
   media: AiringMedia;
 };
-
-type WeekDayInfo = {
-  index: number; // 0 = Segunda-feira ... 6 = Domingo
-  name: string; // "Segunda-feira"
-  cleanName: string; // "Segunda"
-  shortName: string; // "Seg"
-  dateKey: string; // "YYYY-MM-DD" no fuso America/Recife
-  dateStr: string; // "26/10"
-  fullDateStr: string; // "Segunda-feira, 26 de outubro"
-  isToday: boolean;
-};
-
-/* =========================================================
-   UTILITÁRIOS DE DATA E FUSO HORÁRIO (AMERICA/RECIFE)
-========================================================= */
-
-/**
- * Retorna a chave "YYYY-MM-DD" correspondente ao dia no fuso "America/Recife".
- */
-function getDayKeyRecife(dateOrTimestamp: Date | number): string {
-  const date =
-    typeof dateOrTimestamp === "number"
-      ? new Date(dateOrTimestamp * 1000)
-      : dateOrTimestamp;
-
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: TIMEZONE_BR,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-
-/**
- * Calcula os dias da semana de segunda-feira a domingo com base no fuso "America/Recife".
- * Aceita offsetWeeks (0 = semana atual, -1 = semana anterior, 1 = próxima semana).
- */
-function getWeekInfoRecife(offsetWeeks = 0): {
-  days: WeekDayInfo[];
-  weekRangeLabel: string;
-  startTimestamp: number;
-  endTimestamp: number;
-} {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TIMEZONE_BR,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const now = new Date();
-  const [currentYear, currentMonth, currentDay] = formatter
-    .format(now)
-    .split("-")
-    .map(Number);
-
-  const baseDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay, 12, 0, 0));
-  const dayOfWeek = baseDate.getUTCDay();
-  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-
-  const mondayDate = new Date(baseDate);
-  mondayDate.setUTCDate(baseDate.getUTCDate() + diffToMonday + offsetWeeks * 7);
-
-  const todayKey = formatter.format(now);
-
-  const dayNames = [
-    { name: "Segunda-feira", cleanName: "Segunda", shortName: "Seg" },
-    { name: "Terça-feira", cleanName: "Terça", shortName: "Ter" },
-    { name: "Quarta-feira", cleanName: "Quarta", shortName: "Qua" },
-    { name: "Quinta-feira", cleanName: "Quinta", shortName: "Qui" },
-    { name: "Sexta-feira", cleanName: "Sexta", shortName: "Sex" },
-    { name: "Sábado", cleanName: "Sábado", shortName: "Sáb" },
-    { name: "Domingo", cleanName: "Domingo", shortName: "Dom" },
-  ];
-
-  const days: WeekDayInfo[] = [];
-
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(mondayDate);
-    d.setUTCDate(mondayDate.getUTCDate() + i);
-
-    const dateKey = d.toISOString().slice(0, 10);
-    const [, m, dayNum] = dateKey.split("-");
-    const dateStr = `${dayNum}/${m}`;
-
-    const [y, mon, dy] = dateKey.split("-").map(Number);
-    const dateObj = new Date(y, mon - 1, dy);
-    const fullDateStr = dateObj.toLocaleDateString("pt-BR", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-    });
-
-    days.push({
-      index: i,
-      name: dayNames[i].name,
-      cleanName: dayNames[i].cleanName,
-      shortName: dayNames[i].shortName,
-      dateKey,
-      dateStr,
-      fullDateStr,
-      isToday: dateKey === todayKey,
-    });
-  }
-
-  const firstDay = days[0];
-  const lastDay = days[6];
-  const weekRangeLabel = `${firstDay.dateStr} a ${lastDay.dateStr}`;
-
-  const mondayStartUTC = Date.UTC(
-    Number(firstDay.dateKey.slice(0, 4)),
-    Number(firstDay.dateKey.slice(5, 7)) - 1,
-    Number(firstDay.dateKey.slice(8, 10)),
-    3,
-    0,
-    0,
-  );
-  const sundayEndUTC = Date.UTC(
-    Number(lastDay.dateKey.slice(0, 4)),
-    Number(lastDay.dateKey.slice(5, 7)) - 1,
-    Number(lastDay.dateKey.slice(8, 10)) + 1,
-    2,
-    59,
-    59,
-  );
-
-  return {
-    days,
-    weekRangeLabel,
-    startTimestamp: Math.floor(mondayStartUTC / 1000) - 86400,
-    endTimestamp: Math.floor(sundayEndUTC / 1000) + 86400,
-  };
-}
 
 /* =========================================================
    SERVER FUNCTION COM CACHE (UPSTASH REDIS E NEON/FALLBACK)
@@ -192,217 +56,16 @@ function getWeekInfoRecife(offsetWeeks = 0): {
 export const fetchWeeklyScheduleFn = createServerFn({ method: "GET" })
   .validator((d: { start: number; end: number; weekKey?: string }) => d)
   .handler(async ({ data }): Promise<AiringScheduleItem[]> => {
-    const { start, end, weekKey } = data;
-    const effectiveWeekKey = weekKey || `${start}:${end}`;
-
-    // 1. Tenta recuperar do cache compartilhado no Redis
-    const cachedRedis = await getRedisCalendarSchedule<AiringScheduleItem[]>(effectiveWeekKey);
-    if (cachedRedis && Array.isArray(cachedRedis) && cachedRedis.length > 0) {
-      return cachedRedis;
-    }
-
-    // 2. Tenta consultar tabela dedicada catalog_airing_schedule no PostgreSQL (Neon)
-    try {
-      const sql = await getSql();
-      const rows = await sql.query<{
-        scheduleId: string;
-        anilistId: number;
-        animeId: string;
-        episode: number;
-        airingAt: string | Date | number;
-        timeUntilAiring: number | null;
-        title: string;
-        titleRomaji: string | null;
-        titleEnglish: string | null;
-        titleNative: string | null;
-        cover: string | null;
-        banner: string | null;
-        format: string | null;
-        status: string | null;
-        genres: string[] | null;
-      }>(
-        `SELECT
-           s."id" as "scheduleId",
-           s."anilistId",
-           s."animeId",
-           s."episode",
-           s."airingAt",
-           s."timeUntilAiring",
-           a."title",
-           a."titleRomaji",
-           a."titleEnglish",
-           a."titleNative",
-           a."cover",
-           a."banner",
-           a."format",
-           a."status",
-           a."genres"
-         FROM "catalog_airing_schedule" s
-         JOIN "catalog_anime" a ON s."animeId" = a."id"
-         WHERE s."airingAt" >= to_timestamp($1)
-           AND s."airingAt" <= to_timestamp($2)
-           AND (a."hidden" IS NOT TRUE)
-           AND EXISTS (
-             SELECT 1
-             FROM "catalog_episode" e
-             WHERE e."animeId" = a."id"
-               AND e."published" = true
-           )
-         ORDER BY s."airingAt" ASC;`,
-        [start, end],
-      );
-
-      if (Array.isArray(rows) && rows.length > 0) {
-        const dbItems: AiringScheduleItem[] = rows.map((r) => {
-          let airingAtSec = 0;
-          if (typeof r.airingAt === "number") {
-            airingAtSec = Math.floor(r.airingAt > 1e11 ? r.airingAt / 1000 : r.airingAt);
-          } else if (r.airingAt instanceof Date) {
-            airingAtSec = Math.floor(r.airingAt.getTime() / 1000);
-          } else if (typeof r.airingAt === "string") {
-            airingAtSec = Math.floor(new Date(r.airingAt).getTime() / 1000);
-          }
-
-          return {
-            id: r.anilistId * 10000 + r.episode,
-            airingAt: airingAtSec,
-            timeUntilAiring: r.timeUntilAiring ?? undefined,
-            episode: r.episode,
-            media: {
-              id: r.anilistId,
-              format: r.format,
-              status: r.status,
-              title: {
-                romaji: r.titleRomaji || r.title,
-                english: r.titleEnglish || r.title,
-                native: r.titleNative || r.title,
-              },
-              coverImage: {
-                extraLarge: r.cover,
-                large: r.cover,
-                medium: r.cover,
-                color: null,
-              },
-              bannerImage: r.banner,
-              genres: r.genres || [],
-            },
-          };
-        });
-
-        await setRedisCalendarSchedule(effectiveWeekKey, dbItems);
-        return dbItems;
-      }
-    } catch (dbErr) {
-      console.error("[Hikari] Erro ao consultar catalog_airing_schedule no banco:", dbErr);
-    }
-
-    // 3. Fallback robusto usando a mesma fonte de dados confiável da página inicial (compatível com a home)
-    try {
-      const { anilistGraphQL, CARD_FIELDS, isAdultAnime, isHentaiAnime } = await import("@/lib/api");
-
-      type WeeklyScheduleResponse = {
-        Page: {
-          pageInfo?: {
-            hasNextPage?: boolean;
-          };
-          airingSchedules?: Array<{
-            id: number;
-            airingAt: number;
-            episode: number;
-            media?: any;
-          }>;
-        };
-      };
-
-      const query = `
-        query WeeklyAiringSchedule($start: Int, $end: Int, $page: Int) {
-          Page(page: $page, perPage: 50) {
-            pageInfo {
-              hasNextPage
-            }
-            airingSchedules(
-              airingAt_greater: $start,
-              airingAt_lesser: $end,
-              sort: TIME
-            ) {
-              id
-              airingAt
-              episode
-              media {
-                ${CARD_FIELDS}
-              }
-            }
-          }
-        }
-      `;
-
-      const allSchedules: Array<{ id: number; airingAt: number; episode: number; media?: any }> = [];
-      for (let page = 1; page <= 5; page++) {
-        const res = await anilistGraphQL<WeeklyScheduleResponse>(query, {
-          start,
-          end,
-          page,
-        }).catch(() => null);
-
-        if (!res?.Page?.airingSchedules?.length) {
-          break;
-        }
-        allSchedules.push(...res.Page.airingSchedules);
-        if (!res.Page.pageInfo?.hasNextPage) {
-          break;
-        }
-      }
-
-      if (allSchedules.length > 0) {
-        const uniqueMap = new Map<number, AiringScheduleItem>();
-        for (const entry of allSchedules) {
-          const media = entry.media;
-          if (!media?.id) continue;
-          if (isAdultAnime(media) || isHentaiAnime(media)) continue;
-          if (typeof entry.airingAt !== "number" || entry.airingAt <= 0) continue;
-
-          const item: AiringScheduleItem = {
-            id: media.id * 10000 + entry.episode,
-            airingAt: entry.airingAt,
-            episode: entry.episode,
-            media: {
-              id: media.id,
-              idMal: media.idMal,
-              isAdult: media.isAdult,
-              format: media.format,
-              title: {
-                romaji: media.title?.romaji,
-                english: media.title?.english,
-                native: media.title?.native,
-              },
-              coverImage: {
-                extraLarge: media.coverImage?.extraLarge || media.coverImage?.large,
-                large: media.coverImage?.large,
-                medium: media.coverImage?.medium,
-                color: media.coverImage?.color,
-              },
-              bannerImage: media.bannerImage,
-              genres: media.genres,
-              status: media.status,
-            },
-          };
-
-          if (!uniqueMap.has(item.id)) {
-            uniqueMap.set(item.id, item);
-          }
-        }
-
-        const resultItems = Array.from(uniqueMap.values()).sort((a, b) => a.airingAt - b.airingAt);
-        if (resultItems.length > 0) {
-          await setRedisCalendarSchedule(effectiveWeekKey, resultItems);
-          return resultItems;
-        }
-      }
-    } catch (fallbackErr) {
-      console.error("[Hikari] Erro no fallback de agendamento semanal:", fallbackErr);
-    }
-
-    return [];
+    // Lê exclusivamente cache Redis (getRedisCalendarSchedule) + PostgreSQL
+    // combinando catalog_airing_schedule e catalog_weekly_recurrence (sem AniList).
+    const { getWeeklyScheduleFromDbAndRedis } = await import(
+      "@/lib/calendar-schedule.server"
+    );
+    return getWeeklyScheduleFromDbAndRedis({
+      startTimestamp: data.start,
+      endTimestamp: data.end,
+      weekKey: data.weekKey,
+    });
   });
 
 /* =========================================================
@@ -411,22 +74,24 @@ export const fetchWeeklyScheduleFn = createServerFn({ method: "GET" })
 
 export const Route = createFileRoute("/calendar")({
   loader: async () => {
-    const weekInfo = getWeekInfoRecife();
+    const weekInfo = getWeekInfoSaoPaulo(0);
     try {
       const schedules = await fetchWeeklyScheduleFn({
         data: {
           start: weekInfo.startTimestamp,
           end: weekInfo.endTimestamp,
-          weekKey: weekInfo.days[0].dateKey,
+          weekKey: weekInfo.weekKey,
         },
       });
       return {
         schedules: schedules || [],
+        loaderError: false,
       };
     } catch (err) {
       console.error("[Hikari] Falha no loader do calendário semanal:", err);
       return {
         schedules: [] as AiringScheduleItem[],
+        loaderError: true,
       };
     }
   },
@@ -484,11 +149,15 @@ function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
     item.media.coverImage?.extraLarge ||
     "";
   const coverAttrs = getResponsiveCoverAttrs(cover, "card-sm");
+  const targetAnimeParam =
+    item.media.id > 0
+      ? String(item.media.id)
+      : item.media.animeId || String(item.media.id);
 
   return (
     <Link
       to="/anime/$id"
-      params={{ id: String(item.media.id) }}
+      params={{ id: targetAnimeParam }}
       className="group relative flex flex-col md:flex-row min-w-0 w-full overflow-hidden rounded-xl md:rounded-2xl border border-purple-500/15 bg-[#100e1b] p-1.5 sm:p-2 md:p-3 transition-all duration-300 hover:border-purple-400/50 hover:bg-[#151224] hover:shadow-[0_8px_24px_rgba(168,85,247,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50"
     >
       {/* Imagem de Capa */}
@@ -553,11 +222,12 @@ function CalendarPage() {
     () => loaderData?.schedules ?? [],
     [loaderData?.schedules],
   );
+  const initialLoaderError = Boolean(loaderData?.loaderError);
 
   const [weekOffset, setWeekOffset] = useState<number>(0);
 
-  // Calcula os dias da semana de segunda a domingo no fuso America/Recife
-  const weekInfo = useMemo(() => getWeekInfoRecife(weekOffset), [weekOffset]);
+  // Calcula os dias da semana de segunda a domingo no fuso America/Sao_Paulo
+  const weekInfo = useMemo(() => getWeekInfoSaoPaulo(weekOffset), [weekOffset]);
 
   const [selectedDayKey, setSelectedDayKey] = useState<string>(() => {
     const today = weekInfo.days.find((d) => d.isToday);
@@ -565,32 +235,38 @@ function CalendarPage() {
   });
 
   const [schedules, setSchedules] = useState<AiringScheduleItem[]>(initialSchedules);
-  const [loading, setLoading] = useState(initialSchedules.length === 0);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(
+    initialLoaderError ? "Não foi possível carregar os lançamentos da semana." : null,
+  );
 
   // Sincroniza dados do loader caso mudem na semana atual
   useEffect(() => {
-    if (weekOffset === 0 && initialSchedules.length > 0) {
+    if (weekOffset === 0) {
       setSchedules(initialSchedules);
       setLoading(false);
-      setError(null);
+      setError(
+        initialLoaderError
+          ? "Não foi possível carregar os lançamentos da semana."
+          : null,
+      );
     }
-  }, [initialSchedules, weekOffset]);
+  }, [initialSchedules, initialLoaderError, weekOffset]);
 
-  // Busca os lançamentos semanais via Server Function (Neon / Redis / Fallback)
+  // Busca os lançamentos semanais via Server Function (Neon PostgreSQL + Upstash Redis)
   const loadScheduleData = async (targetOffset = weekOffset) => {
     setLoading(true);
     setError(null);
 
-    const targetWeekInfo = getWeekInfoRecife(targetOffset);
-    const { startTimestamp, endTimestamp, days } = targetWeekInfo;
+    const targetWeekInfo = getWeekInfoSaoPaulo(targetOffset);
+    const { startTimestamp, endTimestamp, weekKey } = targetWeekInfo;
 
     try {
       const data = await fetchWeeklyScheduleFn({
         data: {
           start: startTimestamp,
           end: endTimestamp,
-          weekKey: days[0]?.dateKey,
+          weekKey,
         },
       });
 
@@ -612,9 +288,7 @@ function CalendarPage() {
       setSchedules(cleanList);
     } catch (err) {
       console.error("Erro ao carregar calendário semanal:", err);
-      if (schedules.length === 0) {
-        setError("Não foi possível carregar os lançamentos da semana.");
-      }
+      setError("Não foi possível carregar os lançamentos da semana.");
     } finally {
       setLoading(false);
     }
@@ -622,14 +296,14 @@ function CalendarPage() {
 
   const handleWeekChange = (newOffset: number) => {
     setWeekOffset(newOffset);
-    const newWeekInfo = getWeekInfoRecife(newOffset);
+    const newWeekInfo = getWeekInfoSaoPaulo(newOffset);
     const todayInNewWeek = newWeekInfo.days.find((d) => d.isToday);
     setSelectedDayKey(
       todayInNewWeek ? todayInNewWeek.dateKey : newWeekInfo.days[0].dateKey,
     );
 
-    // Se voltar para a semana atual e já temos dados do loader, restaura instantaneamente
-    if (newOffset === 0 && initialSchedules.length > 0) {
+    // Se voltar para a semana atual e o loader carregou sem erro, restaura instantaneamente
+    if (newOffset === 0 && !initialLoaderError) {
       setSchedules(initialSchedules);
       setLoading(false);
       setError(null);
@@ -639,17 +313,7 @@ function CalendarPage() {
     void loadScheduleData(newOffset);
   };
 
-  useEffect(() => {
-    if (
-      weekOffset === 0 &&
-      initialSchedules.length === 0 &&
-      schedules.length === 0
-    ) {
-      void loadScheduleData(0);
-    }
-  }, [initialSchedules.length, weekOffset]);
-
-  // Agrupa os animes por dia da semana no fuso horário America/Recife
+  // Agrupa os animes por dia da semana no fuso horário America/Sao_Paulo
   const episodesByDay = useMemo(() => {
     const map = new Map<string, AiringScheduleItem[]>();
 
@@ -658,7 +322,7 @@ function CalendarPage() {
     }
 
     for (const item of schedules) {
-      const localKey = getDayKeyRecife(item.airingAt);
+      const localKey = getDayKeySaoPaulo(item.airingAt);
       const list = map.get(localKey);
       if (list) {
         list.push(item);
@@ -715,7 +379,7 @@ function CalendarPage() {
               Calendário da Semana
             </h1>
             <p className="text-xs sm:text-sm text-muted max-w-xl leading-relaxed">
-              Acompanhe em tempo real os lançamentos de episódios sincronizados com o horário de Brasília (UTC-3).
+              Acompanhe os lançamentos de episódios sincronizados com o horário de Brasília (America/Sao_Paulo).
             </p>
           </div>
 

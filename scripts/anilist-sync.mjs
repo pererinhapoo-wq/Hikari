@@ -40,6 +40,7 @@ export const ADVISORY_LOCK_ID = 849201;
 export const MAX_TEST_LIMIT = 20;
 export const MAX_TEST_REQUESTS = 3;
 export const INCREMENTAL_OVERLAP_SECONDS = 86400; // 24h de segurança
+export const DEFAULT_SCHEDULE_DAYS_FORWARD = 90; // Horizonte trimestral (~3 meses)
 
 export const INITIAL_STAGES = [
   "trending",
@@ -65,6 +66,8 @@ export const ANNOUNCEMENTS_STAGES = [
   "announced_new",
   "future_seasons",
 ];
+
+export const SCHEDULE_STAGES = ["schedule"];
 
 async function delay(ms) {
   if (!ms || ms <= 0) return;
@@ -686,15 +689,16 @@ export function buildFutureSeasonCombinations(date = new Date()) {
 function resolveRequestedMode(args, options) {
   if (typeof options.mode === "string") {
     const m = options.mode.trim().toLowerCase();
-    if (m === "announcements" || m === "full") return m;
+    if (m === "announcements" || m === "full" || m === "schedule") return m;
   }
   const modeArg = args.find((a) => a.startsWith("--mode="));
   if (modeArg) {
     const val = modeArg.split("=")[1]?.trim().toLowerCase();
-    if (val === "announcements" || val === "full") return val;
+    if (val === "announcements" || val === "full" || val === "schedule") return val;
   }
   if (args.includes("--announcements")) return "announcements";
   if (args.includes("--full")) return "full";
+  if (args.includes("--schedule")) return "schedule";
   return null;
 }
 
@@ -908,13 +912,21 @@ export async function runSync(options = {}) {
         : null;
 
     const syncMode =
-      requestedMode === "announcements"
-        ? "announcements"
-        : requestedMode === "full"
-          ? "full"
-          : isInitialCompleted
-            ? "incremental"
-            : "initial";
+      requestedMode === "schedule"
+        ? "schedule"
+        : requestedMode === "announcements"
+          ? "announcements"
+          : requestedMode === "full"
+            ? "full"
+            : isInitialCompleted
+              ? "incremental"
+              : "initial";
+
+    const scheduleDaysForward =
+      Number.isFinite(Number(options.scheduleDaysForward)) &&
+      Number(options.scheduleDaysForward) > 0
+        ? Math.min(180, Math.floor(Number(options.scheduleDaysForward)))
+        : DEFAULT_SCHEDULE_DAYS_FORWARD;
 
     const runStartTime = nowProvider().getTime();
     const effectiveLastTimestamp =
@@ -1136,6 +1148,13 @@ export async function runSync(options = {}) {
         totalUpdated++;
       }
 
+      await client.query(
+        `INSERT INTO "catalog_season" ("animeId", "number", "title", "position")
+         VALUES ($1, 1, 'Temporada 1', 1)
+         ON CONFLICT ("animeId", "number") DO NOTHING;`,
+        [targetId]
+      );
+
       touchedAnimeIds.add(targetId);
       touchedAnimeIds.add(String(anilistId));
       return targetId;
@@ -1341,13 +1360,15 @@ export async function runSync(options = {}) {
         : buildSeasonCombinations(currentYear);
 
     const stageList =
-      syncMode === "announcements"
-        ? ANNOUNCEMENTS_STAGES
-        : syncMode === "full"
-          ? FULL_STAGES
-          : syncMode === "initial"
-            ? INITIAL_STAGES
-            : INCREMENTAL_STAGES;
+      syncMode === "schedule"
+        ? SCHEDULE_STAGES
+        : syncMode === "announcements"
+          ? ANNOUNCEMENTS_STAGES
+          : syncMode === "full"
+            ? FULL_STAGES
+            : syncMode === "initial"
+              ? INITIAL_STAGES
+              : INCREMENTAL_STAGES;
 
     const activeCheckpointValid =
       savedCheckpoint &&
@@ -1691,15 +1712,16 @@ export async function runSync(options = {}) {
     }
 
     /**
-     * Executa importação completa de Airing Schedules (próximos 14 dias em UTC) para catalog_airing_schedule.
+     * Executa importação completa de Airing Schedules (horizonte configurável, padrão 90 dias) para catalog_airing_schedule.
      */
     async function runScheduleStage({ startPage = 1, maxSchedulePages = 30 }) {
       const hadIncompleteBeforeStage = hasIncompleteSync;
       console.log(
-        `[anilist-sync] Etapa 'schedule' (próximos 14 dias UTC, iniciando página ${startPage})...`
+        `[anilist-sync] Etapa 'schedule' (janela de -1 a +${scheduleDaysForward} dias UTC, iniciando página ${startPage})...`
       );
       const nowSec = Math.floor(nowProvider().getTime() / 1000);
-      const endSec = nowSec + 14 * 86400;
+      const startSec = Math.max(0, nowSec - 86400);
+      const endSec = nowSec + scheduleDaysForward * 86400;
       let schedulePage = startPage;
       let schedulePagesProcessed = 0;
       let scheduleHasNext = true;
@@ -1707,7 +1729,7 @@ export async function runSync(options = {}) {
       try {
         while (scheduleHasNext && schedulePagesProcessed < maxSchedulePages) {
           const schedData = await requestAniList(AIRING_SCHEDULE_QUERY, {
-            start: nowSec,
+            start: startSec,
             end: endSec,
             page: schedulePage,
             perPage: 50,
@@ -1777,12 +1799,20 @@ export async function runSync(options = {}) {
       }
     }
 
-    // Execução sequencial das etapas conforme o modo (announcements / full / initial / incremental)
+    // Execução sequencial das etapas conforme o modo (schedule / announcements / full / initial / incremental)
     const initialLimits = options.fullLimits ?? options.initialLimits ?? {};
     const incrementalLimits = options.incrementalLimits ?? {};
     const announcementsLimits = options.announcementsLimits ?? {};
+    const scheduleLimits = options.scheduleLimits ?? {};
 
-    if (syncMode === "announcements") {
+    if (syncMode === "schedule") {
+      if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= SCHEDULE_STAGES.indexOf("schedule")) {
+        await runScheduleStage({
+          startPage: resumeStage === "schedule" ? resumePage : 1,
+          maxSchedulePages: scheduleLimits.maxSchedulePages ?? 60,
+        });
+      }
+    } else if (syncMode === "announcements") {
       if (!hasIncompleteSync && !pausedByTimeBudget && resumeStageIdx <= ANNOUNCEMENTS_STAGES.indexOf("incremental")) {
         const hasAnnCutoff = cutoffSec > 0;
         await runMediaStage({
@@ -1923,11 +1953,20 @@ export async function runSync(options = {}) {
     if (!hasIncompleteSync && !pausedByTimeBudget) {
       await client.query("BEGIN");
       try {
-        if (syncMode === "initial" || syncMode === "full") {
+        if (syncMode === "schedule") {
+          await upsertAdminSetting(
+            "anilist_sync_schedule_last_timestamp",
+            String(floorTimestamp)
+          );
+        } else if (syncMode === "initial" || syncMode === "full") {
           await upsertAdminSetting("anilist_sync_initial_completed", "true");
           await upsertAdminSetting("anilist_sync_last_timestamp", String(floorTimestamp));
           await upsertAdminSetting(
             "anilist_sync_announcements_last_timestamp",
+            String(floorTimestamp)
+          );
+          await upsertAdminSetting(
+            "anilist_sync_schedule_last_timestamp",
             String(floorTimestamp)
           );
         } else if (syncMode === "announcements") {
@@ -1937,7 +1976,20 @@ export async function runSync(options = {}) {
           );
         } else {
           await upsertAdminSetting("anilist_sync_last_timestamp", String(floorTimestamp));
+          await upsertAdminSetting(
+            "anilist_sync_schedule_last_timestamp",
+            String(floorTimestamp)
+          );
         }
+        await upsertAdminSetting("anilist_sync_last_summary", {
+          mode: syncMode,
+          completedAt: Date.now(),
+          totalProcessed,
+          totalInserted,
+          totalUpdated,
+          importedSchedulesCount,
+          scheduleDaysForward,
+        });
         await deleteAdminSetting("anilist_sync_checkpoint");
         await client.query("COMMIT");
       } catch (markerErr) {
@@ -2003,6 +2055,7 @@ export async function runSync(options = {}) {
 
         const patternsToScan = [
           "hikari:home:today-raw:v1:*",
+          "hikari:calendar:today:v1:*",
           "hikari:calendar:week:v1:*",
           "calendar:*",
           "calendar:proxy:*",

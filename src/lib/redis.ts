@@ -2864,15 +2864,18 @@ export async function cleanupDrainedProgressHashes(
 }
 
 /* ============================================================================
- * CALENDÁRIO SEMANAL: Cache e Invalidação com Shared Generation Counter
+ * CALENDÁRIO SEMANAL E DO DIA: Cache e Invalidação com Shared Generation Counter
  * Chaves:
  *   - hikari:calendar:gen:v1 (contador atômico de geração)
  *   - hikari:calendar:week:v1:<weekKey> (dados da semana serializados com geração)
+ *   - hikari:calendar:today:v1:<dayKey> (programação de hoje serializada com geração)
  * ============================================================================ */
 
 const CALENDAR_WEEK_REDIS_KEY_PREFIX = "hikari:calendar:week:v1:";
+const CALENDAR_TODAY_REDIS_KEY_PREFIX = "hikari:calendar:today:v1:";
 const CALENDAR_GEN_KEY = "hikari:calendar:gen:v1";
 const CALENDAR_REDIS_TTL_SEC = 1800; // 30 minutos
+const CALENDAR_TODAY_REDIS_TTL_SEC = 900; // 15 minutos
 
 export async function getRedisCalendarGen(): Promise<string> {
   if (!redisClient || typeof window !== "undefined") return "0";
@@ -2888,6 +2891,26 @@ export async function getRedisCalendarGen(): Promise<string> {
   }
 }
 
+function unwrapCalendarGenEnvelope<T>(cached: unknown, curGen: string): T | null {
+  if (!cached) return null;
+
+  let envelope: { gen?: string; data?: T } | null = null;
+  if (typeof cached === "string") {
+    try {
+      envelope = JSON.parse(cached);
+    } catch {
+      return null;
+    }
+  } else if (typeof cached === "object" && cached !== null) {
+    envelope = cached as { gen?: string; data?: T };
+  }
+
+  if (envelope && envelope.gen === curGen && envelope.data !== undefined && envelope.data !== null) {
+    return envelope.data;
+  }
+  return null;
+}
+
 export async function getRedisCalendarSchedule<T = unknown>(weekKey: string): Promise<T | null> {
   if (!redisClient || typeof window !== "undefined" || !weekKey) return null;
   const key = `${CALENDAR_WEEK_REDIS_KEY_PREFIX}${weekKey}`;
@@ -2901,25 +2924,7 @@ export async function getRedisCalendarSchedule<T = unknown>(weekKey: string): Pr
     );
 
     const curGen = results[0] !== null && results[0] !== undefined ? String(results[0]) : "0";
-    const cached = results[1];
-
-    if (!cached) return null;
-
-    let envelope: { gen?: string; data?: T } | null = null;
-    if (typeof cached === "string") {
-      try {
-        envelope = JSON.parse(cached);
-      } catch {
-        return null;
-      }
-    } else if (typeof cached === "object" && cached !== null) {
-      envelope = cached as { gen?: string; data?: T };
-    }
-
-    if (envelope && envelope.gen === curGen && envelope.data) {
-      return envelope.data;
-    }
-    return null;
+    return unwrapCalendarGenEnvelope<T>(results[1], curGen);
   } catch (err) {
     console.warn("[redis] Falha ao buscar calendário no Redis:", err instanceof Error ? err.message : err);
     return null;
@@ -2927,7 +2932,7 @@ export async function getRedisCalendarSchedule<T = unknown>(weekKey: string): Pr
 }
 
 export async function setRedisCalendarSchedule<T = unknown>(weekKey: string, data: T): Promise<void> {
-  if (!redisClient || typeof window !== "undefined" || !weekKey || !data) return;
+  if (!redisClient || typeof window !== "undefined" || !weekKey || data === undefined || data === null) return;
   const key = `${CALENDAR_WEEK_REDIS_KEY_PREFIX}${weekKey}`;
   try {
     const curGen = await getRedisCalendarGen();
@@ -2941,15 +2946,101 @@ export async function setRedisCalendarSchedule<T = unknown>(weekKey: string, dat
   }
 }
 
-export async function invalidateRedisCalendar(): Promise<void> {
-  if (!redisClient || typeof window !== "undefined") return;
+export async function getRedisCalendarToday<T = unknown>(dayKey: string): Promise<T | null> {
+  if (!redisClient || typeof window !== "undefined" || !dayKey) return null;
+  const key = `${CALENDAR_TODAY_REDIS_KEY_PREFIX}${dayKey}`;
   try {
+    const pipe = redisClient.pipeline();
+    pipe.get<string | number>(CALENDAR_GEN_KEY);
+    pipe.get<{ gen: string; data: T } | string>(key);
+    const results = await withRedisTimeout(
+      pipe.exec<[string | number | null, unknown]>(),
+      "getRedisCalendarToday",
+    );
+
+    const curGen = results[0] !== null && results[0] !== undefined ? String(results[0]) : "0";
+    return unwrapCalendarGenEnvelope<T>(results[1], curGen);
+  } catch (err) {
+    console.warn("[redis] Falha ao buscar programação de hoje no Redis:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+export async function setRedisCalendarToday<T = unknown>(dayKey: string, data: T): Promise<void> {
+  if (!redisClient || typeof window !== "undefined" || !dayKey || data === undefined || data === null) return;
+  const key = `${CALENDAR_TODAY_REDIS_KEY_PREFIX}${dayKey}`;
+  try {
+    const curGen = await getRedisCalendarGen();
+    const payload = JSON.stringify({ gen: curGen, data });
     await withRedisTimeout(
-      redisClient.incr(CALENDAR_GEN_KEY),
-      "invalidateRedisCalendar",
+      redisClient.set(key, payload, { ex: CALENDAR_TODAY_REDIS_TTL_SEC }),
+      "setRedisCalendarToday",
     );
   } catch (err) {
-    console.warn("[redis] Falha ao incrementar geração do calendário:", err instanceof Error ? err.message : err);
+    console.warn("[redis] Falha ao salvar programação de hoje no Redis:", err instanceof Error ? err.message : err);
+  }
+}
+
+export type CalendarRedisInvalidationClient = {
+  incr: (key: string) => Promise<unknown>;
+  scan?: (
+    cursor: number | string,
+    opts?: { match?: string; count?: number },
+  ) => Promise<[number | string, string[]]>;
+  del?: (...keys: string[]) => Promise<unknown>;
+};
+
+async function scanAndDeleteCalendarPattern(
+  client: CalendarRedisInvalidationClient,
+  pattern: string,
+): Promise<void> {
+  if (typeof client.scan !== "function" || typeof client.del !== "function") {
+    return;
+  }
+  let cursor: number | string = 0;
+  let iterations = 0;
+  do {
+    const result: [number | string, string[]] = await withRedisTimeout<
+      [number | string, string[]]
+    >(
+      client.scan(cursor, { match: pattern, count: 100 }),
+      `invalidateRedisCalendar.scan:${pattern}`,
+    );
+    const nextCursor: number | string | undefined = result?.[0];
+    const keys: string[] = Array.isArray(result?.[1]) ? result[1] : [];
+    if (keys.length > 0) {
+      await withRedisTimeout(
+        client.del(...keys),
+        `invalidateRedisCalendar.del:${pattern}`,
+      );
+    }
+    cursor = nextCursor ?? 0;
+    iterations += 1;
+  } while (String(cursor) !== "0" && iterations < 25);
+}
+
+export async function invalidateRedisCalendar(
+  redisOverride?: CalendarRedisInvalidationClient | null,
+): Promise<void> {
+  if (typeof window !== "undefined") return;
+  const client: CalendarRedisInvalidationClient | null =
+    redisOverride !== undefined ? redisOverride : redisClient;
+  if (!client) return;
+
+  try {
+    await withRedisTimeout(
+      client.incr(CALENDAR_GEN_KEY),
+      "invalidateRedisCalendar",
+    );
+    await Promise.allSettled([
+      scanAndDeleteCalendarPattern(client, `${CALENDAR_TODAY_REDIS_KEY_PREFIX}*`),
+      scanAndDeleteCalendarPattern(client, `${CALENDAR_WEEK_REDIS_KEY_PREFIX}*`),
+    ]);
+  } catch (err) {
+    console.warn(
+      "[redis] Falha ao invalidar cache do calendário:",
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 

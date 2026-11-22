@@ -7,6 +7,7 @@ import {
   Activity,
   AlertTriangle,
   ArrowLeft,
+  CalendarClock,
   CheckCircle2,
   Clock,
   Command,
@@ -209,6 +210,14 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
             to: "/admin/images",
             keywords: "imagens galeria capas banners thumbnails",
           },
+          {
+            id: "calendar",
+            label: "Calendário Semanal",
+            description: "Recorrências por dia da semana (BRT)",
+            icon: CalendarClock,
+            to: "/admin/calendar",
+            keywords: "calendario semana recorrencia seg ter qua qui sex sab dom",
+          },
         ],
       },
       {
@@ -333,6 +342,7 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     !pathname.startsWith("/admin/users") &&
     !pathname.startsWith("/admin/maintenance") &&
     !pathname.startsWith("/admin/images") &&
+    !pathname.startsWith("/admin/calendar") &&
     !pathname.startsWith("/admin/health") &&
     !pathname.startsWith("/admin/backup");
 
@@ -364,6 +374,9 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     }
     if (pathname.startsWith("/admin/images")) {
       return { section: "Catálogo & Acervo", current: "Central de Imagens" };
+    }
+    if (pathname.startsWith("/admin/calendar")) {
+      return { section: "Catálogo & Acervo", current: "Calendário Semanal" };
     }
     if (pathname.startsWith("/admin/users")) {
       return {

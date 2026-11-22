@@ -45,6 +45,11 @@ import {
 } from "@/lib/anime-search-ranking";
 
 import {
+  getDayKeySaoPaulo,
+  getTodayRangeSaoPaulo,
+} from "@/lib/calendar-timezone";
+
+import {
   buildCreditsRedisScopeKey,
   collectCatalogInvalidationTargetIds,
   getRedisAnimeDetailWithFence,
@@ -60,10 +65,9 @@ import {
   registerJikanEpisodesRamInvalidator,
   getRedisHomeCatalog,
   setRedisHomeCatalog,
-  getRedisHomeTodayRaw,
-  setRedisHomeTodayRaw,
   getRedisHomeSeason,
   setRedisHomeSeason,
+  invalidateRedisCalendar,
   scheduleRedisBackgroundWrite,
   type RedisAnimeDetailFence,
   type RedisEvalClient,
@@ -600,11 +604,16 @@ function applyLocalServerCatalogInvalidation(
   },
 ): string[] {
   domainCaches.get("home")?.clear();
+  domainCaches.get("calendar")?.clear();
   domainCaches.get("browse")?.clear();
   domainCaches.get("search")?.clear();
 
   import("@/lib/catalog-server-overlay.server").then((m) => {
     m.invalidateCatalogIndex();
+  }).catch(() => {});
+
+  import("@/lib/calendar-schedule.server").then((m) => {
+    m.invalidateLocalTodayScheduleCache();
   }).catch(() => {});
 
   const targetIds = collectCatalogInvalidationTargetIds(animeId, externalIds);
@@ -626,6 +635,7 @@ function applyLocalServerCatalogInvalidation(
   for (const flightKey of Array.from(inFlight.keys())) {
     if (
       flightKey.startsWith("home:") ||
+      flightKey.startsWith("calendar:") ||
       flightKey.startsWith("today-raw:") ||
       flightKey.startsWith("browse:") ||
       flightKey.startsWith("search:") ||
@@ -656,6 +666,7 @@ export function invalidateServerCatalogCaches(
   void invalidateRedisAnimeDetail(animeId, externalIds).catch(() => {});
   void invalidateRedisAnimeCredits(animeId, externalIds).catch(() => {});
   void invalidateRedisAnimeJikanEpisodes(animeId, externalIds).catch(() => {});
+  void invalidateRedisCalendar().catch(() => {});
 }
 
 export async function invalidateServerCatalogCachesAsync(
@@ -669,10 +680,13 @@ export async function invalidateServerCatalogCachesAsync(
   redisOverride?: RedisEvalClient | null,
 ): Promise<void> {
   applyLocalServerCatalogInvalidation(animeId, externalIds);
+  const canIncrCalendarRedis =
+    !redisOverride || typeof (redisOverride as { incr?: unknown }).incr === "function";
   await Promise.allSettled([
     invalidateRedisAnimeDetail(animeId, externalIds),
     invalidateRedisAnimeCredits(animeId, externalIds, redisOverride),
     invalidateRedisAnimeJikanEpisodes(animeId, externalIds, redisOverride),
+    ...(canIncrCalendarRedis ? [invalidateRedisCalendar()] : []),
   ]);
 }
 
@@ -4577,232 +4591,9 @@ async function fetchRecentReleasesFromAni(): Promise<
   return releases;
 }
 
-const TIMEZONE_BR = "America/Recife";
-
-function getDayKeyRecife(dateOrUnixSeconds: Date | number): string {
-  const date =
-    typeof dateOrUnixSeconds === "number"
-      ? new Date(dateOrUnixSeconds * 1000)
-      : dateOrUnixSeconds;
-
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: TIMEZONE_BR,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-
-function getTodayRangeRecife(): {
-  todayKey: string;
-  start: number;
-  end: number;
-} {
-  const todayKey = getDayKeyRecife(new Date());
-  const [year, month, day] = todayKey.split("-").map(Number);
-
-  // America/Recife opera permanentemente em UTC-3 (00:00 local = 03:00 UTC)
-  const startUtcMs = Date.UTC(year, month - 1, day, 3, 0, 0);
-  const endUtcMs = Date.UTC(year, month - 1, day + 1, 2, 59, 59);
-
-  return {
-    todayKey,
-    start: Math.floor(startUtcMs / 1000) - 1,
-    end: Math.floor(endUtcMs / 1000) + 1,
-  };
-}
-
-type RawTodayScheduleEntry = {
-  id: number;
-  airingAt: number;
-  episode: number;
-  media?: AniMedia | null;
-};
-
-async function fetchRawTodaySchedulesFromAni(
-  todayKey: string,
-  start: number,
-  end: number,
-): Promise<RawTodayScheduleEntry[]> {
-  const rawCacheKey = `today-raw:${todayKey}`;
-
-  return withCache<RawTodayScheduleEntry[]>(
-    rawCacheKey,
-    async () => {
-      // 2. Consulta Redis compartilhado antes de chamar a API do AniList
-      const redisRaw = await getRedisHomeTodayRaw<RawTodayScheduleEntry>(todayKey);
-      if (redisRaw && redisRaw.length > 0) {
-        return redisRaw;
-      }
-
-      type TodayScheduleResponse = {
-        Page: {
-          pageInfo?: {
-            hasNextPage?: boolean;
-          };
-          airingSchedules?: RawTodayScheduleEntry[];
-        };
-      };
-
-      const query = `
-        query TodayAiringSchedule(
-          $page: Int,
-          $start: Int,
-          $end: Int
-        ) {
-          Page(
-            page: $page,
-            perPage: 50
-          ) {
-            pageInfo {
-              hasNextPage
-            }
-            airingSchedules(
-              airingAt_greater: $start,
-              airingAt_lesser: $end,
-              sort: TIME
-            ) {
-              id
-              airingAt
-              episode
-              media {
-                ${CARD_FIELDS}
-              }
-            }
-          }
-        }
-      `;
-
-      const fetchStartedAt = Date.now();
-      const schedules: RawTodayScheduleEntry[] = [];
-
-      for (let page = 1; page <= 3; page += 1) {
-        const res =
-          page === 1
-            ? await anilistGraphQL<TodayScheduleResponse>(query, {
-                page,
-                start,
-                end,
-              })
-            : await anilistGraphQL<TodayScheduleResponse>(query, {
-                page,
-                start,
-                end,
-              }).catch(() => null);
-
-        if (!res?.Page?.airingSchedules?.length) {
-          break;
-        }
-
-        schedules.push(...res.Page.airingSchedules);
-
-        if (!res.Page.pageInfo?.hasNextPage) {
-          break;
-        }
-      }
-
-      schedules.sort((a, b) => a.airingAt - b.airingAt);
-
-      // 3. Persiste no Redis somente se houver registros válidos do AniList
-      if (schedules.length > 0) {
-        scheduleRedisBackgroundWrite(
-          setRedisHomeTodayRaw(todayKey, schedules, fetchStartedAt),
-          "setRedisHomeTodayRaw",
-        );
-      }
-
-      return schedules;
-    },
-    {
-      shouldCache: (schedules, stale) =>
-        schedules.length > 0 ||
-        !stale ||
-        stale.length === 0,
-    },
-  );
-}
-
-function filterUpcomingTodayAnimes(
-  schedules: RawTodayScheduleEntry[],
-  todayKey: string,
-  nowSeconds: number,
-): SlimAnime[] {
-  const grouped = new Map<
-    number,
-    {
-      media: AniMedia;
-      episodes: { number: number; airingAt: number }[];
-    }
-  >();
-
-  for (const entry of schedules) {
-    const media = entry.media;
-    if (!media?.id) continue;
-    if (isAdultAnime(media) || isHentaiAnime(media)) continue;
-    if (
-      typeof entry.airingAt !== "number" ||
-      !Number.isFinite(entry.airingAt) ||
-      entry.airingAt <= 0
-    ) {
-      continue;
-    }
-    // Exige data de hoje em America/Recife e horário ainda futuro
-    if (getDayKeyRecife(entry.airingAt) !== todayKey) continue;
-    if (entry.airingAt <= nowSeconds) continue;
-    if (typeof entry.episode !== "number" || entry.episode <= 0) continue;
-
-    const existing = grouped.get(media.id);
-    if (existing) {
-      if (
-        !existing.episodes.some(
-          (ep) =>
-            ep.number === entry.episode && ep.airingAt === entry.airingAt,
-        )
-      ) {
-        existing.episodes.push({
-          number: entry.episode,
-          airingAt: entry.airingAt,
-        });
-      }
-    } else {
-      grouped.set(media.id, {
-        media,
-        episodes: [
-          {
-            number: entry.episode,
-            airingAt: entry.airingAt,
-          },
-        ],
-      });
-    }
-  }
-
-  const items: SlimAnime[] = [];
-
-  for (const { media, episodes } of grouped.values()) {
-    episodes.sort((a, b) => a.airingAt - b.airingAt);
-    const nextEp = episodes[0];
-    if (!nextEp) continue;
-
-    const slim = mapAniSlim(media);
-    slim.todayEpisode = nextEp;
-    slim.todayUpcomingEpisodes = episodes;
-    items.push(slim);
-  }
-
-  items.sort(
-    (a, b) =>
-      (a.todayEpisode?.airingAt ?? Number.MAX_SAFE_INTEGER) -
-      (b.todayEpisode?.airingAt ?? Number.MAX_SAFE_INTEGER),
-  );
-
-  return items;
-}
-
-function pruneUpcomingTodayScheduleList(
+function filterTodayScheduleByDayKey(
   items: SlimAnime[],
   todayKey: string,
-  nowSeconds: number,
 ): SlimAnime[] {
   if (!Array.isArray(items) || items.length === 0) {
     return items;
@@ -4819,32 +4610,32 @@ function pruneUpcomingTodayScheduleList(
           ? [item.todayEpisode]
           : [];
 
-    const remaining = candidates
+    const validForDay = candidates
       .filter(
         (ep) =>
           typeof ep?.airingAt === "number" &&
           Number.isFinite(ep.airingAt) &&
-          ep.airingAt > nowSeconds &&
-          getDayKeyRecife(ep.airingAt) === todayKey,
+          ep.airingAt > 0 &&
+          getDayKeySaoPaulo(ep.airingAt) === todayKey,
       )
       .sort((a, b) => a.airingAt - b.airingAt);
 
-    if (remaining.length === 0) {
+    if (validForDay.length === 0) {
       changed = true;
       continue;
     }
 
-    const nextEp = remaining[0];
+    const firstEp = validForDay[0];
     if (
-      remaining.length !== candidates.length ||
-      item.todayEpisode?.airingAt !== nextEp.airingAt ||
-      item.todayEpisode?.number !== nextEp.number
+      validForDay.length !== candidates.length ||
+      item.todayEpisode?.airingAt !== firstEp.airingAt ||
+      item.todayEpisode?.number !== firstEp.number
     ) {
       changed = true;
       filtered.push({
         ...item,
-        todayEpisode: nextEp,
-        todayUpcomingEpisodes: remaining,
+        todayEpisode: firstEp,
+        todayUpcomingEpisodes: validForDay,
       });
     } else {
       filtered.push(item);
@@ -4854,55 +4645,17 @@ function pruneUpcomingTodayScheduleList(
   return changed ? filtered : items;
 }
 
-function pruneUpcomingTodayScheduleFromCatalog(
-  catalog: HomeCatalog,
-  todayKey: string,
-): HomeCatalog {
-  if (!catalog.todaySchedule || catalog.todaySchedule.length === 0) {
-    return catalog;
-  }
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const pruned = pruneUpcomingTodayScheduleList(
-    catalog.todaySchedule,
-    todayKey,
-    nowSeconds,
-  );
-  if (pruned === catalog.todaySchedule) {
-    return catalog;
-  }
-  return {
-    ...catalog,
-    todaySchedule: pruned,
-  };
-}
-
-async function fetchTodayScheduleFromAni(): Promise<SlimAnime[]> {
-  const { todayKey, start, end } = getTodayRangeRecife();
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const rawSchedules = await fetchRawTodaySchedulesFromAni(
-    todayKey,
-    start,
-    end,
-  );
-  return filterUpcomingTodayAnimes(rawSchedules, todayKey, nowSeconds);
-}
-
 export const fetchTodaySchedule = createServerFn({
   method: "GET",
 }).handler(async (): Promise<SlimAnime[] | null> =>
   traceServerFn("fetchTodaySchedule", async () => {
     try {
-      const items = await fetchTodayScheduleFromAni();
-      try {
-        const { applyDbCatalogOverlayToSlimList } = await import(
-          "@/lib/catalog-server-overlay.server"
-        );
-        const overlaid = await applyDbCatalogOverlayToSlimList(items);
-        return sortByHasEpisodeFirst(overlaid);
-      } catch {
-        return sortByHasEpisodeFirst(items);
-      }
-    } catch {
+      const { getTodayScheduleFromDbAndRedis } = await import(
+        "@/lib/calendar-schedule.server"
+      );
+      return await getTodayScheduleFromDbAndRedis();
+    } catch (err) {
+      console.error("[Hikari] Falha ao consultar programação de hoje no banco/Redis:", err);
       return null;
     }
   }),
@@ -4914,65 +4667,62 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
     year,
   } = currentAnimeSeason();
 
-  const [data, todaySchedule] = await Promise.all([
-    anilistGraphQL<{
-      trending: {
-        media: AniMedia[];
-      };
+  const data = await anilistGraphQL<{
+    trending: {
+      media: AniMedia[];
+    };
 
-      popular: {
-        media: AniMedia[];
-      };
+    popular: {
+      media: AniMedia[];
+    };
 
-      season: {
-        media: AniMedia[];
-      };
-    }>(
-      `
-      query HomePriority($season: MediaSeason, $year: Int) {
-        trending: Page(
-          page: 1,
-          perPage: 18
+    season: {
+      media: AniMedia[];
+    };
+  }>(
+    `
+    query HomePriority($season: MediaSeason, $year: Int) {
+      trending: Page(
+        page: 1,
+        perPage: 18
+      ) {
+        media(
+          type: ANIME,
+          sort: TRENDING_DESC
         ) {
-          media(
-            type: ANIME,
-            sort: TRENDING_DESC
-          ) {
-            ${CARD_FIELDS}
-          }
-        }
-
-        popular: Page(
-          page: 1,
-          perPage: 18
-        ) {
-          media(
-            type: ANIME,
-            sort: POPULARITY_DESC
-          ) {
-            ${CARD_FIELDS}
-          }
-        }
-
-        season: Page(
-          page: 1,
-          perPage: 18
-        ) {
-          media(
-            type: ANIME,
-            season: $season,
-            seasonYear: $year,
-            sort: POPULARITY_DESC
-          ) {
-            ${CARD_FIELDS}
-          }
+          ${CARD_FIELDS}
         }
       }
-      `,
-      { season, year },
-    ),
-    fetchTodayScheduleFromAni().catch(() => []),
-  ]);
+
+      popular: Page(
+        page: 1,
+        perPage: 18
+      ) {
+        media(
+          type: ANIME,
+          sort: POPULARITY_DESC
+        ) {
+          ${CARD_FIELDS}
+        }
+      }
+
+      season: Page(
+        page: 1,
+        perPage: 18
+      ) {
+        media(
+          type: ANIME,
+          season: $season,
+          seasonYear: $year,
+          sort: POPULARITY_DESC
+        ) {
+          ${CARD_FIELDS}
+        }
+      }
+    }
+    `,
+    { season, year },
+  );
 
   const trending = (data.trending.media ?? []).filter(
     (anime) => !isAdultAnime(anime),
@@ -4987,7 +4737,7 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
   );
 
   return {
-    todaySchedule,
+    todaySchedule: [],
 
     trending: trending.map(mapAniSlim),
 
@@ -5411,97 +5161,102 @@ export const fetchHomeCatalog =
     method: "GET",
   }).handler(
     async () => {
-      const { todayKey } = getTodayRangeRecife();
+      const { todayKey } = getTodayRangeSaoPaulo();
       const key = `home:${todayKey}`;
 
-      const rawCatalog = await withCache<HomeCatalog>(
-        key,
-        async () => {
-          // 2. Tenta Redis compartilhado (somente dados base válidos do AniList)
-          const redisCatalog = await getRedisHomeCatalog(todayKey);
-          if (redisCatalog) {
-            // Mantém filterUpcomingTodayAnimes executando com o horário atual a partir de today-raw
-            // (RAM/Redis) ou filtrando os horários já carregados sem congelar episódios exibidos.
-            const refreshedToday = await fetchTodayScheduleFromAni().catch(() => null);
-            const nowSeconds = Math.floor(Date.now() / 1000);
-            return {
-              ...redisCatalog,
-              todaySchedule:
-                refreshedToday !== null
-                  ? refreshedToday
-                  : pruneUpcomingTodayScheduleList(
-                      redisCatalog.todaySchedule,
-                      todayKey,
-                      nowSeconds,
-                    ),
-            };
-          }
+      const [rawCatalog, dbTodaySchedule] = await Promise.all([
+        withCache<HomeCatalog>(
+          key,
+          async () => {
+            // 2. Tenta Redis compartilhado (somente dados base válidos do AniList)
+            const redisCatalog = await getRedisHomeCatalog(todayKey);
+            if (redisCatalog) {
+              return redisCatalog;
+            }
 
-          // 3. Tenta AniList (fonte primária do Hikari)
-          try {
-            const fetchStartedAt = Date.now();
-            const aniData = await fetchHomeFromAni();
-            if (
-              aniData?.source === "anilist" &&
-              aniData.trending.length > 0 &&
-              aniData.popular.length > 0 &&
-              aniData.season.length > 0
-            ) {
-              scheduleRedisBackgroundWrite(
-                setRedisHomeCatalog(todayKey, aniData, fetchStartedAt),
-                "setRedisHomeCatalog",
+            // 3. Tenta AniList (fonte primária das prateleiras em alta/populares/temporada)
+            try {
+              const fetchStartedAt = Date.now();
+              const aniData = await fetchHomeFromAni();
+              if (
+                aniData?.source === "anilist" &&
+                aniData.trending.length > 0 &&
+                aniData.popular.length > 0 &&
+                aniData.season.length > 0
+              ) {
+                scheduleRedisBackgroundWrite(
+                  setRedisHomeCatalog(todayKey, aniData, fetchStartedAt),
+                  "setRedisHomeCatalog",
+                );
+              }
+              if (aniData?.trending?.length > 0) {
+                return aniData;
+              }
+            } catch (aniErr) {
+              console.warn(
+                "[Hikari] AniList indisponível, tentando reserva MyAnimeList / Jikan...",
+                aniErr instanceof Error ? aniErr.message : aniErr,
               );
             }
-            if (aniData?.trending?.length > 0) {
-              return aniData;
+
+            // 4. Tenta MyAnimeList / Jikan (reserva secundária — não gravada no Redis)
+            try {
+              const jikanData = await fetchHomeFromJikan();
+              if (jikanData?.trending?.length > 0) {
+                return jikanData;
+              }
+            } catch (jikanErr) {
+              console.warn(
+                "[Hikari] Jikan indisponível, tentando reserva Kitsu...",
+                jikanErr instanceof Error ? jikanErr.message : jikanErr,
+              );
             }
-          } catch (aniErr) {
-            console.warn(
-              "[Hikari] AniList indisponível, tentando reserva MyAnimeList / Jikan...",
-              aniErr instanceof Error ? aniErr.message : aniErr,
-            );
-          }
 
-          // 4. Tenta MyAnimeList / Jikan (reserva secundária — não gravada no Redis)
-          try {
-            const jikanData = await fetchHomeFromJikan();
-            if (jikanData?.trending?.length > 0) {
-              return jikanData;
+            // 5. Tenta Kitsu (reserva terciária — não gravada no Redis)
+            try {
+              const kitsuData = await fetchHomeFromKitsu();
+              if (kitsuData?.trending?.length > 0) {
+                return kitsuData;
+              }
+            } catch (kitsuErr) {
+              console.warn(
+                "[Hikari] Kitsu indisponível, usando catálogo seguro de contingência...",
+                kitsuErr instanceof Error ? kitsuErr.message : kitsuErr,
+              );
             }
-          } catch (jikanErr) {
+
+            throw new Error("Fontes externas da Home indisponíveis");
+          },
+          {
+            shouldCache: (catalog) =>
+              (catalog?.trending?.length ?? 0) > 0 &&
+              catalog.source === "anilist",
+            fallback: () =>
+              getEmergencyFallbackCatalog(),
+            cacheFallback: false,
+          },
+        ),
+        import("@/lib/calendar-schedule.server")
+          .then((m) => m.getTodayScheduleFromDbAndRedis())
+          .catch((err) => {
             console.warn(
-              "[Hikari] Jikan indisponível, tentando reserva Kitsu...",
-              jikanErr instanceof Error ? jikanErr.message : jikanErr,
+              "[Hikari] Falha ao consultar episódios de hoje no banco/Redis:",
+              err instanceof Error ? err.message : err,
             );
-          }
+            return null;
+          }),
+      ]);
 
-          // 5. Tenta Kitsu (reserva terciária — não gravada no Redis)
-          try {
-            const kitsuData = await fetchHomeFromKitsu();
-            if (kitsuData?.trending?.length > 0) {
-              return kitsuData;
-            }
-          } catch (kitsuErr) {
-            console.warn(
-              "[Hikari] Kitsu indisponível, usando catálogo seguro de contingência...",
-              kitsuErr instanceof Error ? kitsuErr.message : kitsuErr,
-            );
-          }
+      // A programação de hoje vem exclusivamente de PostgreSQL (catalog_airing_schedule) + Redis.
+      const resolvedToday =
+        dbTodaySchedule !== null
+          ? dbTodaySchedule
+          : filterTodayScheduleByDayKey(rawCatalog.todaySchedule, todayKey);
 
-          throw new Error("Fontes externas da Home indisponíveis");
-        },
-        {
-          shouldCache: (catalog) =>
-            (catalog?.trending?.length ?? 0) > 0 &&
-            catalog.source === "anilist",
-          fallback: () =>
-            getEmergencyFallbackCatalog(),
-          cacheFallback: false,
-        },
-      );
-
-      // Mesmo em hit de RAM local, remove episódios cujo horário já passou em America/Recife
-      const catalog = pruneUpcomingTodayScheduleFromCatalog(rawCatalog, todayKey);
+      const catalog: HomeCatalog = {
+        ...rawCatalog,
+        todaySchedule: resolvedToday,
+      };
 
       try {
         const { applyDbCatalogOverlayToHome } = await import(

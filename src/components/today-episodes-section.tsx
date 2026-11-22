@@ -10,7 +10,10 @@ import {
 import { AnimeCard } from "@/components/anime-card";
 import { useHorizontalRailImageLimit } from "@/components/anime-row";
 import { fetchTodaySchedule } from "@/lib/api";
-import { selectHomeSectionItems } from "@/lib/anime-search-ranking";
+import {
+  getDayKeySaoPaulo,
+  getMsUntilNextSaoPauloMidnight,
+} from "@/lib/calendar-timezone";
 import { useHikariStore } from "@/lib/store";
 import {
   hasLocalPublishedEpisodes,
@@ -18,34 +21,8 @@ import {
   type SlimAnime,
 } from "@/lib/types";
 
-const TIMEZONE_BR = "America/Recife";
-const PERIODIC_SYNC_MS = 15 * 60 * 1000; // 15 minutos
-
-function getDayKeyRecife(dateOrUnixSeconds: Date | number): string {
-  const date =
-    typeof dateOrUnixSeconds === "number"
-      ? new Date(dateOrUnixSeconds * 1000)
-      : dateOrUnixSeconds;
-
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: TIMEZONE_BR,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-
-function getMsUntilNextRecifeMidnight(): number {
-  const todayKey = getDayKeyRecife(new Date());
-  const [year, month, day] = todayKey.split("-").map(Number);
-  // America/Recife opera permanentemente em UTC-3 (00:00:02 em Recife = 03:00:02 UTC)
-  const nextMidnightUtcMs = Date.UTC(year, month - 1, day + 1, 3, 0, 2);
-  return Math.max(1000, nextMidnightUtcMs - Date.now());
-}
-
 export function TodayEpisodesSection({
   initialItems,
-  homeWithEpisodeCount,
 }: {
   initialItems: SlimAnime[];
   homeWithEpisodeCount?: number;
@@ -55,55 +32,50 @@ export function TodayEpisodesSection({
 
   const railRef = useRef<HTMLDivElement>(null);
   const [scheduleSource, setScheduleSource] = useState<SlimAnime[]>(initialItems);
-  const [nowSeconds, setNowSeconds] = useState<number | null>(null);
+  const [activeDayKey, setActiveDayKey] = useState<string>(() =>
+    getDayKeySaoPaulo(new Date()),
+  );
 
-  const loadedDayKeyRef = useRef<string>(getDayKeyRecife(new Date()));
-  const lastSyncAtRef = useRef<number>(Date.now());
+  const loadedDayKeyRef = useRef<string>(getDayKeySaoPaulo(new Date()));
   const syncInFlightRef = useRef(false);
 
   // Sincroniza quando o loader da rota atualiza os dados iniciais
   useEffect(() => {
+    const todayKey = getDayKeySaoPaulo(new Date());
     setScheduleSource(initialItems);
-    loadedDayKeyRef.current = getDayKeyRecife(new Date());
-    lastSyncAtRef.current = Date.now();
+    loadedDayKeyRef.current = todayKey;
+    setActiveDayKey(todayKey);
   }, [initialItems]);
 
-  // Ativa o relógio em tempo real após a montagem no cliente
-  useEffect(() => {
-    setNowSeconds(Math.floor(Date.now() / 1000));
-  }, []);
-
+  // Atualiza somente ao virar o dia em America/Sao_Paulo (lendo PostgreSQL + Redis, sem AniList)
   const syncTodayFromServer = useCallback(async (force = false) => {
     if (syncInFlightRef.current) return;
 
-    const currentDayKey = getDayKeyRecife(new Date());
+    const currentDayKey = getDayKeySaoPaulo(new Date());
     const dayChanged = currentDayKey !== loadedDayKeyRef.current;
-    const elapsed = Date.now() - lastSyncAtRef.current;
 
-    if (!force && !dayChanged && elapsed < PERIODIC_SYNC_MS) {
+    if (!force && !dayChanged) {
       return;
     }
 
     syncInFlightRef.current = true;
     try {
       const fresh = await fetchTodaySchedule();
+      const updatedDayKey = getDayKeySaoPaulo(new Date());
       if (Array.isArray(fresh)) {
         setScheduleSource(fresh);
-        loadedDayKeyRef.current = getDayKeyRecife(new Date());
-        lastSyncAtRef.current = Date.now();
+        loadedDayKeyRef.current = updatedDayKey;
       }
-      setNowSeconds(Math.floor(Date.now() / 1000));
+      setActiveDayKey(updatedDayKey);
     } finally {
       syncInFlightRef.current = false;
     }
   }, []);
 
-  // Seleciona somente animes com episódios ainda previstos para hoje em America/Recife
+  // Seleciona todos os animes previstos para o dia atual em America/Sao_Paulo,
+  // mantendo consistência integral com a guia "Hoje" da página /calendar.
   const activeItems = useMemo(() => {
     if (scheduleSource.length === 0) return [];
-
-    const currentDayKey =
-      nowSeconds !== null ? getDayKeyRecife(nowSeconds) : null;
 
     const hiddenAnilist = new Set(
       locals
@@ -131,31 +103,21 @@ export function TodayEpisodesSection({
             ? [item.todayEpisode]
             : [];
 
-      const remainingEpisodes = rawEpisodes.filter((ep) => {
-        if (
-          typeof ep.airingAt !== "number" ||
-          !Number.isFinite(ep.airingAt) ||
-          ep.airingAt <= 0
-        ) {
-          return false;
-        }
-        if (nowSeconds !== null) {
-          if (ep.airingAt <= nowSeconds) return false;
-          if (
-            currentDayKey &&
-            getDayKeyRecife(ep.airingAt) !== currentDayKey
-          ) {
-            return false;
-          }
-        }
-        return true;
-      });
+      const todayEpisodes = rawEpisodes
+        .filter(
+          (ep) =>
+            typeof ep.airingAt === "number" &&
+            Number.isFinite(ep.airingAt) &&
+            ep.airingAt > 0 &&
+            getDayKeySaoPaulo(ep.airingAt) === activeDayKey,
+        )
+        .sort((a, b) => a.airingAt - b.airingAt);
 
-      if (remainingEpisodes.length === 0) {
+      if (todayEpisodes.length === 0) {
         continue;
       }
 
-      const nextEpisode = remainingEpisodes[0];
+      const firstTodayEpisode = todayEpisodes[0];
       const localOverride = item.anilistId
         ? localByAnilist.get(item.anilistId)
         : undefined;
@@ -172,8 +134,8 @@ export function TodayEpisodesSection({
         result.push({
           ...item,
           hasEpisode: hasEpisodes,
-          todayEpisode: nextEpisode,
-          todayUpcomingEpisodes: remainingEpisodes,
+          todayEpisode: firstTodayEpisode,
+          todayUpcomingEpisodes: todayEpisodes,
         });
         continue;
       }
@@ -190,8 +152,8 @@ export function TodayEpisodesSection({
         },
         cover: mappedLocal.cover || item.cover,
         banner: mappedLocal.banner || item.banner,
-        todayEpisode: nextEpisode,
-        todayUpcomingEpisodes: remainingEpisodes,
+        todayEpisode: firstTodayEpisode,
+        todayUpcomingEpisodes: todayEpisodes,
       });
     }
 
@@ -202,35 +164,17 @@ export function TodayEpisodesSection({
           (b.todayEpisode?.airingAt ?? Number.MAX_SAFE_INTEGER),
     );
 
-    return selectHomeSectionItems(result, homeWithEpisodeCount);
-  }, [scheduleSource, locals, nowSeconds, homeWithEpisodeCount]);
+    return result;
+  }, [scheduleSource, locals, activeDayKey]);
 
-  // Agendamento exato para o próximo horário de exibição (sem polling curto)
-  const nextAiringAt = activeItems[0]?.todayEpisode?.airingAt ?? null;
-
-  useEffect(() => {
-    if (nextAiringAt === null) return;
-
-    const delayMs = Math.max(
-      500,
-      nextAiringAt * 1000 - Date.now() + 1000,
-    );
-
-    const timer = window.setTimeout(() => {
-      setNowSeconds(Math.floor(Date.now() / 1000));
-    }, delayMs);
-
-    return () => window.clearTimeout(timer);
-  }, [nextAiringAt]);
-
-  // Virada automática de meia-noite no fuso America/Recife
+  // Virada automática de meia-noite no fuso America/Sao_Paulo
   useEffect(() => {
     let midnightTimer: number;
 
     const scheduleMidnightRefresh = () => {
-      const waitMs = getMsUntilNextRecifeMidnight();
+      const waitMs = getMsUntilNextSaoPauloMidnight();
       midnightTimer = window.setTimeout(() => {
-        setNowSeconds(Math.floor(Date.now() / 1000));
+        setActiveDayKey(getDayKeySaoPaulo(new Date()));
         void syncTodayFromServer(true);
         scheduleMidnightRefresh();
       }, waitMs);
@@ -241,25 +185,21 @@ export function TodayEpisodesSection({
     return () => window.clearTimeout(midnightTimer);
   }, [syncTodayFromServer]);
 
-  // Atualização suave ao retornar à aba e sincronização periódica moderada (15 min)
+  // Ao retornar para a aba, verifica apenas se o dia civil em America/Sao_Paulo mudou
   useEffect(() => {
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState !== "visible") return;
-      setNowSeconds(Math.floor(Date.now() / 1000));
-      void syncTodayFromServer(false);
+      const currentDayKey = getDayKeySaoPaulo(new Date());
+      if (currentDayKey !== loadedDayKeyRef.current) {
+        setActiveDayKey(currentDayKey);
+        void syncTodayFromServer(false);
+      }
     };
-
-    const interval = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      setNowSeconds(Math.floor(Date.now() / 1000));
-      void syncTodayFromServer(false);
-    }, PERIODIC_SYNC_MS);
 
     document.addEventListener("visibilitychange", handleVisibilityOrFocus);
     window.addEventListener("focus", handleVisibilityOrFocus);
 
     return () => {
-      window.clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
       window.removeEventListener("focus", handleVisibilityOrFocus);
     };
@@ -293,10 +233,6 @@ export function TodayEpisodesSection({
     loadedDayKeyRef.current,
   );
 
-  if (activeItems.length === 0) {
-    return null;
-  }
-
   return (
     <section className="space-y-3.5 sm:space-y-4">
       {/* Cabeçalho da Seção seguindo o padrão visual do Hikari */}
@@ -325,17 +261,12 @@ export function TodayEpisodesSection({
         </div>
       </div>
 
-      {/* Trilho compacto e proporcional ao layout original do Hikari ou Estado Vazio */}
       {activeItems.length === 0 ? (
-        <div className="rounded-xl border border-purple-500/15 bg-[#100e1b]/80 px-4 py-7 sm:px-6 sm:py-9 text-center">
-          <p className="text-xs sm:text-sm font-semibold text-zinc-200">
-            Nenhum episódio previsto para o restante de hoje
-          </p>
-          <p className="mx-auto mt-1 max-w-lg text-[11px] sm:text-xs leading-relaxed text-zinc-400">
-            Não há novos episódios programados para lançamento no restante da data de hoje.
-          </p>
+        <div className="rounded-xl border border-purple-500/15 bg-[#100e1b]/70 px-4 py-5 text-xs sm:text-sm text-muted">
+          Não há episódios programados para hoje.
         </div>
       ) : (
+        /* Trilho compacto e proporcional ao layout original do Hikari */
         <div
           ref={railRef}
           className="rail -mx-4 px-4 sm:-mx-6 sm:px-6 gap-2.5 sm:gap-3.5 md:gap-4 py-2 overscroll-x-contain"

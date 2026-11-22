@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Activity,
   AlertTriangle,
+  CalendarClock,
   CheckCircle2,
   Database,
   Layers,
@@ -59,9 +60,30 @@ interface MaintenanceData {
   serverTime: string;
 }
 
+interface CalendarSyncStatusData {
+  dbSource: "neon" | "pglite";
+  counts: {
+    scheduleCount: number;
+    animeCount: number;
+    seasonCount: number;
+  };
+  scheduleRange: {
+    minAiringAt: string | null;
+    maxAiringAt: string | null;
+  };
+  settings: {
+    initialCompleted: boolean;
+    lastScheduleTimestamp: number | null;
+    lastCatalogTimestamp: number | null;
+    checkpoint: Record<string, unknown> | null;
+    lastSummary: Record<string, unknown> | null;
+  };
+}
+
 function AdminMaintenancePage() {
   const { refreshSettings } = usePublicSettings();
   const [data, setData] = useState<MaintenanceData | null>(null);
+  const [calendarSync, setCalendarSync] = useState<CalendarSyncStatusData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [maintenanceMode, setMaintenanceMode] = useState(false);
@@ -70,6 +92,7 @@ function AdminMaintenancePage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const [isClearingCache, setIsClearingCache] = useState<string | null>(null);
+  const [isSyncingCalendar, setIsSyncingCalendar] = useState<"schedule" | "full" | null>(null);
   const [isPinging, setIsPinging] = useState(false);
   const [currentPing, setCurrentPing] = useState<number | null>(null);
 
@@ -77,9 +100,11 @@ function AdminMaintenancePage() {
     setLoading(true);
     try {
       const token = getBearerToken();
-      const res = await fetch("/api/admin/maintenance", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const [res, calRes] = await Promise.all([
+        fetch("/api/admin/maintenance", { headers }),
+        fetch("/api/admin/calendar-sync", { headers }).catch(() => null),
+      ]);
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => null);
@@ -92,6 +117,13 @@ function AdminMaintenancePage() {
       setMaintenanceMessage(json.maintenance?.message ?? "");
       setAllowAdminBypass(json.maintenance?.allowAdminBypass ?? true);
       setCurrentPing(json.database?.latencyMs ?? null);
+
+      if (calRes && calRes.ok) {
+        const calJson = await calRes.json().catch(() => null);
+        if (calJson?.ok) {
+          setCalendarSync(calJson);
+        }
+      }
     } catch (err) {
       console.error("[admin.maintenance] Erro ao carregar:", err);
       toast.error(
@@ -213,6 +245,49 @@ function AdminMaintenancePage() {
       );
     } finally {
       setIsPinging(false);
+    }
+  };
+
+  const handleSyncCalendar = async (mode: "schedule" | "full") => {
+    if (isSyncingCalendar) return;
+    setIsSyncingCalendar(mode);
+
+    try {
+      const token = getBearerToken();
+      const res = await fetch("/api/admin/calendar-sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          mode,
+          scheduleDaysForward: 90,
+        }),
+      });
+
+      const resJson = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          resJson?.error || "Falha ao sincronizar calendário administrativo.",
+        );
+      }
+
+      if (resJson?.counts) {
+        setCalendarSync(resJson);
+      }
+      toast.success(
+        resJson?.message || "Sincronização do calendário concluída com sucesso!",
+      );
+      await fetchData();
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Erro ao sincronizar calendário com a AniList.",
+      );
+    } finally {
+      setIsSyncingCalendar(null);
     }
   };
 
@@ -490,6 +565,96 @@ function AdminMaintenancePage() {
             </Button>
           </div>
         </div>
+      </StudioPanel>
+
+      {/* Bloco 2.5: Sincronização Administrativa do Calendário */}
+      <StudioPanel
+        title="Sincronização do Calendário (AniList → PostgreSQL)"
+        description="A navegação de visitantes (Home e /calendar) lê apenas PostgreSQL + Upstash Redis. Use os controles abaixo somente para carga inicial ou atualização trimestral."
+        icon={<CalendarClock className="size-4" />}
+        right={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="h-9 border-[var(--studio-line)] bg-[var(--studio-panel-alt)] px-3.5 text-xs hover:bg-white/[0.08]"
+            >
+              <Link to="/admin/calendar">Recorrências Semanais</Link>
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleSyncCalendar("schedule")}
+              disabled={isSyncingCalendar !== null}
+              className="h-9 bg-violet-600 px-3.5 text-xs font-semibold text-white hover:bg-violet-500"
+            >
+              {isSyncingCalendar === "schedule" ? (
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+              ) : (
+                <CalendarClock className="mr-1.5 size-3.5" />
+              )}
+              {calendarSync?.settings?.checkpoint &&
+              calendarSync.settings.checkpoint.mode === "schedule"
+                ? "Retomar Calendário"
+                : "Sincronizar Calendário (90 dias)"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleSyncCalendar("full")}
+              disabled={isSyncingCalendar !== null}
+              className="h-9 border-[var(--studio-line)] bg-[var(--studio-panel-alt)] px-3.5 text-xs hover:bg-white/[0.08]"
+            >
+              {isSyncingCalendar === "full" ? (
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1.5 size-3.5" />
+              )}
+              Sincronização Completa
+            </Button>
+          </div>
+        }
+        bodyClassName="space-y-4"
+      >
+        <StudioStatStrip
+          columns={3}
+          items={[
+            {
+              label: "Banco Conectado",
+              value:
+                calendarSync?.dbSource === "neon"
+                  ? "Neon PostgreSQL"
+                  : "PGLite Local",
+              detail:
+                calendarSync?.dbSource === "neon"
+                  ? "Persistência remota via DATABASE_URL"
+                  : "Banco embutido local (preview/sandbox)",
+              accent: calendarSync?.dbSource === "neon" ? "emerald" : "amber",
+            },
+            {
+              label: "Horários Armazenados",
+              value: (calendarSync?.counts?.scheduleCount ?? 0).toLocaleString(
+                "pt-BR",
+              ),
+              detail: `${(calendarSync?.counts?.animeCount ?? 0).toLocaleString("pt-BR")} animes e ${(calendarSync?.counts?.seasonCount ?? 0).toLocaleString("pt-BR")} temporadas`,
+              accent: "violet",
+            },
+            {
+              label: "Última Sincronização do Calendário",
+              value: calendarSync?.settings?.lastScheduleTimestamp
+                ? new Date(
+                    calendarSync.settings.lastScheduleTimestamp,
+                  ).toLocaleDateString("pt-BR")
+                : "Pendente",
+              detail: calendarSync?.settings?.checkpoint
+                ? `Checkpoint salvo: etapa ${String(calendarSync.settings.checkpoint.stage ?? "")}`
+                : "Idempotente: preserva dados manuais, episódios e fontes",
+              accent: calendarSync?.settings?.lastScheduleTimestamp
+                ? "emerald"
+                : "amber",
+            },
+          ]}
+        />
       </StudioPanel>
 
       {/* Bloco 3: Diagnóstico do Neon PostgreSQL */}

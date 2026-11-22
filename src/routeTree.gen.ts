@@ -37,6 +37,7 @@ import { Route as TermosRouteImport } from './routes/termos'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminIdRouteImport } from './routes/admin.$id'
 import { Route as AdminBackupRouteImport } from './routes/admin.backup'
+import { Route as AdminCalendarRouteImport } from './routes/admin.calendar'
 import { Route as AdminHealthRouteImport } from './routes/admin.health'
 import { Route as AdminHikariAiRouteImport } from './routes/admin.hikari-ai'
 import { Route as AdminImagesRouteImport } from './routes/admin.images'
@@ -66,6 +67,8 @@ import { Route as ProfileNickRouteImport } from './routes/profile.$nick'
 import { Route as WatchIdRouteImport } from './routes/watch.$id'
 import { Route as ApiAdminBackupRouteImport } from './routes/api/admin/backup'
 import { Route as ApiAdminBansRouteImport } from './routes/api/admin/bans'
+import { Route as ApiAdminCalendarRecurrencesRouteImport } from './routes/api/admin/calendar-recurrences'
+import { Route as ApiAdminCalendarSyncRouteImport } from './routes/api/admin/calendar-sync'
 import { Route as ApiAdminCatalogAnimeRouteImport } from './routes/api/admin/catalog-anime'
 import { Route as ApiAdminCatalogEpisodeRouteImport } from './routes/api/admin/catalog-episode'
 import { Route as ApiAdminCatalogImportRouteImport } from './routes/api/admin/catalog-import'
@@ -232,6 +235,11 @@ const AdminBackupRoute = AdminBackupRouteImport.update({
   path: '/backup',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminCalendarRoute = AdminCalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminHealthRoute = AdminHealthRouteImport.update({
   id: '/health',
   path: '/health',
@@ -375,6 +383,17 @@ const ApiAdminBackupRoute = ApiAdminBackupRouteImport.update({
 const ApiAdminBansRoute = ApiAdminBansRouteImport.update({
   id: '/api/admin/bans',
   path: '/api/admin/bans',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminCalendarRecurrencesRoute =
+  ApiAdminCalendarRecurrencesRouteImport.update({
+    id: '/api/admin/calendar-recurrences',
+    path: '/api/admin/calendar-recurrences',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiAdminCalendarSyncRoute = ApiAdminCalendarSyncRouteImport.update({
+  id: '/api/admin/calendar-sync',
+  path: '/api/admin/calendar-sync',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminCatalogAnimeRoute = ApiAdminCatalogAnimeRouteImport.update({
@@ -533,6 +552,7 @@ export interface FileRoutesByFullPath {
   '/termos': typeof TermosRoute
   '/admin/$id': typeof AdminIdRoute
   '/admin/backup': typeof AdminBackupRoute
+  '/admin/calendar': typeof AdminCalendarRoute
   '/admin/health': typeof AdminHealthRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/images': typeof AdminImagesRoute
@@ -563,6 +583,8 @@ export interface FileRoutesByFullPath {
   '/adult/': typeof AdultIndexRoute
   '/api/admin/backup': typeof ApiAdminBackupRoute
   '/api/admin/bans': typeof ApiAdminBansRoute
+  '/api/admin/calendar-recurrences': typeof ApiAdminCalendarRecurrencesRoute
+  '/api/admin/calendar-sync': typeof ApiAdminCalendarSyncRoute
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
@@ -615,6 +637,7 @@ export interface FileRoutesByTo {
   '/termos': typeof TermosRoute
   '/admin/$id': typeof AdminIdRoute
   '/admin/backup': typeof AdminBackupRoute
+  '/admin/calendar': typeof AdminCalendarRoute
   '/admin/health': typeof AdminHealthRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/images': typeof AdminImagesRoute
@@ -645,6 +668,8 @@ export interface FileRoutesByTo {
   '/adult': typeof AdultIndexRoute
   '/api/admin/backup': typeof ApiAdminBackupRoute
   '/api/admin/bans': typeof ApiAdminBansRoute
+  '/api/admin/calendar-recurrences': typeof ApiAdminCalendarRecurrencesRoute
+  '/api/admin/calendar-sync': typeof ApiAdminCalendarSyncRoute
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
@@ -700,6 +725,7 @@ export interface FileRoutesById {
   '/termos': typeof TermosRoute
   '/admin/$id': typeof AdminIdRoute
   '/admin/backup': typeof AdminBackupRoute
+  '/admin/calendar': typeof AdminCalendarRoute
   '/admin/health': typeof AdminHealthRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/images': typeof AdminImagesRoute
@@ -730,6 +756,8 @@ export interface FileRoutesById {
   '/adult/': typeof AdultIndexRoute
   '/api/admin/backup': typeof ApiAdminBackupRoute
   '/api/admin/bans': typeof ApiAdminBansRoute
+  '/api/admin/calendar-recurrences': typeof ApiAdminCalendarRecurrencesRoute
+  '/api/admin/calendar-sync': typeof ApiAdminCalendarSyncRoute
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
@@ -786,6 +814,7 @@ export interface FileRouteTypes {
     | '/termos'
     | '/admin/$id'
     | '/admin/backup'
+    | '/admin/calendar'
     | '/admin/health'
     | '/admin/hikari-ai'
     | '/admin/images'
@@ -816,6 +845,8 @@ export interface FileRouteTypes {
     | '/adult/'
     | '/api/admin/backup'
     | '/api/admin/bans'
+    | '/api/admin/calendar-recurrences'
+    | '/api/admin/calendar-sync'
     | '/api/admin/catalog-anime'
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
@@ -868,6 +899,7 @@ export interface FileRouteTypes {
     | '/termos'
     | '/admin/$id'
     | '/admin/backup'
+    | '/admin/calendar'
     | '/admin/health'
     | '/admin/hikari-ai'
     | '/admin/images'
@@ -898,6 +930,8 @@ export interface FileRouteTypes {
     | '/adult'
     | '/api/admin/backup'
     | '/api/admin/bans'
+    | '/api/admin/calendar-recurrences'
+    | '/api/admin/calendar-sync'
     | '/api/admin/catalog-anime'
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
@@ -952,6 +986,7 @@ export interface FileRouteTypes {
     | '/termos'
     | '/admin/$id'
     | '/admin/backup'
+    | '/admin/calendar'
     | '/admin/health'
     | '/admin/hikari-ai'
     | '/admin/images'
@@ -982,6 +1017,8 @@ export interface FileRouteTypes {
     | '/adult/'
     | '/api/admin/backup'
     | '/api/admin/bans'
+    | '/api/admin/calendar-recurrences'
+    | '/api/admin/calendar-sync'
     | '/api/admin/catalog-anime'
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
@@ -1052,6 +1089,8 @@ export interface RootRouteChildren {
   WatchIdRoute: typeof WatchIdRoute
   ApiAdminBackupRoute: typeof ApiAdminBackupRoute
   ApiAdminBansRoute: typeof ApiAdminBansRoute
+  ApiAdminCalendarRecurrencesRoute: typeof ApiAdminCalendarRecurrencesRoute
+  ApiAdminCalendarSyncRoute: typeof ApiAdminCalendarSyncRoute
   ApiAdminCatalogAnimeRoute: typeof ApiAdminCatalogAnimeRoute
   ApiAdminCatalogEpisodeRoute: typeof ApiAdminCatalogEpisodeRoute
   ApiAdminCatalogImportRoute: typeof ApiAdminCatalogImportRoute
@@ -1272,6 +1311,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminBackupRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/calendar': {
+      id: '/admin/calendar'
+      path: '/calendar'
+      fullPath: '/admin/calendar'
+      preLoaderRoute: typeof AdminCalendarRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/health': {
       id: '/admin/health'
       path: '/health'
@@ -1475,6 +1521,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminBansRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/calendar-recurrences': {
+      id: '/api/admin/calendar-recurrences'
+      path: '/api/admin/calendar-recurrences'
+      fullPath: '/api/admin/calendar-recurrences'
+      preLoaderRoute: typeof ApiAdminCalendarRecurrencesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/calendar-sync': {
+      id: '/api/admin/calendar-sync'
+      path: '/api/admin/calendar-sync'
+      fullPath: '/api/admin/calendar-sync'
+      preLoaderRoute: typeof ApiAdminCalendarSyncRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/catalog-anime': {
       id: '/api/admin/catalog-anime'
       path: '/api/admin/catalog-anime'
@@ -1656,6 +1716,7 @@ declare module '@tanstack/react-router' {
 interface AdminRouteChildren {
   AdminIdRoute: typeof AdminIdRoute
   AdminBackupRoute: typeof AdminBackupRoute
+  AdminCalendarRoute: typeof AdminCalendarRoute
   AdminHealthRoute: typeof AdminHealthRoute
   AdminHikariAiRoute: typeof AdminHikariAiRoute
   AdminImagesRoute: typeof AdminImagesRoute
@@ -1670,6 +1731,7 @@ interface AdminRouteChildren {
 const AdminRouteChildren: AdminRouteChildren = {
   AdminIdRoute: AdminIdRoute,
   AdminBackupRoute: AdminBackupRoute,
+  AdminCalendarRoute: AdminCalendarRoute,
   AdminHealthRoute: AdminHealthRoute,
   AdminHikariAiRoute: AdminHikariAiRoute,
   AdminImagesRoute: AdminImagesRoute,
@@ -1762,6 +1824,8 @@ const rootRouteChildren: RootRouteChildren = {
   WatchIdRoute: WatchIdRoute,
   ApiAdminBackupRoute: ApiAdminBackupRoute,
   ApiAdminBansRoute: ApiAdminBansRoute,
+  ApiAdminCalendarRecurrencesRoute: ApiAdminCalendarRecurrencesRoute,
+  ApiAdminCalendarSyncRoute: ApiAdminCalendarSyncRoute,
   ApiAdminCatalogAnimeRoute: ApiAdminCatalogAnimeRoute,
   ApiAdminCatalogEpisodeRoute: ApiAdminCatalogEpisodeRoute,
   ApiAdminCatalogImportRoute: ApiAdminCatalogImportRoute,
@@ -1786,12 +1850,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
