@@ -17,6 +17,49 @@ const CONTAINER_SIZE_CLASSES = {
   lg: "h-[56px] min-[380px]:h-[64px] sm:h-[74px] md:h-[82px] lg:h-[88px] aspect-[16/9] min-w-[100px]",
 } as const;
 
+const offscreenCallbacks = new WeakMap<Element, (paused: boolean) => void>();
+let sharedOffscreenObserver: IntersectionObserver | null = null;
+let observedLogoCount = 0;
+
+function observeLogoOffscreen(
+  el: Element,
+  onPausedChange: (paused: boolean) => void,
+): () => void {
+  if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") {
+    return () => {};
+  }
+
+  if (!sharedOffscreenObserver) {
+    sharedOffscreenObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const cb = offscreenCallbacks.get(entry.target);
+          cb?.(!entry.isIntersecting);
+        }
+      },
+      {
+        root: null,
+        rootMargin: "50px 0px",
+        threshold: 0,
+      },
+    );
+  }
+
+  offscreenCallbacks.set(el, onPausedChange);
+  sharedOffscreenObserver.observe(el);
+  observedLogoCount += 1;
+
+  return () => {
+    offscreenCallbacks.delete(el);
+    sharedOffscreenObserver?.unobserve(el);
+    observedLogoCount = Math.max(0, observedLogoCount - 1);
+    if (observedLogoCount === 0 && sharedOffscreenObserver) {
+      sharedOffscreenObserver.disconnect();
+      sharedOffscreenObserver = null;
+    }
+  };
+}
+
 /**
  * Identidade visual oficial HIKARI (versão definitiva unificada com Elizabeth, placa "TV", faíscas e fundo transparente).
  */
@@ -26,40 +69,26 @@ export const Logo = memo(function Logo({
   linkToHome = true,
   loading = "eager",
   fetchPriority = "auto",
-  pauseWhenOffscreen = false,
+  pauseWhenOffscreen = true,
 }: LogoProps) {
   const containerSizeClasses = CONTAINER_SIZE_CLASSES[size];
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!pauseWhenOffscreen || typeof window === "undefined" || typeof IntersectionObserver === "undefined") {
+    if (!pauseWhenOffscreen) {
+      const el = containerRef.current;
+      if (el) {
+        el.setAttribute("data-paused", "false");
+      }
       return;
     }
 
     const el = containerRef.current;
     if (!el) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            el.setAttribute("data-paused", "false");
-          } else {
-            el.setAttribute("data-paused", "true");
-          }
-        }
-      },
-      {
-        root: null,
-        rootMargin: "50px 0px",
-        threshold: 0,
-      }
-    );
-
-    observer.observe(el);
-    return () => {
-      observer.disconnect();
-    };
+    return observeLogoOffscreen(el, (paused) => {
+      el.setAttribute("data-paused", paused ? "true" : "false");
+    });
   }, [pauseWhenOffscreen]);
 
   const content = (
@@ -67,7 +96,7 @@ export const Logo = memo(function Logo({
       ref={containerRef}
       data-paused="false"
       className={cn(
-        "hikari-animated-logo-container relative inline-flex items-center justify-center select-none transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:transform-none",
+        "hikari-animated-logo-container relative inline-flex items-center justify-center select-none",
         containerSizeClasses,
         className,
       )}
@@ -91,19 +120,12 @@ export const Logo = memo(function Logo({
           draggable={false}
         />
       </picture>
-      <div className="hikari-wordmark-neon" aria-hidden="true">
-        <span className="hikari-wordmark-pulse" />
-        <span className="hikari-wordmark-sweep" />
-      </div>
-      <div className="hikari-orbital-lines" aria-hidden="true">
-        <span className="hikari-orbital-seg hikari-orbital-seg--left-wing" />
-        <span className="hikari-orbital-seg hikari-orbital-seg--right-wing" />
-        <span className="hikari-orbital-seg hikari-orbital-seg--gap-h" />
-        <span className="hikari-orbital-seg hikari-orbital-seg--gap-hi" />
-        <span className="hikari-orbital-seg hikari-orbital-seg--gap-ik" />
-        <span className="hikari-orbital-seg hikari-orbital-seg--gap-ka" />
-        <span className="hikari-orbital-seg hikari-orbital-seg--gap-ar" />
-        <span className="hikari-orbital-seg hikari-orbital-seg--gap-ri" />
+      <div className="hikari-logo-masked-effects" aria-hidden="true">
+        <div className="hikari-wordmark-neon">
+          <span className="hikari-wordmark-pulse" />
+          <span className="hikari-wordmark-sweep" />
+        </div>
+        <div className="hikari-orbital-lines" />
       </div>
       <div className="hikari-tv-frame" aria-hidden="true">
         <span className="hikari-tv-frame-ring" />
@@ -148,7 +170,7 @@ function LogoHomeLink({ children }: { children: React.ReactNode }) {
           preloadHomeOnIntent();
         }
       }}
-      className="inline-flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50 rounded-lg group"
+      className="inline-flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50 rounded-lg"
       aria-label="HIKARI — Início"
     >
       {children}
