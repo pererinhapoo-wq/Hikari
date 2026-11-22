@@ -253,6 +253,8 @@ export function AnimeRow({
   emptyTitle,
   emptyDescription,
   priorityCount = 0,
+  disableHoverPreload = false,
+  optimizedHover = false,
 }: {
   title: string;
   eyebrow?: string;
@@ -268,6 +270,8 @@ export function AnimeRow({
   emptyTitle?: string;
   emptyDescription?: string;
   priorityCount?: number;
+  disableHoverPreload?: boolean;
+  optimizedHover?: boolean;
 }) {
   const railRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -332,7 +336,7 @@ export function AnimeRow({
   };
 
   return (
-    <section className="space-y-3.5 sm:space-y-4 [content-visibility:auto] [contain-intrinsic-size:auto_260px]">
+    <section className="space-y-3.5 sm:space-y-4 [content-visibility:auto] [contain-intrinsic-size:auto_380px]">
       {/* Cabeçalho da Seção: Título e Botão Ver Tudo alinhados na mesma linha */}
       <div className={`flex ${eyebrow ? "items-end" : "items-center"} justify-between gap-3 px-0.5`}>
         <div className={`min-w-0 flex-1 ${eyebrow ? "space-y-1" : ""}`}>
@@ -441,6 +445,8 @@ export function AnimeRow({
                     priority={isPriority}
                     defer={!isPriority}
                     loadImage={isPriority || index < visibleImgLimit}
+                    disableHoverPreload={disableHoverPreload}
+                    optimizedHover={optimizedHover}
                   />
                 );
               })}

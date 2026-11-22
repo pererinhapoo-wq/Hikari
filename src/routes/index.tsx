@@ -455,6 +455,8 @@ function Home() {
             showBookmark={false}
             showRank={false}
             priorityCount={0}
+            disableHoverPreload={true}
+            optimizedHover={true}
           />
         </SectionReveal>
       )}
@@ -557,6 +559,8 @@ function SeasonAnimeRow({
         showBookmark={false}
         showRank={false}
         priorityCount={0}
+        disableHoverPreload={true}
+        optimizedHover={true}
       />
     </SectionReveal>
   );

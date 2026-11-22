@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
@@ -8,6 +8,7 @@ export interface LogoProps {
   linkToHome?: boolean;
   loading?: "eager" | "lazy";
   fetchPriority?: "high" | "low" | "auto";
+  pauseWhenOffscreen?: boolean;
 }
 
 const CONTAINER_SIZE_CLASSES = {
@@ -25,11 +26,46 @@ export const Logo = memo(function Logo({
   linkToHome = true,
   loading = "eager",
   fetchPriority = "auto",
+  pauseWhenOffscreen = false,
 }: LogoProps) {
   const containerSizeClasses = CONTAINER_SIZE_CLASSES[size];
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pauseWhenOffscreen || typeof window === "undefined" || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const el = containerRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            el.setAttribute("data-paused", "false");
+          } else {
+            el.setAttribute("data-paused", "true");
+          }
+        }
+      },
+      {
+        root: null,
+        rootMargin: "50px 0px",
+        threshold: 0,
+      }
+    );
+
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  }, [pauseWhenOffscreen]);
 
   const content = (
     <div
+      ref={containerRef}
+      data-paused="false"
       className={cn(
         "hikari-animated-logo-container relative inline-flex items-center justify-center select-none transition-transform duration-200 ease-out group-hover:scale-[1.03]",
         containerSizeClasses,

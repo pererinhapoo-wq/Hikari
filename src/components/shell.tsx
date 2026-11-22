@@ -331,7 +331,7 @@ function ShellHeaderWrapper({
 function HomeFooterLazy() {
   const { settings } = usePublicSettings();
   return (
-    <footer className="relative mt-12 w-full border-t border-purple-500/15 bg-gradient-to-b from-[#08070d] via-[#0d0b17] to-[#05040a] text-xs text-muted shadow-[0_-4px_24px_rgba(0,0,0,0.5)] [content-visibility:auto] [contain-intrinsic-size:auto_420px]">
+    <footer className="relative mt-12 w-full border-t border-purple-500/15 bg-gradient-to-b from-[#08070d] via-[#0d0b17] to-[#05040a] text-xs text-muted shadow-[0_-4px_24px_rgba(0,0,0,0.5)] [content-visibility:auto] [contain-intrinsic-size:auto_480px]">
       {/* Brilho decorativo sutil no topo do rodapé */}
           <div
             className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#a855f7]/30 to-transparent"
@@ -343,7 +343,7 @@ function HomeFooterLazy() {
               {/* Identidade Hikari / Descrição */}
               <div className="space-y-3.5 md:col-span-5">
                 <div className="flex items-center">
-                  <Logo size="lg" loading="lazy" fetchPriority="low" />
+                  <Logo size="lg" loading="lazy" fetchPriority="low" pauseWhenOffscreen={true} />
                 </div>
                 <p className="max-w-sm text-xs sm:text-sm leading-relaxed text-muted">
                   {settings.site_description}

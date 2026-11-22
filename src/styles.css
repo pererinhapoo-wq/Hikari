@@ -1216,6 +1216,29 @@ button, a, [role="button"] {
   animation-play-state: paused;
 }
 
+[data-paused="true"] .hikari-elizabeth-animated,
+[data-paused="true"] .hikari-energy-aura-glow,
+[data-paused="true"] .hikari-glint-overlay,
+[data-paused="true"] .hikari-petal,
+[data-paused="true"] .hikari-particle,
+[data-paused="true"] .hikari-tv-board-pulse,
+[data-paused="true"] .hikari-tv-blackout,
+[data-paused="true"] .hikari-tv-surge::before,
+[data-paused="true"] .hikari-tv-surge::after,
+[data-paused="true"] .hikari-tv-sparks::before,
+[data-paused="true"] .hikari-tv-sparks::after,
+[data-paused="true"] .hikari-wordmark-aura,
+[data-paused="true"] .hikari-wordmark-pulse,
+[data-paused="true"] .hikari-wordmark-sweep,
+[data-paused="true"] .hikari-tv-frame-ring,
+[data-paused="true"] .hikari-tv-frame-ring::before,
+[data-paused="true"] .hikari-tv-frame-corners::before,
+[data-paused="true"] .hikari-tv-frame-corners::after,
+[data-paused="true"] .hikari-orbital-seg::before,
+[data-paused="true"] .hikari-orbital-seg::after {
+  animation-play-state: paused !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hikari-animated-logo-container {
     transition: none !important;
