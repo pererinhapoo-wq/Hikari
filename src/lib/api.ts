@@ -7566,10 +7566,15 @@ export const fetchAnimeDetail =
               return finalDetail;
             }
 
-            const aliasId = finalDetail.serverCatalogId?.trim();
-            if (aliasId && aliasId !== id) {
-              // Apenas grava em serverCatalogId se o alias já estava protegido no fence composto
-              // (ou se o Redis estiver desabilitado/indisponível).
+            const allAliases = collectDetailAliasIds(id, {
+              serverCatalogId: finalDetail.serverCatalogId,
+              anilistId: finalDetail.anilistId,
+              malId: finalDetail.malId,
+              kitsuId: finalDetail.kitsuId,
+            });
+
+            for (const aliasId of allAliases) {
+              if (aliasId === id) continue;
               const aliasCoveredByFence =
                 activeFence === undefined ||
                 (activeFence !== null &&
