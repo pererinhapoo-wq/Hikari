@@ -381,7 +381,7 @@ function WatchPage() {
       {/* CABEÇALHO */}
       {/* ================================================== */}
 
-      <header className="flex h-14 sm:h-16 items-center px-4 sm:px-6 border-b border-white/[0.06] bg-bg/80 backdrop-blur-md sticky top-0 z-40">
+      <header className="flex h-14 sm:h-16 items-center px-4 sm:px-6 border-b border-white/[0.06] bg-bg sm:bg-bg/80 backdrop-blur-none sm:backdrop-blur-md sticky top-0 z-40">
         <Logo />
       </header>
 
@@ -409,7 +409,7 @@ function WatchPage() {
         {/* INFORMAÇÕES DO ANIME (ABAIXO DO BANNER)           */}
         {/* ================================================== */}
 
-        <section className="mt-4 flex items-center gap-3 sm:gap-3.5 rounded-none border border-white/10 bg-[#0e0c16]/95 p-2.5 sm:p-3 backdrop-blur-md shadow-sm">
+        <section className="mt-4 flex items-center gap-3 sm:gap-3.5 rounded-none border border-white/10 bg-[#0e0c16] sm:bg-[#0e0c16]/95 p-2.5 sm:p-3 backdrop-blur-none sm:backdrop-blur-md shadow-sm">
           <Link
             to="/anime/$id"
             params={{ id: anime.id }}
@@ -467,7 +467,7 @@ function WatchPage() {
         {/* NAVEGAÇÃO DOS EPISÓDIOS                           */}
         {/* ================================================== */}
 
-        <div className="mt-3.5 flex items-center justify-between gap-1.5 sm:gap-3 rounded-2xl border border-white/10 bg-[#131317]/80 p-2 sm:p-2.5 backdrop-blur-md">
+        <div className="mt-3.5 flex items-center justify-between gap-1.5 sm:gap-3 rounded-2xl border border-white/10 bg-[#131317] sm:bg-[#131317]/80 p-2 sm:p-2.5 backdrop-blur-none sm:backdrop-blur-md">
           {prev ? (
             <Button
               asChild
@@ -501,7 +501,7 @@ function WatchPage() {
             asChild
             variant="outline"
             size="sm"
-            className="shrink-0 w-10 sm:w-12 h-9 sm:h-10 rounded-xl border-[#a855f7]/40 bg-[#a855f7]/15 p-0 flex items-center justify-center text-lg sm:text-xl font-bold text-[#c084fc] hover:bg-[#a855f7]/25 hover:border-[#a855f7]/60 active:scale-95 transition-all shadow-[0_0_15px_rgba(168,85,247,0.15)]"
+            className="shrink-0 w-10 sm:w-12 h-9 sm:h-10 rounded-xl border-[#a855f7]/40 bg-[#a855f7]/15 p-0 flex items-center justify-center text-lg sm:text-xl font-bold text-[#c084fc] hover:bg-[#a855f7]/25 hover:border-[#a855f7]/60 active:scale-95 transition-all sm:shadow-[0_0_15px_rgba(168,85,247,0.15)]"
           >
             <Link
               to="/anime/$id"
@@ -548,7 +548,7 @@ function WatchPage() {
 
         <aside
           aria-label="Aviso antes de comentar"
-          className="relative mt-4 overflow-hidden rounded-2xl border border-[#a855f7]/25 bg-gradient-to-b from-[#151124]/95 to-[#0f0d18]/95 px-3.5 py-3 sm:px-4 sm:py-3.5 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-md"
+          className="relative mt-4 overflow-hidden rounded-2xl border border-[#a855f7]/25 bg-gradient-to-b from-[#151124] to-[#0f0d18] sm:from-[#151124]/95 sm:to-[#0f0d18]/95 px-3.5 py-3 sm:px-4 sm:py-3.5 shadow-md sm:shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-none sm:backdrop-blur-md"
         >
           <div
             aria-hidden="true"
@@ -636,7 +636,7 @@ function CommentsLoadingFallback() {
       <div
         role="status"
         aria-live="polite"
-        className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-[#a855f7]/25 bg-gradient-to-b from-[#130f24]/90 via-[#0c0a15]/95 to-[#08070d] p-6 sm:p-8 text-center shadow-[0_8px_32px_rgba(0,0,0,0.65),0_0_35px_rgba(168,85,247,0.12)] backdrop-blur-md"
+        className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-[#a855f7]/25 bg-gradient-to-b from-[#130f24] via-[#0c0a15] to-[#08070d] sm:from-[#130f24]/90 sm:via-[#0c0a15]/95 sm:to-[#08070d] p-6 sm:p-8 text-center shadow-md sm:shadow-[0_8px_32px_rgba(0,0,0,0.65),0_0_35px_rgba(168,85,247,0.12)] backdrop-blur-none sm:backdrop-blur-md"
       >
         <div
           className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-24 bg-[#a855f7]/15 rounded-full blur-3xl"
