@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 
 interface ProfileDropdownMenuProps {
   user: AppUser;
+  onOpenChange?: (open: boolean) => void;
 }
 
 function useDropdownPresence(open: boolean, exitMs = 150) {
@@ -50,8 +51,12 @@ function useDropdownPresence(open: boolean, exitMs = 150) {
   };
 }
 
-export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
+export function ProfileDropdownMenu({ user, onOpenChange }: ProfileDropdownMenuProps) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [customAvatar, setCustomAvatar] = useState<string | null>(
     () => getCachedProfileMeta(user.id)?.image ?? user.profileImageUrl ?? null,

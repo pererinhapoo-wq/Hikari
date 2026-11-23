@@ -535,11 +535,17 @@ function HomeFooterLazy() {
 
 const VisitorDropdownMenu = memo(function VisitorDropdownMenu({
   onOpenLogin,
+  onOpenChange,
 }: {
   onOpenLogin: (mode?: "login" | "register") => void;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -672,6 +678,9 @@ export function Shell() {
 
   const [menuOpen, setMenuOpen] =
     useState(false);
+
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [visitorMenuOpen, setVisitorMenuOpen] = useState(false);
 
   const [loginModalOpen, setLoginModalOpen] =
     useState(false);
@@ -1615,7 +1624,9 @@ export function Shell() {
           searchOpen ||
           notificationsOpen ||
           notificationsPanel.mounted ||
-          menuOpen
+          menuOpen ||
+          profileMenuOpen ||
+          visitorMenuOpen
         }
       >
         <div className="relative mx-auto flex h-16 max-w-6xl items-center justify-between gap-1.5 min-[380px]:gap-3 px-3 min-[380px]:px-4 sm:h-[78px] md:h-[84px] lg:h-[90px] sm:px-6">
@@ -1721,9 +1732,9 @@ export function Shell() {
 
             {/* PERFIL (QUANDO AUTENTICADO) OU BOTÃO DE CONTA (QUANDO VISITANTE) */}
             {user ? (
-              <ProfileDropdownMenu user={user} />
+              <ProfileDropdownMenu user={user} onOpenChange={setProfileMenuOpen} />
             ) : (
-              <VisitorDropdownMenu onOpenLogin={handleOpenLogin} />
+              <VisitorDropdownMenu onOpenLogin={handleOpenLogin} onOpenChange={setVisitorMenuOpen} />
             )}
           </div>
         </div>
