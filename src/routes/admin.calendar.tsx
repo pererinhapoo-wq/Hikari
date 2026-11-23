@@ -9,7 +9,14 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { toast } from "sonner";
 import {
   StudioEmptyState,
@@ -98,6 +105,11 @@ function AdminCalendarRecurrencesPage() {
   const [busyRowId, setBusyRowId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<RecurrenceItem | null>(null);
 
+  const hasInitialCatalogLoadedRef = useRef(false);
+  const lastFetchedQueryRef = useRef<string>("");
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const searchSeqRef = useRef(0);
+
   const authHeaders = useCallback((withJson = false): Record<string, string> => {
     const token = getBearerToken();
     return {
@@ -109,8 +121,13 @@ function AdminCalendarRecurrencesPage() {
   const fetchRecurrencesAndInitialCatalog = useCallback(async () => {
     setLoading(true);
     try {
+      const currentQ = animeQuery.trim();
+      const params = new URLSearchParams({ includeCatalog: "1" });
+      if (currentQ) {
+        params.set("q", currentQ);
+      }
       const res = await fetch(
-        "/api/admin/calendar-recurrences?includeCatalog=1",
+        `/api/admin/calendar-recurrences?${params.toString()}`,
         {
           headers: authHeaders(false),
           credentials: "include",
@@ -125,6 +142,8 @@ function AdminCalendarRecurrencesPage() {
       setRecurrences(Array.isArray(json?.recurrences) ? json.recurrences : []);
       if (Array.isArray(json?.animeOptions)) {
         setAnimeOptions(json.animeOptions);
+        hasInitialCatalogLoadedRef.current = true;
+        lastFetchedQueryRef.current = currentQ;
       }
     } catch (err) {
       toast.error(
@@ -135,47 +154,68 @@ function AdminCalendarRecurrencesPage() {
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- carga inicial/manual usa animeQuery atual sem recriar o efeito de mount
   }, [authHeaders]);
 
   useEffect(() => {
     void fetchRecurrencesAndInitialCatalog();
+    return () => {
+      searchAbortRef.current?.abort();
+    };
   }, [fetchRecurrencesAndInitialCatalog]);
 
   const searchCatalogAnimes = useCallback(
     async (query: string) => {
+      const normalized = query.trim();
+      searchAbortRef.current?.abort();
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+      const seq = ++searchSeqRef.current;
+
       setSearchingAnimes(true);
       try {
-        const params = new URLSearchParams({ q: query.trim() });
+        const params = new URLSearchParams({ q: normalized });
         const res = await fetch(
           `/api/admin/calendar-recurrences?${params.toString()}`,
           {
             headers: authHeaders(false),
             credentials: "include",
+            signal: controller.signal,
           },
         );
         const json = await res.json().catch(() => null);
         if (!res.ok) {
           throw new Error(json?.error || "Falha ao buscar animes no catálogo.");
         }
+        if (seq !== searchSeqRef.current || controller.signal.aborted) {
+          return;
+        }
+        lastFetchedQueryRef.current = normalized;
         setAnimeOptions(Array.isArray(json?.animeOptions) ? json.animeOptions : []);
       } catch (err) {
+        if (controller.signal.aborted) return;
         toast.error(
           err instanceof Error ? err.message : "Erro ao pesquisar catálogo local.",
         );
       } finally {
-        setSearchingAnimes(false);
+        if (seq === searchSeqRef.current) {
+          setSearchingAnimes(false);
+        }
       }
     },
     [authHeaders],
   );
 
   useEffect(() => {
-    if (loading) return;
+    if (!hasInitialCatalogLoadedRef.current) return;
+    const normalized = animeQuery.trim();
+    if (normalized === lastFetchedQueryRef.current) return;
+
     const timer = window.setTimeout(() => {
-      void searchCatalogAnimes(animeQuery);
+      void searchCatalogAnimes(normalized);
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [animeQuery, loading, searchCatalogAnimes]);
+  }, [animeQuery, searchCatalogAnimes]);
 
   const handleCreateRecurrence = async (e: FormEvent) => {
     e.preventDefault();

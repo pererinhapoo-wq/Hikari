@@ -4,10 +4,11 @@ import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolati
 import {
   requireAdminUser,
   getEnvAdminUserIds,
+  invalidateAdminRoleCache,
   AdminGuardError,
 } from "@/lib/auth/admin-guard";
 import { isHikariAdmin } from "@/lib/auth/admin";
-import { getSql } from "@/lib/db";
+import { getSql, type Sql } from "@/lib/db";
 import { listActiveBansMap } from "@/lib/moderation-bans.server";
 import type { ActiveUserBan } from "@/lib/moderation-ban-types";
 
@@ -32,6 +33,196 @@ export interface AdminUserListItem {
   activeBan?: ActiveUserBan | null;
 }
 
+export interface AdminUsersQueryResult {
+  users: AdminUserListItem[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  stats: {
+    totalUsers: number;
+    totalAdmins: number;
+    totalVerified: number;
+    activeBansCount: number;
+  };
+}
+
+export async function queryAdminUsersFromDb(
+  sql: Sql,
+  options: {
+    search?: string;
+    roleFilter?: string;
+    page?: number;
+    limit?: number;
+    callerAdminId?: string;
+    envAdminIds?: string[];
+  } = {},
+): Promise<AdminUsersQueryResult> {
+  const search = (options.search || "").trim();
+  const roleFilter = (options.roleFilter || "all").trim().toLowerCase();
+  const page = Math.max(1, options.page ?? 1);
+  const limit = Math.min(100, Math.max(1, options.limit ?? 20));
+  const offset = (page - 1) * limit;
+  const callerAdminId = options.callerAdminId ?? "";
+  const envAdminIds = options.envAdminIds ?? getEnvAdminUserIds();
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (search) {
+    params.push(`%${search}%`);
+    const pIdx = params.length;
+    conditions.push(`(
+      u."name" ILIKE $${pIdx} OR
+      u."email" ILIKE $${pIdx} OR
+      p."nick" ILIKE $${pIdx} OR
+      p."displayName" ILIKE $${pIdx}
+    )`);
+  }
+
+  if (roleFilter === "admin") {
+    conditions.push(`p."role" = 'admin'`);
+  } else if (roleFilter === "user") {
+    conditions.push(`(p."role" IS NULL OR p."role" != 'admin')`);
+  }
+
+  const hasFilters = conditions.length > 0;
+  const whereClause = hasFilters ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const queryParams = [...params, limit, offset];
+  const limitIdx = params.length + 1;
+  const offsetIdx = params.length + 2;
+
+  const [activeBansMap, statsRows, rows] = await Promise.all([
+    listActiveBansMap(sql),
+    sql.query<{
+      total_users: string;
+      total_admins: string;
+      total_verified: string;
+    }>(`
+      SELECT
+        COUNT(u."id")::text as total_users,
+        COUNT(CASE WHEN p."role" = 'admin' THEN 1 END)::text as total_admins,
+        COUNT(CASE WHEN p."isVerified" = true THEN 1 END)::text as total_verified
+      FROM "user" u
+      LEFT JOIN "profile" p ON p."userId" = u."id";
+    `),
+    sql.query<{
+      id: string;
+      name: string;
+      email: string;
+      emailVerified: boolean;
+      image: string | null;
+      createdAt: string;
+      updatedAt: string;
+      nick: string | null;
+      displayName: string | null;
+      avatarUrl: string | null;
+      bannerUrl: string | null;
+      accountType: string | null;
+      role: string | null;
+      bio: string | null;
+      isVerified: boolean | null;
+      total_filtered?: string;
+    }>(
+      `SELECT
+         u."id",
+         u."name",
+         u."email",
+         u."emailVerified",
+         u."image",
+         u."createdAt"::text as "createdAt",
+         u."updatedAt"::text as "updatedAt",
+         p."nick",
+         p."displayName",
+         p."avatarUrl",
+         p."bannerUrl",
+         COALESCE(p."accountType", 'public') as "accountType",
+         COALESCE(p."role", 'user') as "role",
+         p."bio",
+         COALESCE(p."isVerified", false) as "isVerified"
+         ${hasFilters ? `, COUNT(*) OVER()::text as total_filtered` : ""}
+       FROM "user" u
+       LEFT JOIN "profile" p ON p."userId" = u."id"
+       ${whereClause}
+       ORDER BY u."createdAt" DESC
+       LIMIT $${limitIdx} OFFSET $${offsetIdx};`,
+      queryParams,
+    ),
+  ]);
+
+  const statsRow = statsRows[0];
+  const totalUsers = parseInt(statsRow?.total_users || "0", 10);
+  const totalAdmins = parseInt(statsRow?.total_admins || "0", 10);
+  const totalVerified = parseInt(statsRow?.total_verified || "0", 10);
+
+  let totalFiltered: number;
+  if (!hasFilters) {
+    totalFiltered = totalUsers;
+  } else if (rows.length > 0) {
+    totalFiltered = parseInt(rows[0].total_filtered || "0", 10);
+  } else if (offset === 0) {
+    totalFiltered = 0;
+  } else if (!search && roleFilter === "admin") {
+    totalFiltered = totalAdmins;
+  } else if (!search && roleFilter === "user") {
+    totalFiltered = Math.max(0, totalUsers - totalAdmins);
+  } else {
+    const [countResult] = await sql.query<{ total: string }>(
+      `SELECT COUNT(u."id")::text as total
+       FROM "user" u
+       LEFT JOIN "profile" p ON p."userId" = u."id"
+       ${whereClause};`,
+      params,
+    );
+    totalFiltered = parseInt(countResult?.total || "0", 10);
+  }
+
+  const users: AdminUserListItem[] = rows.map((r) => {
+    const isSysAdmin =
+      envAdminIds.includes(r.id) || isHikariAdmin(r.email);
+
+    return {
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      emailVerified: Boolean(r.emailVerified),
+      image: r.image,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      nick: r.nick,
+      displayName: r.displayName,
+      avatarUrl: r.avatarUrl,
+      bannerUrl: r.bannerUrl,
+      accountType: r.accountType || "public",
+      role: (r.role === "admin" || isSysAdmin ? "admin" : "user") as "admin" | "user",
+      bio: r.bio,
+      isVerified: Boolean(r.isVerified),
+      isSystemAdmin: isSysAdmin,
+      isCurrentAdmin: r.id === callerAdminId,
+      activeBan: activeBansMap.get(r.id) ?? null,
+    };
+  });
+
+  return {
+    users,
+    pagination: {
+      total: totalFiltered,
+      page,
+      limit,
+      totalPages: Math.ceil(totalFiltered / limit) || 1,
+    },
+    stats: {
+      totalUsers,
+      totalAdmins,
+      totalVerified,
+      activeBansCount: activeBansMap.size,
+    },
+  };
+}
+
 const updateRoleSchema = z.object({
   userId: z.string().trim().min(1, "ID do usuário é obrigatório"),
   role: z.enum(["admin", "user"], {
@@ -48,155 +239,26 @@ export const Route = createFileRoute("/api/admin/users")({
           const callerAdminId = await requireAdminUser(request);
 
           const url = new URL(request.url);
-          const search = (url.searchParams.get("search") || "").trim().toLowerCase();
+          const search = (url.searchParams.get("search") || "").trim();
           const roleFilter = (url.searchParams.get("role") || "all").trim().toLowerCase();
           const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10) || 1);
           const limit = Math.min(
             100,
             Math.max(1, parseInt(url.searchParams.get("limit") || "20", 10) || 20),
           );
-          const offset = (page - 1) * limit;
 
           const sql = await getSql();
-          const activeBansMap = await listActiveBansMap(sql);
-
-          // Contagens estatísticas globais
-          const [statsRow] = await sql.query<{
-            total_users: string;
-            total_admins: string;
-            total_verified: string;
-          }>(`
-            SELECT
-              COUNT(u."id")::text as total_users,
-              COUNT(CASE WHEN COALESCE(p."role", 'user') = 'admin' THEN 1 END)::text as total_admins,
-              COUNT(CASE WHEN p."isVerified" = true THEN 1 END)::text as total_verified
-            FROM "user" u
-            LEFT JOIN "profile" p ON p."userId" = u."id";
-          `);
-
-          const envAdminIds = getEnvAdminUserIds();
-
-          // Montagem dinâmica dos filtros
-          const conditions: string[] = [];
-          const params: unknown[] = [];
-
-          if (search) {
-            params.push(`%${search}%`);
-            const pIdx = params.length;
-            conditions.push(`(
-              LOWER(u."name") LIKE $${pIdx} OR
-              LOWER(u."email") LIKE $${pIdx} OR
-              LOWER(COALESCE(p."nick", '')) LIKE $${pIdx} OR
-              LOWER(COALESCE(p."displayName", '')) LIKE $${pIdx}
-            )`);
-          }
-
-          if (roleFilter === "admin") {
-            conditions.push(`COALESCE(p."role", 'user') = 'admin'`);
-          } else if (roleFilter === "user") {
-            conditions.push(`COALESCE(p."role", 'user') != 'admin'`);
-          }
-
-          const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-          // Contagem do filtro
-          const [countResult] = await sql.query<{ total: string }>(
-            `SELECT COUNT(u."id")::text as total
-             FROM "user" u
-             LEFT JOIN "profile" p ON p."userId" = u."id"
-             ${whereClause};`,
-            params,
-          );
-
-          const totalFiltered = parseInt(countResult?.total || "0", 10);
-
-          // Consulta paginada dos usuários
-          const queryParams = [...params, limit, offset];
-          const limitIdx = params.length + 1;
-          const offsetIdx = params.length + 2;
-
-          const rows = await sql.query<{
-            id: string;
-            name: string;
-            email: string;
-            emailVerified: boolean;
-            image: string | null;
-            createdAt: string;
-            updatedAt: string;
-            nick: string | null;
-            displayName: string | null;
-            avatarUrl: string | null;
-            bannerUrl: string | null;
-            accountType: string | null;
-            role: string | null;
-            bio: string | null;
-            isVerified: boolean | null;
-          }>(
-            `SELECT
-               u."id",
-               u."name",
-               u."email",
-               u."emailVerified",
-               u."image",
-               u."createdAt"::text as "createdAt",
-               u."updatedAt"::text as "updatedAt",
-               p."nick",
-               p."displayName",
-               p."avatarUrl",
-               p."bannerUrl",
-               COALESCE(p."accountType", 'public') as "accountType",
-               COALESCE(p."role", 'user') as "role",
-               p."bio",
-               COALESCE(p."isVerified", false) as "isVerified"
-             FROM "user" u
-             LEFT JOIN "profile" p ON p."userId" = u."id"
-             ${whereClause}
-             ORDER BY u."createdAt" DESC
-             LIMIT $${limitIdx} OFFSET $${offsetIdx};`,
-            queryParams,
-          );
-
-          const users: AdminUserListItem[] = rows.map((r) => {
-            const isSysAdmin =
-              envAdminIds.includes(r.id) || isHikariAdmin(r.email);
-
-            return {
-              id: r.id,
-              name: r.name,
-              email: r.email,
-              emailVerified: Boolean(r.emailVerified),
-              image: r.image,
-              createdAt: r.createdAt,
-              updatedAt: r.updatedAt,
-              nick: r.nick,
-              displayName: r.displayName,
-              avatarUrl: r.avatarUrl,
-              bannerUrl: r.bannerUrl,
-              accountType: r.accountType || "public",
-              role: (r.role === "admin" || isSysAdmin ? "admin" : "user") as "admin" | "user",
-              bio: r.bio,
-              isVerified: Boolean(r.isVerified),
-              isSystemAdmin: isSysAdmin,
-              isCurrentAdmin: r.id === callerAdminId,
-              activeBan: activeBansMap.get(r.id) ?? null,
-            };
+          const result = await queryAdminUsersFromDb(sql, {
+            search,
+            roleFilter,
+            page,
+            limit,
+            callerAdminId,
           });
 
           return Response.json({
             ok: true,
-            users,
-            pagination: {
-              total: totalFiltered,
-              page,
-              limit,
-              totalPages: Math.ceil(totalFiltered / limit) || 1,
-            },
-            stats: {
-              totalUsers: parseInt(statsRow?.total_users || "0", 10),
-              totalAdmins: parseInt(statsRow?.total_admins || "0", 10),
-              totalVerified: parseInt(statsRow?.total_verified || "0", 10),
-              activeBansCount: activeBansMap.size,
-            },
+            ...result,
             callerAdminId,
           });
         } catch (err) {
@@ -273,6 +335,8 @@ export const Route = createFileRoute("/api/admin/users")({
              SET "role" = EXCLUDED."role", "updatedAt" = CURRENT_TIMESTAMP;`,
             [userId, role],
           );
+
+          invalidateAdminRoleCache(userId);
 
           return Response.json({
             ok: true,

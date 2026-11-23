@@ -84,6 +84,11 @@ import {
   getOpeningSuggestionKey,
   type OpeningSuggestionEntry,
 } from "@/lib/opening-admin-state";
+import {
+  isDuplicatePasteTrigger,
+  isValidImagePreviewUrl,
+  type RecentPasteRecord,
+} from "@/lib/thumbnail-probe-guard";
 
 export interface EpisodeCandidateState {
   loading: boolean;
@@ -131,6 +136,7 @@ interface EditorSeasonsProps {
     sid: string,
     ep: Episode,
     forcedUrl?: string,
+    options?: { force?: boolean },
   ) => Promise<void>;
   onSelectCandidate?: (
     sid: string,
@@ -1093,6 +1099,7 @@ interface EpisodeCardProps {
     sid: string,
     ep: Episode,
     forcedUrl?: string,
+    options?: { force?: boolean },
   ) => Promise<void>;
   onSelectCandidate?: (
     sid: string,
@@ -1209,15 +1216,31 @@ const EpisodeCard = memo(function EpisodeCard({
     return trimmed;
   };
 
+  const pasteTimeoutRef = useRef<number | null>(null);
+  const lastPasteTriggerRef = useRef<RecentPasteRecord | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pasteTimeoutRef.current !== null && typeof window !== "undefined") {
+        window.clearTimeout(pasteTimeoutRef.current);
+        pasteTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const handleSlotBlur = (key: VideoSlotKey, rawValue: string) => {
     const val = normalizeDurableSourceInput(key, rawValue);
+    if (isDuplicatePasteTrigger(lastPasteTriggerRef.current, key, val, Date.now())) {
+      return;
+    }
+    lastPasteTriggerRef.current = null;
     if (
       val &&
       isPersistablePlayableVideoUrl(val) &&
       !parseAnitube22PlayerUrl(val)
     ) {
       if (onDiscoverCandidates) {
-        void onDiscoverCandidates(seasonId, ep, val);
+        void onDiscoverCandidates(seasonId, ep, val, { force: false });
       }
     }
   };
@@ -1234,9 +1257,18 @@ const EpisodeCard = memo(function EpisodeCard({
       return;
     }
     if (isPersistablePlayableVideoUrl(pasted)) {
-      setTimeout(() => {
+      lastPasteTriggerRef.current = {
+        slotKey: key,
+        value: pasted,
+        at: Date.now(),
+      };
+      if (pasteTimeoutRef.current !== null && typeof window !== "undefined") {
+        window.clearTimeout(pasteTimeoutRef.current);
+      }
+      pasteTimeoutRef.current = window.setTimeout(() => {
+        pasteTimeoutRef.current = null;
         if (onDiscoverCandidates) {
-          void onDiscoverCandidates(seasonId, ep, pasted);
+          void onDiscoverCandidates(seasonId, ep, pasted, { force: false });
         }
       }, 100);
     }
@@ -1669,7 +1701,7 @@ const EpisodeCard = memo(function EpisodeCard({
           <div className="space-y-2.5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
               <EpisodeThumbnailPreview
-                key={`${ep.id}:${displayThumbnail}`}
+                key={ep.id}
                 src={displayThumbnail}
                 episodeNumber={ep.number}
                 onClear={() => {
@@ -1728,7 +1760,7 @@ const EpisodeCard = memo(function EpisodeCard({
                     disabled={isDiscovering || captureStatusEntry?.status === "loading"}
                     onClick={() => {
                       if (onDiscoverCandidates) {
-                        void onDiscoverCandidates(seasonId, ep);
+                        void onDiscoverCandidates(seasonId, ep, undefined, { force: true });
                       } else {
                         void onCaptureFrame(seasonId, ep);
                       }
@@ -2050,18 +2082,41 @@ function EpisodeThumbnailPreview({
   onClear: () => void;
 }) {
   const trimmed = src?.trim() ?? "";
+  const [debouncedSrc, setDebouncedSrc] = useState<string>(() =>
+    isValidImagePreviewUrl(trimmed) ? trimmed : "",
+  );
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const hasError = Boolean(trimmed) && failedSrc === trimmed;
+
+  useEffect(() => {
+    if (!trimmed || !isValidImagePreviewUrl(trimmed)) {
+      setDebouncedSrc("");
+      return;
+    }
+    if (
+      trimmed.startsWith("/") ||
+      trimmed.startsWith("blob:") ||
+      trimmed.startsWith("data:image/")
+    ) {
+      setDebouncedSrc(trimmed);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setDebouncedSrc(trimmed);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [trimmed]);
+
+  const hasError = Boolean(debouncedSrc) && failedSrc === debouncedSrc;
 
   return (
     <div className="relative flex aspect-video w-36 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black/50">
-      {trimmed && !hasError ? (
+      {debouncedSrc && !hasError ? (
         <>
           <img
-            src={trimmed}
+            src={debouncedSrc}
             alt={`Pré-visualização do Episódio ${episodeNumber}`}
             className="size-full object-cover"
-            onError={() => setFailedSrc(trimmed)}
+            onError={() => setFailedSrc(debouncedSrc)}
           />
           <button
             type="button"

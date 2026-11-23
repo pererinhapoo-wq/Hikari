@@ -1,4 +1,4 @@
-import { useState, useRef, type ReactNode } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import {
   Upload,
   ExternalLink,
@@ -35,6 +35,35 @@ import {
   type LocalAnime,
   type ResolvedMobileBannerInfo,
 } from "@/lib/types";
+import { isValidImagePreviewUrl } from "@/lib/thumbnail-probe-guard";
+
+function useDebouncedPreviewImageUrl(raw: string | undefined, delayMs = 250): string {
+  const trimmed = raw?.trim() ?? "";
+  const [debounced, setDebounced] = useState<string>(() =>
+    isValidImagePreviewUrl(trimmed) ? trimmed : "",
+  );
+
+  useEffect(() => {
+    if (!trimmed || !isValidImagePreviewUrl(trimmed)) {
+      setDebounced("");
+      return;
+    }
+    if (
+      trimmed.startsWith("/") ||
+      trimmed.startsWith("blob:") ||
+      trimmed.startsWith("data:image/")
+    ) {
+      setDebounced(trimmed);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setDebounced(trimmed);
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [trimmed, delayMs]);
+
+  return debounced;
+}
 
 interface EditorMetadataProps {
   form: LocalAnime;
@@ -60,6 +89,8 @@ export function EditorMetadata({
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [coverLoadError, setCoverLoadError] = useState(false);
   const [bannerLoadError, setBannerLoadError] = useState(false);
+  const debouncedCover = useDebouncedPreviewImageUrl(form.cover);
+  const debouncedBanner = useDebouncedPreviewImageUrl(form.banner);
 
   const coverInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -583,9 +614,9 @@ export function EditorMetadata({
 
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                 <div className="relative mx-auto flex aspect-2/3 w-32 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/50 sm:mx-0">
-                  {form.cover && !coverLoadError ? (
+                  {debouncedCover && !coverLoadError ? (
                     <img
-                      src={form.cover}
+                      src={debouncedCover}
                       alt="Capa"
                       className="size-full object-cover"
                       onError={() => setCoverLoadError(true)}
@@ -677,9 +708,9 @@ export function EditorMetadata({
               </div>
 
               <div className="relative flex aspect-21/9 w-full items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/50">
-                {form.banner && !bannerLoadError ? (
+                {debouncedBanner && !bannerLoadError ? (
                   <img
-                    src={form.banner}
+                    src={debouncedBanner}
                     alt="Banner"
                     className="size-full object-cover"
                     onError={() => setBannerLoadError(true)}

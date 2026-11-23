@@ -18,7 +18,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   type BanModalTargetUser,
@@ -54,7 +54,6 @@ function AdminUsersPage() {
     activeBansCount: 0,
   });
 
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const [selectedUser, setSelectedUser] = useState<AdminUserListItem | null>(
     null,
   );
@@ -67,14 +66,16 @@ function AdminUsersPage() {
   const [banTarget, setBanTarget] = useState<BanModalTargetUser | null>(null);
   const [revokingUserId, setRevokingUserId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const fetchSeqRef = useRef(0);
+  const prevSearchRef = useRef(search);
 
   const fetchUsers = useCallback(async () => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    const seq = ++fetchSeqRef.current;
+
     setLoading(true);
     try {
       const token = getBearerToken();
@@ -87,6 +88,7 @@ function AdminUsersPage() {
 
       const res = await fetch(`/api/admin/users?${params.toString()}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -95,6 +97,8 @@ function AdminUsersPage() {
       }
 
       const data = await res.json();
+      if (seq !== fetchSeqRef.current || controller.signal.aborted) return;
+
       setUsers(data.users || []);
       setTotalPages(data.pagination?.totalPages || 1);
       setTotalCount(data.pagination?.total || 0);
@@ -107,6 +111,12 @@ function AdminUsersPage() {
         });
       }
     } catch (err) {
+      if (
+        controller.signal.aborted ||
+        (err instanceof DOMException && err.name === "AbortError")
+      ) {
+        return;
+      }
       console.error("[admin.users] Erro ao carregar:", err);
       toast.error(
         err instanceof Error
@@ -114,16 +124,31 @@ function AdminUsersPage() {
           : "Erro ao carregar lista de usuários.",
       );
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current && !controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   }, [page, roleFilter, search]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const searchChanged = prevSearchRef.current !== search;
+    prevSearchRef.current = search;
+
+    if (!searchChanged) {
+      void fetchUsers();
+      return () => {
+        fetchAbortRef.current?.abort();
+      };
+    }
+
+    const timer = window.setTimeout(() => {
       void fetchUsers();
     }, 250);
-    return () => clearTimeout(timer);
-  }, [fetchUsers]);
+    return () => {
+      window.clearTimeout(timer);
+      fetchAbortRef.current?.abort();
+    };
+  }, [fetchUsers, search]);
 
   const handleConfirmRoleChange = async () => {
     if (!roleChangeTarget || isUpdatingRole) return;
@@ -176,7 +201,7 @@ function AdminUsersPage() {
     }
   };
 
-  const handleRevokeBan = async (user: AdminUserListItem) => {
+  const handleRevokeBan = useCallback(async (user: AdminUserListItem) => {
     if (revokingUserId) return;
     setRevokingUserId(user.id);
     try {
@@ -207,7 +232,18 @@ function AdminUsersPage() {
     } finally {
       setRevokingUserId(null);
     }
-  };
+  }, [fetchUsers, revokingUserId]);
+
+  const handleOpenRoleChange = useCallback(
+    (user: AdminUserListItem, newRole: "admin" | "user") => {
+      setRoleChangeTarget({ user, newRole });
+    },
+    [],
+  );
+
+  const handleOpenBanModal = useCallback((target: BanModalTargetUser) => {
+    setBanTarget(target);
+  }, []);
 
   return (
     <div className="studio-enter space-y-6 pb-8">
@@ -345,159 +381,17 @@ function AdminUsersPage() {
         <div className="studio-panel overflow-hidden rounded-xl">
           {/* Cartões responsivos em telas pequenas */}
           <div className="divide-y divide-slate-200 md:hidden">
-            {users.map((u) => {
-              const avatarSrc = u.avatarUrl || u.image;
-              const displayName = u.displayName || u.name;
-              const initial = (displayName || u.email || "?")[0]?.toUpperCase();
-              const activeBan =
-                u.activeBan && u.activeBan.expiresAt > nowMs
-                  ? u.activeBan
-                  : null;
-
-              return (
-                <div key={u.id} className="space-y-3 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="relative size-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-blue-50">
-                        {avatarSrc ? (
-                          <img
-                            src={avatarSrc}
-                            alt={displayName}
-                            className="size-full object-cover"
-                            onError={(e) => {
-                              e.currentTarget.style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <div className="grid size-full place-items-center text-xs font-bold text-blue-700">
-                            {initial}
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="truncate text-sm font-semibold text-slate-900">
-                            {displayName}
-                          </span>
-                          {u.isVerified && (
-                            <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />
-                          )}
-                        </div>
-                        <p className="studio-mono truncate text-[11px] text-slate-500">
-                          {u.email}
-                        </p>
-                      </div>
-                    </div>
-
-                    <span
-                      className={cn(
-                        "studio-mono shrink-0 rounded px-2 py-0.5 text-[10px] font-bold uppercase",
-                        u.role === "admin"
-                          ? "border border-blue-200 bg-blue-50 text-blue-700"
-                          : "border border-slate-200 bg-slate-100 text-slate-600",
-                      )}
-                    >
-                      {u.role === "admin" ? "Admin" : "Usuário"}
-                    </span>
-                  </div>
-
-                  {activeBan && (
-                    <div className="flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-800">
-                      <span className="inline-flex items-center gap-1 font-semibold">
-                        <Ban className="size-3.5 text-rose-600" />
-                        Banido ({formatBanRemaining(activeBan.expiresAt, nowMs)})
-                      </span>
-                      <span className="truncate text-rose-700">
-                        {activeBan.reason}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5 text-xs">
-                    <span className="studio-tabular text-[11px] text-slate-500">
-                      {new Date(u.createdAt).toLocaleDateString("pt-BR")}
-                      {u.isSystemAdmin ? " · Sistema" : ""}
-                      {u.isCurrentAdmin ? " · Você" : ""}
-                    </span>
-
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedUser(u)}
-                        className="h-8 border-slate-300 bg-white px-2.5 text-[11px] text-slate-700"
-                      >
-                        Detalhes
-                      </Button>
-
-                      {!u.isCurrentAdmin && !u.isSystemAdmin && (
-                        <>
-                          {activeBan ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={revokingUserId === u.id}
-                              onClick={() => void handleRevokeBan(u)}
-                              className="h-8 border-emerald-200 bg-emerald-50 px-2.5 text-[11px] font-semibold text-emerald-700"
-                            >
-                              Desbanir
-                            </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                setBanTarget({
-                                  userId: u.id,
-                                  userName: displayName,
-                                  userEmail: u.email,
-                                  userNick: u.nick,
-                                })
-                              }
-                              className="h-8 border-rose-200 bg-rose-50 px-2.5 text-[11px] font-semibold text-rose-700"
-                            >
-                              Banir
-                            </Button>
-                          )}
-
-                          {u.role === "admin" ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                setRoleChangeTarget({ user: u, newRole: "user" })
-                              }
-                              className="h-8 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
-                            >
-                              Rebaixar
-                            </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                setRoleChangeTarget({
-                                  user: u,
-                                  newRole: "admin",
-                                })
-                              }
-                              className="h-8 px-2.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
-                            >
-                              Promover
-                            </Button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {users.map((u) => (
+              <AdminUserMobileCard
+                key={u.id}
+                user={u}
+                isRevoking={revokingUserId === u.id}
+                onSelectUser={setSelectedUser}
+                onRevokeBan={handleRevokeBan}
+                onOpenBanModal={handleOpenBanModal}
+                onRequestRoleChange={handleOpenRoleChange}
+              />
+            ))}
           </div>
 
           {/* Tabela Desktop */}
@@ -514,221 +408,17 @@ function AdminUsersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
-                {users.map((u) => {
-                  const avatarSrc = u.avatarUrl || u.image;
-                  const displayName = u.displayName || u.name;
-                  const initial = (
-                    displayName ||
-                    u.email ||
-                    "?"
-                  )[0]?.toUpperCase();
-                  const activeBan =
-                    u.activeBan && u.activeBan.expiresAt > nowMs
-                      ? u.activeBan
-                      : null;
-
-                  return (
-                    <tr
-                      key={u.id}
-                      className="group transition-colors hover:bg-slate-50/80"
-                    >
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <div className="relative size-9 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-blue-50">
-                            {avatarSrc ? (
-                              <img
-                                src={avatarSrc}
-                                alt={displayName}
-                                className="size-full object-cover"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = "none";
-                                }}
-                              />
-                            ) : (
-                              <div className="grid size-full place-items-center text-xs font-bold text-blue-700">
-                                {initial}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="max-w-[190px] truncate font-semibold text-slate-900">
-                                {displayName}
-                              </span>
-                              {u.isVerified && (
-                                <span
-                                  title="Perfil Verificado Oficial"
-                                  className="inline-flex items-center text-emerald-600"
-                                >
-                                  <CheckCircle2 className="size-3.5" />
-                                </span>
-                              )}
-                            </div>
-                            <div className="studio-mono max-w-[180px] truncate text-[11px] text-slate-500">
-                              {u.nick
-                                ? `@${u.nick}`
-                                : `ID: ${u.id.slice(0, 8)}...`}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3.5 text-slate-600">
-                        <div className="flex max-w-[210px] items-center gap-1.5 truncate">
-                          <Mail className="size-3.5 shrink-0 text-slate-400" />
-                          <span className="truncate">{u.email}</span>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {u.role === "admin" ? (
-                            <span className="studio-mono inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold tracking-wider text-blue-700 uppercase">
-                              <Shield className="size-3 text-blue-600" />
-                              Admin
-                            </span>
-                          ) : (
-                            <span className="studio-mono inline-flex items-center rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 uppercase">
-                              Usuário
-                            </span>
-                          )}
-
-                          {u.isSystemAdmin && (
-                            <span
-                              title="Administrador de infraestrutura protegido (Allowlist)"
-                              className="studio-mono text-[10px] font-semibold text-amber-700 uppercase"
-                            >
-                              [Sistema]
-                            </span>
-                          )}
-
-                          {u.isCurrentAdmin && (
-                            <span
-                              title="Sua conta atual em sessão"
-                              className="studio-mono text-[10px] font-semibold text-blue-700 uppercase"
-                            >
-                              (Você)
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        {activeBan ? (
-                          <span
-                            title={`Motivo: ${activeBan.reason}`}
-                            className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700"
-                          >
-                            <Clock className="size-3" />
-                            Banido ·{" "}
-                            {formatBanRemaining(activeBan.expiresAt, nowMs)}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
-                            <ShieldCheck className="size-3.5" />
-                            Liberado
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3.5 text-slate-500">
-                        <div className="studio-tabular flex items-center gap-1.5">
-                          <Calendar className="size-3 shrink-0 text-slate-400" />
-                          <span>
-                            {new Date(u.createdAt).toLocaleDateString("pt-BR", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                            })}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setSelectedUser(u)}
-                            className="h-8 px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                          >
-                            Detalhes
-                          </Button>
-
-                          {!u.isCurrentAdmin && !u.isSystemAdmin && (
-                            <>
-                              {activeBan ? (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={revokingUserId === u.id}
-                                  onClick={() => void handleRevokeBan(u)}
-                                  className="h-8 px-2.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50"
-                                >
-                                  Remover Ban
-                                </Button>
-                              ) : (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() =>
-                                    setBanTarget({
-                                      userId: u.id,
-                                      userName: displayName,
-                                      userEmail: u.email,
-                                      userNick: u.nick,
-                                    })
-                                  }
-                                  className="h-8 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
-                                >
-                                  Banir
-                                </Button>
-                              )}
-
-                              {u.role === "admin" ? (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() =>
-                                    setRoleChangeTarget({
-                                      user: u,
-                                      newRole: "user",
-                                    })
-                                  }
-                                  className="h-8 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
-                                  title="Rebaixar para usuário comum"
-                                >
-                                  Rebaixar
-                                </Button>
-                              ) : (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() =>
-                                    setRoleChangeTarget({
-                                      user: u,
-                                      newRole: "admin",
-                                    })
-                                  }
-                                  className="h-8 px-2.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
-                                  title="Promover a administrador do Hikari Console"
-                                >
-                                  Promover
-                                </Button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {users.map((u) => (
+                  <AdminUserDesktopRow
+                    key={u.id}
+                    user={u}
+                    isRevoking={revokingUserId === u.id}
+                    onSelectUser={setSelectedUser}
+                    onRevokeBan={handleRevokeBan}
+                    onOpenBanModal={handleOpenBanModal}
+                    onRequestRoleChange={handleOpenRoleChange}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
@@ -864,26 +554,9 @@ function AdminUsersPage() {
                 </div>
               </div>
 
-              {selectedUser.activeBan &&
-                selectedUser.activeBan.expiresAt > nowMs && (
-                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold text-rose-800">
-                        Suspensão Temporária Ativa
-                      </span>
-                      <span className="studio-tabular text-[11px] font-semibold text-rose-700">
-                        Restante:{" "}
-                        {formatBanRemaining(
-                          selectedUser.activeBan.expiresAt,
-                          nowMs,
-                        )}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-rose-700">
-                      Motivo: {selectedUser.activeBan.reason}
-                    </p>
-                  </div>
-                )}
+              {selectedUser.activeBan && (
+                <UserDetailsBanAlert ban={selectedUser.activeBan} />
+              )}
 
               {selectedUser.bio && (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
@@ -1013,5 +686,429 @@ function AdminUsersPage() {
     </div>
   );
 }
+
+function useUserBanNowMs(expiresAt: number | null): number | null {
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    if (!expiresAt || expiresAt <= Date.now()) return;
+    const interval = window.setInterval(() => {
+      const now = Date.now();
+      setNowMs(now);
+      if (expiresAt <= now) {
+        window.clearInterval(interval);
+      }
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [expiresAt]);
+
+  if (!expiresAt || expiresAt <= nowMs) return null;
+  return nowMs;
+}
+
+function UserBanDesktopCell({
+  ban,
+}: {
+  ban: AdminUserListItem["activeBan"];
+}) {
+  const nowMs = useUserBanNowMs(ban?.expiresAt ?? null);
+  if (!ban || nowMs === null) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+        <ShieldCheck className="size-3.5" />
+        Liberado
+      </span>
+    );
+  }
+
+  return (
+    <span
+      title={`Motivo: ${ban.reason}`}
+      className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700"
+    >
+      <Clock className="size-3" />
+      Banido · {formatBanRemaining(ban.expiresAt, nowMs)}
+    </span>
+  );
+}
+
+function UserBanMobileBanner({
+  ban,
+}: {
+  ban: NonNullable<AdminUserListItem["activeBan"]>;
+}) {
+  const nowMs = useUserBanNowMs(ban.expiresAt);
+  if (nowMs === null) return null;
+
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-800">
+      <span className="inline-flex items-center gap-1 font-semibold">
+        <Ban className="size-3.5 text-rose-600" />
+        Banido ({formatBanRemaining(ban.expiresAt, nowMs)})
+      </span>
+      <span className="truncate text-rose-700">{ban.reason}</span>
+    </div>
+  );
+}
+
+function UserDetailsBanAlert({
+  ban,
+}: {
+  ban: NonNullable<AdminUserListItem["activeBan"]>;
+}) {
+  const nowMs = useUserBanNowMs(ban.expiresAt);
+  if (nowMs === null) return null;
+
+  return (
+    <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-rose-800">
+          Suspensão Temporária Ativa
+        </span>
+        <span className="studio-tabular text-[11px] font-semibold text-rose-700">
+          Restante: {formatBanRemaining(ban.expiresAt, nowMs)}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-rose-700">Motivo: {ban.reason}</p>
+    </div>
+  );
+}
+
+interface AdminUserRowProps {
+  user: AdminUserListItem;
+  isRevoking: boolean;
+  onSelectUser: (user: AdminUserListItem) => void;
+  onRevokeBan: (user: AdminUserListItem) => Promise<void>;
+  onOpenBanModal: (target: BanModalTargetUser) => void;
+  onRequestRoleChange: (user: AdminUserListItem, newRole: "admin" | "user") => void;
+}
+
+const AdminUserMobileCard = memo(function AdminUserMobileCard({
+  user: u,
+  isRevoking,
+  onSelectUser,
+  onRevokeBan,
+  onOpenBanModal,
+  onRequestRoleChange,
+}: AdminUserRowProps) {
+  const avatarSrc = u.avatarUrl || u.image;
+  const displayName = u.displayName || u.name;
+  const initial = (displayName || u.email || "?")[0]?.toUpperCase();
+  const hasPotentialBan = Boolean(u.activeBan && u.activeBan.expiresAt > Date.now());
+
+  return (
+    <div className="space-y-3 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="relative size-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-blue-50">
+            {avatarSrc ? (
+              <img
+                src={avatarSrc}
+                alt={displayName}
+                className="size-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            ) : (
+              <div className="grid size-full place-items-center text-xs font-bold text-blue-700">
+                {initial}
+              </div>
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="truncate text-sm font-semibold text-slate-900">
+                {displayName}
+              </span>
+              {u.isVerified && (
+                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />
+              )}
+            </div>
+            <p className="studio-mono truncate text-[11px] text-slate-500">
+              {u.email}
+            </p>
+          </div>
+        </div>
+
+        <span
+          className={cn(
+            "studio-mono shrink-0 rounded px-2 py-0.5 text-[10px] font-bold uppercase",
+            u.role === "admin"
+              ? "border border-blue-200 bg-blue-50 text-blue-700"
+              : "border border-slate-200 bg-slate-100 text-slate-600",
+          )}
+        >
+          {u.role === "admin" ? "Admin" : "Usuário"}
+        </span>
+      </div>
+
+      {u.activeBan && <UserBanMobileBanner ban={u.activeBan} />}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5 text-xs">
+        <span className="studio-tabular text-[11px] text-slate-500">
+          {new Date(u.createdAt).toLocaleDateString("pt-BR")}
+          {u.isSystemAdmin ? " · Sistema" : ""}
+          {u.isCurrentAdmin ? " · Você" : ""}
+        </span>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onSelectUser(u)}
+            className="h-8 border-slate-300 bg-white px-2.5 text-[11px] text-slate-700"
+          >
+            Detalhes
+          </Button>
+
+          {!u.isCurrentAdmin && !u.isSystemAdmin && (
+            <>
+              {hasPotentialBan ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isRevoking}
+                  onClick={() => void onRevokeBan(u)}
+                  className="h-8 border-emerald-200 bg-emerald-50 px-2.5 text-[11px] font-semibold text-emerald-700"
+                >
+                  Desbanir
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    onOpenBanModal({
+                      userId: u.id,
+                      userName: displayName,
+                      userEmail: u.email,
+                      userNick: u.nick,
+                    })
+                  }
+                  className="h-8 border-rose-200 bg-rose-50 px-2.5 text-[11px] font-semibold text-rose-700"
+                >
+                  Banir
+                </Button>
+              )}
+
+              {u.role === "admin" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onRequestRoleChange(u, "user")}
+                  className="h-8 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
+                >
+                  Rebaixar
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onRequestRoleChange(u, "admin")}
+                  className="h-8 px-2.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
+                >
+                  Promover
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const AdminUserDesktopRow = memo(function AdminUserDesktopRow({
+  user: u,
+  isRevoking,
+  onSelectUser,
+  onRevokeBan,
+  onOpenBanModal,
+  onRequestRoleChange,
+}: AdminUserRowProps) {
+  const avatarSrc = u.avatarUrl || u.image;
+  const displayName = u.displayName || u.name;
+  const initial = (displayName || u.email || "?")[0]?.toUpperCase();
+  const hasPotentialBan = Boolean(u.activeBan && u.activeBan.expiresAt > Date.now());
+
+  return (
+    <tr className="group transition-colors hover:bg-slate-50/80">
+      <td className="px-4 py-3.5">
+        <div className="flex items-center gap-3">
+          <div className="relative size-9 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-blue-50">
+            {avatarSrc ? (
+              <img
+                src={avatarSrc}
+                alt={displayName}
+                className="size-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            ) : (
+              <div className="grid size-full place-items-center text-xs font-bold text-blue-700">
+                {initial}
+              </div>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="max-w-[190px] truncate font-semibold text-slate-900">
+                {displayName}
+              </span>
+              {u.isVerified && (
+                <span
+                  title="Perfil Verificado Oficial"
+                  className="inline-flex items-center text-emerald-600"
+                >
+                  <CheckCircle2 className="size-3.5" />
+                </span>
+              )}
+            </div>
+            <div className="studio-mono max-w-[180px] truncate text-[11px] text-slate-500">
+              {u.nick ? `@${u.nick}` : `ID: ${u.id.slice(0, 8)}...`}
+            </div>
+          </div>
+        </div>
+      </td>
+
+      <td className="px-4 py-3.5 text-slate-600">
+        <div className="flex max-w-[210px] items-center gap-1.5 truncate">
+          <Mail className="size-3.5 shrink-0 text-slate-400" />
+          <span className="truncate">{u.email}</span>
+        </div>
+      </td>
+
+      <td className="px-4 py-3.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {u.role === "admin" ? (
+            <span className="studio-mono inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold tracking-wider text-blue-700 uppercase">
+              <Shield className="size-3 text-blue-600" />
+              Admin
+            </span>
+          ) : (
+            <span className="studio-mono inline-flex items-center rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 uppercase">
+              Usuário
+            </span>
+          )}
+
+          {u.isSystemAdmin && (
+            <span
+              title="Administrador de infraestrutura protegido (Allowlist)"
+              className="studio-mono text-[10px] font-semibold text-amber-700 uppercase"
+            >
+              [Sistema]
+            </span>
+          )}
+
+          {u.isCurrentAdmin && (
+            <span
+              title="Sua conta atual em sessão"
+              className="studio-mono text-[10px] font-semibold text-blue-700 uppercase"
+            >
+              (Você)
+            </span>
+          )}
+        </div>
+      </td>
+
+      <td className="px-4 py-3.5">
+        <UserBanDesktopCell ban={u.activeBan} />
+      </td>
+
+      <td className="px-4 py-3.5 text-slate-500">
+        <div className="studio-tabular flex items-center gap-1.5">
+          <Calendar className="size-3 shrink-0 text-slate-400" />
+          <span>
+            {new Date(u.createdAt).toLocaleDateString("pt-BR", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+            })}
+          </span>
+        </div>
+      </td>
+
+      <td className="px-4 py-3.5 text-right">
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onSelectUser(u)}
+            className="h-8 px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+          >
+            Detalhes
+          </Button>
+
+          {!u.isCurrentAdmin && !u.isSystemAdmin && (
+            <>
+              {hasPotentialBan ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={isRevoking}
+                  onClick={() => void onRevokeBan(u)}
+                  className="h-8 px-2.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50"
+                >
+                  Remover Ban
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    onOpenBanModal({
+                      userId: u.id,
+                      userName: displayName,
+                      userEmail: u.email,
+                      userNick: u.nick,
+                    })
+                  }
+                  className="h-8 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
+                >
+                  Banir
+                </Button>
+              )}
+
+              {u.role === "admin" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onRequestRoleChange(u, "user")}
+                  className="h-8 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
+                  title="Rebaixar para usuário comum"
+                >
+                  Rebaixar
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onRequestRoleChange(u, "admin")}
+                  className="h-8 px-2.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
+                  title="Promover a administrador do Hikari Console"
+                >
+                  Promover
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+});
 
 export default AdminUsersPage;

@@ -34,6 +34,215 @@ const maintenanceActionSchema = z.discriminatedUnion("action", [
   pingDbSchema,
 ]);
 
+export interface MaintenanceTableStat {
+  tableName: string;
+  rowCount: number;
+  status: "ok" | "error";
+  error?: string;
+  liveTuples?: number;
+  deadTuples?: number;
+  lastVacuum?: string | null;
+  lastAnalyze?: string | null;
+}
+
+export const MAINTENANCE_TABLE_NAMES = [
+  "catalog_anime",
+  "catalog_season",
+  "catalog_episode",
+  "catalog_airing_schedule",
+  "catalog_weekly_recurrence",
+  "user",
+  "profile",
+  "comment",
+  "comment_report",
+  "admin_settings",
+] as const;
+
+type SqlClient = Awaited<ReturnType<typeof getSql>>;
+
+async function collectMaintenanceTableStats(sql: SqlClient): Promise<{
+  tables: MaintenanceTableStat[];
+  hasTableError: boolean;
+}> {
+  const selectClauses = MAINTENANCE_TABLE_NAMES.map(
+    (name) => `(SELECT COUNT(*)::text FROM "${name}") AS "${name}"`,
+  ).join(", ");
+
+  const statMapPromise = sql
+    .query<{
+      relname: string;
+      n_live_tup: string;
+      n_dead_tup: string;
+      last_vacuum: string | null;
+      last_analyze: string | null;
+    }>(`
+      SELECT
+        relname,
+        n_live_tup::text,
+        n_dead_tup::text,
+        COALESCE(last_vacuum, last_autovacuum)::text as last_vacuum,
+        COALESCE(last_analyze, last_autoanalyze)::text as last_analyze
+      FROM pg_stat_user_tables;
+    `)
+    .then((statRows) => {
+      const map = new Map<
+        string,
+        { live: number; dead: number; lastVacuum: string | null; lastAnalyze: string | null }
+      >();
+      for (const r of statRows) {
+        map.set(r.relname, {
+          live: parseInt(r.n_live_tup || "0", 10),
+          dead: parseInt(r.n_dead_tup || "0", 10),
+          lastVacuum: r.last_vacuum,
+          lastAnalyze: r.last_analyze,
+        });
+      }
+      return map;
+    })
+    .catch(() => new Map());
+
+  const countsPromise = (async () => {
+    try {
+      const [combined] = await sql.query<Record<string, string>>(
+        `SELECT ${selectClauses};`,
+      );
+      if (combined) {
+        return MAINTENANCE_TABLE_NAMES.map((name) => ({
+          name,
+          rowCount: parseInt(combined[name] || "0", 10),
+          status: "ok" as const,
+          error: undefined as string | undefined,
+        }));
+      }
+    } catch (batchErr) {
+      console.error("[maintenance] Erro na contagem consolidada de tabelas:", batchErr);
+    }
+
+    // Fallback por tabela apenas quando a query consolidada falha para diagnosticar exatamente qual falhou
+    return Promise.all(
+      MAINTENANCE_TABLE_NAMES.map(async (name) => {
+        try {
+          const [row] = await sql.query<{ count: string }>(
+            `SELECT COUNT(*)::text as count FROM "${name}";`,
+          );
+          return {
+            name,
+            rowCount: parseInt(row?.count || "0", 10),
+            status: "ok" as const,
+            error: undefined as string | undefined,
+          };
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : "Erro ao contar tabela";
+          console.error(`[maintenance] Falha na tabela "${name}":`, err);
+          return {
+            name,
+            rowCount: 0,
+            status: "error" as const,
+            error: errMsg,
+          };
+        }
+      }),
+    );
+  })();
+
+  const [statMap, countEntries] = await Promise.all([statMapPromise, countsPromise]);
+
+  let hasTableError = false;
+  const tables: MaintenanceTableStat[] = countEntries.map((entry) => {
+    if (entry.status === "error") {
+      hasTableError = true;
+    }
+    const st = statMap.get(entry.name);
+    return {
+      tableName: entry.name,
+      rowCount: entry.rowCount,
+      status: entry.status,
+      ...(entry.error ? { error: entry.error } : {}),
+      liveTuples: st?.live,
+      deadTuples: st?.dead,
+      lastVacuum: st?.lastVacuum || null,
+      lastAnalyze: st?.lastAnalyze || null,
+    };
+  });
+
+  return { tables, hasTableError };
+}
+
+export async function collectMaintenanceDiagnostics(sql: SqlClient) {
+  let pingLatencyMs = 0;
+  let dbPingStatus = "online" as "online" | "offline";
+  let dbError: string | undefined;
+
+  const pingPromise = (async () => {
+    const pingStart = performance.now();
+    await sql.query("SELECT 1;");
+    pingLatencyMs = Math.round(performance.now() - pingStart);
+  })().catch((err) => {
+    dbPingStatus = "offline";
+    dbError = err instanceof Error ? err.message : "Falha ao executar SELECT 1";
+    console.error("[maintenance] Erro no ping do banco:", err);
+  });
+
+  const settingsPromise = loadAllSettingsFromDb();
+
+  const sizePromise = sql
+    .query<{
+      size_bytes: string;
+      size_pretty: string;
+    }>(`
+      SELECT
+        pg_database_size(current_database())::text as size_bytes,
+        pg_size_pretty(pg_database_size(current_database())) as size_pretty;
+    `)
+    .then(([sizeRow]) => ({
+      dbSizeBytes: sizeRow ? parseInt(sizeRow.size_bytes || "0", 10) : 0,
+      dbSizePretty: sizeRow?.size_pretty || "0 MB",
+    }))
+    .catch((sizeErr) => {
+      console.warn("[maintenance] Não foi possível consultar tamanho do banco:", sizeErr);
+      return { dbSizeBytes: 0, dbSizePretty: "Indisponível" };
+    });
+
+  const tablesPromise = collectMaintenanceTableStats(sql);
+
+  const [, settings, sizeInfo, tableResult] = await Promise.all([
+    pingPromise,
+    settingsPromise,
+    sizePromise,
+    tablesPromise,
+  ]);
+
+  const status =
+    dbPingStatus === "offline"
+      ? "offline"
+      : tableResult.hasTableError
+        ? "degraded"
+        : "online";
+
+  if (!dbError && tableResult.hasTableError) {
+    const failed = tableResult.tables
+      .filter((t) => t.status === "error")
+      .map((t) => t.tableName);
+    dbError = `Falha ao consultar tabela(s): ${failed.join(", ")}`;
+  }
+
+  return {
+    maintenance: {
+      mode: Boolean(settings.maintenance_mode),
+      message: settings.maintenance_message || "",
+      allowAdminBypass: settings.maintenance_allow_admin_bypass !== false,
+    },
+    database: {
+      status,
+      latencyMs: pingLatencyMs,
+      sizeBytes: sizeInfo.dbSizeBytes,
+      sizePretty: sizeInfo.dbSizePretty,
+      tables: tableResult.tables,
+      ...(dbError ? { error: dbError } : {}),
+    },
+  };
+}
+
 export const Route = createFileRoute("/api/admin/maintenance")({
   server: {
     handlers: {
@@ -43,149 +252,12 @@ export const Route = createFileRoute("/api/admin/maintenance")({
           const adminId = await requireAdminUser(request);
 
           const sql = await getSql();
-
-          // 1. Mede latência do banco de dados (Ping)
-          const pingStart = performance.now();
-          await sql.query("SELECT 1;");
-          const pingLatencyMs = Math.round(performance.now() - pingStart);
-
-          // 2. Carrega configurações atuais de manutenção
-          const settings = await loadAllSettingsFromDb();
-
-          // 3. Tamanho do banco de dados
-          let dbSizePretty = "Desconhecido";
-          let dbSizeBytes = 0;
-          try {
-            const [sizeRow] = await sql.query<{
-              size_bytes: string;
-              size_pretty: string;
-            }>(`
-              SELECT
-                pg_database_size(current_database())::text as size_bytes,
-                pg_size_pretty(pg_database_size(current_database())) as size_pretty;
-            `);
-            if (sizeRow) {
-              dbSizeBytes = parseInt(sizeRow.size_bytes || "0", 10);
-              dbSizePretty = sizeRow.size_pretty || "0 MB";
-            }
-          } catch (sizeErr) {
-            console.warn("[maintenance] Não foi possível consultar tamanho do banco:", sizeErr);
-          }
-
-          // 4. Estatísticas de tabelas (Linhas e tuplas ativas/mortas)
-          let tableStats: Array<{
-            tableName: string;
-            rowCount: number;
-            liveTuples?: number;
-            deadTuples?: number;
-            lastVacuum?: string | null;
-            lastAnalyze?: string | null;
-          }> = [];
-
-          try {
-            // Contagem exata de linhas das tabelas principais
-            const countsPromise = Promise.all([
-              sql.query<{ count: string }>(`SELECT COUNT(*)::text as count FROM "catalog_anime";`).catch(() => [{ count: "0" }]),
-              sql.query<{ count: string }>(`SELECT COUNT(*)::text as count FROM "catalog_season";`).catch(() => [{ count: "0" }]),
-              sql.query<{ count: string }>(`SELECT COUNT(*)::text as count FROM "catalog_episode";`).catch(() => [{ count: "0" }]),
-              sql.query<{ count: string }>(`SELECT COUNT(*)::text as count FROM "catalog_airing_schedule";`).catch(() => [{ count: "0" }]),
-              sql.query<{ count: string }>(`SELECT COUNT(*)::text as count FROM "catalog_weekly_recurrence";`).catch(() => [{ count: "0" }]),
-              sql.query<{ count: string }>(`SELECT COUNT(*)::text as count FROM "user";`).catch(() => [{ count: "0" }]),
-              sql.query<{ count: string }>(`SELECT COUNT(*)::text as count FROM "profile";`).catch(() => [{ count: "0" }]),
-              sql.query<{ count: string }>(`SELECT COUNT(*)::text as count FROM "comment";`).catch(() => [{ count: "0" }]),
-              sql.query<{ count: string }>(`SELECT COUNT(*)::text as count FROM "comment_reports";`).catch(() => [{ count: "0" }]),
-              sql.query<{ count: string }>(`SELECT COUNT(*)::text as count FROM "admin_settings";`).catch(() => [{ count: "0" }]),
-            ]);
-
-            const [
-              [animeCount],
-              [seasonCount],
-              [episodeCount],
-              [scheduleCount],
-              [recurrenceCount],
-              [userCount],
-              [profileCount],
-              [commentCount],
-              [reportCount],
-              [settingsCount],
-            ] = await countsPromise;
-
-            // Estatísticas de vacuum / analyze do Postgres
-            const statMap = new Map<string, { live: number; dead: number; lastVacuum: string | null; lastAnalyze: string | null }>();
-            try {
-              const statRows = await sql.query<{
-                relname: string;
-                n_live_tup: string;
-                n_dead_tup: string;
-                last_vacuum: string | null;
-                last_analyze: string | null;
-                last_autovacuum: string | null;
-                last_autoanalyze: string | null;
-              }>(`
-                SELECT
-                  relname,
-                  n_live_tup::text,
-                  n_dead_tup::text,
-                  COALESCE(last_vacuum, last_autovacuum)::text as last_vacuum,
-                  COALESCE(last_analyze, last_autoanalyze)::text as last_analyze
-                FROM pg_stat_user_tables;
-              `);
-
-              for (const r of statRows) {
-                statMap.set(r.relname, {
-                  live: parseInt(r.n_live_tup || "0", 10),
-                  dead: parseInt(r.n_dead_tup || "0", 10),
-                  lastVacuum: r.last_vacuum,
-                  lastAnalyze: r.last_analyze,
-                });
-              }
-            } catch {
-              // pg_stat_user_tables pode não estar disponível em todos os tiers
-            }
-
-            const formatTable = (name: string, count: string) => {
-              const st = statMap.get(name);
-              return {
-                tableName: name,
-                rowCount: parseInt(count, 10),
-                liveTuples: st?.live,
-                deadTuples: st?.dead,
-                lastVacuum: st?.lastVacuum || null,
-                lastAnalyze: st?.lastAnalyze || null,
-              };
-            };
-
-            tableStats = [
-              formatTable("catalog_anime", animeCount?.count || "0"),
-              formatTable("catalog_season", seasonCount?.count || "0"),
-              formatTable("catalog_episode", episodeCount?.count || "0"),
-              formatTable("catalog_airing_schedule", scheduleCount?.count || "0"),
-              formatTable("catalog_weekly_recurrence", recurrenceCount?.count || "0"),
-              formatTable("user", userCount?.count || "0"),
-              formatTable("profile", profileCount?.count || "0"),
-              formatTable("comment", commentCount?.count || "0"),
-              formatTable("comment_reports", reportCount?.count || "0"),
-              formatTable("admin_settings", settingsCount?.count || "0"),
-            ];
-          } catch (tabErr) {
-            console.warn("[maintenance] Erro ao contabilizar tabelas:", tabErr);
-          }
+          const diagnostics = await collectMaintenanceDiagnostics(sql);
 
           return Response.json({
             ok: true,
             adminId,
-            maintenance: {
-              mode: Boolean(settings.maintenance_mode),
-              message: settings.maintenance_message || "",
-              allowAdminBypass: settings.maintenance_allow_admin_bypass !== false,
-            },
-            database: {
-              status: "online",
-              latencyMs: pingLatencyMs,
-              sizeBytes: dbSizeBytes,
-              sizePretty: dbSizePretty,
-              tables: tableStats,
-            },
+            ...diagnostics,
             serverTime: new Date().toISOString(),
           });
         } catch (err) {
@@ -239,6 +311,7 @@ export const Route = createFileRoute("/api/admin/maintenance")({
               message: payload.maintenance_mode
                 ? "Modo de manutenção ativado com sucesso!"
                 : "Modo de manutenção desativado. Plataforma liberada ao público.",
+              settings: updated,
               maintenance: {
                 mode: updated.maintenance_mode,
                 message: updated.maintenance_message,

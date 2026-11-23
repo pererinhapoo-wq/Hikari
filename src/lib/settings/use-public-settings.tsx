@@ -1,7 +1,16 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
+  type HikariAdminSettings,
   type HikariPublicSettings,
   DEFAULT_PUBLIC_SETTINGS,
+  toPublicSettings,
 } from "./settings-types";
 import { getPublicSettings } from "./settings.functions";
 
@@ -9,12 +18,14 @@ interface PublicSettingsContextValue {
   settings: HikariPublicSettings;
   isLoading: boolean;
   refreshSettings: () => Promise<void>;
+  applyAdminSettings: (adminSettings: HikariAdminSettings) => void;
 }
 
 const PublicSettingsContext = createContext<PublicSettingsContextValue>({
   settings: DEFAULT_PUBLIC_SETTINGS,
   isLoading: false,
   refreshSettings: async () => {},
+  applyAdminSettings: () => {},
 });
 
 export function PublicSettingsProvider({
@@ -29,7 +40,7 @@ export function PublicSettingsProvider({
   );
   const [isLoading, setIsLoading] = useState(!initialSettings);
 
-  const refreshSettings = async () => {
+  const refreshSettings = useCallback(async () => {
     try {
       const data = await getPublicSettings();
       if (data) {
@@ -40,18 +51,34 @@ export function PublicSettingsProvider({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  const applyAdminSettings = useCallback(
+    (adminSettings: HikariAdminSettings) => {
+      setSettings(toPublicSettings(adminSettings));
+      setIsLoading(false);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!initialSettings) {
       void refreshSettings();
     }
-  }, [initialSettings]);
+  }, [initialSettings, refreshSettings]);
+
+  const value = useMemo(
+    () => ({
+      settings,
+      isLoading,
+      refreshSettings,
+      applyAdminSettings,
+    }),
+    [settings, isLoading, refreshSettings, applyAdminSettings],
+  );
 
   return (
-    <PublicSettingsContext.Provider
-      value={{ settings, isLoading, refreshSettings }}
-    >
+    <PublicSettingsContext.Provider value={value}>
       {children}
     </PublicSettingsContext.Provider>
   );

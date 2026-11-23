@@ -34,6 +34,99 @@ export function getEnvAdminUserIds(): string[] {
     .filter(Boolean);
 }
 
+const ADMIN_ROLE_CACHE_TTL_MS = 10_000;
+const ADMIN_ROLE_CACHE_MAX_SIZE = 500;
+
+interface CachedRoleEntry {
+  role: string | null;
+  expiresAt: number;
+}
+
+const adminRoleCache = new Map<string, CachedRoleEntry>();
+const inFlightRoleLookups = new Map<string, Promise<string | null>>();
+const roleInvalidationEpochs = new Map<string, number>();
+let globalRoleCacheEpoch = 0;
+
+const requestSessionCache = new WeakMap<
+  Request,
+  Map<string, Promise<VerifiedAdminSession>>
+>();
+
+/**
+ * Invalida o cache curto de papel administrativo no servidor.
+ * Deve ser chamado imediatamente após alterações em `profile.role` (ex: PATCH /api/admin/users).
+ */
+export function invalidateAdminRoleCache(userId?: string): void {
+  if (typeof userId === "string" && userId.trim()) {
+    const clean = userId.trim();
+    adminRoleCache.delete(clean);
+    inFlightRoleLookups.delete(clean);
+    roleInvalidationEpochs.set(
+      clean,
+      (roleInvalidationEpochs.get(clean) ?? 0) + 1,
+    );
+    return;
+  }
+
+  adminRoleCache.clear();
+  inFlightRoleLookups.clear();
+  roleInvalidationEpochs.clear();
+  globalRoleCacheEpoch += 1;
+}
+
+async function resolveProfileRoleCached(userId: string): Promise<string | null> {
+  const now = Date.now();
+  const cached = adminRoleCache.get(userId);
+  if (cached && cached.expiresAt > now) {
+    return cached.role;
+  }
+  if (cached) {
+    adminRoleCache.delete(userId);
+  }
+
+  const existingInFlight = inFlightRoleLookups.get(userId);
+  if (existingInFlight) {
+    return existingInFlight;
+  }
+
+  const startGlobalEpoch = globalRoleCacheEpoch;
+  const startUserEpoch = roleInvalidationEpochs.get(userId) ?? 0;
+
+  const lookupPromise = (async (): Promise<string | null> => {
+    const sql = await getSql();
+    const rows = await sql.query<{ role: string | null }>(
+      `SELECT "role" FROM "profile" WHERE "userId" = $1 LIMIT 1;`,
+      [userId],
+    );
+    const role = rows[0]?.role?.trim()?.toLowerCase() ?? null;
+
+    if (
+      globalRoleCacheEpoch === startGlobalEpoch &&
+      (roleInvalidationEpochs.get(userId) ?? 0) === startUserEpoch
+    ) {
+      if (adminRoleCache.size >= ADMIN_ROLE_CACHE_MAX_SIZE) {
+        const oldestKey = adminRoleCache.keys().next().value;
+        if (oldestKey !== undefined) {
+          adminRoleCache.delete(oldestKey);
+        }
+      }
+      adminRoleCache.set(userId, {
+        role,
+        expiresAt: Date.now() + ADMIN_ROLE_CACHE_TTL_MS,
+      });
+    }
+
+    return role;
+  })().finally(() => {
+    if (inFlightRoleLookups.get(userId) === lookupPromise) {
+      inFlightRoleLookups.delete(userId);
+    }
+  });
+
+  inFlightRoleLookups.set(userId, lookupPromise);
+  return lookupPromise;
+}
+
 /**
  * Regra única e canônica de autorização administrativa no servidor.
  * Reconhece exatamente os três critérios oficiais do Hikari:
@@ -80,13 +173,7 @@ export async function isAuthorizedAdminAccount(params: {
   }
 
   try {
-    const sql = await getSql();
-    const rows = await sql.query<{ role: string | null }>(
-      `SELECT "role" FROM "profile" WHERE "userId" = $1 LIMIT 1;`,
-      [cleanUserId],
-    );
-
-    const role = rows[0]?.role?.trim()?.toLowerCase();
+    const role = await resolveProfileRoleCached(cleanUserId);
     return role === "admin";
   } catch (err) {
     console.error("[admin-guard] Erro ao consultar role de perfil:", err);
@@ -94,18 +181,7 @@ export async function isAuthorizedAdminAccount(params: {
   }
 }
 
-/**
- * Validação rigorosa de sessão administrativa no servidor:
- *
- * 1. Valida a sessão no servidor via Better Auth (cookies ou Authorization Bearer).
- * 2. Retorna erro HTTP 401 se não houver usuário autenticado.
- * 3. Aplica a regra única (`ADMIN_USER_IDS`, `HIKARI_ADMIN_EMAILS`, `profile.role === 'admin'`).
- * 4. Retorna erro HTTP 403 se o usuário não for administrador.
- * 5. Retorna os dados da sessão administrativa autenticada quando autorizado.
- *
- * NÃO confia em dados de cliente, Zustand, localStorage, sessionStorage ou identificadores livres.
- */
-export async function resolveAdminSession(
+async function resolveAdminSessionUncached(
   request: Request,
   bearerToken?: string,
 ): Promise<VerifiedAdminSession> {
@@ -146,6 +222,38 @@ export async function resolveAdminSession(
     email,
     name: session.user.name,
   };
+}
+
+/**
+ * Validação rigorosa de sessão administrativa no servidor:
+ *
+ * 1. Valida a sessão no servidor via Better Auth (cookies ou Authorization Bearer).
+ * 2. Retorna erro HTTP 401 se não houver usuário autenticado.
+ * 3. Aplica a regra única (`ADMIN_USER_IDS`, `HIKARI_ADMIN_EMAILS`, `profile.role === 'admin'`).
+ * 4. Retorna erro HTTP 403 se o usuário não for administrador.
+ * 5. Retorna os dados da sessão administrativa autenticada quando autorizado.
+ *
+ * NÃO confia em dados de cliente, Zustand, localStorage, sessionStorage ou identificadores livres.
+ */
+export async function resolveAdminSession(
+  request: Request,
+  bearerToken?: string,
+): Promise<VerifiedAdminSession> {
+  const cacheKey = bearerToken ?? "";
+  let perRequest = requestSessionCache.get(request);
+  if (!perRequest) {
+    perRequest = new Map();
+    requestSessionCache.set(request, perRequest);
+  }
+
+  const existing = perRequest.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
+  const promise = resolveAdminSessionUncached(request, bearerToken);
+  perRequest.set(cacheKey, promise);
+  return promise;
 }
 
 /**

@@ -1973,6 +1973,9 @@ export async function extractVideoThumbnailCandidates(
         probe: await probeImageCandidateUrl(item.previewUrl, options?.signal),
       })),
     );
+    if (options?.signal?.aborted) {
+      return { candidates: [] };
+    }
     const valid = probed.filter((entry) => entry.probe.ok).map((entry) => entry.item);
     return {
       candidates: valid,
@@ -1992,6 +1995,9 @@ export async function extractVideoThumbnailCandidates(
         probe: await probeImageCandidateUrl(item.previewUrl, options?.signal),
       })),
     );
+    if (options?.signal?.aborted) {
+      return { candidates: [] };
+    }
     const valid = probed.filter((entry) => entry.probe.ok).map((entry) => entry.item);
     return {
       candidates: valid,

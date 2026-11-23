@@ -25,7 +25,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -49,6 +49,7 @@ import { getBearerToken } from "@/lib/auth/client";
 import {
   formatBanDateTime,
   formatBanRemaining,
+  type ActiveUserBan,
   type BanHistoryEntry,
   type EnrichedActiveUserBan,
 } from "@/lib/moderation-ban-types";
@@ -76,6 +77,24 @@ const INITIAL_SUMMARY: AdminCommentsSummary = {
   activeBansCount: 0,
 };
 
+interface AdminCommentsApiResponse {
+  ok?: boolean;
+  comments?: AdminCommentItem[];
+  summary?: AdminCommentsSummary;
+  pagination?: { total: number; totalPages: number };
+  error?: string;
+}
+
+interface AdminBansApiResponse {
+  ok?: boolean;
+  activeBans?: EnrichedActiveUserBan[];
+  history?: BanHistoryEntry[];
+  error?: string;
+}
+
+const inFlightCommentsRequests = new Map<string, Promise<AdminCommentsApiResponse>>();
+let inFlightBansRequest: Promise<AdminBansApiResponse> | null = null;
+
 function AdminModeration() {
   const [activeTab, setActiveTab] = useState<ModerationTab>("comments");
 
@@ -90,11 +109,14 @@ function AdminModeration() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalFiltered, setTotalFiltered] = useState(0);
 
-  // Banimentos & Histórico
+  // Banimentos & Histórico (carregados sob demanda apenas ao abrir a aba Banimentos)
   const [activeBans, setActiveBans] = useState<EnrichedActiveUserBan[]>([]);
   const [banHistory, setBanHistory] = useState<BanHistoryEntry[]>([]);
-  const [loadingBans, setLoadingBans] = useState(true);
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [loadingBans, setLoadingBans] = useState(false);
+  const [hasLoadedBans, setHasLoadedBans] = useState(false);
+  const bansDirtyRef = useRef(true);
+  const lastCommentsKeyRef = useRef<string | null>(null);
+  const commentsDirtyRef = useRef(false);
 
   // Ações e modais
   const [pendingAction, setPendingAction] = useState<{
@@ -119,57 +141,61 @@ function AdminModeration() {
   // Preview ampliado de imagem anexada em comentário
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
-  // Debounce da busca de comentários
+  // Debounce da busca de comentários (ignora render inicial com busca vazia)
   useEffect(() => {
+    const trimmed = searchInput.trim();
+    if (trimmed === searchTerm) return;
+
     const timer = setTimeout(() => {
-      setSearchTerm(searchInput.trim());
+      setSearchTerm(trimmed);
       setPage(1);
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchInput]);
+  }, [searchInput, searchTerm]);
 
-  // Atualização em tempo real do relógio de expiração de banimentos
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+  const effectiveCommentsFilter =
+    activeTab === "reports" ? "pending_reports" : commentFilter;
+  const currentCommentsQueryKey = `${effectiveCommentsFilter}|${page}|${searchTerm}`;
 
   const loadComments = useCallback(async () => {
     setLoadingComments(true);
     try {
       const token = getBearerToken();
-      const effectiveFilter =
-        activeTab === "reports" ? "pending_reports" : commentFilter;
       const params = new URLSearchParams({
-        filter: effectiveFilter,
+        filter: effectiveCommentsFilter,
         page: String(page),
         limit: "15",
       });
       if (searchTerm) {
         params.set("search", searchTerm);
       }
+      const queryString = params.toString();
 
-      const res = await fetch(`/api/admin/comments?${params.toString()}`, {
-        method: "GET",
-        credentials: "include",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      let promise = inFlightCommentsRequests.get(queryString);
+      if (!promise) {
+        promise = (async () => {
+          const res = await fetch(`/api/admin/comments?${queryString}`, {
+            method: "GET",
+            credentials: "include",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
 
-      const data = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        comments?: AdminCommentItem[];
-        summary?: AdminCommentsSummary;
-        pagination?: { total: number; totalPages: number };
-        error?: string;
-      } | null;
-
-      if (!res.ok) {
-        throw new Error(
-          data?.error || "Não foi possível carregar os comentários.",
-        );
+          const data = (await res.json().catch(() => null)) as AdminCommentsApiResponse | null;
+          if (!res.ok) {
+            throw new Error(
+              data?.error || "Não foi possível carregar os comentários.",
+            );
+          }
+          return data ?? {};
+        })().finally(() => {
+          if (inFlightCommentsRequests.get(queryString) === promise) {
+            inFlightCommentsRequests.delete(queryString);
+          }
+        });
+        inFlightCommentsRequests.set(queryString, promise);
       }
+
+      const data = await promise;
 
       setComments(Array.isArray(data?.comments) ? data.comments : []);
       if (data?.summary) {
@@ -177,6 +203,8 @@ function AdminModeration() {
       }
       setTotalFiltered(Number(data?.pagination?.total || 0));
       setTotalPages(Math.max(1, Number(data?.pagination?.totalPages || 1)));
+      lastCommentsKeyRef.current = currentCommentsQueryKey;
+      commentsDirtyRef.current = false;
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -186,33 +214,51 @@ function AdminModeration() {
     } finally {
       setLoadingComments(false);
     }
-  }, [activeTab, commentFilter, page, searchTerm]);
+  }, [currentCommentsQueryKey, effectiveCommentsFilter, page, searchTerm]);
 
   const loadBans = useCallback(async () => {
     setLoadingBans(true);
     try {
       const token = getBearerToken();
-      const res = await fetch("/api/admin/bans", {
-        method: "GET",
-        credentials: "include",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      let promise = inFlightBansRequest;
+      if (!promise) {
+        let flightRef: Promise<AdminBansApiResponse> | null = null;
+        promise = (async () => {
+          const res = await fetch("/api/admin/bans", {
+            method: "GET",
+            credentials: "include",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
 
-      const data = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        activeBans?: EnrichedActiveUserBan[];
-        history?: BanHistoryEntry[];
-        error?: string;
-      } | null;
-
-      if (!res.ok) {
-        throw new Error(
-          data?.error || "Não foi possível carregar os banimentos.",
-        );
+          const data = (await res.json().catch(() => null)) as AdminBansApiResponse | null;
+          if (!res.ok) {
+            throw new Error(
+              data?.error || "Não foi possível carregar os banimentos.",
+            );
+          }
+          return data ?? {};
+        })().finally(() => {
+          if (inFlightBansRequest === flightRef) {
+            inFlightBansRequest = null;
+          }
+        });
+        flightRef = promise;
+        inFlightBansRequest = promise;
       }
 
-      setActiveBans(Array.isArray(data?.activeBans) ? data.activeBans : []);
+      const data = await promise;
+
+      const nextActiveBans = Array.isArray(data?.activeBans)
+        ? data.activeBans
+        : [];
+      setActiveBans(nextActiveBans);
       setBanHistory(Array.isArray(data?.history) ? data.history : []);
+      setHasLoadedBans(true);
+      bansDirtyRef.current = false;
+      setSummary((prev) => ({
+        ...prev,
+        activeBansCount: nextActiveBans.length,
+      }));
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -225,14 +271,21 @@ function AdminModeration() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "comments" || activeTab === "reports") {
-      void loadComments();
+    if (activeTab !== "comments" && activeTab !== "reports") return;
+    if (
+      !commentsDirtyRef.current &&
+      lastCommentsKeyRef.current === currentCommentsQueryKey
+    ) {
+      return;
     }
-  }, [activeTab, loadComments]);
+    void loadComments();
+  }, [activeTab, currentCommentsQueryKey, loadComments]);
 
   useEffect(() => {
+    if (activeTab !== "bans") return;
+    if (!bansDirtyRef.current && hasLoadedBans) return;
     void loadBans();
-  }, [loadBans]);
+  }, [activeTab, hasLoadedBans, loadBans]);
 
   // Busca de usuários no modal de novo banimento
   useEffect(() => {
@@ -276,7 +329,13 @@ function AdminModeration() {
   }, [userLookupOpen, userLookupQuery]);
 
   const handleRefreshAll = () => {
-    void Promise.all([loadComments(), loadBans()]);
+    if (activeTab === "bans") {
+      commentsDirtyRef.current = true;
+      void loadBans();
+      return;
+    }
+    bansDirtyRef.current = true;
+    void loadComments();
   };
 
   const executeCommentAction = async () => {
@@ -398,7 +457,13 @@ function AdminModeration() {
 
       toast.success(data?.message || "Banimento encerrado antecipadamente.");
       setRevokeTarget(null);
-      await Promise.all([loadBans(), loadComments()]);
+      if (activeTab === "bans") {
+        commentsDirtyRef.current = true;
+        await loadBans();
+      } else {
+        bansDirtyRef.current = true;
+        await loadComments();
+      }
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Erro ao revogar banimento.",
@@ -409,6 +474,9 @@ function AdminModeration() {
   };
 
   const isRefreshing = loadingComments || loadingBans;
+  const displayedActiveBansCount = hasLoadedBans
+    ? activeBans.length
+    : summary.activeBansCount;
 
   return (
     <div className="studio-enter space-y-6 pb-8">
@@ -480,9 +548,9 @@ function AdminModeration() {
           },
           {
             label: "Banimentos Ativos",
-            value: activeBans.length.toLocaleString("pt-BR"),
+            value: displayedActiveBansCount.toLocaleString("pt-BR"),
             detail: "Suspensões temporárias em vigor",
-            accent: activeBans.length > 0 ? "rose" : "default",
+            accent: displayedActiveBansCount > 0 ? "rose" : "default",
           },
         ]}
       />
@@ -513,8 +581,8 @@ function AdminModeration() {
                 id: "bans" as const,
                 label: "Banimentos & Histórico",
                 icon: Ban,
-                badge: activeBans.length,
-                danger: activeBans.length > 0,
+                badge: displayedActiveBansCount,
+                danger: displayedActiveBansCount > 0,
               },
             ] as const
           ).map((tab) => {
@@ -667,7 +735,6 @@ function AdminModeration() {
                   <CommentModerationCard
                     key={comment.id}
                     comment={comment}
-                    nowMs={nowMs}
                     onToggleSpoiler={() => void handleToggleSpoilerInline(comment)}
                     onResolveReports={() =>
                       setPendingAction({ type: "resolve_reports", comment })
@@ -772,9 +839,7 @@ function AdminModeration() {
               </div>
             ) : (
               <div className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200">
-                {activeBans.map((ban) => {
-                  const remainingText = formatBanRemaining(ban.expiresAt, nowMs);
-                  return (
+                {activeBans.map((ban) => (
                     <div
                       key={ban.banId}
                       className="flex flex-col gap-4 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
@@ -789,10 +854,7 @@ function AdminModeration() {
                               @{ban.userNick}
                             </span>
                           )}
-                          <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
-                            <Clock className="size-3" />
-                            Restante: {remainingText}
-                          </span>
+                          <ActiveBanRemainingBadge expiresAt={ban.expiresAt} />
                         </div>
 
                         <p className="text-xs leading-relaxed text-slate-700">
@@ -842,8 +904,7 @@ function AdminModeration() {
                         </Button>
                       </div>
                     </div>
-                  );
-                })}
+                  ))}
               </div>
             )}
           </StudioPanel>
@@ -1119,7 +1180,13 @@ function AdminModeration() {
         target={banTarget}
         onClose={() => setBanTarget(null)}
         onSuccess={() => {
-          void Promise.all([loadBans(), loadComments()]);
+          if (activeTab === "bans") {
+            commentsDirtyRef.current = true;
+            void loadBans();
+          } else {
+            bansDirtyRef.current = true;
+            void loadComments();
+          }
         }}
       />
 
@@ -1149,9 +1216,47 @@ function AdminModeration() {
   );
 }
 
-function CommentModerationCard({
+function useBanCountdownNowMs(expiresAt: number | null): number {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!expiresAt || expiresAt <= Date.now()) return;
+    const interval = window.setInterval(() => {
+      const now = Date.now();
+      setNowMs(now);
+      if (expiresAt <= now) {
+        window.clearInterval(interval);
+      }
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [expiresAt]);
+
+  return nowMs;
+}
+
+function ActiveBanRemainingBadge({ expiresAt }: { expiresAt: number }) {
+  const nowMs = useBanCountdownNowMs(expiresAt);
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+      <Clock className="size-3" />
+      Restante: {formatBanRemaining(expiresAt, nowMs)}
+    </span>
+  );
+}
+
+function AuthorBanStatusBadge({ ban }: { ban: ActiveUserBan }) {
+  const nowMs = useBanCountdownNowMs(ban.expiresAt);
+  if (ban.expiresAt <= nowMs) return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+      <Ban className="size-3" />
+      Banido · {formatBanRemaining(ban.expiresAt, nowMs)}
+    </span>
+  );
+}
+
+const CommentModerationCard = memo(function CommentModerationCard({
   comment,
-  nowMs,
   onToggleSpoiler,
   onResolveReports,
   onDelete,
@@ -1160,7 +1265,6 @@ function CommentModerationCard({
   onPreviewImage,
 }: {
   comment: AdminCommentItem;
-  nowMs: number;
   onToggleSpoiler: () => void;
   onResolveReports: () => void;
   onDelete: () => void;
@@ -1168,8 +1272,9 @@ function CommentModerationCard({
   onRevokeAuthorBan: () => void;
   onPreviewImage: (url: string) => void;
 }) {
-  const authorBanned =
-    comment.authorActiveBan && comment.authorActiveBan.expiresAt > nowMs;
+  const authorBanned = Boolean(
+    comment.authorActiveBan && comment.authorActiveBan.expiresAt > Date.now(),
+  );
 
   return (
     <article
@@ -1209,11 +1314,7 @@ function CommentModerationCard({
                 </span>
               )}
               {authorBanned && comment.authorActiveBan && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
-                  <Ban className="size-3" />
-                  Banido ·{" "}
-                  {formatBanRemaining(comment.authorActiveBan.expiresAt, nowMs)}
-                </span>
+                <AuthorBanStatusBadge ban={comment.authorActiveBan} />
               )}
               {comment.parentId && (
                 <span className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
@@ -1429,7 +1530,7 @@ function CommentModerationCard({
       </div>
     </article>
   );
-}
+});
 
 function formatDate(value: string) {
   const date = new Date(value);

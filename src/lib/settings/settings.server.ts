@@ -11,6 +11,7 @@ import {
   DEFAULT_ADMIN_SETTINGS,
   DEFAULT_PUBLIC_SETTINGS,
   adminSettingsSchema,
+  toPublicSettings,
 } from "./settings-types";
 
 let cachedPublicSettings: HikariPublicSettings | null = null;
@@ -19,12 +20,14 @@ let publicSettingsInFlightPromise: Promise<HikariPublicSettings> | null = null;
 let publicSettingsCacheEpoch = 0;
 const PUBLIC_CACHE_TTL_MS = 60 * 1000; // 60s cache
 
-export function invalidatePublicSettingsCache(): void {
+export function invalidatePublicSettingsCache(options?: { skipRedis?: boolean }): void {
   publicSettingsCacheEpoch += 1;
   cachedPublicSettings = null;
   lastPublicCacheTime = 0;
   publicSettingsInFlightPromise = null;
-  void invalidateRedisPublicSettings().catch(() => {});
+  if (!options?.skipRedis) {
+    void invalidateRedisPublicSettings().catch(() => {});
+  }
 }
 
 async function fetchAllSettingsFromDbStrict(): Promise<HikariAdminSettings> {
@@ -86,18 +89,29 @@ export async function saveSettingsToDb(
     return loadAllSettingsFromDb();
   }
 
-  for (const [key, value] of entries) {
-    const strValue = JSON.stringify(value);
+  if (entries.length === 1) {
+    const [key, value] = entries[0];
     await sql.query(
       `INSERT INTO "admin_settings" ("key", "value", "createdAt", "updatedAt")
        VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
        ON CONFLICT ("key") DO UPDATE
        SET "value" = EXCLUDED."value", "updatedAt" = CURRENT_TIMESTAMP;`,
-      [key, strValue],
+      [key, JSON.stringify(value)],
+    );
+  } else {
+    const keys = entries.map(([k]) => k);
+    const values = entries.map(([, v]) => JSON.stringify(v));
+    await sql.query(
+      `INSERT INTO "admin_settings" ("key", "value", "createdAt", "updatedAt")
+       SELECT k, v, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+       FROM UNNEST($1::text[], $2::text[]) AS t(k, v)
+       ON CONFLICT ("key") DO UPDATE
+       SET "value" = EXCLUDED."value", "updatedAt" = CURRENT_TIMESTAMP;`,
+      [keys, values],
     );
   }
 
-  invalidatePublicSettingsCache();
+  invalidatePublicSettingsCache({ skipRedis: true });
   await invalidateRedisPublicSettings().catch(() => {});
   return loadAllSettingsFromDb();
 }
@@ -128,38 +142,7 @@ export async function loadPublicSettingsFromDb(): Promise<HikariPublicSettings> 
 
       const fetchStartedAt = Date.now();
       const all = await fetchAllSettingsFromDbStrict();
-      const publicSettings: HikariPublicSettings = {
-        site_name: all.site_name || DEFAULT_PUBLIC_SETTINGS.site_name,
-        site_description:
-          all.site_description || DEFAULT_PUBLIC_SETTINGS.site_description,
-        site_slogan: all.site_slogan || DEFAULT_PUBLIC_SETTINGS.site_slogan,
-        site_contact_email:
-          all.site_contact_email || DEFAULT_PUBLIC_SETTINGS.site_contact_email,
-        site_favicon_url:
-          all.site_favicon_url || DEFAULT_PUBLIC_SETTINGS.site_favicon_url,
-        default_language: all.default_language,
-        preferred_title_language: all.preferred_title_language,
-        notice: {
-          enabled: Boolean(all.notice_enabled),
-          title: all.notice_title || "",
-          content: all.notice_content || "",
-          type: all.notice_type || "info",
-          dismissible: all.notice_dismissible !== false,
-        },
-        modules: {
-          comments: all.module_comments_enabled !== false,
-          ai: all.module_ai_enabled !== false,
-          adult: all.module_adult_enabled !== false,
-          calendar: all.module_calendar_enabled !== false,
-        },
-        maintenance: {
-          active: Boolean(all.maintenance_mode),
-          message:
-            all.maintenance_message ||
-            DEFAULT_PUBLIC_SETTINGS.maintenance.message,
-          allow_admin_bypass: all.maintenance_allow_admin_bypass !== false,
-        },
-      };
+      const publicSettings = toPublicSettings(all);
 
       if (requestEpoch === publicSettingsCacheEpoch) {
         cachedPublicSettings = publicSettings;

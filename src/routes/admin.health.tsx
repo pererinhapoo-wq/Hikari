@@ -9,7 +9,7 @@ import {
   RefreshCw,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { getBearerToken } from "@/lib/auth/client";
@@ -44,43 +44,117 @@ function AdminHealthPage() {
   const [report, setReport] = useState<SystemHealthReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [checkingExternal, setCheckingExternal] = useState(false);
+  const requestControllerRef = useRef<AbortController | null>(null);
+  const fetchSeqRef = useRef(0);
 
-  const fetchHealth = async (showToast = false) => {
+  const fetchHealth = useCallback(async (showToast = false) => {
+    requestControllerRef.current?.abort();
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    const seq = ++fetchSeqRef.current;
+
     if (showToast) setIsRefreshing(true);
     else setLoading(true);
+    setCheckingExternal(true);
 
-    try {
-      const token = getBearerToken();
-      const res = await fetch("/api/admin/health", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+    const token = getBearerToken();
+    const headers: Record<string, string> = token
+      ? { Authorization: `Bearer ${token}` }
+      : {};
+
+    const externalPromise = fetch("/api/admin/health?scope=external", {
+      headers,
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(json?.error || `HTTP ${res.status}`);
+        }
+        return json?.anilist as
+          | SystemHealthReport["externalServices"]["anilist"]
+          | undefined;
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return undefined;
+        return {
+          status: "offline" as const,
+          latencyMs: 0,
+          checked: true,
+          error:
+            err instanceof Error
+              ? err.message
+              : "Falha ao verificar serviço externo AniList.",
+        };
       });
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => null);
+    try {
+      const coreRes = await fetch("/api/admin/health?scope=core", {
+        headers,
+        signal: controller.signal,
+      });
+
+      if (!coreRes.ok) {
+        const errJson = await coreRes.json().catch(() => null);
         throw new Error(errJson?.error || "Falha ao consultar saúde do sistema.");
       }
 
-      const data = await res.json();
-      if (data?.report) {
-        setReport(data.report);
+      const coreData = await coreRes.json();
+      if (seq !== fetchSeqRef.current || controller.signal.aborted) return;
+
+      if (coreData?.report) {
+        setReport(coreData.report);
+        setLoading(false);
         if (showToast) {
-          toast.success("Diagnóstico do sistema atualizado com sucesso!");
+          toast.success("Diagnóstico do banco atualizado com sucesso!");
         }
       }
+
+      const anilistResult = await externalPromise;
+      if (seq !== fetchSeqRef.current || controller.signal.aborted) return;
+      if (anilistResult) {
+        setReport((prev) => {
+          if (!prev) return prev;
+          const nextOverall =
+            prev.coreStatus === "unhealthy"
+              ? "unhealthy"
+              : prev.coreStatus === "degraded" ||
+                  anilistResult.status === "offline" ||
+                  anilistResult.status === "degraded"
+                ? "degraded"
+                : "healthy";
+          return {
+            ...prev,
+            overallStatus: nextOverall,
+            externalServices: {
+              ...prev.externalServices,
+              anilist: anilistResult,
+            },
+          };
+        });
+      }
     } catch (err) {
+      if (controller.signal.aborted) return;
       console.error("[admin.health] Erro:", err);
       toast.error(
         err instanceof Error ? err.message : "Erro ao consultar diagnóstico.",
       );
     } finally {
-      setLoading(false);
-      setIsRefreshing(false);
+      if (seq === fetchSeqRef.current && !controller.signal.aborted) {
+        setLoading(false);
+        setIsRefreshing(false);
+        setCheckingExternal(false);
+      }
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void fetchHealth();
-  }, []);
+    void fetchHealth(false);
+    return () => {
+      requestControllerRef.current?.abort();
+    };
+  }, [fetchHealth]);
 
   if (loading) {
     return <StudioLoadingState message="Executando diagnóstico de infraestrutura e banco..." />;
@@ -88,6 +162,9 @@ function AdminHealthPage() {
 
   const isHealthy = report?.overallStatus === "healthy";
   const isDegraded = report?.overallStatus === "degraded";
+  const coreHealthy = report?.coreStatus === "healthy";
+  const anilist = report?.externalServices.anilist;
+  const dbStatus = report?.database.status || "offline";
 
   return (
     <div className="studio-enter space-y-6">
@@ -165,7 +242,9 @@ function AdminHealthPage() {
               {isHealthy
                 ? "Todos os subsistemas estão operando com desempenho nominal"
                 : isDegraded
-                  ? "Alguns serviços externos ou conexões apresentam latência elevada"
+                  ? coreHealthy
+                    ? "Banco principal estável — serviço externo apresenta indisponibilidade ou lentidão"
+                    : "Algumas tabelas, conexões ou serviços externos apresentam falhas"
                   : "Falha de conectividade com a camada de persistência principal"}
             </h3>
             <p className="text-xs leading-relaxed opacity-90">
@@ -173,8 +252,13 @@ function AdminHealthPage() {
               <strong className="studio-tabular text-white">
                 {report?.timestamp ? new Date(report.timestamp).toLocaleTimeString("pt-BR") : "--"}
               </strong>
-              . Camada de persistência Neon PostgreSQL monitorada em tempo real.
+              . Camada de persistência PostgreSQL verificada independentemente das sondas externas.
             </p>
+            {report?.database.error && (
+              <p className="studio-mono text-[11px] text-rose-300">
+                Detalhe: {report.database.error}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -191,18 +275,25 @@ function AdminHealthPage() {
           items={[
             {
               label: "Status Conexão",
-              value: (report?.database.status || "online").toUpperCase(),
-              accent: "emerald",
+              value: dbStatus.toUpperCase(),
+              accent:
+                dbStatus === "online"
+                  ? "emerald"
+                  : dbStatus === "degraded"
+                    ? "amber"
+                    : "rose",
             },
             {
               label: "Latência (Ping)",
               value: `${report?.database.latencyMs ?? "--"} ms`,
               accent:
-                (report?.database.latencyMs ?? 0) < 120
-                  ? "emerald"
-                  : (report?.database.latencyMs ?? 0) < 300
-                    ? "amber"
-                    : "rose",
+                dbStatus === "offline"
+                  ? "rose"
+                  : (report?.database.latencyMs ?? 0) < 120
+                    ? "emerald"
+                    : (report?.database.latencyMs ?? 0) < 300
+                      ? "amber"
+                      : "rose",
             },
             {
               label: "Tamanho do Banco",
@@ -239,24 +330,56 @@ function AdminHealthPage() {
         icon={<Layers className="size-4" />}
       >
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {report?.tables.map((t) => (
-            <div
-              key={t.name}
-              className="flex flex-col justify-between space-y-1 rounded-xl border border-[var(--studio-line)] bg-[var(--studio-panel-alt)] p-3.5"
-            >
-              <div>
-                <span className="studio-mono block truncate text-[10px] font-bold text-violet-300">
-                  {t.name}
-                </span>
-                <span className="line-clamp-1 text-[10px] text-[var(--color-subtle)]" title={t.description}>
-                  {t.description}
-                </span>
+          {report?.tables.map((t) => {
+            const isTableError = t.status === "error";
+            return (
+              <div
+                key={t.name}
+                className={cn(
+                  "flex flex-col justify-between space-y-1 rounded-xl border p-3.5",
+                  isTableError
+                    ? "border-rose-500/40 bg-rose-950/20"
+                    : "border-[var(--studio-line)] bg-[var(--studio-panel-alt)]",
+                )}
+              >
+                <div>
+                  <span
+                    className={cn(
+                      "studio-mono block truncate text-[10px] font-bold",
+                      isTableError ? "text-rose-300" : "text-violet-300",
+                    )}
+                  >
+                    {t.name}
+                  </span>
+                  <span
+                    className="line-clamp-1 text-[10px] text-[var(--color-subtle)]"
+                    title={t.error || t.description}
+                  >
+                    {t.description}
+                  </span>
+                </div>
+                {isTableError ? (
+                  <div className="pt-1">
+                    <span className="studio-mono block text-xs font-bold text-rose-400">
+                      ERRO
+                    </span>
+                    {t.error && (
+                      <span
+                        className="line-clamp-2 text-[10px] text-rose-300/80"
+                        title={t.error}
+                      >
+                        {t.error}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="studio-tabular pt-1 text-lg font-bold text-white">
+                    {t.count.toLocaleString("pt-BR")}
+                  </div>
+                )}
               </div>
-              <div className="studio-tabular pt-1 text-lg font-bold text-white">
-                {t.count.toLocaleString("pt-BR")}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </StudioPanel>
 
@@ -282,21 +405,36 @@ function AdminHealthPage() {
                 <span
                   className={cn(
                     "studio-mono text-[10px] font-bold uppercase",
-                    report?.externalServices.anilist.status === "online"
-                      ? "text-emerald-400"
-                      : "text-rose-400",
+                    checkingExternal && !anilist?.checked
+                      ? "text-amber-300"
+                      : anilist?.status === "online"
+                        ? "text-emerald-400"
+                        : anilist?.status === "degraded"
+                          ? "text-amber-300"
+                          : "text-rose-400",
                   )}
                 >
-                  {report?.externalServices.anilist.status}
+                  {checkingExternal && !anilist?.checked
+                    ? "VERIFICANDO..."
+                    : anilist?.status || "offline"}
                 </span>
-                <span className="studio-tabular text-xs text-[var(--color-muted)]">
-                  · {report?.externalServices.anilist.latencyMs}ms
-                </span>
+                {anilist?.checked && (
+                  <span className="studio-tabular text-xs text-[var(--color-muted)]">
+                    · {anilist.latencyMs}ms
+                  </span>
+                )}
               </div>
             </div>
 
+            {anilist?.error && (
+              <p className="studio-mono rounded-lg border border-rose-500/30 bg-rose-950/25 px-2.5 py-1.5 text-[11px] text-rose-300">
+                {anilist.error}
+              </p>
+            )}
+
             <p className="text-[11px] leading-relaxed text-[var(--color-subtle)]">
               Utilizada para importação e enriquecimento automático de metadados dos animes.
+              Verificada de forma independente para não bloquear o diagnóstico do banco.
             </p>
           </div>
         </StudioPanel>

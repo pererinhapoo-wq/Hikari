@@ -61,7 +61,7 @@ export const Route = createFileRoute("/admin/settings")({
 function AdminSettingsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const { refreshSettings } = usePublicSettings();
+  const { applyAdminSettings } = usePublicSettings();
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => search.tab || "identity");
 
   useEffect(() => {
@@ -167,8 +167,8 @@ function AdminSettingsPage() {
       if (data?.settings) {
         setSettings(data.settings);
         setSavedSettings(data.settings);
+        applyAdminSettings(data.settings);
       }
-      await refreshSettings();
       toast.success("Configurações salvas com sucesso no Neon PostgreSQL!");
     } catch (err) {
       console.error("[admin.settings] Erro ao salvar:", err);

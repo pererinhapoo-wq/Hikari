@@ -200,7 +200,17 @@ export interface PersistEpisodeResult {
   error?: string;
 }
 
+export const OUTBOX_POLL_INTERVAL_MS = 8000;
+
 let isFlushing = false;
+
+type OutboxSubscriber = (ops: OutboxOperation[]) => void;
+
+const outboxSubscribers = new Set<OutboxSubscriber>();
+let sharedOutboxTimer: any = null;
+let sharedOutboxListenersAttached = false;
+let lastNotifiedOutboxRaw: string | null = null;
+let lastNotifiedOutboxOps: OutboxOperation[] | null = null;
 
 function isLocalStorageAvailable(): boolean {
   if (typeof window === "undefined") return false;
@@ -211,14 +221,9 @@ function isLocalStorageAvailable(): boolean {
   }
 }
 
-/**
- * Lê todas as operações pendentes salvas no localStorage.
- */
-export function readOutbox(): OutboxOperation[] {
-  if (!isLocalStorageAvailable()) return [];
+function parseOutboxRaw(raw: string | null): OutboxOperation[] {
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(OUTBOX_STORAGE_KEY);
-    if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
       return parsed as OutboxOperation[];
@@ -229,13 +234,155 @@ export function readOutbox(): OutboxOperation[] {
   return [];
 }
 
+function emitOutboxUpdate(ops: OutboxOperation[], serialized?: string): void {
+  const snapshot = ops.slice();
+  lastNotifiedOutboxRaw = serialized ?? JSON.stringify(snapshot);
+  lastNotifiedOutboxOps = snapshot;
+
+  for (const listener of Array.from(outboxSubscribers)) {
+    try {
+      listener(snapshot);
+    } catch (err) {
+      console.warn("[episode-writer] Erro em assinante do outbox:", err);
+    }
+  }
+}
+
+export function refreshOutboxFromStorage(forceNotify = false): OutboxOperation[] {
+  if (!isLocalStorageAvailable()) return [];
+  const raw = window.localStorage.getItem(OUTBOX_STORAGE_KEY);
+  const normalizedRaw = raw ?? "[]";
+
+  if (
+    !forceNotify &&
+    lastNotifiedOutboxRaw !== null &&
+    normalizedRaw === lastNotifiedOutboxRaw &&
+    lastNotifiedOutboxOps !== null
+  ) {
+    return lastNotifiedOutboxOps;
+  }
+
+  const ops = parseOutboxRaw(raw);
+  emitOutboxUpdate(ops, normalizedRaw);
+  return ops;
+}
+
+function handleSharedOnlineEvent(): void {
+  refreshOutboxFromStorage();
+}
+
+function handleSharedStorageEvent(event: StorageEvent): void {
+  if (event.key !== null && event.key !== OUTBOX_STORAGE_KEY) return;
+  refreshOutboxFromStorage();
+}
+
+function handleSharedVisibilityChange(): void {
+  if (typeof document !== "undefined" && document.visibilityState === "visible") {
+    refreshOutboxFromStorage();
+  }
+}
+
+function attachSharedOutboxMonitor(): void {
+  if (typeof window === "undefined") return;
+
+  if (!sharedOutboxListenersAttached) {
+    window.addEventListener("online", handleSharedOnlineEvent);
+    window.addEventListener("storage", handleSharedStorageEvent);
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleSharedVisibilityChange);
+    }
+    sharedOutboxListenersAttached = true;
+  }
+
+  if (sharedOutboxTimer === null) {
+    sharedOutboxTimer = window.setInterval(() => {
+      refreshOutboxFromStorage();
+    }, OUTBOX_POLL_INTERVAL_MS);
+  }
+}
+
+function detachSharedOutboxMonitor(): void {
+  if (typeof window !== "undefined") {
+    if (sharedOutboxTimer !== null) {
+      window.clearInterval(sharedOutboxTimer);
+      sharedOutboxTimer = null;
+    }
+    if (sharedOutboxListenersAttached) {
+      window.removeEventListener("online", handleSharedOnlineEvent);
+      window.removeEventListener("storage", handleSharedStorageEvent);
+      if (typeof document !== "undefined") {
+        document.removeEventListener(
+          "visibilitychange",
+          handleSharedVisibilityChange,
+        );
+      }
+      sharedOutboxListenersAttached = false;
+    }
+  }
+  lastNotifiedOutboxRaw = null;
+  lastNotifiedOutboxOps = null;
+}
+
 /**
- * Persiste a lista de operações no localStorage sem descartar silenciosamente itens.
+ * Inscreve um componente no monitor compartilhado do Outbox com contagem de referências:
+ * mantém no máximo 1 timer periódico e listeners globais únicos enquanto houver
+ * pelo menos 1 assinante ativo, liberando tudo ao desmontar o último.
+ */
+export function subscribeOutbox(
+  listener: OutboxSubscriber,
+  options?: { emitInitial?: boolean },
+): () => void {
+  outboxSubscribers.add(listener);
+  attachSharedOutboxMonitor();
+
+  if (options?.emitInitial !== false) {
+    const current = readOutbox();
+    try {
+      listener(current);
+    } catch (err) {
+      console.warn("[episode-writer] Erro na entrega inicial do outbox:", err);
+    }
+  }
+
+  return () => {
+    outboxSubscribers.delete(listener);
+    if (outboxSubscribers.size === 0) {
+      detachSharedOutboxMonitor();
+    }
+  };
+}
+
+export function getOutboxMonitorState(): {
+  subscriberCount: number;
+  hasActiveTimer: boolean;
+  listenersAttached: boolean;
+} {
+  return {
+    subscriberCount: outboxSubscribers.size,
+    hasActiveTimer: sharedOutboxTimer !== null,
+    listenersAttached: sharedOutboxListenersAttached,
+  };
+}
+
+/**
+ * Lê todas as operações pendentes salvas no localStorage.
+ */
+export function readOutbox(): OutboxOperation[] {
+  if (!isLocalStorageAvailable()) return [];
+  const raw = window.localStorage.getItem(OUTBOX_STORAGE_KEY);
+  return parseOutboxRaw(raw);
+}
+
+/**
+ * Persiste a lista de operações no localStorage sem descartar silenciosamente itens
+ * e notifica imediatamente todos os assinantes na mesma aba.
  */
 export function writeOutbox(ops: OutboxOperation[]): void {
   if (!isLocalStorageAvailable()) return;
   try {
-    window.localStorage.setItem(OUTBOX_STORAGE_KEY, JSON.stringify(ops));
+    const serialized = JSON.stringify(ops);
+    window.localStorage.setItem(OUTBOX_STORAGE_KEY, serialized);
+    emitOutboxUpdate(ops, serialized);
   } catch (err) {
     console.warn("[episode-writer] Falha ao salvar outbox:", err);
   }

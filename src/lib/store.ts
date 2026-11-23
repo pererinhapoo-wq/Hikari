@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import type { LocalAnime, SlimAnime } from "@/lib/types";
-import { flushAnimes, loadAnimes, scheduleSave } from "@/lib/catalog-storage";
+import { flushAnimes, loadAnimes, markCatalogPersistedRef, scheduleSave } from "@/lib/catalog-storage";
 import { pruneProgressKeys, withQuotaRetry } from "@/lib/storage-prune";
 import { setAnimeUserClientCacheOwner } from "@/lib/anime-user-client-cache";
 import { setActiveTrackingCacheUser } from "@/lib/tracking-client-cache";
@@ -327,6 +327,7 @@ type HikariState = {
   setHydrated: (v: boolean) => void;
   setCurrentUserId: (userId: string | null) => void;
   upsertAnime: (anime: LocalAnime) => void;
+  upsertAnimesBatch: (animes: LocalAnime[]) => void;
   removeAnime: (id: string) => void;
   toggleHidden: (id: string) => void;
   importAll: (animes: LocalAnime[]) => void;
@@ -469,6 +470,58 @@ export const useHikariStore = create<HikariState>()(
             animes: next,
           };
         }),
+
+      upsertAnimesBatch: (items) => {
+        if (!Array.isArray(items) || items.length === 0) return;
+
+        set((s) => {
+          const indexById = new Map<string, number>();
+          for (let i = 0; i < s.animes.length; i++) {
+            indexById.set(s.animes[i].id, i);
+          }
+
+          let next: LocalAnime[] | null = null;
+          const prepended: LocalAnime[] = [];
+          const prependedIndexById = new Map<string, number>();
+
+          for (const anime of items) {
+            const existingIdx = indexById.get(anime.id);
+            if (existingIdx !== undefined) {
+              const base = next ?? (next = s.animes.slice());
+              const prev = base[existingIdx];
+              base[existingIdx] = {
+                ...prev,
+                ...anime,
+                id: prev.id,
+              };
+            } else {
+              const pIdx = prependedIndexById.get(anime.id);
+              if (pIdx !== undefined) {
+                prepended[pIdx] = {
+                  ...prepended[pIdx],
+                  ...anime,
+                  id: prepended[pIdx].id,
+                };
+              } else {
+                prependedIndexById.set(anime.id, prepended.length);
+                prepended.push(anime);
+              }
+            }
+          }
+
+          if (!next && prepended.length === 0) {
+            return s;
+          }
+
+          const baseList = next ?? s.animes;
+          return {
+            animes:
+              prepended.length > 0
+                ? [...prepended.reverse(), ...baseList]
+                : baseList,
+          };
+        });
+      },
 
       removeAnime: (id) =>
         set((s) => {
@@ -1073,6 +1126,9 @@ export function ensureCatalogLoaded(): Promise<void> {
       ]);
 
       // 3. Atualizar store Zustand em memória
+      if (animes.length > 0 && !(initialLegacyCatalog && animes === initialLegacyCatalog)) {
+        markCatalogPersistedRef(animes);
+      }
       useHikariStore.setState({
         animes,
         hydrated: true,

@@ -156,15 +156,32 @@ export async function loadAnimes(): Promise<LocalAnime[]> {
 }
 
 let pendingAnimes: LocalAnime[] | null = null;
+let inFlightAnimes: LocalAnime[] | null = null;
+let lastSavedAnimesRef: LocalAnime[] | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let isSaving = false;
 let nextSaveRequested = false;
 
 /**
+ * Registra uma referência de catálogo já carregada/persistida no IndexedDB
+ * para evitar re-serialização imediata na hidratação.
+ */
+export function markCatalogPersistedRef(animes: LocalAnime[]): void {
+  lastSavedAnimesRef = animes;
+}
+
+/**
  * Agenda a gravação do catálogo com debounce de 800ms.
- * Evita gravações concorrentes e garante que a versão mais recente seja salva.
+ * Evita gravações concorrentes, ignora referências já salvas e garante que a versão mais recente seja salva.
  */
 export function scheduleSave(animes: LocalAnime[]): void {
+  if (animes === lastSavedAnimesRef && !pendingAnimes && !isSaving) {
+    return;
+  }
+  if (animes === pendingAnimes) {
+    return;
+  }
+
   pendingAnimes = animes;
 
   if (debounceTimer) {
@@ -195,6 +212,8 @@ export async function flushAnimes(): Promise<void> {
 
   isSaving = true;
   const toSave = pendingAnimes;
+  pendingAnimes = null;
+  inFlightAnimes = toSave;
 
   try {
     const db = await openCatalogDB();
@@ -229,26 +248,33 @@ export async function flushAnimes(): Promise<void> {
     } else {
       writeFallback(toSave);
     }
+    lastSavedAnimesRef = toSave;
   } catch (err) {
     console.warn("[Hikari] Erro durante gravação do catálogo:", err);
     writeFallback(toSave);
   } finally {
+    inFlightAnimes = null;
     isSaving = false;
-    if (nextSaveRequested) {
+    if (nextSaveRequested || pendingAnimes) {
       nextSaveRequested = false;
       void flushAnimes();
     }
   }
 }
 
-// Flush ao descarregar a página
+// Flush ao descarregar a página (somente se houver alterações ainda não persistidas)
 if (typeof window !== "undefined") {
   const onUnload = () => {
-    if (pendingAnimes) {
+    const unsaved = pendingAnimes;
+    if (unsaved) {
       void flushAnimes();
       if (dbFailedPermanently || !window.indexedDB) {
-        writeFallback(pendingAnimes);
+        writeFallback(unsaved);
       }
+      return;
+    }
+    if (inFlightAnimes && (dbFailedPermanently || !window.indexedDB)) {
+      writeFallback(inFlightAnimes);
     }
   };
 

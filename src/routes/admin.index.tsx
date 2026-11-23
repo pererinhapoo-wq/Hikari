@@ -46,14 +46,11 @@ import { getBearerToken } from "@/lib/auth/client";
 import { searchCatalog } from "@/lib/api";
 import {
   animeToLocal,
-  areAnimeRecentBadgesEqual,
   displayTitle,
-  normalizeAnimeRecentBadges,
   type LocalAnime,
   type SlimAnime,
 } from "@/lib/types";
 import { ensureCatalogLoaded, useHikariStore } from "@/lib/store";
-import { shouldPreferRemoteMedia } from "@/lib/overlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -67,6 +64,7 @@ import {
   flushOutbox,
   hasPendingWrites,
   readOutbox,
+  subscribeOutbox,
   type OutboxOperation,
 } from "@/lib/episode-writer";
 import {
@@ -75,11 +73,17 @@ import {
   type BatchImportProgress,
   type FailedBatchItem,
 } from "@/lib/catalog-import-client";
+import type { AdminSystemStatus } from "@/lib/admin-dashboard.functions";
 import {
-  getAdminCatalogSyncMeta,
-  getAdminSystemStatus,
-  type AdminSystemStatus,
-} from "@/lib/admin-dashboard.functions";
+  getCachedAdminSystemStatus,
+  invalidateAdminDashboardCache,
+  loadAdminSystemStatusCached,
+  syncAdminCatalogMetaCached,
+} from "@/lib/admin-dashboard-client-cache";
+import {
+  buildAdminCatalogIndex,
+  filterAndSortAdminCatalog,
+} from "@/lib/admin-catalog-index";
 import {
   StudioEmptyState,
   StudioPageHeader,
@@ -199,7 +203,7 @@ function AdminIndex() {
   const [outboxOps, setOutboxOps] = useState<OutboxOperation[]>([]);
   const [isSyncingOutbox, setIsSyncingOutbox] = useState(false);
   const [systemStatus, setSystemStatus] = useState<AdminSystemStatus | null>(
-    null,
+    () => getCachedAdminSystemStatus(),
   );
   const [isCheckingSystem, setIsCheckingSystem] = useState(false);
 
@@ -209,17 +213,24 @@ function AdminIndex() {
     }
   }, []);
 
-  const checkSystem = useCallback(async () => {
+  const checkSystem = useCallback(async (force = false) => {
+    if (!force) {
+      const cached = getCachedAdminSystemStatus();
+      if (cached) {
+        setSystemStatus(cached);
+        return;
+      }
+    }
     setIsCheckingSystem(true);
     try {
-      const res = await getAdminSystemStatus();
+      const res = await loadAdminSystemStatusCached({ force });
       setSystemStatus(res);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setSystemStatus({
         connected: false,
         dbSource: "unknown",
         checkedAt: Date.now(),
-        error: err?.message || String(err),
+        error: err instanceof Error ? err.message : String(err),
       });
     } finally {
       setIsCheckingSystem(false);
@@ -229,99 +240,18 @@ function AdminIndex() {
   const hasSyncedServerMetaRef = useRef(false);
 
   useEffect(() => {
-    refreshOutbox();
-    void checkSystem();
+    return subscribeOutbox(setOutboxOps);
+  }, []);
 
-    const handleSync = () => refreshOutbox();
-    window.addEventListener("online", handleSync);
-    window.addEventListener("storage", handleSync);
-
-    const timer = window.setInterval(refreshOutbox, 8000);
-    return () => {
-      window.removeEventListener("online", handleSync);
-      window.removeEventListener("storage", handleSync);
-      window.clearInterval(timer);
-    };
-  }, [refreshOutbox, checkSystem]);
+  useEffect(() => {
+    void checkSystem(false);
+  }, [checkSystem]);
 
   useEffect(() => {
     if (!hydrated || hasSyncedServerMetaRef.current) return;
     hasSyncedServerMetaRef.current = true;
-
-    const isDubbedTitle = (text: string) => /\b(dub|dublado|dublada)\b/i.test(text);
-
-    void getAdminCatalogSyncMeta().then((rows) => {
-      if (!rows || rows.length === 0) return;
-
-      const byId = new Map(rows.map((r) => [r.id, r]));
-      const byAni = new Map<number, (typeof rows)[number]>();
-      const byMal = new Map<number, (typeof rows)[number]>();
-      const byKitsu = new Map<number, (typeof rows)[number]>();
-
-      for (const row of rows) {
-        if (isDubbedTitle(`${row.title} ${row.titleRomaji ?? ""} ${row.titleEnglish ?? ""}`)) {
-          continue;
-        }
-        if (row.anilistId && !byAni.has(row.anilistId)) byAni.set(row.anilistId, row);
-        if (row.malId && !byMal.has(row.malId)) byMal.set(row.malId, row);
-        if (row.kitsuId && !byKitsu.has(row.kitsuId)) byKitsu.set(row.kitsuId, row);
-      }
-
-      const currentAnimes = useHikariStore.getState().animes;
-      for (const local of currentAnimes) {
-        const localIsDub = isDubbedTitle(
-          `${local.titleRomaji} ${local.titleEnglish} ${local.titleNative}`,
-        );
-        const match =
-          byId.get(local.id) ??
-          (!localIsDub && local.anilistId ? byAni.get(local.anilistId) : undefined) ??
-          (!localIsDub && local.malId ? byMal.get(local.malId) : undefined) ??
-          (!localIsDub && local.kitsuId ? byKitsu.get(local.kitsuId) : undefined);
-
-        if (!match) continue;
-
-        const useServerCover = shouldPreferRemoteMedia(
-          local.cover,
-          match.cover ?? undefined,
-          local,
-          match.updatedAt,
-        );
-        const useServerBanner = shouldPreferRemoteMedia(
-          local.banner,
-          match.banner ?? undefined,
-          local,
-          match.updatedAt,
-        );
-
-        const hasUnsyncedLocalEdits = Boolean(
-          local.syncedAt && (local.updatedAt ?? 0) > local.syncedAt,
-        );
-        const normalizedRemoteBadges = match.recentBadges
-          ? normalizeAnimeRecentBadges(match.recentBadges)
-          : undefined;
-        const useServerBadges = Boolean(
-          normalizedRemoteBadges &&
-            (!hasUnsyncedLocalEdits || !local.recentBadges) &&
-            !areAnimeRecentBadgesEqual(local.recentBadges, normalizedRemoteBadges),
-        );
-
-        if (useServerCover || useServerBanner || useServerBadges) {
-          const nextUpdatedAt =
-            Math.max(local.updatedAt ?? 0, match.updatedAt || 0) || local.updatedAt;
-          const nextSyncedAt =
-            Math.max(local.syncedAt ?? 0, match.updatedAt || 0) || local.syncedAt;
-          upsertAnime({
-            ...local,
-            cover: useServerCover && match.cover ? match.cover : local.cover,
-            banner: useServerBanner && match.banner ? match.banner : local.banner,
-            recentBadges: useServerBadges ? normalizedRemoteBadges : local.recentBadges,
-            updatedAt: nextUpdatedAt,
-            syncedAt: nextSyncedAt,
-          });
-        }
-      }
-    });
-  }, [hydrated, upsertAnime]);
+    void syncAdminCatalogMetaCached();
+  }, [hydrated]);
 
   const handleManualSync = async () => {
     if (isSyncingOutbox) return;
@@ -336,7 +266,8 @@ function AdminIndex() {
     try {
       const res = await flushOutbox();
       refreshOutbox();
-      void checkSystem();
+      invalidateAdminDashboardCache();
+      void checkSystem(true);
       if (res.processed > 0) {
         toast.success(
           `${res.processed} operação(ões) sincronizada(s) com o servidor!`,
@@ -354,67 +285,17 @@ function AdminIndex() {
     }
   };
 
-  const catalogStats = useMemo(() => {
-    const totalAnimes = animes.length;
-    let totalSeasons = 0;
-    let totalEpisodes = 0;
-    let totalPublishedEpisodes = 0;
-    let visibleAnimes = 0;
-    let hiddenAnimes = 0;
-    let anilistLinkedAnimes = 0;
-    let dubbedAnimes = 0;
-
-    for (const a of animes) {
-      if (a.hidden) hiddenAnimes++;
-      else visibleAnimes++;
-
-      if (a.anilistId) anilistLinkedAnimes++;
-
-      const isDub = /\b(dub|dublado|dublada)\b/i.test(
-        `${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`,
-      );
-      if (isDub) dubbedAnimes++;
-
-      const seasons = a.seasons || [];
-      totalSeasons += seasons.length;
-
-      for (const s of seasons) {
-        const episodes = s.episodes || [];
-        totalEpisodes += episodes.length;
-
-        for (const ep of episodes) {
-          const hasPlayableSource = Boolean(
-            ep.videoUrl ||
-              ep.videoUrl2 ||
-              ep.videoUrl3 ||
-              ep.videoUrl4 ||
-              ep.videoUrl5,
-          );
-          const isPub = ep.published === true && hasPlayableSource;
-          if (isPub) {
-            totalPublishedEpisodes++;
-          }
-        }
-      }
-    }
-
-    return {
-      totalAnimes,
-      totalSeasons,
-      totalEpisodes,
-      totalPublishedEpisodes,
-      visibleAnimes,
-      hiddenAnimes,
-      anilistLinkedAnimes,
-      dubbedAnimes,
-    };
-  }, [animes]);
+  const catalogIndex = useMemo(() => buildAdminCatalogIndex(animes), [animes]);
+  const catalogStats = catalogIndex.stats;
 
   const conflictOps = useMemo(
     () => outboxOps.filter((o) => o.status === "conflict"),
     [outboxOps],
   );
-  const pendingCount = outboxOps.filter((o) => o.status !== "conflict").length;
+  const pendingCount = useMemo(
+    () => outboxOps.reduce((acc, o) => (o.status !== "conflict" ? acc + 1 : acc), 0),
+    [outboxOps],
+  );
   const conflictCount = conflictOps.length;
 
   const recentActivities = useMemo(() => {
@@ -428,8 +309,9 @@ function AdminIndex() {
     }> = [];
 
     for (const op of outboxOps.slice(0, 3)) {
-      const targetAnime = animes.find((a) => a.id === op.animeId);
-      const animeName = targetAnime ? displayTitle(targetAnime) : op.animeId;
+      const targetAnime = catalogIndex.byId.get(op.animeId);
+      const animeMeta = catalogIndex.metaById.get(op.animeId);
+      const animeName = animeMeta?.title ?? op.animeId;
       list.push({
         id: `outbox-${op.id}`,
         title: animeName,
@@ -443,128 +325,49 @@ function AdminIndex() {
       });
     }
 
-    const animesWithTimestamps = animes
-      .filter((a) => (a.updatedAt && a.updatedAt > 0) || (a.createdAt && a.createdAt > 0))
-      .sort((a, b) => {
-        const timeA = a.updatedAt || a.createdAt || 0;
-        const timeB = b.updatedAt || b.createdAt || 0;
-        return timeB - timeA;
-      })
-      .slice(0, 6);
-
-    for (const a of animesWithTimestamps) {
-      const isUpdate = a.updatedAt && a.createdAt && a.updatedAt > a.createdAt;
-      const timestamp = a.updatedAt || a.createdAt || Date.now();
+    for (const a of catalogIndex.topRecentAnimes) {
+      const isUpdate = Boolean(a.updatedAt && a.createdAt && a.updatedAt > a.createdAt);
+      const meta = catalogIndex.metaById.get(a.id);
+      const timestamp = meta?.sortTimestamp || Date.now();
       list.push({
         id: `anime-${a.id}-${timestamp}`,
-        title: displayTitle(a),
+        title: meta?.title ?? displayTitle(a),
         type: isUpdate ? "update" : "create",
         timestamp,
         cover: a.cover,
         details: isUpdate
-          ? `Atualizado (${a.seasons?.reduce((n, s) => n + s.episodes.length, 0)} eps)`
-          : `Novo título (${a.seasons?.length || 1} temp.)`,
+          ? `Atualizado (${meta?.episodesCount ?? 0} eps)`
+          : `Novo título (${meta?.seasonsCount ?? 1} temp.)`,
       });
     }
 
     return list.sort((a, b) => b.timestamp - a.timestamp).slice(0, 6);
-  }, [animes, outboxOps]);
+  }, [catalogIndex, outboxOps]);
 
-  const availableFormats = useMemo(() => {
-    const set = new Set<string>();
-    for (const a of animes) {
-      if (a.format?.trim()) set.add(a.format.trim());
-    }
-    return Array.from(set).sort();
-  }, [animes]);
+  const availableFormats = catalogIndex.availableFormats;
+  const availableStatuses = catalogIndex.availableStatuses;
 
-  const availableStatuses = useMemo(() => {
-    const set = new Set<string>();
-    for (const a of animes) {
-      if (a.status?.trim()) set.add(a.status.trim());
-    }
-    return Array.from(set).sort();
-  }, [animes]);
-
-  const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
-
-    return animes
-      .filter((a) => {
-        if (query) {
-          const fullText = `${a.titleRomaji} ${a.titleEnglish} ${a.titleNative} ${a.id}`.toLowerCase();
-          if (!fullText.includes(query)) return false;
-        }
-
-        if (visibilityFilter === "visible" && a.hidden) return false;
-        if (visibilityFilter === "hidden" && !a.hidden) return false;
-
-        if (formatFilter !== "all" && a.format?.toLowerCase() !== formatFilter.toLowerCase()) {
-          return false;
-        }
-
-        if (statusFilter !== "all" && a.status?.toLowerCase() !== statusFilter.toLowerCase()) {
-          return false;
-        }
-
-        if (versionFilter === "dubbed") {
-          const isDub = /\b(dub|dublado|dublada)\b/i.test(
-            `${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`,
-          );
-          if (!isDub) return false;
-        } else if (versionFilter === "subbed") {
-          const isDub = /\b(dub|dublado|dublada)\b/i.test(
-            `${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`,
-          );
-          if (isDub) return false;
-        } else if (versionFilter === "anilist") {
-          if (!a.anilistId) return false;
-        }
-
-        return true;
-      })
-      .sort((a, b) => {
-        switch (sortBy) {
-          case "title-asc":
-            return displayTitle(a).localeCompare(displayTitle(b));
-          case "title-desc":
-            return displayTitle(b).localeCompare(displayTitle(a));
-          case "episodes-desc": {
-            const countA = a.seasons.reduce((n, s) => n + s.episodes.length, 0);
-            const countB = b.seasons.reduce((n, s) => n + s.episodes.length, 0);
-            return countB - countA;
-          }
-          case "episodes-asc": {
-            const countA = a.seasons.reduce((n, s) => n + s.episodes.length, 0);
-            const countB = b.seasons.reduce((n, s) => n + s.episodes.length, 0);
-            return countA - countB;
-          }
-          case "year-desc":
-            return (b.year || 0) - (a.year || 0);
-          case "year-asc":
-            return (a.year || 0) - (b.year || 0);
-          case "updated-asc": {
-            const timeA = a.updatedAt || a.createdAt || 0;
-            const timeB = b.updatedAt || b.createdAt || 0;
-            return timeA - timeB;
-          }
-          case "updated-desc":
-          default: {
-            const timeA = a.updatedAt || a.createdAt || 0;
-            const timeB = b.updatedAt || b.createdAt || 0;
-            return timeB - timeA;
-          }
-        }
-      });
-  }, [
-    animes,
-    q,
-    visibilityFilter,
-    formatFilter,
-    statusFilter,
-    versionFilter,
-    sortBy,
-  ]);
+  const filtered = useMemo(
+    () =>
+      filterAndSortAdminCatalog(animes, catalogIndex.metaById, {
+        q,
+        visibilityFilter,
+        formatFilter,
+        statusFilter,
+        versionFilter,
+        sortBy,
+      }),
+    [
+      animes,
+      catalogIndex.metaById,
+      q,
+      visibilityFilter,
+      formatFilter,
+      statusFilter,
+      versionFilter,
+      sortBy,
+    ],
+  );
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
   const paginatedAnimes = useMemo(() => {
@@ -773,7 +576,8 @@ function AdminIndex() {
               `Importação no banco concluída! ${res.importedAnimes} animes e ${res.importedEpisodes} episódios sincronizados.`,
             );
             setFailedBatches([]);
-            void checkSystem();
+            invalidateAdminDashboardCache();
+            void checkSystem(true);
           } else {
             setFailedBatches(res.failedBatches);
             toast.warning(
@@ -896,7 +700,8 @@ function AdminIndex() {
                   toast.success(
                     "Todos os lotes pendentes foram sincronizados com sucesso!",
                   );
-                  void checkSystem();
+                  invalidateAdminDashboardCache();
+                  void checkSystem(true);
                 } else {
                   setFailedBatches(res.failedBatches);
                   toast.warning(
@@ -1072,9 +877,11 @@ function AdminIndex() {
               {hits.length > 0 && (
                 <div className="studio-scroll max-h-80 divide-y divide-slate-200 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50">
                   {hits.slice(0, 10).map((hit) => {
-                    const alreadyInCatalog = animes.some(
-                      (a) => a.id === hit.id || a.anilistId === hit.anilistId,
-                    );
+                    const alreadyInCatalog =
+                      catalogIndex.byId.has(hit.id) ||
+                      (hit.anilistId
+                        ? catalogIndex.anilistIdSet.has(hit.anilistId)
+                        : false);
                     return (
                       <div
                         key={hit.id}
@@ -1275,7 +1082,7 @@ function AdminIndex() {
             right={
               <button
                 type="button"
-                onClick={checkSystem}
+                onClick={() => void checkSystem(true)}
                 disabled={isCheckingSystem}
                 className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900"
                 title="Verificar conectividade agora"
@@ -1793,13 +1600,10 @@ function AdminIndex() {
         ) : viewMode === "grid" ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {paginatedAnimes.map((a) => {
-              const episodesCount = a.seasons.reduce(
-                (n, s) => n + s.episodes.length,
-                0,
-              );
-              const isDub = /\b(dub|dublado|dublada)\b/i.test(
-                `${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`,
-              );
+              const meta = catalogIndex.metaById.get(a.id);
+              const episodesCount = meta?.episodesCount ?? 0;
+              const isDub = meta?.isDub ?? false;
+              const title = meta?.title ?? displayTitle(a);
 
               return (
                 <article
@@ -1811,13 +1615,13 @@ function AdminIndex() {
                       {a.cover ? (
                         <img
                           src={a.cover}
-                          alt={displayTitle(a)}
+                          alt={title}
                           className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
                           loading="lazy"
                         />
                       ) : (
                         <div className="grid size-full place-items-center bg-blue-50 font-display text-sm font-bold text-blue-700">
-                          {displayTitle(a).slice(0, 2).toUpperCase()}
+                          {title.slice(0, 2).toUpperCase()}
                         </div>
                       )}
 
@@ -1842,9 +1646,9 @@ function AdminIndex() {
 
                         <h3
                           className="line-clamp-2 text-sm font-semibold leading-snug text-slate-900 transition-colors group-hover:text-blue-700"
-                          title={displayTitle(a)}
+                          title={title}
                         >
-                          {displayTitle(a)}
+                          {title}
                         </h3>
 
                         {a.titleRomaji && a.titleEnglish && (
@@ -1960,13 +1764,10 @@ function AdminIndex() {
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
                 {paginatedAnimes.map((a) => {
-                  const episodesCount = a.seasons.reduce(
-                    (n, s) => n + s.episodes.length,
-                    0,
-                  );
-                  const isDub = /\b(dub|dublado|dublada)\b/i.test(
-                    `${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`,
-                  );
+                  const meta = catalogIndex.metaById.get(a.id);
+                  const episodesCount = meta?.episodesCount ?? 0;
+                  const isDub = meta?.isDub ?? false;
+                  const title = meta?.title ?? displayTitle(a);
 
                   return (
                     <tr
@@ -1992,7 +1793,7 @@ function AdminIndex() {
 
                       <td className="min-w-44 px-4 py-2.5">
                         <p className="line-clamp-1 font-semibold text-slate-900">
-                          {displayTitle(a)}
+                          {title}
                         </p>
                         <div className="mt-0.5 flex items-center gap-1.5">
                           {isDub && (
@@ -2233,7 +2034,8 @@ function AdminIndex() {
                     toast.success(
                       "Anime excluído com sucesso do servidor e do dispositivo.",
                     );
-                    void checkSystem();
+                    invalidateAdminDashboardCache();
+                    void checkSystem(true);
                   } catch (err) {
                     toast.error(
                       err instanceof Error

@@ -44,6 +44,7 @@ import {
   flushOutbox,
   hasPendingWrites,
   readOutbox,
+  subscribeOutbox,
   type OutboxOperation,
 } from "@/lib/episode-writer";
 import { usePublicSettings } from "@/lib/settings/use-public-settings";
@@ -94,19 +95,8 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
   }, []);
 
   useEffect(() => {
-    refreshOutbox();
-
-    const handleSyncEvent = () => refreshOutbox();
-    window.addEventListener("online", handleSyncEvent);
-    window.addEventListener("storage", handleSyncEvent);
-
-    const timer = window.setInterval(refreshOutbox, 8000);
-    return () => {
-      window.removeEventListener("online", handleSyncEvent);
-      window.removeEventListener("storage", handleSyncEvent);
-      window.clearInterval(timer);
-    };
-  }, [refreshOutbox]);
+    return subscribeOutbox(setOutboxOps);
+  }, []);
 
   useEffect(() => {
     setMobileDrawerOpen(false);

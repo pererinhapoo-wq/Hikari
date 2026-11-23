@@ -53,11 +53,16 @@ import {
   persistEpisode,
   persistEpisodeDelete,
   readOutbox,
+  subscribeOutbox,
   writeOutbox,
   flushOutbox,
   type OutboxOperation,
   type PersistEpisodeResult,
 } from "@/lib/episode-writer";
+import {
+  normalizeVideoProbeUrl,
+  shouldRunAutoThumbnailProbe,
+} from "@/lib/thumbnail-probe-guard";
 import {
   EPISODE_SAVE_CONCURRENCY,
   runWithConcurrency,
@@ -414,11 +419,7 @@ function AdminEditor() {
     [remoteEpisodeThumbMap],
   );
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setOutboxOps(readOutbox());
-    }
-  }, []);
+  useEffect(() => subscribeOutbox(setOutboxOps), []);
 
   const recoverEpisodesFromServer = useCallback(
     async (targetId?: string, forcedResult?: CatalogEpisodesResult) => {
@@ -691,7 +692,12 @@ function AdminEditor() {
   );
 
   const handleDiscoverEpisodeThumbnails = useCallback(
-    async (sid: string, ep: Episode, forcedUrl?: string) => {
+    async (
+      sid: string,
+      ep: Episode,
+      forcedUrl?: string,
+      options?: { force?: boolean },
+    ) => {
       const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
       const liveEp = liveSeason?.episodes.find((e) => e.id === ep.id) ?? ep;
       const rawCandidates = forcedUrl
@@ -703,7 +709,9 @@ function AdminEditor() {
             liveEp.videoUrl4,
             liveEp.videoUrl5,
           ];
-      const videoUrl = rawCandidates.find((u) => isPersistablePlayableVideoUrl(u))?.trim();
+      const videoUrl = normalizeVideoProbeUrl(
+        rawCandidates.find((u) => isPersistablePlayableVideoUrl(u)),
+      );
 
       if (!videoUrl) {
         if (!forcedUrl) {
@@ -712,13 +720,14 @@ function AdminEditor() {
         return;
       }
 
-      // Evita reprocessar automaticamente a mesma URL já carregada/em carregamento para este episódio
+      // Evita reprocessar automaticamente a mesma URL já consultada (mesmo em warning/erro); retry exige force=true
       const existingState = episodeCandidatesRef.current[ep.id];
       if (
-        forcedUrl &&
-        existingState &&
-        existingState.sourceUrl === videoUrl &&
-        (existingState.loading || existingState.candidates.length > 0)
+        !shouldRunAutoThumbnailProbe(
+          existingState,
+          videoUrl,
+          Boolean(options?.force),
+        )
       ) {
         return;
       }
@@ -887,7 +896,7 @@ function AdminEditor() {
     ) => {
       const isAuto = Boolean(options?.isAuto);
       if (isAuto) {
-        await handleDiscoverEpisodeThumbnails(sid, ep, forcedUrl);
+        await handleDiscoverEpisodeThumbnails(sid, ep, forcedUrl, { force: false });
         return;
       }
 
@@ -977,7 +986,7 @@ function AdminEditor() {
 
           const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
           const liveEp = liveSeason?.episodes.find((e) => e.id === ep.id) ?? ep;
-          void handleDiscoverEpisodeThumbnails(sid, liveEp, url);
+          void handleDiscoverEpisodeThumbnails(sid, liveEp, url, { force: false });
         });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Falha no upload.");

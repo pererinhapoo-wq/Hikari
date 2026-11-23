@@ -38,6 +38,8 @@ export const Route = createFileRoute("/admin/maintenance")({
 interface TableStat {
   tableName: string;
   rowCount: number;
+  status?: "ok" | "error";
+  error?: string;
   liveTuples?: number;
   deadTuples?: number;
   lastVacuum?: string | null;
@@ -56,6 +58,7 @@ interface MaintenanceData {
     sizeBytes: number;
     sizePretty: string;
     tables: TableStat[];
+    error?: string;
   };
   serverTime: string;
 }
@@ -81,7 +84,7 @@ interface CalendarSyncStatusData {
 }
 
 function AdminMaintenancePage() {
-  const { refreshSettings } = usePublicSettings();
+  const { refreshSettings, applyAdminSettings } = usePublicSettings();
   const [data, setData] = useState<MaintenanceData | null>(null);
   const [calendarSync, setCalendarSync] = useState<CalendarSyncStatusData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -170,7 +173,11 @@ function AdminMaintenancePage() {
         setMaintenanceMessage(resJson.maintenance.message);
         setAllowAdminBypass(resJson.maintenance.allowAdminBypass);
       }
-      await refreshSettings();
+      if (resJson.settings) {
+        applyAdminSettings(resJson.settings);
+      } else {
+        await refreshSettings();
+      }
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Erro ao salvar manutenção.",
@@ -275,11 +282,31 @@ function AdminMaintenancePage() {
 
       if (resJson?.counts) {
         setCalendarSync(resJson);
+        setData((prev) => {
+          if (!prev?.database?.tables) return prev;
+          return {
+            ...prev,
+            database: {
+              ...prev.database,
+              tables: prev.database.tables.map((t) => {
+                if (t.tableName === "catalog_airing_schedule") {
+                  return { ...t, rowCount: resJson.counts.scheduleCount, status: "ok", error: undefined };
+                }
+                if (t.tableName === "catalog_anime") {
+                  return { ...t, rowCount: resJson.counts.animeCount, status: "ok", error: undefined };
+                }
+                if (t.tableName === "catalog_season") {
+                  return { ...t, rowCount: resJson.counts.seasonCount, status: "ok", error: undefined };
+                }
+                return t;
+              }),
+            },
+          };
+        });
       }
       toast.success(
         resJson?.message || "Sincronização do calendário concluída com sucesso!",
       );
-      await fetchData();
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -676,25 +703,49 @@ function AdminMaintenancePage() {
         }
         bodyClassName="space-y-4"
       >
+        {data?.database?.error && (
+          <div className="rounded-xl border border-rose-500/35 bg-rose-950/20 px-4 py-3 text-xs text-rose-200">
+            <strong className="font-semibold text-white">Alerta de diagnóstico:</strong>{" "}
+            {data.database.error}
+          </div>
+        )}
+
         <StudioStatStrip
           columns={3}
           items={[
             {
               label: "Status da Conexão",
-              value: "Online",
-              detail: "Conexão Neon PostgreSQL ativa",
-              accent: "emerald",
+              value:
+                data?.database?.status === "offline"
+                  ? "Offline"
+                  : data?.database?.status === "degraded"
+                    ? "Degradado"
+                    : "Online",
+              detail:
+                data?.database?.status === "offline"
+                  ? "Falha ao executar consulta no PostgreSQL"
+                  : data?.database?.status === "degraded"
+                    ? "Alguma tabela reportou erro na verificação"
+                    : "Conexão PostgreSQL ativa",
+              accent:
+                data?.database?.status === "offline"
+                  ? "rose"
+                  : data?.database?.status === "degraded"
+                    ? "amber"
+                    : "emerald",
             },
             {
               label: "Latência de Resposta",
               value: `${currentPing ?? "--"} ms`,
               detail: "Round-trip transacional (SELECT 1)",
               accent:
-                (currentPing ?? 0) < 120
-                  ? "emerald"
-                  : (currentPing ?? 0) < 300
-                    ? "amber"
-                    : "rose",
+                data?.database?.status === "offline"
+                  ? "rose"
+                  : (currentPing ?? 0) < 120
+                    ? "emerald"
+                    : (currentPing ?? 0) < 300
+                      ? "amber"
+                      : "rose",
             },
             {
               label: "Tamanho do Banco",
@@ -719,12 +770,29 @@ function AdminMaintenancePage() {
               </thead>
               <tbody className="divide-y divide-[var(--studio-line-soft)]">
                 {data.database.tables.map((t) => (
-                  <tr key={t.tableName} className="hover:bg-white/[0.02]">
+                  <tr
+                    key={t.tableName}
+                    className={cn(
+                      "hover:bg-white/[0.02]",
+                      t.status === "error" && "bg-rose-950/15",
+                    )}
+                  >
                     <td className="studio-mono px-4 py-2.5 font-medium text-[var(--color-fg)]">
-                      {t.tableName}
+                      <span>{t.tableName}</span>
+                      {t.error && (
+                        <span className="mt-0.5 block text-[10px] font-normal text-rose-300">
+                          {t.error}
+                        </span>
+                      )}
                     </td>
                     <td className="studio-tabular px-4 py-2.5 text-right font-semibold text-white">
-                      {t.rowCount.toLocaleString("pt-BR")}
+                      {t.status === "error" ? (
+                        <span className="studio-mono text-[11px] font-bold text-rose-400">
+                          ERRO
+                        </span>
+                      ) : (
+                        t.rowCount.toLocaleString("pt-BR")
+                      )}
                     </td>
                     <td className="studio-tabular hidden px-4 py-2.5 text-right text-[var(--color-muted)] sm:table-cell">
                       {t.liveTuples !== undefined

@@ -13,7 +13,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,22 @@ import {
 import { cn } from "@/lib/utils";
 import type { AdminImageItem, ImageType } from "@/routes/api/admin/images";
 
+interface AdminImagesApiResponse {
+  ok?: boolean;
+  images?: AdminImageItem[];
+  pagination?: { total?: number; totalPages?: number };
+  stats?: {
+    totalAll: number;
+    totalCovers: number;
+    totalBanners: number;
+    totalThumbnails: number;
+    totalAvatars: number;
+  };
+  error?: string;
+}
+
+const inFlightImagesRequests = new Map<string, Promise<AdminImagesApiResponse>>();
+
 export const Route = createFileRoute("/admin/images")({
   component: AdminImagesPage,
 });
@@ -35,6 +51,7 @@ function AdminImagesPage() {
   const [images, setImages] = useState<AdminImageItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [activeType, setActiveType] = useState<ImageType | "all">("all");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -50,55 +67,93 @@ function AdminImagesPage() {
   const [brokenUrls, setBrokenUrls] = useState<Record<string, boolean>>({});
   const [previewImage, setPreviewImage] = useState<AdminImageItem | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  const fetchImages = async () => {
-    setLoading(true);
-    try {
-      const token = getBearerToken();
-      const params = new URLSearchParams({
-        type: activeType,
-        search,
-        page: page.toString(),
-        limit: "24",
-      });
-
-      const res = await fetch(`/api/admin/images?${params.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => null);
-        throw new Error(errJson?.error || "Falha ao carregar imagens.");
-      }
-
-      const data = await res.json();
-      setImages(data.images || []);
-      setTotalPages(data.pagination?.totalPages || 1);
-      setTotalCount(data.pagination?.total || 0);
-      if (data.stats) {
-        setStats(data.stats);
-      }
-    } catch (err) {
-      console.error("[admin.images] Erro:", err);
-      toast.error(
-        err instanceof Error ? err.message : "Erro ao carregar galeria de imagens.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+  const requestSeqRef = useRef(0);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    void fetchImages();
-  }, [page, activeType]);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const fetchImages = useCallback(
+    async (force = false) => {
+      const seq = ++requestSeqRef.current;
+      setLoading(true);
+      try {
+        const token = getBearerToken();
+        const params = new URLSearchParams({
+          type: activeType,
+          search: debouncedSearch,
+          page: page.toString(),
+          limit: "24",
+        });
+        const queryString = params.toString();
+
+        let promise = !force ? inFlightImagesRequests.get(queryString) : undefined;
+        if (!promise) {
+          promise = (async () => {
+            const res = await fetch(`/api/admin/images?${queryString}`, {
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
+
+            if (!res.ok) {
+              const errJson = (await res.json().catch(() => null)) as {
+                error?: string;
+              } | null;
+              throw new Error(errJson?.error || "Falha ao carregar imagens.");
+            }
+
+            return (await res.json()) as AdminImagesApiResponse;
+          })().finally(() => {
+            if (inFlightImagesRequests.get(queryString) === promise) {
+              inFlightImagesRequests.delete(queryString);
+            }
+          });
+          inFlightImagesRequests.set(queryString, promise);
+        }
+
+        const data = await promise;
+        if (!mountedRef.current || requestSeqRef.current !== seq) return;
+
+        setImages(data.images || []);
+        setTotalPages(data.pagination?.totalPages || 1);
+        setTotalCount(data.pagination?.total || 0);
+        if (data.stats) {
+          setStats(data.stats);
+        }
+      } catch (err) {
+        if (!mountedRef.current || requestSeqRef.current !== seq) return;
+        console.error("[admin.images] Erro:", err);
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Erro ao carregar galeria de imagens.",
+        );
+      } finally {
+        if (mountedRef.current && requestSeqRef.current === seq) {
+          setLoading(false);
+        }
+      }
+    },
+    [activeType, debouncedSearch, page],
+  );
 
   useEffect(() => {
+    const normalized = search.trim();
+    if (normalized === debouncedSearch) return;
+
     const timer = setTimeout(() => {
+      setDebouncedSearch(normalized);
       setPage(1);
-      void fetchImages();
     }, 350);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, debouncedSearch]);
+
+  useEffect(() => {
+    void fetchImages(false);
+  }, [fetchImages]);
 
   const handleCopyUrl = async (img: AdminImageItem) => {
     try {
@@ -124,7 +179,7 @@ function AdminImagesPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void fetchImages()}
+            onClick={() => void fetchImages(true)}
             disabled={loading}
             className="h-9 border-[var(--studio-line)] bg-[var(--studio-panel)] text-xs hover:bg-white/[0.06]"
           >
