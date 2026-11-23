@@ -805,8 +805,6 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
     const altTitles = resolveAnimeAltTitles(anime, animeTitle);
     const baseTime = anime.updatedAt || anime.createdAt || 0;
     const createTime = anime.createdAt || baseTime;
-    const recentBadges = normalizeAnimeRecentBadges(anime.recentBadges);
-    const primaryBadge = resolvePrimaryBadgeFromRecentBadges(recentBadges);
 
     // Coleta todos os episódios publicados e válidos deste anime (deduplicados por slot)
     const publishedList: {
@@ -865,6 +863,8 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
       const epWithPublishedAt = item.ep as Episode & {
         publishedAt?: string | number | null;
       };
+      const epBadges = normalizeAnimeRecentBadges(item.ep.recentBadges);
+      const epPrimaryBadge = resolvePrimaryBadgeFromRecentBadges(epBadges);
       return {
         animeId: anime.id,
         animeTitle,
@@ -885,8 +885,8 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
         publishedTimestamp: parseEpisodePublicationTimestamp(
           epWithPublishedAt.publishedAt,
         ),
-        badge: primaryBadge,
-        recentBadges,
+        badge: epPrimaryBadge,
+        recentBadges: epBadges,
         ...(item.ep.audio ? { audio: item.ep.audio } : {}),
         ...(item.ep.audioVersion ? { audioVersion: item.ep.audioVersion } : {}),
       };
@@ -971,8 +971,6 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
     const animeTitle = resolveAnimeCanonicalTitle(anime);
     const altTitles = resolveAnimeAltTitles(anime, animeTitle);
     const baseTime = anime.updatedAt || anime.createdAt || 0;
-    const recentBadges = normalizeAnimeRecentBadges(anime.recentBadges);
-    const primaryBadge = resolvePrimaryBadgeFromRecentBadges(recentBadges);
 
     for (const season of anime.seasons || []) {
       for (const ep of season.episodes || []) {
@@ -996,6 +994,8 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
         const epWithPublishedAt = ep as Episode & {
           publishedAt?: string | number | null;
         };
+        const epBadges = normalizeAnimeRecentBadges(ep.recentBadges);
+        const epPrimaryBadge = resolvePrimaryBadgeFromRecentBadges(epBadges);
 
         list.push({
           animeId: anime.id,
@@ -1017,8 +1017,8 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
           publishedTimestamp: parseEpisodePublicationTimestamp(
             epWithPublishedAt.publishedAt,
           ),
-          badge: primaryBadge,
-          recentBadges,
+          badge: epPrimaryBadge,
+          recentBadges: epBadges,
           ...(ep.audio ? { audio: ep.audio } : {}),
           ...(ep.audioVersion ? { audioVersion: ep.audioVersion } : {}),
         });
@@ -1230,19 +1230,31 @@ export function resolvePublicEpisodes(
           ? rawCreatedMs
           : Date.now();
 
-    const hasUnsyncedLocalBadgeEdit = Boolean(
-      localAnime &&
-        localAnime.recentBadges &&
-        (localAnime.updatedAt ?? 0) > (localAnime.syncedAt ?? 0),
-    );
-
-    const resolvedBadges = normalizeAnimeRecentBadges(
-      hasUnsyncedLocalBadgeEdit
-        ? localAnime?.recentBadges
-        : row.animeRecentBadges !== undefined
-          ? row.animeRecentBadges ?? undefined
-          : localAnime?.recentBadges,
-    );
+    const serverEpBadges = normalizeAnimeRecentBadges({
+      lancamento: row.badgeLancamento,
+      novo: row.badgeNovo,
+      final: row.badgeFinal,
+    });
+    const pendingBadgePatch = pendingUpsert?.payload?.recentBadges;
+    const resolvedBadges =
+      pendingBadgePatch === null
+        ? normalizeAnimeRecentBadges(undefined)
+        : pendingBadgePatch && typeof pendingBadgePatch === "object"
+          ? normalizeAnimeRecentBadges({
+              lancamento:
+                typeof pendingBadgePatch.lancamento === "boolean"
+                  ? pendingBadgePatch.lancamento
+                  : serverEpBadges.lancamento,
+              novo:
+                typeof pendingBadgePatch.novo === "boolean"
+                  ? pendingBadgePatch.novo
+                  : serverEpBadges.novo,
+              final:
+                typeof pendingBadgePatch.final === "boolean"
+                  ? pendingBadgePatch.final
+                  : serverEpBadges.final,
+            })
+          : serverEpBadges;
 
     result.push({
       animeId: row.animeId,
@@ -1280,8 +1292,6 @@ export function resolvePublicEpisodes(
     const altTitles = resolveAnimeAltTitles(anime, animeTitle);
     const baseTime = anime.updatedAt || anime.createdAt || 0;
     const applicableTombstones = tombstones.filter((t) => t.animeId === anime.id);
-    const recentBadges = normalizeAnimeRecentBadges(anime.recentBadges);
-    const primaryBadge = resolvePrimaryBadgeFromRecentBadges(recentBadges);
 
     for (const season of anime.seasons || []) {
       for (const ep of season.episodes || []) {
@@ -1346,6 +1356,8 @@ export function resolvePublicEpisodes(
         const epWithPublishedAt = ep as Episode & {
           publishedAt?: string | number | null;
         };
+        const epBadges = normalizeAnimeRecentBadges(ep.recentBadges);
+        const epPrimaryBadge = resolvePrimaryBadgeFromRecentBadges(epBadges);
 
         result.push({
           animeId: anime.id,
@@ -1367,8 +1379,8 @@ export function resolvePublicEpisodes(
           publishedTimestamp: parseEpisodePublicationTimestamp(
             epWithPublishedAt.publishedAt,
           ),
-          badge: primaryBadge,
-          recentBadges,
+          badge: epPrimaryBadge,
+          recentBadges: epBadges,
           ...(ep.audio ? { audio: ep.audio } : {}),
           ...(ep.audioVersion ? { audioVersion: ep.audioVersion } : {}),
         });

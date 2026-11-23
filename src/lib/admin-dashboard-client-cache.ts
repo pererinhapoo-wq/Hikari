@@ -7,11 +7,7 @@ import {
 } from "@/lib/admin-dashboard.functions";
 import { shouldPreferRemoteMedia } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
-import {
-  areAnimeRecentBadgesEqual,
-  normalizeAnimeRecentBadges,
-  type LocalAnime,
-} from "@/lib/types";
+import type { LocalAnime } from "@/lib/types";
 
 export const ADMIN_SYSTEM_STATUS_TTL_MS = 60 * 1000;
 export const ADMIN_CATALOG_META_TTL_MS = 2 * 60 * 1000;
@@ -161,19 +157,7 @@ export function computeAdminCatalogMetaUpdates(
       match.updatedAt,
     );
 
-    const hasUnsyncedLocalEdits = Boolean(
-      local.syncedAt && (local.updatedAt ?? 0) > local.syncedAt,
-    );
-    const normalizedRemoteBadges = match.recentBadges
-      ? normalizeAnimeRecentBadges(match.recentBadges)
-      : undefined;
-    const useServerBadges = Boolean(
-      normalizedRemoteBadges &&
-        (!hasUnsyncedLocalEdits || !local.recentBadges) &&
-        !areAnimeRecentBadgesEqual(local.recentBadges, normalizedRemoteBadges),
-    );
-
-    if (useServerCover || useServerBanner || useServerBadges) {
+    if (useServerCover || useServerBanner) {
       const nextUpdatedAt =
         Math.max(local.updatedAt ?? 0, match.updatedAt || 0) || local.updatedAt;
       const nextSyncedAt =
@@ -183,9 +167,6 @@ export function computeAdminCatalogMetaUpdates(
         ...local,
         cover: useServerCover && match.cover ? match.cover : local.cover,
         banner: useServerBanner && match.banner ? match.banner : local.banner,
-        recentBadges: useServerBadges
-          ? normalizedRemoteBadges
-          : local.recentBadges,
         updatedAt: nextUpdatedAt,
         syncedAt: nextSyncedAt,
       });

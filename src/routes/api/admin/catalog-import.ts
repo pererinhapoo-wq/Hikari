@@ -11,6 +11,7 @@ import { syncCatalogEpisodeSlotsToSources } from "@/lib/sources";
 import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
 import { parseAnitube22PlayerUrl } from "@/lib/anitube22";
 import { SOURCE_SYNC_CONCURRENCY, runWithConcurrency } from "@/lib/concurrency";
+import { resolveEpisodeBadgesPatch } from "@/lib/episode-writer";
 
 function sanitizeVideoUrl(url?: string | null): string | null {
   return sanitizePlayableVideoUrl(url);
@@ -29,6 +30,14 @@ const episodeImportSchema = z.object({
   videoUrl4: z.string().max(2048).optional().nullable(),
   videoUrl5: z.string().max(2048).optional().nullable(),
   hikariPlayerEpisodeId: z.string().max(255).optional().nullable(),
+  recentBadges: z
+    .object({
+      lancamento: z.boolean().optional(),
+      novo: z.boolean().optional(),
+      final: z.boolean().optional(),
+    })
+    .optional()
+    .nullable(),
   published: z.boolean().optional(),
 });
 
@@ -252,6 +261,9 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
 
                   const published = ep.published === true && hasPlayableSource;
                   const epTitle = ep.title?.trim() || `Episódio ${ep.number}`;
+                  const badgesPatch = resolveEpisodeBadgesPatch({
+                    recentBadges: ep.recentBadges,
+                  });
 
                   await sql.query(
                     `INSERT INTO "catalog_episode" (
@@ -259,6 +271,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                        "title", "thumbnail", "duration", "synopsis",
                        "videoUrl", "videoUrl2", "videoUrl3", "videoUrl4", "videoUrl5",
                        "hikari_player_episode_id",
+                       "badge_lancamento", "badge_novo", "badge_final",
                        "published", "publishedAt", "createdAt", "updatedAt"
                      )
                      VALUES (
@@ -266,6 +279,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                        $5, $6, $7, $8,
                        $9, $10, $11, $12, $13,
                        $15,
+                       $17, $18, $19,
                        $14,
                        CASE WHEN $14 = true THEN CURRENT_TIMESTAMP ELSE NULL END,
                        CURRENT_TIMESTAMP,
@@ -287,6 +301,18 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                        "hikari_player_episode_id" = CASE
                          WHEN $16 = true THEN EXCLUDED."hikari_player_episode_id"
                          ELSE "catalog_episode"."hikari_player_episode_id"
+                       END,
+                       "badge_lancamento" = CASE
+                         WHEN $20 = true THEN EXCLUDED."badge_lancamento"
+                         ELSE "catalog_episode"."badge_lancamento"
+                       END,
+                       "badge_novo" = CASE
+                         WHEN $21 = true THEN EXCLUDED."badge_novo"
+                         ELSE "catalog_episode"."badge_novo"
+                       END,
+                       "badge_final" = CASE
+                         WHEN $22 = true THEN EXCLUDED."badge_final"
+                         ELSE "catalog_episode"."badge_final"
                        END,
                        "published" = EXCLUDED."published",
                        "publishedAt" = CASE
@@ -312,6 +338,12 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                       published,
                       hasHikariPlayerField ? hikariPlayerValidation.value : null,
                       hasHikariPlayerField,
+                      badgesPatch.badgeLancamento,
+                      badgesPatch.badgeNovo,
+                      badgesPatch.badgeFinal,
+                      badgesPatch.hasLancamentoField,
+                      badgesPatch.hasNovoField,
+                      badgesPatch.hasFinalField,
                     ],
                   );
                   const candidateSlots = [

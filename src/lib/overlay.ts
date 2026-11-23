@@ -193,6 +193,13 @@ export function mergeSeasonsWithRemote(
                     : rep.openingEndSeconds,
               }
             : {}),
+          ...(lep.recentBadges !== undefined || rep.recentBadges !== undefined
+            ? {
+                recentBadges: normalizeAnimeRecentBadges(
+                  lep.recentBadges !== undefined ? lep.recentBadges : rep.recentBadges,
+                ),
+              }
+            : {}),
         });
       } else if (lep) {
         mergedEpisodes.push(lep);
@@ -227,7 +234,7 @@ export function mergeSeasonsWithRemote(
   return merged;
 }
 
-function sanitizeRemoteEpisodeForAdmin(rep: Episode): Episode {
+export function sanitizeRemoteEpisodeForAdmin(rep: Episode): Episode {
   const v1 = isHikariPlayableUrl(rep.videoUrl) ? rep.videoUrl?.trim() : undefined;
   const v2 = isHikariPlayableUrl(rep.videoUrl2) ? rep.videoUrl2?.trim() : undefined;
   const v3 = isHikariPlayableUrl(rep.videoUrl3) ? rep.videoUrl3?.trim() : undefined;
@@ -255,6 +262,9 @@ function sanitizeRemoteEpisodeForAdmin(rep: Episode): Episode {
       : {}),
     ...(rep.openingEndSeconds !== undefined
       ? { openingEndSeconds: rep.openingEndSeconds }
+      : {}),
+    ...(rep.recentBadges !== undefined
+      ? { recentBadges: normalizeAnimeRecentBadges(rep.recentBadges) }
       : {}),
     published: Boolean(rep.published === true && hasPlayable),
   };
@@ -355,6 +365,13 @@ export function mergeSeasonsWithRemoteForAdmin(
                   lep.openingEndSeconds !== undefined
                     ? lep.openingEndSeconds
                     : rep.openingEndSeconds,
+              }
+            : {}),
+          ...(lep.recentBadges !== undefined || rep.recentBadges !== undefined
+            ? {
+                recentBadges: normalizeAnimeRecentBadges(
+                  lep.recentBadges !== undefined ? lep.recentBadges : rep.recentBadges,
+                ),
               }
             : {}),
         });
@@ -689,21 +706,6 @@ export function resolveAdminAnimeWithRemote(
     year: storedMatch.year ?? remote.year,
     trailerId: storedMatch.trailerId ?? remote.trailerId,
     seasons: mergedSeasons.length > 0 ? mergedSeasons : storedMatch.seasons,
-    recentBadges: (() => {
-      const hasUnsyncedLocal =
-        (storedMatch.syncedAt ?? 0) > 0 &&
-        (storedMatch.updatedAt ?? 0) > (storedMatch.syncedAt ?? 0);
-      if (hasUnsyncedLocal && storedMatch.recentBadges) {
-        return normalizeAnimeRecentBadges(storedMatch.recentBadges);
-      }
-      if (remote.recentBadges) {
-        return normalizeAnimeRecentBadges(remote.recentBadges);
-      }
-      if (storedMatch.recentBadges) {
-        return normalizeAnimeRecentBadges(storedMatch.recentBadges);
-      }
-      return undefined;
-    })(),
     updatedAt:
       remoteIsNewer && remote.catalogUpdatedAt
         ? remote.catalogUpdatedAt

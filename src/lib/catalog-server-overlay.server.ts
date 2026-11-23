@@ -10,9 +10,15 @@ import {
   normalizeCatalogSearchQuery,
   scheduleRedisBackgroundWrite,
 } from "@/lib/redis";
-import { isCustomImageUrl, type Anime, type HomeCatalog, type Season, type SlimAnime } from "@/lib/types";
+import {
+  isCustomImageUrl,
+  normalizeAnimeRecentBadges,
+  type Anime,
+  type HomeCatalog,
+  type Season,
+  type SlimAnime,
+} from "@/lib/types";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
-import { loadAnimeRecentBadgesFromDb } from "@/lib/catalog-badges";
 import {
   countDistinctTitlesWithEpisode,
   selectHomeSectionItems,
@@ -471,11 +477,17 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
       videoUrl5: string | null;
       published: boolean;
       publishedAt: string | null;
+      badgeLancamento: boolean;
+      badgeNovo: boolean;
+      badgeFinal: boolean;
     }>(
       `SELECT
          "id", "seasonNumber", "number", "title", "thumbnail",
          "duration", "synopsis", "videoUrl", "videoUrl2",
-         "videoUrl3", "videoUrl4", "videoUrl5", "published", "publishedAt"
+         "videoUrl3", "videoUrl4", "videoUrl5", "published", "publishedAt",
+         COALESCE("badge_lancamento", false) AS "badgeLancamento",
+         COALESCE("badge_novo", false) AS "badgeNovo",
+         COALESCE("badge_final", false) AS "badgeFinal"
        FROM "catalog_episode"
        WHERE "animeId" = $1 AND "published" = true
        ORDER BY "seasonNumber" ASC, "number" ASC;`,
@@ -516,6 +528,11 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
         videoUrl4: ep.videoUrl4 || undefined,
         videoUrl5: ep.videoUrl5 || undefined,
         published: ep.published,
+        recentBadges: normalizeAnimeRecentBadges({
+          lancamento: ep.badgeLancamento,
+          novo: ep.badgeNovo,
+          final: ep.badgeFinal,
+        }),
         aired: ep.publishedAt
           ? new Date(ep.publishedAt).toLocaleDateString("pt-BR")
           : undefined,
@@ -524,13 +541,6 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
 
     const seasons = Array.from(seasonMap.values()).sort((a, b) => a.number - b.number);
     const updatedAtMs = toTimestampMs(row.updatedAt);
-    const recentBadges = await loadAnimeRecentBadgesFromDb({
-      id: row.id,
-      anilistId: row.anilistId,
-      malId: row.malId,
-      kitsuId: row.kitsuId,
-      allowExternalFallback: false,
-    });
 
     return {
       id: row.id,
@@ -563,7 +573,6 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
       catalogUpdatedAt: updatedAtMs || undefined,
       serverCatalogId: row.id,
       hasEpisode: episodeRows.length > 0,
-      ...(recentBadges ? { recentBadges } : {}),
     };
   } catch (err) {
     console.warn("[catalog-server-overlay] Falha ao montar anime local do banco:", err);
@@ -581,14 +590,6 @@ export async function applyDbCatalogOverlayToDetail(
 
   const index = await loadCatalogIndex();
   const match = index ? findMatchingRow(index, detail, requestedId) : undefined;
-  const recentBadges = await loadAnimeRecentBadgesFromDb({
-    id: match?.id ?? detail.id,
-    serverCatalogId: match?.id ?? detail.serverCatalogId ?? requestedId,
-    anilistId: match?.anilistId ?? detail.anilistId ?? null,
-    malId: match?.malId ?? detail.malId ?? null,
-    kitsuId: match?.kitsuId ?? detail.kitsuId ?? null,
-    allowExternalFallback: !match,
-  });
 
   const mappedRecommendations = Array.isArray(detail.recommendations)
     ? sortByHasEpisodeFirst(
@@ -606,7 +607,6 @@ export async function applyDbCatalogOverlayToDetail(
       ...detail,
       hasEpisode: false,
       recommendations: mappedRecommendations,
-      ...(recentBadges ? { recentBadges } : {}),
     };
   }
 
@@ -620,7 +620,6 @@ export async function applyDbCatalogOverlayToDetail(
     ...detail,
     ...mergedSlim,
     recommendations: mappedRecommendations,
-    ...(recentBadges ? { recentBadges } : {}),
     resolvedMobileBanner: bannerWasCustomized
       ? {
           url: cleanDbBanner,

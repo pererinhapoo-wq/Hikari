@@ -30,8 +30,6 @@ import {
   isPersistentStorageUrl,
 } from "@/lib/storage/image-storage-client";
 import {
-  normalizeAnimeRecentBadges,
-  type AnimeRecentBadges,
   type LocalAnime,
   type ResolvedMobileBannerInfo,
 } from "@/lib/types";
@@ -68,7 +66,6 @@ function useDebouncedPreviewImageUrl(raw: string | undefined, delayMs = 250): st
 interface EditorMetadataProps {
   form: LocalAnime;
   onChange: <K extends keyof LocalAnime>(key: K, value: LocalAnime[K]) => void;
-  onToggleRecentBadge?: (key: keyof AnimeRecentBadges, enabled: boolean) => void;
   genreText: string;
   onGenreTextChange: (text: string) => void;
   resolvedMobileBanner?: ResolvedMobileBannerInfo | null;
@@ -78,13 +75,11 @@ interface EditorMetadataProps {
 export function EditorMetadata({
   form,
   onChange,
-  onToggleRecentBadge,
   genreText,
   onGenreTextChange,
   resolvedMobileBanner,
   hasCustomDesktopBanner = false,
 }: EditorMetadataProps) {
-  const recentBadges = normalizeAnimeRecentBadges(form.recentBadges);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [coverLoadError, setCoverLoadError] = useState(false);
@@ -468,101 +463,6 @@ export function EditorMetadata({
                   </p>
                 </div>
               </label>
-            </div>
-
-            {/* Selos em Episódios Recentes */}
-            <div className="pt-1 sm:col-span-2 lg:col-span-3">
-              <div className="space-y-3 rounded-xl border border-white/[0.08] bg-[var(--studio-panel-alt)] p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h3 className="text-xs font-semibold text-[var(--color-fg)]">
-                      Selos em Episódios Recentes
-                    </h3>
-                    <p className="mt-0.5 text-[11px] text-[var(--color-muted)]">
-                      Controle manual independente para os destaques na seção Episódios Recentes.
-                      O selo <span className="font-semibold text-emerald-400">DUB</span> continua
-                      automático conforme cada episódio dublado.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid gap-2.5 sm:grid-cols-3">
-                  {(
-                    [
-                      {
-                        key: "lancamento" as const,
-                        label: "LANÇAMENTO",
-                        description: "Selo violeta médio sobre a miniatura",
-                        badgeClass:
-                          "bg-violet-600/95 border-violet-300/60 text-white text-[9.5px] h-5 px-2",
-                      },
-                      {
-                        key: "novo" as const,
-                        label: "NOVO",
-                        description: "Selo âmbar discreto sobre a miniatura",
-                        badgeClass:
-                          "bg-amber-400/95 border-amber-200/75 text-zinc-950 text-[8.5px] h-4 px-1.5",
-                      },
-                      {
-                        key: "final" as const,
-                        label: "FINAL",
-                        description: "Selo vermelho na miniatura e no título",
-                        badgeClass:
-                          "bg-rose-600/95 border-rose-300/65 text-white text-[10.5px] h-6 px-2.5",
-                      },
-                    ] as const
-                  ).map((item) => {
-                    const checked = recentBadges[item.key];
-                    const handleToggle = (enabled: boolean) => {
-                      if (onToggleRecentBadge) {
-                        onToggleRecentBadge(item.key, enabled);
-                      } else {
-                        onChange("recentBadges", {
-                          ...recentBadges,
-                          [item.key]: enabled,
-                        });
-                      }
-                    };
-                    return (
-                      <label
-                        key={item.key}
-                        className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 transition-colors ${
-                          checked
-                            ? "border-violet-500/45 bg-violet-500/10"
-                            : "border-white/[0.08] bg-black/25 hover:border-white/15"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => handleToggle(e.target.checked)}
-                          aria-label={`Mostrar selo ${item.label}`}
-                          className="mt-0.5 size-4 rounded border-white/20 bg-black accent-violet-600"
-                        />
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <span
-                              className={`inline-flex items-center justify-center rounded border font-extrabold tracking-wider leading-none uppercase ${item.badgeClass}`}
-                            >
-                              {item.label}
-                            </span>
-                            <span
-                              className={`studio-mono text-[10px] font-semibold ${
-                                checked ? "text-emerald-400" : "text-[var(--color-subtle)]"
-                              }`}
-                            >
-                              {checked ? "Ativo" : "Oculto"}
-                            </span>
-                          </div>
-                          <p className="text-[11px] leading-snug text-[var(--color-muted)]">
-                            {item.description}
-                          </p>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           </div>
         </section>

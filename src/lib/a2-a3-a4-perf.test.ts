@@ -401,11 +401,9 @@ describe(`Bloco 2 — Otimizações A2, A3 e A4 (${dbSource})`, () => {
       ids: [animeIds[0]],
       anilistIds: [anilistId1],
       limit: 10,
-      includeBadges: false,
     });
     assert.equal(scopedRows.length, 1);
     assert.equal(scopedRows[0]?.id, animeIds[0]);
-    assert.equal(scopedRows[0]?.recentBadges, null);
     assert.equal(queries.length, 1);
     assert.ok(queries[0]!.text.includes("LIMIT $"));
 
@@ -491,7 +489,6 @@ describe(`Bloco 2 — Otimizações A2, A3 e A4 (${dbSource})`, () => {
             titleEnglish: null,
             titleNative: null,
             hidden: false,
-            recentBadges: null,
             updatedAt: 5000,
           },
           {
@@ -506,7 +503,6 @@ describe(`Bloco 2 — Otimizações A2, A3 e A4 (${dbSource})`, () => {
             titleEnglish: null,
             titleNative: null,
             hidden: false,
-            recentBadges: null,
             updatedAt: 6000,
           },
         ];

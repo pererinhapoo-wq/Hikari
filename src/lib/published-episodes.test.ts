@@ -133,11 +133,39 @@ describe("Lógica de exibição da seção 'Episódios Recentes'", () => {
 
     const animeComLancamento = createMockAnime({
       ...animeSemSelo,
-      recentBadges: { lancamento: true, novo: false, final: false },
+      recentBadges: { lancamento: true, novo: true, final: true },
+      seasons: [
+        {
+          id: "s-1",
+          number: 1,
+          title: "Temporada 1",
+          episodes: [
+            {
+              id: "e1",
+              number: 1,
+              title: "Episódio 1",
+              videoUrl: "https://example.com/e1.mp4",
+              recentBadges: { lancamento: true, novo: false, final: false },
+              published: true,
+            },
+            {
+              id: "e2",
+              number: 2,
+              title: "Episódio 2",
+              videoUrl: "https://example.com/e2.mp4",
+              published: true,
+            },
+          ],
+        },
+      ],
     });
     const recentComLancamento = getRecentEpisodesSection([animeComLancamento]);
-    assert.equal(recentComLancamento[0]?.badge, "LANÇAMENTO");
-    assert.equal(recentComLancamento[0]?.recentBadges?.lancamento, true);
+    const ep1 = recentComLancamento.find((e) => e.episodeNumber === 1);
+    const ep2 = recentComLancamento.find((e) => e.episodeNumber === 2);
+    assert.equal(ep1?.badge, "LANÇAMENTO");
+    assert.equal(ep1?.recentBadges?.lancamento, true);
+    assert.equal(ep2?.badge, null, "Selo de anime ou de outro episódio não deve vazar para Ep 2");
+    assert.deepEqual(ep2?.recentBadges, DEFAULT_ANIME_RECENT_BADGES);
   });
 
   it("Regra 2 e 4: Em cadastro em massa de 300 episódios, exibe apenas Ep 1 e Ep 300 sem inferir selos automaticamente", () => {
@@ -227,10 +255,28 @@ describe("Lógica de exibição da seção 'Episódios Recentes'", () => {
 
     const finishedWithManualFinal = createMockAnime({
       ...finishedAnimeWithoutManualFinal,
-      recentBadges: { lancamento: false, novo: false, final: true },
+      seasons: [
+        {
+          id: "s-1",
+          number: 1,
+          title: "Temporada 1",
+          episodes: [
+            { id: "e1", number: 1, title: "Episódio 1", videoUrl: "https://example.com/e1.mp4", published: true },
+            {
+              id: "e12",
+              number: 12,
+              title: "Episódio 12",
+              videoUrl: "https://example.com/e12.mp4",
+              recentBadges: { lancamento: false, novo: false, final: true },
+              published: true,
+            },
+          ],
+        },
+      ],
     });
     const finishedRecent = getRecentEpisodesSection([finishedWithManualFinal]);
     assert.equal(finishedRecent.find((e) => e.episodeNumber === 12)?.badge, "FINAL");
+    assert.equal(finishedRecent.find((e) => e.episodeNumber === 1)?.badge, null);
   });
 
   it("Regra 5: Todos os episódios continuam acessíveis no catálogo completo e na página do anime", () => {
@@ -1922,7 +1968,7 @@ describe("Selos em Episódios Recentes, controles do Admin e regra de 50+ episó
     );
   });
 
-  it("3, 4, 5 & 6. Selos manuais LANÇAMENTO, NOVO e FINAL funcionam independentemente e não são auto-inferidos", () => {
+  it("3, 4, 5 & 6. Selos manuais LANÇAMENTO, NOVO e FINAL funcionam independentemente por episódio e não são auto-inferidos", () => {
     const baseAnime = createMockAnime({
       id: "manual-badges-1",
       status: "FINISHED",
@@ -1935,31 +1981,71 @@ describe("Selos em Episódios Recentes, controles do Admin e regra de 50+ episó
     assert.deepEqual(noneActive[0]?.recentBadges, DEFAULT_ANIME_RECENT_BADGES);
     assert.equal(resolvePrimaryBadgeFromRecentBadges(noneActive[0]?.recentBadges), null);
 
-    // Apenas LANÇAMENTO ativo
+    // Apenas LANÇAMENTO ativo no Ep 1 (Ep 2 e 28 permanecem sem selo)
     const onlyLancamento = resolvePublicRecentEpisodes(null, [
-      { ...baseAnime, recentBadges: { lancamento: true, novo: false, final: false } },
+      {
+        ...baseAnime,
+        seasons: [
+          {
+            ...baseAnime.seasons[0]!,
+            episodes: baseAnime.seasons[0]!.episodes.map((ep) =>
+              ep.number === 1
+                ? { ...ep, recentBadges: { lancamento: true, novo: false, final: false } }
+                : ep,
+            ),
+          },
+        ],
+      },
     ]);
-    assert.deepEqual(onlyLancamento[0]?.recentBadges, {
+    assert.deepEqual(onlyLancamento.find((e) => e.episodeNumber === 1)?.recentBadges, {
       lancamento: true,
       novo: false,
       final: false,
     });
+    assert.deepEqual(
+      onlyLancamento.find((e) => e.episodeNumber === 2)?.recentBadges,
+      DEFAULT_ANIME_RECENT_BADGES,
+    );
 
-    // Apenas NOVO ativo
+    // Apenas NOVO ativo no Ep 2
     const onlyNovo = resolvePublicRecentEpisodes(null, [
-      { ...baseAnime, recentBadges: { lancamento: false, novo: true, final: false } },
+      {
+        ...baseAnime,
+        seasons: [
+          {
+            ...baseAnime.seasons[0]!,
+            episodes: baseAnime.seasons[0]!.episodes.map((ep) =>
+              ep.number === 2
+                ? { ...ep, recentBadges: { lancamento: false, novo: true, final: false } }
+                : ep,
+            ),
+          },
+        ],
+      },
     ]);
-    assert.deepEqual(onlyNovo[0]?.recentBadges, {
+    assert.deepEqual(onlyNovo.find((e) => e.episodeNumber === 2)?.recentBadges, {
       lancamento: false,
       novo: true,
       final: false,
     });
 
-    // Apenas FINAL ativo e múltiplos ativos simultaneamente
+    // Múltiplos selos ativos simultaneamente no mesmo episódio
     const multipleActive = resolvePublicRecentEpisodes(null, [
-      { ...baseAnime, recentBadges: { lancamento: true, novo: true, final: true } },
+      {
+        ...baseAnime,
+        seasons: [
+          {
+            ...baseAnime.seasons[0]!,
+            episodes: baseAnime.seasons[0]!.episodes.map((ep) =>
+              ep.number === 28
+                ? { ...ep, recentBadges: { lancamento: true, novo: true, final: true } }
+                : ep,
+            ),
+          },
+        ],
+      },
     ]);
-    assert.deepEqual(multipleActive[0]?.recentBadges, {
+    assert.deepEqual(multipleActive.find((e) => e.episodeNumber === 28)?.recentBadges, {
       lancamento: true,
       novo: true,
       final: true,
@@ -1967,13 +2053,26 @@ describe("Selos em Episódios Recentes, controles do Admin e regra de 50+ episó
 
     // Desativar FINAL remove completamente o flag que alimenta imagem e título
     const finalTurnedOff = resolvePublicRecentEpisodes(null, [
-      { ...baseAnime, recentBadges: { lancamento: true, novo: false, final: false } },
+      {
+        ...baseAnime,
+        seasons: [
+          {
+            ...baseAnime.seasons[0]!,
+            episodes: baseAnime.seasons[0]!.episodes.map((ep) =>
+              ep.number === 28
+                ? { ...ep, recentBadges: { lancamento: true, novo: false, final: false } }
+                : ep,
+            ),
+          },
+        ],
+      },
     ]);
-    assert.equal(finalTurnedOff[0]?.recentBadges?.final, false);
-    assert.equal(finalTurnedOff[0]?.recentBadges?.lancamento, true);
+    const ep28Off = finalTurnedOff.find((e) => e.episodeNumber === 28);
+    assert.equal(ep28Off?.recentBadges?.final, false);
+    assert.equal(ep28Off?.recentBadges?.lancamento, true);
   });
 
-  it("7. Persistência após recarregamento preserva os selos gravados no servidor", () => {
+  it("7. Persistência após recarregamento preserva os selos individuais gravados no servidor", () => {
     const persisted: AnimeRecentBadges = {
       lancamento: false,
       novo: true,
@@ -1984,46 +2083,90 @@ describe("Selos em Episódios Recentes, controles do Admin e regra de 50+ episó
       status: "success",
       episodes: [
         makeServerEpisodeRow("anime-db-1", 1, {
-          animeRecentBadges: persisted,
+          badgeLancamento: persisted.lancamento,
+          badgeNovo: persisted.novo,
+          badgeFinal: persisted.final,
+        }),
+        makeServerEpisodeRow("anime-db-1", 2, {
+          badgeLancamento: false,
+          badgeNovo: false,
+          badgeFinal: false,
         }),
       ],
-      total: 1,
+      total: 2,
     };
 
     // Simula recarregamento com loja local vazia
     const publicRecent = resolvePublicRecentEpisodes(serverResult, []);
-    assert.equal(publicRecent.length, 1);
-    assert.deepEqual(publicRecent[0]?.recentBadges, persisted);
+    assert.equal(publicRecent.length, 2);
+    assert.deepEqual(publicRecent.find((e) => e.episodeNumber === 1)?.recentBadges, persisted);
+    assert.deepEqual(
+      publicRecent.find((e) => e.episodeNumber === 2)?.recentBadges,
+      DEFAULT_ANIME_RECENT_BADGES,
+    );
 
-    // Reabertura no editor do Admin preserva o estado persistido no catálogo
-    const remoteAnime: Anime = {
-      id: "anime-db-1",
-      titles: { romaji: "Anime Teste", english: "Anime Test", native: "" },
-      cover: "https://cdn.example.com/cover.jpg",
-      banner: "https://cdn.example.com/banner.jpg",
-      synopsis: "",
-      score: 80,
-      genres: [],
-      format: "TV",
-      status: "FINISHED",
-      episodesCount: 12,
-      season: "FALL",
-      year: 2025,
-      trailerId: null,
-      source: "anilist",
-      studios: [],
-      streamingEpisodes: [],
-      seasons: [],
-      recommendations: [],
-      characters: [],
-      staff: [],
-      recentBadges: persisted,
-      serverCatalogId: "anime-db-1",
-      catalogUpdatedAt: 1700000500000,
-    };
+    // Reabertura no editor do Admin preserva o estado individual de cada episódio
+    const mergedAdmin = mergeAdminEpisodesWithServer({
+      animeId: "anime-db-1",
+      localSeasons: [],
+      serverResult: {
+        animeId: "anime-db-1",
+        seasons: [{ animeId: "anime-db-1", number: 1, title: "Temporada 1", position: 0 }],
+        episodes: [
+          {
+            id: "anime-db-1-ep-1",
+            animeId: "anime-db-1",
+            seasonNumber: 1,
+            number: 1,
+            title: "Episódio 1",
+            thumbnail: null,
+            duration: "24:00",
+            synopsis: null,
+            videoUrl: "https://cdn.example.com/anime-db-1-1.mp4",
+            videoUrl2: null,
+            videoUrl3: null,
+            videoUrl4: null,
+            videoUrl5: null,
+            badgeLancamento: persisted.lancamento,
+            badgeNovo: persisted.novo,
+            badgeFinal: persisted.final,
+            published: true,
+            publishedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            id: "anime-db-1-ep-2",
+            animeId: "anime-db-1",
+            seasonNumber: 1,
+            number: 2,
+            title: "Episódio 2",
+            thumbnail: null,
+            duration: "24:00",
+            synopsis: null,
+            videoUrl: "https://cdn.example.com/anime-db-1-2.mp4",
+            videoUrl2: null,
+            videoUrl3: null,
+            videoUrl4: null,
+            videoUrl5: null,
+            badgeLancamento: false,
+            badgeNovo: false,
+            badgeFinal: false,
+            published: true,
+            publishedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      },
+      outboxOps: [],
+    });
 
-    const loadedInAdmin = resolveAdminAnimeWithRemote(undefined, remoteAnime);
-    assert.deepEqual(loadedInAdmin?.recentBadges, persisted);
+    assert.deepEqual(mergedAdmin.seasons[0]?.episodes[0]?.recentBadges, persisted);
+    assert.deepEqual(
+      mergedAdmin.seasons[0]?.episodes[1]?.recentBadges,
+      DEFAULT_ANIME_RECENT_BADGES,
+    );
   });
 
   it("8. Salvar ou publicar episódios sem mexer nos selos preserva integralmente os selos no servidor", () => {

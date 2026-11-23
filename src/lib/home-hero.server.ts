@@ -1,9 +1,5 @@
 import { getSql } from "@/lib/db";
-import {
-  loadAllAnimeRecentBadgesFromDb,
-  findAnimeRecentBadgesInLookup,
-  type AnimeRecentBadgesLookup,
-} from "@/lib/catalog-badges";
+import type { AnimeRecentBadgesLookup } from "@/lib/catalog-badges";
 import { buildHikariPlayerEpisodeUrl } from "@/lib/hikari-player";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { hasEpisodePlayableSource } from "@/lib/published-episodes";
@@ -292,7 +288,7 @@ export function computeNoveltyScore(params: {
   badges: { lancamento: boolean; novo: boolean; final: boolean } | null;
   nowMs: number;
 }): number {
-  const { animeCreatedAtMs, firstEpisodePublishedAtMs, publishedEpisodeCount, badges, nowMs } =
+  const { animeCreatedAtMs, firstEpisodePublishedAtMs, publishedEpisodeCount, nowMs } =
     params;
 
   const createdDays =
@@ -321,13 +317,11 @@ export function computeNoveltyScore(params: {
     baseScore = 110 * Math.exp(-NOVELTY_WINDOW_DAYS / 12) * Math.max(0, tailRatio);
   }
 
-  const badgeBonus = badges?.lancamento ? 28 : badges?.novo ? 18 : 0;
-
-  if (baseScore <= 0 && badgeBonus <= 0) {
+  if (baseScore <= 0) {
     return 0;
   }
 
-  return Math.round((baseScore + badgeBonus) * 100) / 100;
+  return Math.round(baseScore * 100) / 100;
 }
 
 export function computeNewEpisodeScore(params: {
@@ -385,7 +379,7 @@ export function computeEvergreenScore(params: {
 
 export function scoreAndDeduplicateHeroCandidates(
   rows: HeroCatalogAnimeCandidateRow[],
-  badgesLookup: AnimeRecentBadgesLookup,
+  _badgesLookup: AnimeRecentBadgesLookup,
   audienceByKey: Map<string, HeroAudienceMetrics>,
   nowMs: number,
 ): ScoredHeroCandidate[] {
@@ -422,14 +416,6 @@ export function scoreAndDeduplicateHeroCandidates(
       row.titleNative?.trim() ||
       "Anime";
 
-    const badges = findAnimeRecentBadgesInLookup(badgesLookup, {
-      id: row.id,
-      anilistId: row.anilistId ?? null,
-      malId: row.malId ?? null,
-      kitsuId: row.kitsuId ?? null,
-      allowExternalFallback: false,
-    });
-
     const animeCreatedAtMs = toHeroTimestampMs(row.createdAt);
     const firstEpisodePublishedAtMs = toHeroTimestampMs(row.firstEpisodePublishedAt);
     const latestEpisodePublishedAtMs = toHeroTimestampMs(row.latestEpisodePublishedAt);
@@ -439,7 +425,7 @@ export function scoreAndDeduplicateHeroCandidates(
       animeCreatedAtMs,
       firstEpisodePublishedAtMs,
       publishedEpisodeCount: row.publishedEpisodeCount,
-      badges,
+      badges: null,
       nowMs,
     });
     const newEpisodeScore = computeNewEpisodeScore({
@@ -484,7 +470,6 @@ export function scoreAndDeduplicateHeroCandidates(
       catalogUpdatedAt: animeUpdatedAtMs || latestEpisodePublishedAtMs || undefined,
       serverCatalogId: row.id,
       hasEpisode: true,
-      ...(badges ? { recentBadges: badges } : {}),
     };
 
     const titleKey = normalizeHeroTitleKey(row) || watchId;
@@ -872,7 +857,12 @@ const defaultHomeHeroDeps: HomeHeroDeps = {
   setRedisPool: (payload, fence) => setRedisHeroBannerPool(payload, fence),
   scheduleWrite: scheduleRedisBackgroundWrite,
   queryCatalog: queryCatalogCandidatesFromNeon,
-  queryBadges: loadAllAnimeRecentBadgesFromDb,
+  queryBadges: async () => ({
+    byId: new Map(),
+    byAnilistId: new Map(),
+    byMalId: new Map(),
+    byKitsuId: new Map(),
+  }),
   queryAudience: queryAudienceMetricsFromNeon,
 };
 

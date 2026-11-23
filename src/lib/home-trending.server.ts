@@ -1,9 +1,5 @@
 import { getSql } from "@/lib/db";
-import {
-  findAnimeRecentBadgesInLookup,
-  loadAllAnimeRecentBadgesFromDb,
-  type AnimeRecentBadgesLookup,
-} from "@/lib/catalog-badges";
+import type { AnimeRecentBadgesLookup } from "@/lib/catalog-badges";
 import { buildHikariPlayerEpisodeUrl } from "@/lib/hikari-player";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { hasEpisodePlayableSource } from "@/lib/published-episodes";
@@ -480,14 +476,6 @@ export function scoreAndRankHomeTrending(
       row.titleNative?.trim() ||
       "Anime";
 
-    const badges = findAnimeRecentBadgesInLookup(badgesLookup, {
-      id: row.id,
-      anilistId: row.anilistId ?? null,
-      malId: row.malId ?? null,
-      kitsuId: row.kitsuId ?? null,
-      allowExternalFallback: false,
-    });
-
     const updatedAtMs = toTrendingTimestampMs(row.updatedAt);
     const latestEpisodePublishedAtMs = toTrendingTimestampMs(
       row.latestEpisodePublishedAt,
@@ -519,7 +507,6 @@ export function scoreAndRankHomeTrending(
       catalogUpdatedAt: updatedAtMs || latestEpisodePublishedAtMs || undefined,
       serverCatalogId: row.id,
       hasEpisode: true,
-      ...(badges ? { recentBadges: badges } : {}),
     };
 
     parsedCandidates.push({
@@ -1059,7 +1046,12 @@ const defaultHomeTrendingDeps: HomeTrendingDeps = {
   setRedisTrending: (payload, fence) => setRedisHomeTrending(payload, fence),
   scheduleWrite: scheduleRedisBackgroundWrite,
   queryCatalog: queryTrendingCatalogCandidatesFromNeon,
-  queryBadges: loadAllAnimeRecentBadgesFromDb,
+  queryBadges: async () => ({
+    byId: new Map(),
+    byAnilistId: new Map(),
+    byMalId: new Map(),
+    byKitsuId: new Map(),
+  }),
   queryAudienceSignals: queryTrendingAudienceSignalsFromNeon,
 };
 

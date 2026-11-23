@@ -25,6 +25,7 @@ export type Episode = {
   audioVersion?: string;
   openingStartSeconds?: number | null;
   openingEndSeconds?: number | null;
+  recentBadges?: AnimeRecentBadges;
 };
 
 export type Season = {

@@ -316,7 +316,7 @@ const EPISODES_REDIS_TTL_SEC = 180; // 180 segundos (3 minutos)
 
 export async function getRedisCatalogEpisodes(animeId: string): Promise<CatalogEpisodesResult | null> {
   if (!redisClient || typeof window !== "undefined" || !animeId) return null;
-  const key = `${EPISODES_REDIS_KEY_PREFIX}${animeId.trim()}:v1`;
+  const key = `${EPISODES_REDIS_KEY_PREFIX}${animeId.trim()}:v2`;
   try {
     const data = await withRedisTimeout(
       redisClient.get<CatalogEpisodesResult>(key),
@@ -334,7 +334,7 @@ export async function getRedisCatalogEpisodes(animeId: string): Promise<CatalogE
 
 export async function setRedisCatalogEpisodes(animeId: string, data: CatalogEpisodesResult): Promise<void> {
   if (!redisClient || typeof window !== "undefined" || !animeId || !data) return;
-  const key = `${EPISODES_REDIS_KEY_PREFIX}${animeId.trim()}:v1`;
+  const key = `${EPISODES_REDIS_KEY_PREFIX}${animeId.trim()}:v2`;
   try {
     await withRedisTimeout(
       redisClient.set(key, data, { ex: EPISODES_REDIS_TTL_SEC }),
@@ -350,7 +350,7 @@ export async function invalidateRedisCatalogEpisodes(animeId?: string): Promise<
   try {
     const cleanId = animeId?.trim();
     if (cleanId) {
-      const key = `${EPISODES_REDIS_KEY_PREFIX}${cleanId}:v1`;
+      const key = `${EPISODES_REDIS_KEY_PREFIX}${cleanId}:v2`;
       await withRedisTimeout(
         redisClient.del(key),
         "invalidateRedisCatalogEpisodes",
@@ -1522,12 +1522,12 @@ export async function setRedisHomeSeason(
   }
 }
 
-const HOME_EPISODES_REDIS_KEY = "hikari:home:episodes:v1";
-const HOME_EPISODES_GEN_KEY = "hikari:home:episodes:gen:v1";
+const HOME_EPISODES_REDIS_KEY = "hikari:home:episodes:v2";
+const HOME_EPISODES_GEN_KEY = "hikari:home:episodes:gen:v2";
 const HOME_EPISODES_REDIS_TTL_SEC = 180; // 180 segundos
 
-const PUBLIC_CATALOG_EPISODES_REDIS_KEY = "hikari:catalog:episodes:public:v1";
-const PUBLIC_CATALOG_EPISODES_GEN_KEY = "hikari:catalog:episodes:public:gen:v1";
+const PUBLIC_CATALOG_EPISODES_REDIS_KEY = "hikari:catalog:episodes:public:v2";
+const PUBLIC_CATALOG_EPISODES_GEN_KEY = "hikari:catalog:episodes:public:gen:v2";
 const PUBLIC_CATALOG_EPISODES_REDIS_TTL_SEC = 180; // 180 segundos
 
 const PUBLIC_EPISODES_ENVELOPE_PREFIX = "v1|";
@@ -1625,7 +1625,7 @@ function decodePublicEpisodesEnvelope<T>(raw: string): T | null {
   }
 }
 
-function isValidPublicEpisodeShape(ep: unknown): boolean {
+export function isValidPublicEpisodeShape(ep: unknown): boolean {
   if (!ep || typeof ep !== "object") return false;
   const row = ep as Record<string, unknown>;
   return (
@@ -1637,7 +1637,10 @@ function isValidPublicEpisodeShape(ep: unknown): boolean {
     Number.isFinite(row.seasonNumber) &&
     typeof row.number === "number" &&
     Number.isFinite(row.number) &&
-    row.published === true
+    row.published === true &&
+    typeof row.badgeLancamento === "boolean" &&
+    typeof row.badgeNovo === "boolean" &&
+    typeof row.badgeFinal === "boolean"
   );
 }
 
@@ -3703,8 +3706,8 @@ export function notifyJikanEpisodesRamInvalidation(ids: string[]): void {
   }
 }
 
-export const HERO_BANNER_REDIS_KEY = "hikari:home:hero-banner:v1";
-export const HERO_BANNER_GEN_KEY = "hikari:home:hero-banner:gen:v1";
+export const HERO_BANNER_REDIS_KEY = "hikari:home:hero-banner:v2";
+export const HERO_BANNER_GEN_KEY = "hikari:home:hero-banner:gen:v2";
 export const HERO_BANNER_REDIS_TTL_SEC = 1200; // 20 minutos
 
 export type HeroBannerBucket =
@@ -3877,8 +3880,8 @@ export async function invalidateRedisHeroBannerPool(
   }
 }
 
-export const HOME_TRENDING_REDIS_KEY = "hikari:home:trending:v1";
-export const HOME_TRENDING_GEN_KEY = "hikari:home:trending:gen:v1";
+export const HOME_TRENDING_REDIS_KEY = "hikari:home:trending:v2";
+export const HOME_TRENDING_GEN_KEY = "hikari:home:trending:gen:v2";
 export const HOME_TRENDING_REDIS_TTL_SEC = 720; // 12 minutos
 
 export interface HomeTrendingPayload {

@@ -8,15 +8,9 @@ import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import {
-  resolveCatalogAnimeBadgesWrite,
   resolveCatalogAnimeMediaWrite,
-  type AnimeRecentBadges,
 } from "@/lib/types";
-import {
-  deleteAnimeRecentBadgesFromDb,
-  loadAnimeRecentBadgesFromDb,
-  saveAnimeRecentBadgesToDb,
-} from "@/lib/catalog-badges";
+import { deleteAnimeRecentBadgesFromDb } from "@/lib/catalog-badges";
 
 const seasonItemSchema = z.object({
   number: z.number().int().min(1, "number da temporada deve ser >= 1"),
@@ -351,30 +345,7 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             }
           }
 
-          const badgesWrite = resolveCatalogAnimeBadgesWrite({
-            recentBadges: data.recentBadges,
-            badgesExplicitlyEdited: data.badgesExplicitlyEdited,
-          });
-
-          let persistedBadges: AnimeRecentBadges | null = null;
-          if (badgesWrite.shouldWriteBadges) {
-            persistedBadges = await saveAnimeRecentBadgesToDb({
-              animeId: canonicalSavedId,
-              anilistId: savedRow?.anilistId ?? resolvedAnilistId,
-              malId: savedRow?.malId ?? resolvedMalId,
-              kitsuId: savedRow?.kitsuId ?? resolvedKitsuId,
-              badges: badgesWrite.normalizedBadges,
-              previousAliasId: data.id !== canonicalSavedId ? data.id : null,
-            });
-          } else {
-            persistedBadges = await loadAnimeRecentBadgesFromDb({
-              id: canonicalSavedId,
-              serverCatalogId: data.id,
-              anilistId: savedRow?.anilistId ?? resolvedAnilistId,
-              malId: savedRow?.malId ?? resolvedMalId,
-              kitsuId: savedRow?.kitsuId ?? resolvedKitsuId,
-            });
-          }
+          // Os selos LANÇAMENTO, NOVO e FINAL são controlados individualmente por episódio em catalog_episode.
 
           const invalidationExtraIds: Array<string | number | null | undefined> = [
             data.id !== canonicalSavedId ? data.id : null,
@@ -420,7 +391,6 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             animeId: canonicalSavedId,
             cover: savedRow?.cover ?? cleanCover,
             banner: savedRow?.banner ?? cleanBanner,
-            recentBadges: persistedBadges,
             updatedAt: updatedAtMs,
             adminId,
           });

@@ -1,5 +1,9 @@
 import { z } from "zod";
-import type { Episode } from "@/lib/types";
+import {
+  normalizeAnimeRecentBadges,
+  type AnimeRecentBadges,
+  type Episode,
+} from "@/lib/types";
 import { getBearerToken } from "@/lib/auth/client";
 import { addTombstone, clearTombstone } from "@/lib/catalog-storage";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
@@ -38,6 +42,7 @@ export interface EpisodePayload {
   hikariPlayerEpisodeId?: string | null;
   openingStartSeconds?: number | null;
   openingEndSeconds?: number | null;
+  recentBadges?: Partial<AnimeRecentBadges> | null;
   published?: boolean;
   replaceSources?: boolean;
   replaceThumbnail?: boolean;
@@ -70,6 +75,14 @@ export const episodePostSchema = z
       .number()
       .int()
       .min(0, "Fim da opening não pode ser negativo")
+      .optional()
+      .nullable(),
+    recentBadges: z
+      .object({
+        lancamento: z.boolean().optional(),
+        novo: z.boolean().optional(),
+        final: z.boolean().optional(),
+      })
       .optional()
       .nullable(),
     published: z.boolean().default(false),
@@ -163,6 +176,55 @@ export function resolveOpeningTimestampsPatch(
   };
 }
 
+export function resolveEpisodeBadgesPatch(
+  incoming?: {
+    recentBadges?: Partial<AnimeRecentBadges> | null;
+  } | null,
+  existing?: {
+    badgeLancamento?: boolean | null;
+    badgeNovo?: boolean | null;
+    badgeFinal?: boolean | null;
+  } | null,
+): {
+  hasLancamentoField: boolean;
+  hasNovoField: boolean;
+  hasFinalField: boolean;
+  badgeLancamento: boolean;
+  badgeNovo: boolean;
+  badgeFinal: boolean;
+  recentBadges: AnimeRecentBadges;
+} {
+  const raw = incoming?.recentBadges;
+  const hasObject = raw !== undefined && raw !== null && typeof raw === "object";
+  const hasLancamentoField = hasObject && typeof raw.lancamento === "boolean";
+  const hasNovoField = hasObject && typeof raw.novo === "boolean";
+  const hasFinalField = hasObject && typeof raw.final === "boolean";
+
+  const badgeLancamento = hasLancamentoField
+    ? Boolean(raw.lancamento)
+    : Boolean(existing?.badgeLancamento);
+  const badgeNovo = hasNovoField
+    ? Boolean(raw.novo)
+    : Boolean(existing?.badgeNovo);
+  const badgeFinal = hasFinalField
+    ? Boolean(raw.final)
+    : Boolean(existing?.badgeFinal);
+
+  return {
+    hasLancamentoField,
+    hasNovoField,
+    hasFinalField,
+    badgeLancamento,
+    badgeNovo,
+    badgeFinal,
+    recentBadges: {
+      lancamento: badgeLancamento,
+      novo: badgeNovo,
+      final: badgeFinal,
+    },
+  };
+}
+
 export interface OutboxOperation {
   id: string;
   type: "upsert" | "delete";
@@ -196,6 +258,7 @@ export interface PersistEpisodeResult {
   hikariPlayerEpisodeId?: string | null;
   openingStartSeconds?: number | null;
   openingEndSeconds?: number | null;
+  recentBadges?: AnimeRecentBadges;
   status: "synced" | "pending" | "conflict";
   error?: string;
 }
@@ -776,6 +839,9 @@ export async function persistEpisode(
     ...(episode.openingEndSeconds !== undefined
       ? { openingEndSeconds: episode.openingEndSeconds }
       : {}),
+    ...(episode.recentBadges !== undefined
+      ? { recentBadges: normalizeAnimeRecentBadges(episode.recentBadges) }
+      : {}),
     published: isPublished,
     replaceSources: true,
     replaceThumbnail: Boolean(options?.replaceThumbnail),
@@ -797,6 +863,7 @@ export async function persistEpisode(
       let serverHikariPlayerEpisodeId: string | null | undefined = undefined;
       let serverOpeningStartSeconds: number | null | undefined = undefined;
       let serverOpeningEndSeconds: number | null | undefined = undefined;
+      let serverRecentBadges: AnimeRecentBadges | undefined = undefined;
       try {
         const j = await res.json();
         if (j?.episodeId || j?.canonicalId) {
@@ -818,6 +885,9 @@ export async function persistEpisode(
         }
         if (j?.openingEndSeconds !== undefined) {
           serverOpeningEndSeconds = j.openingEndSeconds;
+        }
+        if (j?.recentBadges && typeof j.recentBadges === "object") {
+          serverRecentBadges = normalizeAnimeRecentBadges(j.recentBadges);
         }
       } catch {
         // ignore
@@ -850,6 +920,7 @@ export async function persistEpisode(
         hikariPlayerEpisodeId: serverHikariPlayerEpisodeId,
         openingStartSeconds: serverOpeningStartSeconds,
         openingEndSeconds: serverOpeningEndSeconds,
+        recentBadges: serverRecentBadges,
         status: "synced",
       };
     }

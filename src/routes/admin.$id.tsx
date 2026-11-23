@@ -12,9 +12,9 @@ import { memo, useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import { fetchAnimeDetail } from "@/lib/api";
 import {
+  areAnimeRecentBadgesEqual,
   isCustomImageUrl,
   normalizeAnimeRecentBadges,
-  type AnimeRecentBadges,
   type Episode,
   type LocalAnime,
   type ResolvedMobileBannerInfo,
@@ -31,7 +31,6 @@ import {
   resolveAdminAnimeWithRemote,
   resolveAdminDisplayMedia,
   resolveSavedMediaFromServer,
-  resolveSavedRecentBadgesFromServer,
 } from "@/lib/overlay";
 import {
   hasAdminCustomBanner,
@@ -188,8 +187,6 @@ export const Route = createFileRoute("/admin/$id")({
               primary.serverCatalogId || canonicalRemote.serverCatalogId,
             catalogUpdatedAt:
               primary.catalogUpdatedAt ?? canonicalRemote.catalogUpdatedAt,
-            recentBadges:
-              primary.recentBadges ?? canonicalRemote.recentBadges,
           };
         } else {
           remote = primary;
@@ -241,7 +238,6 @@ function emptyLocal(): LocalAnime {
     year: new Date().getFullYear(),
     trailerId: null,
     hidden: false,
-    recentBadges: { lancamento: false, novo: false, final: false },
     seasons: [
       {
         id: `s-${crypto.randomUUID()}`,
@@ -308,7 +304,6 @@ function AdminEditor() {
     cover: false,
     banner: false,
   });
-  const dirtyBadgesRef = useRef(false);
   const sourcesSessionRef = useRef<EpisodeSourcesSessionStore | null>(null);
   if (!sourcesSessionRef.current) {
     sourcesSessionRef.current = createEpisodeSourcesSessionStore();
@@ -1073,7 +1068,6 @@ function AdminEditor() {
     dirtyEpisodeIdsRef.current = new Set();
     explicitUserDirtyEpisodeIdsRef.current = new Set();
     dirtyMediaRef.current = { cover: false, banner: false };
-    dirtyBadgesRef.current = false;
     revokeAllCandidatePreviewUrls();
 
     const isDubbedTitle = (a: LocalAnime) =>
@@ -1290,31 +1284,10 @@ function AdminEditor() {
       dirtyMediaRef.current.cover = true;
     } else if (key === "banner") {
       dirtyMediaRef.current.banner = true;
-    } else if (key === "recentBadges") {
-      dirtyBadgesRef.current = true;
     }
     setForm((f) => (f ? { ...f, [key]: value } : f));
     setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
   }, []);
-
-  const toggleRecentBadge = useCallback(
-    (badgeKey: keyof AnimeRecentBadges, enabled: boolean) => {
-      dirtyBadgesRef.current = true;
-      setForm((f) => {
-        if (!f) return f;
-        const nextBadges: AnimeRecentBadges = {
-          ...normalizeAnimeRecentBadges(f.recentBadges),
-          [badgeKey]: enabled,
-        };
-        return {
-          ...f,
-          recentBadges: nextBadges,
-        };
-      });
-      setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
-    },
-    [],
-  );
 
   const handleGenreTextChange = useCallback((val: string) => {
     setGenreText(val);
@@ -1350,6 +1323,7 @@ function AdminEditor() {
         videoUrl4: "",
         videoUrl5: "",
         hikariPlayerEpisodeId: undefined,
+        recentBadges: { lancamento: false, novo: false, final: false },
         published: false,
       })),
     }));
@@ -1359,7 +1333,6 @@ function AdminEditor() {
       id: newId,
       titleRomaji: baseTitleRomaji || currentForm.titleRomaji,
       titleEnglish: baseTitleEnglish || currentForm.titleEnglish,
-      recentBadges: { lancamento: false, novo: false, final: false },
       seasons:
         clonedSeasons.length > 0
           ? clonedSeasons
@@ -1529,11 +1502,9 @@ function AdminEditor() {
       const savePayload = buildAdminCatalogAnimeSavePayload(
         effectiveAnime,
         dirtyMediaRef.current,
-        dirtyBadgesRef.current,
       );
       const shouldSendCover = savePayload.coverExplicitlyEdited;
       const shouldSendBanner = savePayload.bannerExplicitlyEdited;
-      const shouldSendBadges = savePayload.badgesExplicitlyEdited;
 
       const res = await fetch("/api/admin/catalog-anime", {
         method: "POST",
@@ -1545,13 +1516,11 @@ function AdminEditor() {
       if (res.ok) {
         metadataSavedOnServer = true;
         dirtyMediaRef.current = { cover: false, banner: false };
-        dirtyBadgesRef.current = false;
         try {
           const json = (await res.json()) as {
             animeId?: string;
             cover?: string | null;
             banner?: string | null;
-            recentBadges?: AnimeRecentBadges | null;
             updatedAt?: number;
           };
           const canonicalId =
@@ -1572,11 +1541,6 @@ function AdminEditor() {
             typeof json.banner === "string" ? stripCatalogImageVersion(json.banner) : json.banner,
             shouldSendBanner,
           );
-          const canonicalRecentBadges = resolveSavedRecentBadgesFromServer(
-            effectiveAnime.recentBadges,
-            json.recentBadges,
-            shouldSendBadges,
-          );
 
           if (canonicalId !== effectiveAnime.id) {
             removeAnime(effectiveAnime.id);
@@ -1587,7 +1551,6 @@ function AdminEditor() {
             id: canonicalId,
             cover: canonicalCover,
             banner: canonicalBanner,
-            recentBadges: canonicalRecentBadges,
             updatedAt: serverUpdatedAt,
             syncedAt: Date.now(),
           };
@@ -1764,11 +1727,17 @@ function AdminEditor() {
                 ? normalizeHikariPlayerEpisodeId(match.hikariPlayerEpisodeId) ?? undefined
                 : ep.hikariPlayerEpisodeId;
 
+            const nextRecentBadges =
+              match.recentBadges !== undefined
+                ? normalizeAnimeRecentBadges(match.recentBadges)
+                : ep.recentBadges;
+
             if (
               nextId !== ep.id ||
               nextPublished !== Boolean(ep.published) ||
               nextAired !== ep.aired ||
-              nextHikariPlayerEpisodeId !== ep.hikariPlayerEpisodeId
+              nextHikariPlayerEpisodeId !== ep.hikariPlayerEpisodeId ||
+              !areAnimeRecentBadgesEqual(nextRecentBadges, ep.recentBadges)
             ) {
               anyEpisodeChanged = true;
               return {
@@ -1777,6 +1746,7 @@ function AdminEditor() {
                 published: nextPublished,
                 aired: nextAired,
                 hikariPlayerEpisodeId: nextHikariPlayerEpisodeId,
+                recentBadges: nextRecentBadges,
               };
             }
             return ep;
@@ -2053,6 +2023,7 @@ function AdminEditor() {
         id: newEpisodeId,
         number,
         title: `Episódio ${number}`,
+        recentBadges: { lancamento: false, novo: false, final: false },
         published: false,
       };
       const nextSeasons = f.seasons.slice();
@@ -2434,7 +2405,6 @@ function AdminEditor() {
         <MemoEditorMetadata
           form={metadataForm}
           onChange={set}
-          onToggleRecentBadge={toggleRecentBadge}
           genreText={genreText}
           onGenreTextChange={handleGenreTextChange}
           resolvedMobileBanner={displayMedia?.mobileBanner ?? null}

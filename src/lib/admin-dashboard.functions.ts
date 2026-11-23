@@ -2,7 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { adminMiddleware } from "@/lib/auth/middleware";
 import type { Sql } from "@/lib/db";
-import type { AnimeRecentBadges } from "@/lib/types";
 
 export interface AdminSystemStatus {
   connected: boolean;
@@ -178,7 +177,6 @@ export interface AdminCatalogSyncMetaItem {
   titleEnglish: string | null;
   titleNative: string | null;
   hidden: boolean;
-  recentBadges?: AnimeRecentBadges | null;
   updatedAt: number;
 }
 
@@ -206,10 +204,6 @@ export async function fetchAdminCatalogSyncMetaFromDb(
   const { toTimestampMs } = await import(
     "@/lib/catalog-server-overlay.server"
   );
-  const {
-    findAnimeRecentBadgesInLookup,
-    loadAllAnimeRecentBadgesFromDb,
-  } = await import("@/lib/catalog-badges");
 
   const hasIdsFilter =
     input?.ids !== undefined ||
@@ -299,11 +293,6 @@ export async function fetchAdminCatalogSyncMetaFromDb(
     return [];
   }
 
-  const badgeLookup =
-    input?.includeBadges === false
-      ? undefined
-      : await loadAllAnimeRecentBadgesFromDb().catch(() => undefined);
-
   return rows.map((row) => ({
     id: row.id,
     anilistId: row.anilistId ?? null,
@@ -316,15 +305,6 @@ export async function fetchAdminCatalogSyncMetaFromDb(
     titleEnglish: row.titleEnglish ?? null,
     titleNative: row.titleNative ?? null,
     hidden: Boolean(row.hidden),
-    recentBadges: badgeLookup
-      ? findAnimeRecentBadgesInLookup(badgeLookup, {
-          id: row.id,
-          anilistId: row.anilistId,
-          malId: row.malId,
-          kitsuId: row.kitsuId,
-          allowExternalFallback: false,
-        }) ?? null
-      : null,
     updatedAt: toTimestampMs(row.updatedAt),
   }));
 }

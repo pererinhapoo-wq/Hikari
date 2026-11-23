@@ -73,7 +73,11 @@ import {
   type EpisodeSourceItem,
   type SourceLang,
 } from "@/lib/anitube22";
-import type { Episode, Season } from "@/lib/types";
+import {
+  normalizeAnimeRecentBadges,
+  type Episode,
+  type Season,
+} from "@/lib/types";
 import type { OutboxOperation } from "@/lib/episode-writer";
 import {
   buildHikariPlayerEpisodeUrl,
@@ -1289,6 +1293,8 @@ const EpisodeCard = memo(function EpisodeCard({
       ? buildHikariPlayerEpisodeUrl(hikariPlayerValidation.value)
       : null;
 
+  const epBadges = normalizeAnimeRecentBadges(ep.recentBadges);
+
   return (
     <li
       data-episode-id={ep.id}
@@ -1673,6 +1679,100 @@ const EpisodeCard = memo(function EpisodeCard({
                 Opcional. Informe somente o identificador do episódio no Hikari Player separado (ex.: abc123). Deixe vazio para manter sem associação.
               </p>
             )}
+          </div>
+        </div>
+
+        {/* Selos individuais do episódio (controle totalmente manual) */}
+        <div className="sm:col-span-12">
+          <div className="rounded-xl border border-white/10 bg-[var(--studio-panel)]/55 p-3">
+            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 className="text-xs font-semibold text-[var(--color-fg)]">
+                  Selos do Episódio
+                </h4>
+                <p className="mt-0.5 text-[11px] text-[var(--color-muted)]">
+                  Controle manual independente para este episódio. O selo{" "}
+                  <span className="font-semibold text-emerald-400">DUB</span>{" "}
+                  continua automático quando o episódio for dublado.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-3">
+              {(
+                [
+                  {
+                    key: "lancamento" as const,
+                    label: "LANÇAMENTO",
+                    description: "Selo violeta médio sobre a miniatura",
+                    badgeClass:
+                      "bg-violet-600/95 border-violet-300/60 text-white text-[9.5px] h-5 px-2",
+                  },
+                  {
+                    key: "novo" as const,
+                    label: "NOVO",
+                    description: "Selo âmbar discreto sobre a miniatura",
+                    badgeClass:
+                      "bg-amber-400/95 border-amber-200/75 text-zinc-950 text-[8.5px] h-4 px-1.5",
+                  },
+                  {
+                    key: "final" as const,
+                    label: "FINAL",
+                    description: "Selo vermelho na miniatura e no título",
+                    badgeClass:
+                      "bg-rose-600/95 border-rose-300/65 text-white text-[10.5px] h-6 px-2.5",
+                  },
+                ] as const
+              ).map((item) => {
+                const checked = epBadges[item.key];
+                return (
+                  <label
+                    key={item.key}
+                    className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-2.5 transition-colors ${
+                      checked
+                        ? "border-violet-500/45 bg-violet-500/10"
+                        : "border-white/[0.08] bg-black/25 hover:border-white/15"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) =>
+                        onPatchEpisode(seasonId, ep.id, {
+                          recentBadges: {
+                            ...epBadges,
+                            [item.key]: e.target.checked,
+                          },
+                        })
+                      }
+                      aria-label={`Selo ${item.label} — Episódio ${ep.number}`}
+                      className="mt-0.5 size-4 rounded border-white/20 bg-black accent-violet-600"
+                    />
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`inline-flex items-center justify-center rounded border font-extrabold tracking-wider leading-none uppercase ${item.badgeClass}`}
+                        >
+                          {item.label}
+                        </span>
+                        <span
+                          className={`studio-mono text-[10px] font-semibold ${
+                            checked
+                              ? "text-emerald-400"
+                              : "text-[var(--color-subtle)]"
+                          }`}
+                        >
+                          {checked ? "Ativo" : "Oculto"}
+                        </span>
+                      </div>
+                      <p className="text-[11px] leading-snug text-[var(--color-muted)]">
+                        {item.description}
+                      </p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
           </div>
         </div>
 

@@ -1,4 +1,9 @@
-import type { LocalAnime, Season } from "@/lib/types";
+import {
+  areAnimeRecentBadgesEqual,
+  normalizeAnimeRecentBadges,
+  type LocalAnime,
+  type Season,
+} from "@/lib/types";
 import type { OpeningLookupStatus, OpeningSourceId } from "@/lib/opening-providers";
 
 export interface OpeningSuggestionEntry {
@@ -29,6 +34,9 @@ export interface ServerEpisodeSnapshot {
   number: number;
   openingStartSeconds?: number | null;
   openingEndSeconds?: number | null;
+  badgeLancamento?: boolean;
+  badgeNovo?: boolean;
+  badgeFinal?: boolean;
   published?: boolean;
 }
 
@@ -125,8 +133,15 @@ export function reconcileDirtyEpisodeIdsAfterFormPopulation(
       const openingEndDiffers =
         (ep.openingEndSeconds ?? null) !== (matchedServer.openingEndSeconds ?? null);
       const publishDiffers = Boolean(ep.published) !== Boolean(matchedServer.published);
+      const serverBadges = normalizeAnimeRecentBadges({
+        lancamento: matchedServer.badgeLancamento,
+        novo: matchedServer.badgeNovo,
+        final: matchedServer.badgeFinal,
+      });
+      const localBadges = normalizeAnimeRecentBadges(ep.recentBadges);
+      const badgesDiffer = !areAnimeRecentBadgesEqual(localBadges, serverBadges);
 
-      if (openingStartDiffers || openingEndDiffers || publishDiffers) {
+      if (openingStartDiffers || openingEndDiffers || publishDiffers || badgesDiffer) {
         dirtyEpisodeIds.add(ep.id);
       } else {
         dirtyEpisodeIds.delete(ep.id);

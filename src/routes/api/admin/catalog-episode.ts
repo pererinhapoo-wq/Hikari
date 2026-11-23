@@ -23,8 +23,10 @@ import {
 } from "@/lib/anitube22";
 import {
   episodePostSchema,
+  resolveEpisodeBadgesPatch,
   resolveOpeningTimestampsPatch,
 } from "@/lib/episode-writer";
+import { normalizeAnimeRecentBadges, type AnimeRecentBadges } from "@/lib/types";
 
 const episodeDeleteSchema = z.object({
   id: z.string().trim().min(1, "id é obrigatório"),
@@ -121,6 +123,9 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             hikariPlayerEpisodeId: string | null;
             openingStartSeconds: number | null;
             openingEndSeconds: number | null;
+            badgeLancamento: boolean;
+            badgeNovo: boolean;
+            badgeFinal: boolean;
             published: boolean;
             publishedAt: string | null;
           };
@@ -132,6 +137,9 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                       "videoUrl4", "videoUrl5", "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
                       "opening_start_seconds" AS "openingStartSeconds",
                       "opening_end_seconds" AS "openingEndSeconds",
+                      COALESCE("badge_lancamento", false) AS "badgeLancamento",
+                      COALESCE("badge_novo", false) AS "badgeNovo",
+                      COALESCE("badge_final", false) AS "badgeFinal",
                       "published", "publishedAt"
                FROM "catalog_episode"
                WHERE "id" = $1 LIMIT 1;`,
@@ -143,6 +151,9 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                       "videoUrl4", "videoUrl5", "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
                       "opening_start_seconds" AS "openingStartSeconds",
                       "opening_end_seconds" AS "openingEndSeconds",
+                      COALESCE("badge_lancamento", false) AS "badgeLancamento",
+                      COALESCE("badge_novo", false) AS "badgeNovo",
+                      COALESCE("badge_final", false) AS "badgeFinal",
                       "published", "publishedAt"
                FROM "catalog_episode"
                WHERE ("animeId" = $1 OR "animeId" = $2) AND "seasonNumber" = $3 AND "number" = $4 LIMIT 1;`,
@@ -314,6 +325,11 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             openingEndSeconds,
           } = openingPatch;
 
+          const badgesPatch = resolveEpisodeBadgesPatch(
+            { recentBadges: data.recentBadges },
+            existingRow,
+          );
+
           const upsertResult = await sql.query<{
             id: string;
             published: boolean;
@@ -321,6 +337,9 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             hikariPlayerEpisodeId: string | null;
             openingStartSeconds: number | null;
             openingEndSeconds: number | null;
+            badgeLancamento: boolean;
+            badgeNovo: boolean;
+            badgeFinal: boolean;
           }>(
             `INSERT INTO "catalog_episode" (
                "id", "animeId", "seasonNumber", "number",
@@ -328,6 +347,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                "videoUrl", "videoUrl2", "videoUrl3", "videoUrl4", "videoUrl5",
                "hikari_player_episode_id",
                "opening_start_seconds", "opening_end_seconds",
+               "badge_lancamento", "badge_novo", "badge_final",
                "published", "publishedAt", "createdAt", "updatedAt"
              )
              VALUES (
@@ -336,6 +356,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                $9, $10, $11, $12, $13,
                $17,
                $19, $20,
+               $23, $24, $25,
                $14,
                CASE WHEN $14 = true THEN CURRENT_TIMESTAMP ELSE NULL END,
                CURRENT_TIMESTAMP,
@@ -382,6 +403,18 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                  WHEN $22 = true THEN EXCLUDED."opening_end_seconds"
                  ELSE "catalog_episode"."opening_end_seconds"
                END,
+               "badge_lancamento" = CASE
+                 WHEN $26 = true THEN EXCLUDED."badge_lancamento"
+                 ELSE "catalog_episode"."badge_lancamento"
+               END,
+               "badge_novo" = CASE
+                 WHEN $27 = true THEN EXCLUDED."badge_novo"
+                 ELSE "catalog_episode"."badge_novo"
+               END,
+               "badge_final" = CASE
+                 WHEN $28 = true THEN EXCLUDED."badge_final"
+                 ELSE "catalog_episode"."badge_final"
+               END,
                "published" = EXCLUDED."published",
                "publishedAt" = CASE
                  WHEN EXCLUDED."published" = true AND "catalog_episode"."publishedAt" IS NULL THEN CURRENT_TIMESTAMP
@@ -389,7 +422,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                  ELSE "catalog_episode"."publishedAt"
                END,
                "updatedAt" = CURRENT_TIMESTAMP
-             RETURNING "id", "published", "publishedAt", "hikari_player_episode_id" AS "hikariPlayerEpisodeId", "opening_start_seconds" AS "openingStartSeconds", "opening_end_seconds" AS "openingEndSeconds";`,
+             RETURNING "id", "published", "publishedAt", "hikari_player_episode_id" AS "hikariPlayerEpisodeId", "opening_start_seconds" AS "openingStartSeconds", "opening_end_seconds" AS "openingEndSeconds", "badge_lancamento" AS "badgeLancamento", "badge_novo" AS "badgeNovo", "badge_final" AS "badgeFinal";`,
             [
               canonicalId,
               canonicalAnimeId,
@@ -413,6 +446,12 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
               openingEndSeconds,
               hasOpeningStartField,
               hasOpeningEndField,
+              badgesPatch.badgeLancamento,
+              badgesPatch.badgeNovo,
+              badgesPatch.badgeFinal,
+              badgesPatch.hasLancamentoField,
+              badgesPatch.hasNovoField,
+              badgesPatch.hasFinalField,
             ],
           );
 
@@ -429,6 +468,13 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           const finalOpeningEndSeconds = savedRow
             ? savedRow.openingEndSeconds
             : openingEndSeconds;
+          const finalRecentBadges: AnimeRecentBadges = savedRow
+            ? normalizeAnimeRecentBadges({
+                lancamento: savedRow.badgeLancamento,
+                novo: savedRow.badgeNovo,
+                final: savedRow.badgeFinal,
+              })
+            : badgesPatch.recentBadges;
 
           // Sincroniza fontes duráveis em episode_sources sem nunca gravar `time=`
           // e sem executar probes HTTP externos bloqueantes durante o salvamento normal.
@@ -543,6 +589,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             hikariPlayerEpisodeId: finalHikariPlayerEpisodeId,
             openingStartSeconds: finalOpeningStartSeconds,
             openingEndSeconds: finalOpeningEndSeconds,
+            recentBadges: finalRecentBadges,
             episodeId: effectiveId,
             canonicalId: effectiveId,
             reconciled: effectiveId !== data.id,
