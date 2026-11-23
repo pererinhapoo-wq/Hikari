@@ -154,15 +154,20 @@ import {
   clearInFlightAnimeInitialState,
   consumeInFlightAnimeInitialState,
   fetchAnimeTrackingSingleflight,
+  getCachedAnimeFavorite,
   getCachedAnimeTracking,
   getInFlightAnimeInitialState,
   getTrackingCacheEpoch,
+  hasFavoriteMutationSince,
   hasTrackedMutationSince,
   invalidatePaginatedTrackingCache,
+  isInitialAnimeFavoriteFresh,
   isInitialAnimeTrackingFresh,
+  markFavoriteMutated,
   markTrackingMutated,
   recordInitialAnimeTrackingLoaded,
   registerInFlightAnimeInitialState,
+  seedAnimeFavoriteCache,
   seedAnimeTrackingCache,
 } from "@/lib/tracking-client-cache";
 import { cn, stripHtml, youtubeIdFrom } from "@/lib/utils";
@@ -437,15 +442,37 @@ export const Route = createFileRoute("/anime/$id")({
         requestEpoch,
       );
       const knownViewer = getKnownViewerId();
-      const localCachedUser = getAnimeUserClientCache(
-        candidateIds,
-        knownViewer ?? undefined,
+      const localCachedUser = knownViewer
+        ? getAnimeUserClientCache(candidateIds, knownViewer)
+        : null;
+      const memoryCachedTracking = knownViewer
+        ? getCachedAnimeTracking(knownViewer, candidateIds)
+        : null;
+      const memoryCachedFavorite = knownViewer
+        ? getCachedAnimeFavorite(knownViewer, candidateIds)
+        : null;
+      const hasReliableTrackingCache = Boolean(
+        memoryCachedTracking ||
+          (localCachedUser && localCachedUser.trackingStatus !== undefined),
       );
-      const timeoutMs = localCachedUser ? 80 : 250;
-      initialUserStatus = await Promise.race([
-        handle.promise,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
-      ]);
+      const hasReliableFavoriteCache = Boolean(
+        memoryCachedFavorite ||
+          (localCachedUser && typeof localCachedUser.isFavorite === "boolean"),
+      );
+      const hasReliableClientCache = Boolean(
+        knownViewer && hasReliableTrackingCache && hasReliableFavoriteCache,
+      );
+
+      if (hasReliableClientCache) {
+        initialUserStatus = await Promise.race([
+          handle.promise,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 80)),
+        ]);
+      } else {
+        // Sem cache confiável do usuário atual: aguarda o estado completo sem retornar null por timeout
+        initialUserStatus = await handle.promise;
+      }
+
       if (initialUserStatus?.userId) {
         clearInFlightAnimeInitialState(handle.requestId);
         recordInitialAnimeTrackingLoaded(
@@ -456,7 +483,7 @@ export const Route = createFileRoute("/anime/$id")({
       } else if (handle.isSettled()) {
         clearInFlightAnimeInitialState(handle.requestId);
       } else {
-        // Timeout atingido enquanto fetchUserPromise segue em andamento:
+        // Timeout atingido no caminho rápido enquanto fetchUserPromise segue em andamento:
         // entrega o requestId para reutilizar a mesma resposta e evitar consulta duplicada
         initialStateRequestId = handle.requestId;
       }
@@ -1384,13 +1411,36 @@ function AnimePageContent({
   removeProfileFavoriteFnRef.current = removeProfileFavoriteFn;
 
   // Estados de Coleção (Minha Coleção) e Favoritos inicializados diretamente dos dados persistidos do próprio usuário (sem flash e sem vazamento entre contas)
-  const initialFreshForUser = Boolean(
+  const isServerRender = typeof window === "undefined";
+  const matchesInitialUser = Boolean(
     user?.id &&
-      initialUserStatus?.userId === user.id &&
-      isInitialAnimeTrackingFresh(user.id, candidateAnimeIds, initialUserStatus),
+      initialUserStatus?.userId &&
+      initialUserStatus.userId === user.id,
+  );
+  const initialFreshForUser = Boolean(
+    matchesInitialUser &&
+      (isServerRender ||
+        isInitialAnimeTrackingFresh(
+          user!.id,
+          candidateAnimeIds,
+          initialUserStatus,
+        )),
+  );
+  const initialFavoriteFreshForUser = Boolean(
+    matchesInitialUser &&
+      typeof initialUserStatus?.isFavorite === "boolean" &&
+      (isServerRender ||
+        isInitialAnimeFavoriteFresh(
+          user!.id,
+          candidateAnimeIds,
+          initialUserStatus,
+        )),
   );
   const initialSharedTrackingHit = user?.id
     ? getCachedAnimeTracking(user.id, candidateAnimeIds)
+    : null;
+  const initialSharedFavoriteHit = user?.id
+    ? getCachedAnimeFavorite(user.id, candidateAnimeIds)
     : null;
   const initialResolvedTracking = initialFreshForUser
     ? initialUserStatus?.tracking ?? null
@@ -1460,18 +1510,17 @@ function AnimePageContent({
   const [hydratedTrackingUserId, setHydratedTrackingUserId] = useState<string | null>(
     () =>
       user?.id &&
-      (initialUserStatus?.userId === user.id || Boolean(initialSharedTrackingHit))
+      (initialFreshForUser || Boolean(initialSharedTrackingHit))
         ? user.id
         : null,
   );
 
   const [isFavorite, setIsFavorite] = useState<boolean>(() => {
-    if (
-      user?.id &&
-      initialUserStatus?.userId === user.id &&
-      typeof initialUserStatus.isFavorite === "boolean"
-    ) {
-      return initialUserStatus.isFavorite;
+    if (initialFavoriteFreshForUser && initialUserStatus) {
+      return Boolean(initialUserStatus.isFavorite);
+    }
+    if (initialSharedFavoriteHit) {
+      return initialSharedFavoriteHit.isFavorite;
     }
     const cached = getAnimeUserClientCache(candidateAnimeIds, user?.id ?? null);
     if (cached && typeof cached.isFavorite === "boolean") {
@@ -1480,15 +1529,22 @@ function AnimePageContent({
     return false;
   });
   const [favFavoriteId, setFavFavoriteId] = useState<string | null>(() => {
-    if (user?.id && initialUserStatus?.userId === user.id && initialUserStatus.favFavoriteId) {
-      return initialUserStatus.favFavoriteId;
+    if (initialFavoriteFreshForUser && initialUserStatus) {
+      return initialUserStatus.favFavoriteId ?? null;
+    }
+    if (initialSharedFavoriteHit) {
+      return initialSharedFavoriteHit.favFavoriteId;
     }
     const cached = getAnimeUserClientCache(candidateAnimeIds, user?.id ?? null);
     return cached?.favFavoriteId ?? null;
   });
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [hydratedFavoriteUserId, setHydratedFavoriteUserId] = useState<string | null>(
-    () => (user?.id && initialUserStatus?.userId === user.id ? user.id : null),
+    () =>
+      user?.id &&
+      (initialFavoriteFreshForUser || Boolean(initialSharedFavoriteHit))
+        ? user.id
+        : null,
   );
 
   const trackingMutationVersionRef = useRef(0);
@@ -1527,28 +1583,47 @@ function AnimePageContent({
 
   // Sincroniza estado inicial do loader para o cache síncrono local do próprio usuário
   useEffect(() => {
-    if (
-      initialUserStatus &&
-      user?.id &&
-      initialUserStatus.userId === user.id &&
-      isInitialAnimeTrackingFresh(user.id, candidateAnimeIds, initialUserStatus)
-    ) {
-      saveAnimeUserClientCache(
-        candidateAnimeIds,
-        {
-          trackingStatus: initialUserStatus.tracking?.status ?? null,
-          episodesWatched: initialUserStatus.tracking?.episodesWatched ?? 0,
-          score: initialUserStatus.tracking?.score ?? null,
-          dbAnimeId: initialUserStatus.tracking?.animeId ?? null,
-          createdAt: initialUserStatus.tracking?.createdAt ?? "",
-          updatedAt: initialUserStatus.tracking?.updatedAt ?? "",
-          isFavorite: initialUserStatus.isFavorite,
-          favFavoriteId: initialUserStatus.favFavoriteId,
-          continueEpisode: initialUserStatus.continueEpisode,
-        },
-        user.id,
-      );
+    if (!initialUserStatus || !user?.id || initialUserStatus.userId !== user.id) {
+      return;
     }
+    const trackingFresh = isInitialAnimeTrackingFresh(
+      user.id,
+      candidateAnimeIds,
+      initialUserStatus,
+    );
+    const favoriteFresh =
+      typeof initialUserStatus.isFavorite === "boolean" &&
+      isInitialAnimeFavoriteFresh(
+        user.id,
+        candidateAnimeIds,
+        initialUserStatus,
+      );
+    if (!trackingFresh && !favoriteFresh) {
+      return;
+    }
+    saveAnimeUserClientCache(
+      candidateAnimeIds,
+      {
+        ...(trackingFresh
+          ? {
+              trackingStatus: initialUserStatus.tracking?.status ?? null,
+              episodesWatched: initialUserStatus.tracking?.episodesWatched ?? 0,
+              score: initialUserStatus.tracking?.score ?? null,
+              dbAnimeId: initialUserStatus.tracking?.animeId ?? null,
+              createdAt: initialUserStatus.tracking?.createdAt ?? "",
+              updatedAt: initialUserStatus.tracking?.updatedAt ?? "",
+              continueEpisode: initialUserStatus.continueEpisode,
+            }
+          : {}),
+        ...(favoriteFresh
+          ? {
+              isFavorite: initialUserStatus.isFavorite,
+              favFavoriteId: initialUserStatus.favFavoriteId,
+            }
+          : {}),
+      },
+      user.id,
+    );
   }, [initialUserStatus, candidateAnimeIds, user?.id]);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -1749,13 +1824,19 @@ function AnimePageContent({
     };
 
     const cachedTracking = getCachedAnimeTracking(currentUserId, idsToQuery);
-    const freshInitial = Boolean(
+    const cachedFavorite = getCachedAnimeFavorite(currentUserId, idsToQuery);
+    const freshTrackingInitial = Boolean(
       initialUserStatus &&
         initialUserStatus.userId === currentUserId &&
         isInitialAnimeTrackingFresh(currentUserId, idsToQuery, initialUserStatus),
     );
+    const freshFavoriteInitial = Boolean(
+      initialUserStatus &&
+        initialUserStatus.userId === currentUserId &&
+        isInitialAnimeFavoriteFresh(currentUserId, idsToQuery, initialUserStatus),
+    );
     const inFlightInitial =
-      !freshInitial && initialStateRequestId
+      !freshTrackingInitial && !freshFavoriteInitial && initialStateRequestId
         ? getInFlightAnimeInitialState<AnimeUserInitialState>(initialStateRequestId)
         : null;
 
@@ -1808,17 +1889,11 @@ function AnimePageContent({
       ]);
     };
 
-    const applyFavoriteStateFromInitial = (state: AnimeUserInitialState) => {
-      if (favoriteMutationVersionRef.current !== favoriteVersionAtStart) {
-        setHydratedFavoriteUserId(currentUserId);
-        return;
-      }
-
+    const buildFavoriteEntitiesMap = (entities: NonNullable<AnimeUserInitialState["favoriteEntities"]>) => {
       const newMap = new Map<
         string,
         { id: string; targetType: FavoriteTargetType; targetId: string }
       >();
-      const entities = state.favoriteEntities ?? [];
       for (const item of entities) {
         newMap.set(`${item.targetType}:${item.targetId}`, {
           id: item.id,
@@ -1840,7 +1915,17 @@ function AnimePageContent({
           });
         }
       }
-      setFavoriteEntities(newMap);
+      return newMap;
+    };
+
+    const applyFavoriteStateFromInitial = (state: AnimeUserInitialState) => {
+      if (favoriteMutationVersionRef.current !== favoriteVersionAtStart) {
+        setHydratedFavoriteUserId(currentUserId);
+        return;
+      }
+
+      const entities = state.favoriteEntities ?? [];
+      setFavoriteEntities(buildFavoriteEntitiesMap(entities));
 
       const matchFromEntities = entities.find((item) => {
         if (item.targetType !== "anime") return false;
@@ -1855,6 +1940,12 @@ function AnimePageContent({
       const resolvedIsFav = Boolean(state.isFavorite || matchFromEntities);
       const resolvedFavId = state.favFavoriteId ?? matchFromEntities?.id ?? null;
 
+      seedAnimeFavoriteCache(
+        currentUserId,
+        idsToQuery,
+        resolvedIsFav,
+        resolvedFavId,
+      );
       setIsFavorite(resolvedIsFav);
       setFavFavoriteId(resolvedFavId);
       saveAnimeUserClientCache(
@@ -1868,7 +1959,40 @@ function AnimePageContent({
       setHydratedFavoriteUserId(currentUserId);
     };
 
+    const applyCachedFavoriteState = (
+      fav: { isFavorite: boolean; favFavoriteId: string | null },
+      entities?: AnimeUserInitialState["favoriteEntities"],
+    ) => {
+      if (Array.isArray(entities)) {
+        setFavoriteEntities(buildFavoriteEntitiesMap(entities));
+      }
+      if (favoriteMutationVersionRef.current === favoriteVersionAtStart) {
+        setIsFavorite(fav.isFavorite);
+        setFavFavoriteId(fav.favFavoriteId);
+        saveAnimeUserClientCache(
+          idsToQuery,
+          {
+            isFavorite: fav.isFavorite,
+            favFavoriteId: fav.favFavoriteId,
+          },
+          currentUserId,
+        );
+      }
+      setHydratedFavoriteUserId(currentUserId);
+    };
+
     const fallbackFetchFavorites = () => {
+      const latestCachedFav = getCachedAnimeFavorite(currentUserId, idsToQuery);
+      if (latestCachedFav) {
+        applyCachedFavoriteState(
+          latestCachedFav,
+          initialUserStatus?.userId === currentUserId
+            ? initialUserStatus.favoriteEntities
+            : undefined,
+        );
+        return;
+      }
+
       void getMyProfileFavoritesFnRef
         .current({ data: {} })
         .then((res) => {
@@ -1906,6 +2030,7 @@ function AnimePageContent({
           });
 
           if (match) {
+            seedAnimeFavoriteCache(currentUserId, idsToQuery, true, match.id);
             setIsFavorite(true);
             setFavFavoriteId(match.id);
             saveAnimeUserClientCache(
@@ -1917,6 +2042,7 @@ function AnimePageContent({
               currentUserId,
             );
           } else {
+            seedAnimeFavoriteCache(currentUserId, idsToQuery, false, null);
             setIsFavorite(false);
             setFavFavoriteId(null);
             saveAnimeUserClientCache(
@@ -1938,80 +2064,93 @@ function AnimePageContent({
         });
     };
 
-    if (freshInitial && initialUserStatus) {
-      applyAuthoritativeInitialState(initialUserStatus);
-      if (Array.isArray(initialUserStatus.favoriteEntities)) {
-        applyFavoriteStateFromInitial(initialUserStatus);
-      } else {
-        fallbackFetchFavorites();
-      }
-    } else if (inFlightInitial) {
+    if (inFlightInitial) {
       if (cachedTracking && trackingMutationVersionRef.current === trackingVersionAtStart) {
         applyTrackingState(cachedTracking.item);
         setHydratedTrackingUserId(currentUserId);
       }
+      if (cachedFavorite) {
+        applyCachedFavoriteState(cachedFavorite);
+      }
       void inFlightInitial.promise.then((resolved) => {
         if (!active) return;
         consumeInFlightAnimeInitialState(initialStateRequestId);
-        if (trackingMutationVersionRef.current !== trackingVersionAtStart) {
-          if (resolved && resolved.userId === currentUserId && Array.isArray(resolved.favoriteEntities)) {
-            applyFavoriteStateFromInitial(resolved);
-          } else {
-            fallbackFetchFavorites();
-          }
-          return;
-        }
-        if (
+
+        const epochMatches = getTrackingCacheEpoch() === inFlightInitial.epoch;
+        const canApplyTracking =
           resolved &&
           resolved.userId === currentUserId &&
-          getTrackingCacheEpoch() === inFlightInitial.epoch &&
+          epochMatches &&
           !hasTrackedMutationSince(
             inFlightInitial.startSeq,
             currentUserId,
             idsToQuery,
-          )
-        ) {
+          );
+        const canApplyFavorite =
+          resolved &&
+          resolved.userId === currentUserId &&
+          epochMatches &&
+          !hasFavoriteMutationSince(
+            inFlightInitial.startSeq,
+            currentUserId,
+            idsToQuery,
+            resolved.favFavoriteId,
+          );
+
+        if (canApplyTracking && canApplyFavorite) {
           recordInitialAnimeTrackingLoaded(
             currentUserId,
             idsToQuery,
             resolved,
           );
-          applyAuthoritativeInitialState(resolved);
-          if (Array.isArray(resolved.favoriteEntities)) {
+        }
+
+        if (trackingMutationVersionRef.current === trackingVersionAtStart) {
+          if (canApplyTracking) {
+            applyAuthoritativeInitialState(resolved);
+          } else {
+            fallbackFetchTrackingAndWatched();
+          }
+        }
+
+        if (favoriteMutationVersionRef.current === favoriteVersionAtStart) {
+          if (canApplyFavorite && Array.isArray(resolved.favoriteEntities)) {
             applyFavoriteStateFromInitial(resolved);
           } else {
             fallbackFetchFavorites();
           }
-          return;
+        } else {
+          setHydratedFavoriteUserId(currentUserId);
         }
-        fallbackFetchTrackingAndWatched();
-        fallbackFetchFavorites();
       });
-    } else if (cachedTracking) {
-      if (trackingMutationVersionRef.current === trackingVersionAtStart) {
-        applyTrackingState(cachedTracking.item);
-      }
-      setHydratedTrackingUserId(currentUserId);
-      void syncAuthenticatedWatchedEpisodes(currentUserId, animePrimaryId, {
-        candidateIds: idsToQuery,
-      });
-      if (
-        initialUserStatus &&
-        initialUserStatus.userId === currentUserId &&
-        Array.isArray(initialUserStatus.favoriteEntities)
-      ) {
-        applyFavoriteStateFromInitial(initialUserStatus);
-      } else {
-        fallbackFetchFavorites();
-      }
     } else {
-      fallbackFetchTrackingAndWatched();
+      if (freshTrackingInitial && initialUserStatus) {
+        applyAuthoritativeInitialState(initialUserStatus);
+      } else if (cachedTracking) {
+        if (trackingMutationVersionRef.current === trackingVersionAtStart) {
+          applyTrackingState(cachedTracking.item);
+        }
+        setHydratedTrackingUserId(currentUserId);
+        void syncAuthenticatedWatchedEpisodes(currentUserId, animePrimaryId, {
+          candidateIds: idsToQuery,
+        });
+      } else {
+        fallbackFetchTrackingAndWatched();
+      }
+
       if (
+        freshFavoriteInitial &&
         initialUserStatus &&
-        initialUserStatus.userId === currentUserId &&
         Array.isArray(initialUserStatus.favoriteEntities)
       ) {
         applyFavoriteStateFromInitial(initialUserStatus);
+      } else if (cachedFavorite) {
+        applyCachedFavoriteState(
+          cachedFavorite,
+          initialUserStatus?.userId === currentUserId
+            ? initialUserStatus.favoriteEntities
+            : undefined,
+        );
       } else {
         fallbackFetchFavorites();
       }
@@ -2388,6 +2527,8 @@ function AnimePageContent({
         setFavFavoriteId(created.id);
         setIsFavorite(true);
         setHydratedFavoriteUserId(user.id);
+        seedAnimeFavoriteCache(user.id, candidateAnimeIds, true, created.id);
+        markFavoriteMutated(user.id, candidateAnimeIds, created.id);
         saveAnimeUserClientCache(
           candidateAnimeIds,
           {
@@ -2410,6 +2551,8 @@ function AnimePageContent({
         setFavFavoriteId(null);
         setIsFavorite(false);
         setHydratedFavoriteUserId(user.id);
+        seedAnimeFavoriteCache(user.id, candidateAnimeIds, false, null);
+        markFavoriteMutated(user.id, candidateAnimeIds, previousFavoriteId);
         saveAnimeUserClientCache(
           candidateAnimeIds,
           {
@@ -3617,7 +3760,7 @@ function AnimePageContent({
 
                 <script
                   dangerouslySetInnerHTML={{
-                    __html: `(function(){try{var rc=localStorage.getItem("hikari_anime_user_cache_v1");var rs=localStorage.getItem("hikari-user-state-v1");var c=rc?JSON.parse(rc):null;var s=rs?JSON.parse(rs):null;var signedOut=false;try{signedOut=sessionStorage.getItem("hikari_signed_out")==="true";}catch(err){}var ssrUid=${JSON.stringify(user?.id ?? null)};var uid=signedOut?null:(ssrUid||(s&&s.state&&s.state.currentUserId?s.state.currentUserId:null));var entries=uid&&c&&typeof c==="object"&&typeof c.ownerUserId==="string"&&c.ownerUserId===uid&&c.entries&&typeof c.entries==="object"?c.entries:{};var ids=${JSON.stringify(candidateAnimeIds)};var k=null;for(var i=0;i<ids.length;i++){if(entries[ids[i]]){k=entries[ids[i]];break;}}var num=k&&k.continueEpisode?k.continueEpisode.number:null;var cw=uid&&s&&s.state&&s.state.userContinueWatching&&Array.isArray(s.state.userContinueWatching[uid])?s.state.userContinueWatching[uid]:(!uid&&s&&s.state&&Array.isArray(s.state.anonymousContinueWatching)?s.state.anonymousContinueWatching:[]);if(!num&&cw.length){for(var j=0;j<cw.length;j++){var e=cw[j];if(ids.indexOf(e.animeId)!==-1||e.animeId===${JSON.stringify(id)}){num=e.episodeNumber||1;break;}}}if(num){var w=document.getElementById("hikari-watch-btn-text");if(w)w.textContent="Continuar no ep. "+num;}var st=k&&k.trackingStatus?k.trackingStatus:null;if(st){var m={watching:"Assistindo",completed:"Concluído",on_hold:"Em espera",dropped:"Abandonado",planning:"Planejado"};var cl=document.getElementById("hikari-collection-btn-text");if(cl&&m[st])cl.textContent=m[st];}var fav=k&&k.isFavorite===true;if(fav){var f=document.getElementById("hikari-favorite-btn-text");if(f)f.textContent="Favoritado";}}catch(e){}})();`,
+                    __html: `(function(){try{var rc=localStorage.getItem("hikari_anime_user_cache_v1");var rs=localStorage.getItem("hikari-user-state-v1");var c=rc?JSON.parse(rc):null;var s=rs?JSON.parse(rs):null;var signedOut=false;try{signedOut=sessionStorage.getItem("hikari_signed_out")==="true";}catch(err){}var ssrUid=${JSON.stringify(user?.id ?? null)};var hasSsrUser=${JSON.stringify(matchesInitialUser)};var uid=signedOut?null:(ssrUid||(s&&s.state&&s.state.currentUserId?s.state.currentUserId:null));var entries=uid&&c&&typeof c==="object"&&typeof c.ownerUserId==="string"&&c.ownerUserId===uid&&c.entries&&typeof c.entries==="object"?c.entries:{};var ids=${JSON.stringify(candidateAnimeIds)};var k=null;for(var i=0;i<ids.length;i++){if(entries[ids[i]]){k=entries[ids[i]];break;}}var num=k&&k.continueEpisode?k.continueEpisode.number:null;var cw=uid&&s&&s.state&&s.state.userContinueWatching&&Array.isArray(s.state.userContinueWatching[uid])?s.state.userContinueWatching[uid]:(!uid&&s&&s.state&&Array.isArray(s.state.anonymousContinueWatching)?s.state.anonymousContinueWatching:[]);if(!num&&cw.length){for(var j=0;j<cw.length;j++){var e=cw[j];if(ids.indexOf(e.animeId)!==-1||e.animeId===${JSON.stringify(id)}){num=e.episodeNumber||1;break;}}}if(num){var w=document.getElementById("hikari-watch-btn-text");if(w)w.textContent="Continuar no ep. "+num;}if(!hasSsrUser){var st=k&&k.trackingStatus?k.trackingStatus:null;if(st){var m={watching:"Assistindo",completed:"Concluído",on_hold:"Em espera",dropped:"Abandonado",planning:"Planejado"};var cl=document.getElementById("hikari-collection-btn-text");if(cl&&m[st])cl.textContent=m[st];}var fav=k&&k.isFavorite===true;if(fav){var f=document.getElementById("hikari-favorite-btn-text");if(f)f.textContent="Favoritado";}}}catch(e){}})();`,
                   }}
                 />
 

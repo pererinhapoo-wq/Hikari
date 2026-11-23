@@ -33,6 +33,7 @@ import { isHikariAdmin } from "@/lib/auth/admin";
 import { getBearerToken } from "@/lib/auth/client";
 import { useAdminAccess } from "@/lib/auth/use-admin-access";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { setKnownViewerId } from "@/lib/profile-client-cache";
 import { useHikariStore } from "@/lib/store";
 import {
   cn,
@@ -690,7 +691,9 @@ export function Shell() {
 
   useEffect(() => {
     if (authPending) return;
-    useHikariStore.getState().setCurrentUserId(user?.id ?? null);
+    const nextUserId = user?.id ?? null;
+    setKnownViewerId(nextUserId);
+    useHikariStore.getState().setCurrentUserId(nextUserId);
   }, [authPending, user?.id]);
 
   const [menuOpen, setMenuOpen] =

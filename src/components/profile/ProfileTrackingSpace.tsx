@@ -20,7 +20,11 @@ import {
   upsertAnimeTracking,
 } from "@/lib/profile-tracking.functions";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { clearAnimeUserClientCache } from "@/lib/anime-user-client-cache";
+import {
+  clearAnimeUserClientCache,
+  getAnimeUserClientCache,
+  saveAnimeUserClientCache,
+} from "@/lib/anime-user-client-cache";
 import { invalidateWatchedEpisodesCache } from "@/lib/store";
 import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 import {
@@ -960,7 +964,31 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       } else {
         invalidateAccountProfileCache(undefined);
       }
-      clearAnimeUserClientCache(affectedIds);
+      const verifiedOwnerId =
+        effectiveViewerId && ownerId === effectiveViewerId ? ownerId : null;
+      const existingClientCache = verifiedOwnerId
+        ? getAnimeUserClientCache(affectedIds, verifiedOwnerId)
+        : null;
+      if (
+        verifiedOwnerId &&
+        existingClientCache &&
+        typeof existingClientCache.isFavorite === "boolean"
+      ) {
+        saveAnimeUserClientCache(
+          affectedIds,
+          {
+            trackingStatus: finalItem.status,
+            episodesWatched: finalItem.episodesWatched ?? 0,
+            score: finalItem.score ?? null,
+            dbAnimeId: finalItem.animeId,
+            createdAt: finalItem.createdAt || "",
+            updatedAt: finalItem.updatedAt || "",
+          },
+          verifiedOwnerId,
+        );
+      } else {
+        clearAnimeUserClientCache(affectedIds);
+      }
       toast.success(`Episódio ${finalItem.episodesWatched}${maxEps ? ` de ${maxEps}` : ""} marcado!`);
     } catch (err) {
       applyItemMutationToCache(previousItem, updatedItem.status, item.animeId);
@@ -1059,7 +1087,31 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       } else {
         invalidateAccountProfileCache(undefined);
       }
-      clearAnimeUserClientCache(affectedIds);
+      const verifiedOwnerId =
+        effectiveViewerId && ownerId === effectiveViewerId ? ownerId : null;
+      const existingClientCache = verifiedOwnerId
+        ? getAnimeUserClientCache(affectedIds, verifiedOwnerId)
+        : null;
+      if (
+        verifiedOwnerId &&
+        existingClientCache &&
+        typeof existingClientCache.isFavorite === "boolean"
+      ) {
+        saveAnimeUserClientCache(
+          affectedIds,
+          {
+            trackingStatus: finalItem.status,
+            episodesWatched: finalItem.episodesWatched ?? 0,
+            score: finalItem.score ?? null,
+            dbAnimeId: finalItem.animeId,
+            createdAt: finalItem.createdAt || "",
+            updatedAt: finalItem.updatedAt || "",
+          },
+          verifiedOwnerId,
+        );
+      } else {
+        clearAnimeUserClientCache(affectedIds);
+      }
       toast.success("Coleção atualizada com sucesso!");
     } catch (err) {
       applyItemMutationToCache(previousItem, optimisticItem.status, targetItem.animeId);

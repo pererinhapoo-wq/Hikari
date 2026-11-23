@@ -15,6 +15,13 @@ type CachedAnimeTrackingEntry = {
   cachedAt: number;
 };
 
+type CachedAnimeFavoriteEntry = {
+  isFavorite: boolean;
+  favFavoriteId: string | null;
+  candidateIds: string[];
+  cachedAt: number;
+};
+
 type InFlightAnimeInitialStateEntry = {
   promise: Promise<unknown>;
   epoch: number;
@@ -24,12 +31,16 @@ type InFlightAnimeInitialStateEntry = {
 };
 
 const animeTrackingCache = new Map<string, CachedAnimeTrackingEntry>();
+const animeFavoriteCache = new Map<string, CachedAnimeFavoriteEntry>();
 const inFlightAnimeTracking = new Map<string, Promise<UserAnimeTrackingItem[]>>();
 const inFlightAnimeInitialState = new Map<string, InFlightAnimeInitialStateEntry>();
 const paginatedTrackingCache = new Map<string, CachedPaginatedTrackingEntry>();
 const inFlightPaginatedTracking = new Map<string, Promise<unknown>>();
 const lastTrackingMutationSeqByUser = new Map<string, number>();
 const lastAnimeMutationSeqByKey = new Map<string, number>();
+const lastFavoriteMutationSeqByUser = new Map<string, number>();
+const lastAnimeFavoriteMutationSeqByKey = new Map<string, number>();
+const lastFavoriteIdMutationSeq = new Map<string, number>();
 const loaderInitialFetchSeqByKey = new Map<string, number>();
 const initialStateSeenSeq = new WeakMap<object, number>();
 
@@ -83,11 +94,15 @@ export function setActiveTrackingCacheUser(userId: string | null): void {
     hasSeenAuthenticatedUser = true;
   }
   animeTrackingCache.clear();
+  animeFavoriteCache.clear();
   inFlightAnimeTracking.clear();
   paginatedTrackingCache.clear();
   inFlightPaginatedTracking.clear();
   lastTrackingMutationSeqByUser.clear();
   lastAnimeMutationSeqByKey.clear();
+  lastFavoriteMutationSeqByUser.clear();
+  lastAnimeFavoriteMutationSeqByKey.clear();
+  lastFavoriteIdMutationSeq.clear();
   loaderInitialFetchSeqByKey.clear();
 }
 
@@ -97,12 +112,16 @@ export function clearAllTrackingClientCaches(): void {
   trackingCacheEpoch += 1;
   lastUserResetSeq = nextSeq();
   animeTrackingCache.clear();
+  animeFavoriteCache.clear();
   inFlightAnimeTracking.clear();
   inFlightAnimeInitialState.clear();
   paginatedTrackingCache.clear();
   inFlightPaginatedTracking.clear();
   lastTrackingMutationSeqByUser.clear();
   lastAnimeMutationSeqByKey.clear();
+  lastFavoriteMutationSeqByUser.clear();
+  lastAnimeFavoriteMutationSeqByKey.clear();
+  lastFavoriteIdMutationSeq.clear();
   loaderInitialFetchSeqByKey.clear();
 }
 
@@ -302,6 +321,158 @@ export function markTrackingMutated(
     const clean = rawId.trim();
     if (!clean) continue;
     lastAnimeMutationSeqByKey.set(makeAnimeKey(userId, clean), seq);
+  }
+}
+
+export function hasFavoriteMutationSince(
+  startSeq: number,
+  userId: string | null | undefined,
+  candidateIds: string[],
+  favoriteId?: string | null,
+): boolean {
+  if (!isBrowser() || !userId) return true;
+  if (lastUserResetSeq > startSeq) return true;
+  if ((lastFavoriteMutationSeqByUser.get(userId) ?? 0) > startSeq) {
+    return true;
+  }
+  if (
+    favoriteId &&
+    (lastFavoriteIdMutationSeq.get(makeAnimeKey(userId, favoriteId)) ?? 0) > startSeq
+  ) {
+    return true;
+  }
+  for (const rawId of candidateIds) {
+    const clean = rawId.trim();
+    if (!clean) continue;
+    if (
+      (lastAnimeFavoriteMutationSeqByKey.get(makeAnimeKey(userId, clean)) ?? 0) >
+      startSeq
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function isInitialAnimeFavoriteFresh(
+  userId: string,
+  candidateIds: string[],
+  initialStateObj?: (object & { favFavoriteId?: string | null }) | null,
+): boolean {
+  if (!isBrowser() || !userId) return false;
+  const userMutatedSeq = lastFavoriteMutationSeqByUser.get(userId) ?? 0;
+  let newestLoadSeq = 0;
+  let newestAnimeMutationSeq = 0;
+
+  if (initialStateObj && typeof initialStateObj === "object") {
+    let seenSeq = initialStateSeenSeq.get(initialStateObj);
+    if (seenSeq === undefined) {
+      seenSeq = nextSeq();
+      initialStateSeenSeq.set(initialStateObj, seenSeq);
+    }
+    if (seenSeq > newestLoadSeq) newestLoadSeq = seenSeq;
+
+    const favId =
+      typeof initialStateObj.favFavoriteId === "string"
+        ? initialStateObj.favFavoriteId.trim()
+        : "";
+    if (favId) {
+      const favIdMutSeq =
+        lastFavoriteIdMutationSeq.get(makeAnimeKey(userId, favId)) ?? 0;
+      if (favIdMutSeq > newestAnimeMutationSeq) {
+        newestAnimeMutationSeq = favIdMutSeq;
+      }
+    }
+  }
+
+  for (const rawId of candidateIds) {
+    const clean = rawId.trim();
+    if (!clean) continue;
+    const key = makeAnimeKey(userId, clean);
+    const loadedSeq = loaderInitialFetchSeqByKey.get(key) ?? 0;
+    if (loadedSeq > newestLoadSeq) newestLoadSeq = loadedSeq;
+    const animeMutSeq = lastAnimeFavoriteMutationSeqByKey.get(key) ?? 0;
+    if (animeMutSeq > newestAnimeMutationSeq) newestAnimeMutationSeq = animeMutSeq;
+  }
+
+  if (newestLoadSeq === 0) return false;
+  return (
+    newestLoadSeq >
+    Math.max(userMutatedSeq, newestAnimeMutationSeq, lastUserResetSeq)
+  );
+}
+
+export function markFavoriteMutated(
+  userId: string | null | undefined,
+  candidateIds?: string[],
+  favoriteId?: string | null,
+): void {
+  if (!isBrowser() || !userId) return;
+  const seq = nextSeq();
+  if (favoriteId && favoriteId.trim()) {
+    lastFavoriteIdMutationSeq.set(makeAnimeKey(userId, favoriteId.trim()), seq);
+  }
+  if (!candidateIds || candidateIds.length === 0) {
+    lastFavoriteMutationSeqByUser.set(userId, seq);
+    return;
+  }
+  for (const rawId of candidateIds) {
+    const clean = rawId.trim();
+    if (!clean) continue;
+    lastAnimeFavoriteMutationSeqByKey.set(makeAnimeKey(userId, clean), seq);
+  }
+}
+
+export function getCachedAnimeFavorite(
+  userId: string | null | undefined,
+  candidateIds: string[],
+): { hit: true; isFavorite: boolean; favFavoriteId: string | null } | null {
+  if (!isBrowser() || !userId) return null;
+  if (activeTrackingUserId && activeTrackingUserId !== userId) return null;
+
+  for (const rawId of candidateIds) {
+    const clean = rawId.trim();
+    if (!clean) continue;
+    const entry = animeFavoriteCache.get(makeAnimeKey(userId, clean));
+    if (entry) {
+      return {
+        hit: true,
+        isFavorite: entry.isFavorite,
+        favFavoriteId: entry.favFavoriteId,
+      };
+    }
+  }
+  return null;
+}
+
+export function seedAnimeFavoriteCache(
+  userId: string,
+  candidateIds: string[],
+  isFavorite: boolean,
+  favFavoriteId: string | null,
+): void {
+  if (!isBrowser() || !userId) return;
+  if (activeTrackingUserId && activeTrackingUserId !== userId) return;
+  activeTrackingUserId = userId;
+
+  const cleanIds = Array.from(
+    new Set(
+      candidateIds
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
+  );
+  if (cleanIds.length === 0) return;
+
+  const entry: CachedAnimeFavoriteEntry = {
+    isFavorite,
+    favFavoriteId,
+    candidateIds: cleanIds,
+    cachedAt: Date.now(),
+  };
+
+  for (const cid of cleanIds) {
+    animeFavoriteCache.set(makeAnimeKey(userId, cid), entry);
   }
 }
 

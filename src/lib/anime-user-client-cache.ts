@@ -274,3 +274,53 @@ export function clearAnimeUserClientCache(
 
   persistMemoryCache();
 }
+
+/**
+ * Atualiza o estado de favorito apenas em entradas já existentes do usuário autenticado
+ * (evita gravar entradas incompletas sem status de tracking).
+ */
+export function updateAnimeFavoriteInClientCache(
+  userId: string | null | undefined,
+  match: {
+    targetId: string;
+    favoriteId?: string | null;
+  },
+  isFavorite: boolean,
+  favFavoriteId: string | null,
+): boolean {
+  if (typeof window === "undefined") return false;
+  hydrateMemoryCache();
+
+  const normalizedOwner = normalizeOwnerId(userId);
+  if (!normalizedOwner || currentOwnerUserId !== normalizedOwner) {
+    return false;
+  }
+
+  const targetId = match.targetId.trim();
+  const favoriteId = match.favoriteId?.trim() || null;
+  if (!targetId && !favoriteId) return false;
+
+  let updated = false;
+  const now = Date.now();
+  for (const [key, entry] of Array.from(memoryCache.entries())) {
+    const matchesTarget =
+      Boolean(targetId) &&
+      (key === targetId || entry.dbAnimeId === targetId);
+    const matchesFavId =
+      Boolean(favoriteId) && entry.favFavoriteId === favoriteId;
+    if (matchesTarget || matchesFavId) {
+      touchKey(key, {
+        ...entry,
+        isFavorite,
+        favFavoriteId,
+        cachedAt: now,
+      });
+      updated = true;
+    }
+  }
+
+  if (updated) {
+    persistMemoryCache();
+  }
+  return updated;
+}

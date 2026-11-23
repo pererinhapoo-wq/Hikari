@@ -38,6 +38,11 @@ import {
   setCachedProfileMeta,
   setKnownViewerId,
 } from "@/lib/profile-client-cache";
+import { updateAnimeFavoriteInClientCache } from "@/lib/anime-user-client-cache";
+import {
+  markFavoriteMutated,
+  seedAnimeFavoriteCache,
+} from "@/lib/tracking-client-cache";
 
 import type {
   ProfileFavoriteItem,
@@ -1101,6 +1106,16 @@ function AccountProfile() {
           ),
         }));
         setFavoritesItems((prev) => prev.filter((f) => f.id !== item.id));
+        if (user?.id && item.targetType === "anime") {
+          seedAnimeFavoriteCache(user.id, [item.targetId], false, null);
+          markFavoriteMutated(user.id, [item.targetId], item.id);
+          updateAnimeFavoriteInClientCache(
+            user.id,
+            { targetId: item.targetId, favoriteId: item.id },
+            false,
+            null,
+          );
+        }
         invalidateAccountProfileCache(user?.id);
         invalidatePublicProfileCache(profile?.nick);
         toast.info(`"${item.title}" removido dos favoritos.`);
