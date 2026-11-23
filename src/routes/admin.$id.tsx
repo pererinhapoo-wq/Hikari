@@ -8,7 +8,7 @@ import {
   Info,
   Layers,
 } from "lucide-react";
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { memo, useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import { fetchAnimeDetail } from "@/lib/api";
 import {
@@ -59,6 +59,10 @@ import {
   type PersistEpisodeResult,
 } from "@/lib/episode-writer";
 import {
+  EPISODE_SAVE_CONCURRENCY,
+  runWithConcurrency,
+} from "@/lib/concurrency";
+import {
   getAdminCatalogEpisodes,
   invalidateCatalogEpisodesCache,
   mergeAdminEpisodesWithServer,
@@ -86,6 +90,16 @@ import {
   reconcileDirtyEpisodeIdsAfterFormPopulation,
   type OpeningSuggestionEntry,
 } from "@/lib/opening-admin-state";
+import {
+  createEpisodeSourcesSessionStore,
+  getEpisodeSlotsSignature,
+  type EpisodeSourcesSessionStore,
+} from "@/lib/episode-sources-session";
+
+const MemoEditorHeader = memo(EditorHeader);
+const MemoEditorMetadata = memo(EditorMetadata);
+const MemoEditorSeasons = memo(EditorSeasons);
+const MemoEditorMobileBar = memo(EditorMobileBar);
 
 export const Route = createFileRoute("/admin/$id")({
   validateSearch: (raw: Record<string, unknown>): { importId?: string } => ({
@@ -263,148 +277,19 @@ function AdminEditor() {
   >({});
   const [isFetchingOpening, setIsFetchingOpening] = useState(false);
 
-  const handleFetchOpeningSuggestions = async () => {
-    const malId = current.malId ?? null;
-    const anilistId = current.anilistId ?? null;
-    const kitsuId = current.kitsuId ?? null;
-
-    if (!malId && !anilistId && !kitsuId) {
-      toast.error(
-        "Este anime precisa de MAL ID, AniList ID ou Kitsu ID cadastrado para buscar sugestões de opening.",
-      );
-      return;
-    }
-
-    const seenKeys = new Set<string>();
-    const episodeQueries: Array<{
-      seasonNumber: number;
-      episodeNumber: number;
-      episodeLengthSeconds: number;
-    }> = [];
-    const previousSeasonMaxEpisodes: Record<number, number> = {};
-    let runningMaxEp = 0;
-
-    const sortedSeasons = [...current.seasons].sort((a, b) => a.number - b.number);
-    for (const season of sortedSeasons) {
-      previousSeasonMaxEpisodes[season.number] = runningMaxEp;
-      for (const ep of season.episodes) {
-        if (!ep.number || ep.number <= 0) continue;
-        if (ep.number > runningMaxEp) {
-          runningMaxEp = ep.number;
-        }
-        const key = getOpeningSuggestionKey(season.number, ep.number);
-        if (seenKeys.has(key)) continue;
-        seenKeys.add(key);
-        episodeQueries.push({
-          seasonNumber: season.number,
-          episodeNumber: ep.number,
-          episodeLengthSeconds: parseReliableEpisodeDurationSeconds(ep.duration),
-        });
-      }
-    }
-
-    if (episodeQueries.length === 0) {
-      toast.error("Nenhum episódio encontrado para consultar sugestões.");
-      return;
-    }
-
-    setIsFetchingOpening(true);
-    toast.info("Consultando sugestões de opening (AniSkip → TheIntroDB → IntroDB)...");
-
-    try {
-      const CHUNK_SIZE = 25;
-      let totalFound = 0;
-      let totalTransientErrors = 0;
-
-      for (let i = 0; i < episodeQueries.length; i += CHUNK_SIZE) {
-        const chunk = episodeQueries.slice(i, i + CHUNK_SIZE);
-        const res = await fetch("/api/admin/opening-suggestions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            malId,
-            anilistId,
-            kitsuId,
-            episodes: chunk,
-            previousSeasonMaxEpisodes,
-          }),
-        });
-
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}));
-          throw new Error(json.error || `Erro HTTP ${res.status}`);
-        }
-
-        const data = (await res.json()) as {
-          suggestionsByKey?: Record<string, OpeningSuggestionEntry>;
-        };
-
-        const incoming = data.suggestionsByKey || {};
-        for (const item of Object.values(incoming)) {
-          if (item.found) totalFound += 1;
-          else if (
-            item.status === "rate_limited" ||
-            item.status === "timeout" ||
-            item.status === "error"
-          ) {
-            totalTransientErrors += 1;
-          }
-        }
-
-        // Atualiza apenas as sugestões exibidas para revisão manual (nunca altera form/timestamps silenciosamente)
-        setOpeningSuggestions((prev) => mergeLoadedOpeningSuggestions(prev, incoming));
-      }
-
-      if (totalFound > 0) {
-        toast.success(
-          `${totalFound} sugestão(ões) de opening encontrada(s). Revise e clique em "Aplicar sugestão" para aprovar.`,
-        );
-      } else if (totalTransientErrors > 0) {
-        toast.warning(
-          "Algumas fontes falharam temporariamente ou atingiram limite. Tente novamente em instantes.",
-        );
-      } else {
-        toast.info("Nenhuma sugestão de opening encontrada nas fontes consultadas.");
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao buscar sugestões de opening.");
-    } finally {
-      setIsFetchingOpening(false);
-    }
-  };
-
-  const handleApplyOpeningSuggestion = (
-    seasonId: string,
-    episodeId: string,
-    start: number | null,
-    end: number | null,
-  ) => {
-    if (
-      typeof start !== "number" ||
-      typeof end !== "number" ||
-      start < 0 ||
-      end <= start
-    ) {
-      toast.error("Sugestão inválida para aplicação.");
-      return;
-    }
-    patchEpisode(seasonId, episodeId, {
-      openingStartSeconds: start,
-      openingEndSeconds: end,
-    });
-    toast.success("Sugestão de opening aplicada! Clique em Salvar para gravar no banco.");
-  };
-
-  const handleDiscardOpeningSuggestion = (seasonNumber: number, episodeNumber: number) => {
-    setOpeningSuggestions((prev) => discardOpeningSuggestion(prev, seasonNumber, episodeNumber));
-  };
-
   const initializedRouteKeyRef = useRef<string | null>(null);
   const lastServerEpisodesRef = useRef<CatalogEpisodesResult | null | undefined>(undefined);
   const isSavingRef = useRef(false);
   const formRef = useRef<LocalAnime | null>(null);
   formRef.current = form;
+  const genreTextRef = useRef(genreText);
+  genreTextRef.current = genreText;
+  const animeSyncStateRef = useRef<AnimeSyncState>(animeSyncState);
+  animeSyncStateRef.current = animeSyncState;
+  const idRef = useRef(id);
+  idRef.current = id;
+  const importIdRef = useRef(importId);
+  importIdRef.current = importId;
   const dirtyEpisodeIdsRef = useRef<Set<string>>(new Set());
   const explicitUserDirtyEpisodeIdsRef = useRef<Set<string>>(new Set());
   const dirtyMediaRef = useRef<{ cover: boolean; banner: boolean }>({
@@ -412,6 +297,11 @@ function AdminEditor() {
     banner: false,
   });
   const dirtyBadgesRef = useRef(false);
+  const sourcesSessionRef = useRef<EpisodeSourcesSessionStore | null>(null);
+  if (!sourcesSessionRef.current) {
+    sourcesSessionRef.current = createEpisodeSourcesSessionStore();
+  }
+  const [sourcesSyncTick, setSourcesSyncTick] = useState(0);
   const [clientMobileBanner, setClientMobileBanner] =
     useState<ResolvedMobileBannerInfo | null>(null);
   const [episodeCandidates, setEpisodeCandidates] = useState<
@@ -579,6 +469,9 @@ function AdminEditor() {
             result.episodes,
             explicitUserDirtyEpisodeIdsRef.current,
           );
+          sourcesSessionRef.current?.setBaselineSlotsFromEpisodes(result.episodes);
+          sourcesSessionRef.current?.invalidateAll();
+          setSourcesSyncTick((t) => t + 1);
           setForm({
             ...baseForm,
             seasons: mergeResult.seasons,
@@ -601,299 +494,492 @@ function AdminEditor() {
     [id, remote?.serverCatalogId],
   );
 
-  async function handleDiscoverEpisodeThumbnails(
-    sid: string,
-    ep: Episode,
-    forcedUrl?: string,
-  ) {
-    const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
-    const liveEp = liveSeason?.episodes.find((e) => e.id === ep.id) ?? ep;
-    const rawCandidates = forcedUrl
-      ? [forcedUrl.trim()]
-      : [
-          liveEp.videoUrl,
-          liveEp.videoUrl2,
-          liveEp.videoUrl3,
-          liveEp.videoUrl4,
-          liveEp.videoUrl5,
-        ];
-    const videoUrl = rawCandidates.find((u) => isPersistablePlayableVideoUrl(u))?.trim();
+  const patchEpisode = useCallback(
+    (sid: string, eid: string, patch: Partial<Episode>) => {
+      const patchEntries = Object.entries(patch) as Array<
+        [keyof Episode, Episode[keyof Episode]]
+      >;
+      if (patchEntries.length === 0) return;
 
-    if (!videoUrl) {
-      if (!forcedUrl) {
-        toast.error("Insira uma URL de vídeo válida antes de buscar as imagens.");
+      const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
+      const liveEp = liveSeason?.episodes.find((e) => e.id === eid);
+      if (liveEp) {
+        const changedVsRef = patchEntries.some(([k, v]) => !Object.is(liveEp[k], v));
+        if (!changedVsRef) {
+          return;
+        }
       }
+
+      dirtyEpisodeIdsRef.current.add(eid);
+      explicitUserDirtyEpisodeIdsRef.current.add(eid);
+      setForm((f) => {
+        if (!f) return f;
+        const sIdx = f.seasons.findIndex((s) => s.id === sid);
+        if (sIdx === -1) return f;
+        const season = f.seasons[sIdx];
+        const eIdx = season.episodes.findIndex((e) => e.id === eid);
+        if (eIdx === -1) return f;
+
+        const currentEp = season.episodes[eIdx];
+        const hasActualChange = patchEntries.some(
+          ([k, v]) => !Object.is(currentEp[k], v),
+        );
+        if (!hasActualChange) return f;
+
+        const nextEpisodes = season.episodes.slice();
+        nextEpisodes[eIdx] = { ...currentEp, ...patch };
+        const nextSeasons = f.seasons.slice();
+        nextSeasons[sIdx] = { ...season, episodes: nextEpisodes };
+        return { ...f, seasons: nextSeasons };
+      });
+      setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
+    },
+    [],
+  );
+
+  const handleFetchOpeningSuggestions = useCallback(async () => {
+    const currentForm = formRef.current;
+    if (!currentForm) return;
+
+    const malId = currentForm.malId ?? null;
+    const anilistId = currentForm.anilistId ?? null;
+    const kitsuId = currentForm.kitsuId ?? null;
+
+    if (!malId && !anilistId && !kitsuId) {
+      toast.error(
+        "Este anime precisa de MAL ID, AniList ID ou Kitsu ID cadastrado para buscar sugestões de opening.",
+      );
       return;
     }
 
-    // Evita reprocessar automaticamente a mesma URL já carregada/em carregamento para este episódio
-    const existingState = episodeCandidatesRef.current[ep.id];
-    if (
-      forcedUrl &&
-      existingState &&
-      existingState.sourceUrl === videoUrl &&
-      (existingState.loading || existingState.candidates.length > 0)
-    ) {
+    const seenKeys = new Set<string>();
+    const episodeQueries: Array<{
+      seasonNumber: number;
+      episodeNumber: number;
+      episodeLengthSeconds: number;
+    }> = [];
+    const previousSeasonMaxEpisodes: Record<number, number> = {};
+    let runningMaxEp = 0;
+
+    const sortedSeasons = [...currentForm.seasons].sort((a, b) => a.number - b.number);
+    for (const season of sortedSeasons) {
+      previousSeasonMaxEpisodes[season.number] = runningMaxEp;
+      for (const ep of season.episodes) {
+        if (!ep.number || ep.number <= 0) continue;
+        if (ep.number > runningMaxEp) {
+          runningMaxEp = ep.number;
+        }
+        const key = getOpeningSuggestionKey(season.number, ep.number);
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
+        episodeQueries.push({
+          seasonNumber: season.number,
+          episodeNumber: ep.number,
+          episodeLengthSeconds: parseReliableEpisodeDurationSeconds(ep.duration),
+        });
+      }
+    }
+
+    if (episodeQueries.length === 0) {
+      toast.error("Nenhum episódio encontrado para consultar sugestões.");
       return;
     }
 
-    const prevTask = candidateTasksRef.current.get(ep.id);
-    const nextGeneration = (prevTask?.generation ?? 0) + 1;
-    revokeEpisodePreviewUrls(ep.id);
-
-    const controller = new AbortController();
-    candidateTasksRef.current.set(ep.id, {
-      generation: nextGeneration,
-      controller,
-      previewUrls: [],
-    });
-
-    setEpisodeCandidates((prev) => ({
-      ...prev,
-      [ep.id]: {
-        loading: true,
-        candidates: [],
-        sourceUrl: videoUrl,
-        selectedCandidateId: prev[ep.id]?.selectedCandidateId ?? null,
-      },
-    }));
+    setIsFetchingOpening(true);
+    toast.info("Consultando sugestões de opening (AniSkip → TheIntroDB → IntroDB)...");
 
     try {
-      const { candidates, warning } = await extractVideoThumbnailCandidates(videoUrl, {
-        maxCandidates: 6,
-        signal: controller.signal,
-      });
+      const CHUNK_SIZE = 25;
+      let totalFound = 0;
+      let totalTransientErrors = 0;
 
-      const currentTask = candidateTasksRef.current.get(ep.id);
-      if (!currentTask || currentTask.generation !== nextGeneration || controller.signal.aborted) {
-        for (const c of candidates) {
-          if (c.previewUrl.startsWith("blob:")) {
-            URL.revokeObjectURL(c.previewUrl);
+      for (let i = 0; i < episodeQueries.length; i += CHUNK_SIZE) {
+        const chunk = episodeQueries.slice(i, i + CHUNK_SIZE);
+        const res = await fetch("/api/admin/opening-suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            malId,
+            anilistId,
+            kitsuId,
+            episodes: chunk,
+            previousSeasonMaxEpisodes,
+          }),
+        });
+
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}));
+          throw new Error(json.error || `Erro HTTP ${res.status}`);
+        }
+
+        const data = (await res.json()) as {
+          suggestionsByKey?: Record<string, OpeningSuggestionEntry>;
+        };
+
+        const incoming = data.suggestionsByKey || {};
+        for (const item of Object.values(incoming)) {
+          if (item.found) totalFound += 1;
+          else if (
+            item.status === "rate_limited" ||
+            item.status === "timeout" ||
+            item.status === "error"
+          ) {
+            totalTransientErrors += 1;
           }
+        }
+
+        // Atualiza apenas as sugestões exibidas para revisão manual (nunca altera form/timestamps silenciosamente)
+        setOpeningSuggestions((prev) => mergeLoadedOpeningSuggestions(prev, incoming));
+      }
+
+      if (totalFound > 0) {
+        toast.success(
+          `${totalFound} sugestão(ões) de opening encontrada(s). Revise e clique em "Aplicar sugestão" para aprovar.`,
+        );
+      } else if (totalTransientErrors > 0) {
+        toast.warning(
+          "Algumas fontes falharam temporariamente ou atingiram limite. Tente novamente em instantes.",
+        );
+      } else {
+        toast.info("Nenhuma sugestão de opening encontrada nas fontes consultadas.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao buscar sugestões de opening.");
+    } finally {
+      setIsFetchingOpening(false);
+    }
+  }, []);
+
+  const handleApplyOpeningSuggestion = useCallback(
+    (
+      seasonId: string,
+      episodeId: string,
+      start: number | null,
+      end: number | null,
+    ) => {
+      if (
+        typeof start !== "number" ||
+        typeof end !== "number" ||
+        start < 0 ||
+        end <= start
+      ) {
+        toast.error("Sugestão inválida para aplicação.");
+        return;
+      }
+      patchEpisode(seasonId, episodeId, {
+        openingStartSeconds: start,
+        openingEndSeconds: end,
+      });
+      toast.success("Sugestão de opening aplicada! Clique em Salvar para gravar no banco.");
+    },
+    [patchEpisode],
+  );
+
+  const handleDiscardOpeningSuggestion = useCallback(
+    (seasonNumber: number, episodeNumber: number) => {
+      setOpeningSuggestions((prev) => discardOpeningSuggestion(prev, seasonNumber, episodeNumber));
+    },
+    [],
+  );
+
+  const handleDiscoverEpisodeThumbnails = useCallback(
+    async (sid: string, ep: Episode, forcedUrl?: string) => {
+      const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
+      const liveEp = liveSeason?.episodes.find((e) => e.id === ep.id) ?? ep;
+      const rawCandidates = forcedUrl
+        ? [forcedUrl.trim()]
+        : [
+            liveEp.videoUrl,
+            liveEp.videoUrl2,
+            liveEp.videoUrl3,
+            liveEp.videoUrl4,
+            liveEp.videoUrl5,
+          ];
+      const videoUrl = rawCandidates.find((u) => isPersistablePlayableVideoUrl(u))?.trim();
+
+      if (!videoUrl) {
+        if (!forcedUrl) {
+          toast.error("Insira uma URL de vídeo válida antes de buscar as imagens.");
         }
         return;
       }
 
-      currentTask.previewUrls = candidates
-        .map((c) => c.previewUrl)
-        .filter((u) => u.startsWith("blob:"));
+      // Evita reprocessar automaticamente a mesma URL já carregada/em carregamento para este episódio
+      const existingState = episodeCandidatesRef.current[ep.id];
+      if (
+        forcedUrl &&
+        existingState &&
+        existingState.sourceUrl === videoUrl &&
+        (existingState.loading || existingState.candidates.length > 0)
+      ) {
+        return;
+      }
+
+      const prevTask = candidateTasksRef.current.get(ep.id);
+      const nextGeneration = (prevTask?.generation ?? 0) + 1;
+      revokeEpisodePreviewUrls(ep.id);
+
+      const controller = new AbortController();
+      candidateTasksRef.current.set(ep.id, {
+        generation: nextGeneration,
+        controller,
+        previewUrls: [],
+      });
 
       setEpisodeCandidates((prev) => ({
         ...prev,
         [ep.id]: {
-          loading: false,
-          candidates,
-          warning,
+          loading: true,
+          candidates: [],
           sourceUrl: videoUrl,
           selectedCandidateId: prev[ep.id]?.selectedCandidateId ?? null,
         },
       }));
-    } catch (err) {
-      const currentTask = candidateTasksRef.current.get(ep.id);
-      if (!currentTask || currentTask.generation !== nextGeneration || controller.signal.aborted) {
-        return;
-      }
-      const errMsg =
-        err instanceof Error
-          ? err.message
-          : "Não foi possível extrair imagens deste vídeo.";
-      setEpisodeCandidates((prev) => ({
-        ...prev,
-        [ep.id]: {
-          loading: false,
-          candidates: [],
-          error: errMsg,
-          sourceUrl: videoUrl,
-        },
-      }));
-    }
-  }
 
-  async function handleSelectEpisodeCandidate(
-    sid: string,
-    ep: Episode,
-    candidate: VideoThumbnailCandidate,
-  ) {
-    const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
-    const liveEp = liveSeason?.episodes.find((e) => e.id === ep.id) ?? ep;
-
-    setEpisodeCandidates((prev) => {
-      const curr = prev[ep.id];
-      if (!curr) return prev;
-      return {
-        ...prev,
-        [ep.id]: {
-          ...curr,
-          selectingCandidateId: candidate.id,
-        },
-      };
-    });
-
-    try {
-      let finalUrl = candidate.remoteUrl?.trim();
-      if (!finalUrl && candidate.blob) {
-        finalUrl = await uploadThumbnailBlob(
-          candidate.blob,
-          liveEp.title || `episodio-${liveEp.number}`,
-        );
-      }
-
-      if (!finalUrl) {
-        throw new Error("A imagem selecionada não pôde ser preparada para salvamento.");
-      }
-
-      patchEpisode(sid, ep.id, { thumbnail: finalUrl });
-      setEpisodeThumbnailEditMode(ep.id, "modified");
-
-      setEpisodeCandidates((prev) => {
-        const curr = prev[ep.id];
-        if (!curr) return prev;
-        return {
-          ...prev,
-          [ep.id]: {
-            ...curr,
-            selectingCandidateId: null,
-            selectedCandidateId: candidate.id,
-          },
-        };
-      });
-
-      setCaptureStatus((prev) => ({
-        ...prev,
-        [ep.id]: {
-          status: "success",
-          message: `Miniatura (${candidate.label}) aplicada ao Episódio ${liveEp.number}.`,
-        },
-      }));
-      toast.success(`Imagem (${candidate.label}) aplicada ao Episódio ${liveEp.number}!`);
-    } catch (err) {
-      const errMsg =
-        err instanceof Error ? err.message : "Falha ao aplicar a imagem escolhida.";
-      setEpisodeCandidates((prev) => {
-        const curr = prev[ep.id];
-        if (!curr) return prev;
-        return {
-          ...prev,
-          [ep.id]: {
-            ...curr,
-            selectingCandidateId: null,
-          },
-        };
-      });
-      setCaptureStatus((prev) => ({
-        ...prev,
-        [ep.id]: {
-          status: "error",
-          message: errMsg,
-        },
-      }));
-      toast.error(`Erro ao aplicar imagem (Ep. ${liveEp.number}): ${errMsg}`);
-    }
-  }
-
-  async function handleCaptureEpisodeFrame(
-    sid: string,
-    ep: Episode,
-    forcedUrl?: string,
-    options?: { isAuto?: boolean },
-  ) {
-    const isAuto = Boolean(options?.isAuto);
-    if (isAuto) {
-      await handleDiscoverEpisodeThumbnails(sid, ep, forcedUrl);
-      return;
-    }
-
-    const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
-    const liveEp = liveSeason?.episodes.find((e) => e.id === ep.id) ?? ep;
-
-    const videoUrl =
-      forcedUrl ||
-      liveEp.videoUrl ||
-      liveEp.videoUrl2 ||
-      liveEp.videoUrl3 ||
-      liveEp.videoUrl4 ||
-      liveEp.videoUrl5;
-
-    if (!videoUrl || !hasEpisodePlayableSource({ videoUrl })) {
-      toast.error("Insira uma URL de vídeo válida antes de capturar a miniatura.");
-      return;
-    }
-
-    const thumbAtStart = liveEp.thumbnail?.trim() ?? "";
-
-    setCaptureStatus((prev) => ({
-      ...prev,
-      [ep.id]: {
-        status: "loading",
-        message: "Capturando miniatura do vídeo...",
-      },
-    }));
-
-    try {
-      const res = await captureAndUploadThumbnail(videoUrl, {
-        episodeTitle: liveEp.title || `Episódio ${liveEp.number}`,
-      });
-
-      const latestEp = formRef.current?.seasons
-        .find((s) => s.id === sid)
-        ?.episodes.find((e) => e.id === ep.id);
-      const latestThumb = latestEp?.thumbnail?.trim() ?? "";
-
-      if (latestThumb && latestThumb !== thumbAtStart) {
-        setCaptureStatus((prev) => {
-          const next = { ...prev };
-          delete next[ep.id];
-          return next;
+      try {
+        const { candidates, warning } = await extractVideoThumbnailCandidates(videoUrl, {
+          maxCandidates: 6,
+          signal: controller.signal,
         });
+
+        const currentTask = candidateTasksRef.current.get(ep.id);
+        if (!currentTask || currentTask.generation !== nextGeneration || controller.signal.aborted) {
+          for (const c of candidates) {
+            if (c.previewUrl.startsWith("blob:")) {
+              URL.revokeObjectURL(c.previewUrl);
+            }
+          }
+          return;
+        }
+
+        currentTask.previewUrls = candidates
+          .map((c) => c.previewUrl)
+          .filter((u) => u.startsWith("blob:"));
+
+        setEpisodeCandidates((prev) => ({
+          ...prev,
+          [ep.id]: {
+            loading: false,
+            candidates,
+            warning,
+            sourceUrl: videoUrl,
+            selectedCandidateId: prev[ep.id]?.selectedCandidateId ?? null,
+          },
+        }));
+      } catch (err) {
+        const currentTask = candidateTasksRef.current.get(ep.id);
+        if (!currentTask || currentTask.generation !== nextGeneration || controller.signal.aborted) {
+          return;
+        }
+        const errMsg =
+          err instanceof Error
+            ? err.message
+            : "Não foi possível extrair imagens deste vídeo.";
+        setEpisodeCandidates((prev) => ({
+          ...prev,
+          [ep.id]: {
+            loading: false,
+            candidates: [],
+            error: errMsg,
+            sourceUrl: videoUrl,
+          },
+        }));
+      }
+    },
+    [revokeEpisodePreviewUrls],
+  );
+
+  const handleSelectEpisodeCandidate = useCallback(
+    async (sid: string, ep: Episode, candidate: VideoThumbnailCandidate) => {
+      const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
+      const liveEp = liveSeason?.episodes.find((e) => e.id === ep.id) ?? ep;
+
+      setEpisodeCandidates((prev) => {
+        const curr = prev[ep.id];
+        if (!curr) return prev;
+        return {
+          ...prev,
+          [ep.id]: {
+            ...curr,
+            selectingCandidateId: candidate.id,
+          },
+        };
+      });
+
+      try {
+        let finalUrl = candidate.remoteUrl?.trim();
+        if (!finalUrl && candidate.blob) {
+          finalUrl = await uploadThumbnailBlob(
+            candidate.blob,
+            liveEp.title || `episodio-${liveEp.number}`,
+          );
+        }
+
+        if (!finalUrl) {
+          throw new Error("A imagem selecionada não pôde ser preparada para salvamento.");
+        }
+
+        patchEpisode(sid, ep.id, { thumbnail: finalUrl });
+        setEpisodeThumbnailEditMode(ep.id, "modified");
+
+        setEpisodeCandidates((prev) => {
+          const curr = prev[ep.id];
+          if (!curr) return prev;
+          return {
+            ...prev,
+            [ep.id]: {
+              ...curr,
+              selectingCandidateId: null,
+              selectedCandidateId: candidate.id,
+            },
+          };
+        });
+
+        setCaptureStatus((prev) => ({
+          ...prev,
+          [ep.id]: {
+            status: "success",
+            message: `Miniatura (${candidate.label}) aplicada ao Episódio ${liveEp.number}.`,
+          },
+        }));
+        toast.success(`Imagem (${candidate.label}) aplicada ao Episódio ${liveEp.number}!`);
+      } catch (err) {
+        const errMsg =
+          err instanceof Error ? err.message : "Falha ao aplicar a imagem escolhida.";
+        setEpisodeCandidates((prev) => {
+          const curr = prev[ep.id];
+          if (!curr) return prev;
+          return {
+            ...prev,
+            [ep.id]: {
+              ...curr,
+              selectingCandidateId: null,
+            },
+          };
+        });
+        setCaptureStatus((prev) => ({
+          ...prev,
+          [ep.id]: {
+            status: "error",
+            message: errMsg,
+          },
+        }));
+        toast.error(`Erro ao aplicar imagem (Ep. ${liveEp.number}): ${errMsg}`);
+      }
+    },
+    [patchEpisode, setEpisodeThumbnailEditMode],
+  );
+
+  const handleCaptureEpisodeFrame = useCallback(
+    async (
+      sid: string,
+      ep: Episode,
+      forcedUrl?: string,
+      options?: { isAuto?: boolean },
+    ) => {
+      const isAuto = Boolean(options?.isAuto);
+      if (isAuto) {
+        await handleDiscoverEpisodeThumbnails(sid, ep, forcedUrl);
         return;
       }
 
-      patchEpisode(sid, ep.id, { thumbnail: res.url });
-      setEpisodeThumbnailEditMode(ep.id, "modified");
+      const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
+      const liveEp = liveSeason?.episodes.find((e) => e.id === ep.id) ?? ep;
+
+      const videoUrl =
+        forcedUrl ||
+        liveEp.videoUrl ||
+        liveEp.videoUrl2 ||
+        liveEp.videoUrl3 ||
+        liveEp.videoUrl4 ||
+        liveEp.videoUrl5;
+
+      if (!videoUrl || !hasEpisodePlayableSource({ videoUrl })) {
+        toast.error("Insira uma URL de vídeo válida antes de capturar a miniatura.");
+        return;
+      }
+
+      const thumbAtStart = liveEp.thumbnail?.trim() ?? "";
+
       setCaptureStatus((prev) => ({
         ...prev,
         [ep.id]: {
-          status: "success",
-          message: "Miniatura capturada e salva com sucesso!",
+          status: "loading",
+          message: "Capturando miniatura do vídeo...",
         },
       }));
-      toast.success(`Miniatura do Episódio ${liveEp.number} salva!`);
-    } catch (err) {
-      const errMsg =
-        err instanceof Error ? err.message : "Falha na captura do quadro do vídeo.";
-      setCaptureStatus((prev) => ({
-        ...prev,
-        [ep.id]: {
-          status: "error",
-          message: errMsg,
-        },
-      }));
-      toast.error(`Falha na captura (Ep. ${liveEp.number}): ${errMsg}`);
-    }
-  }
 
-  async function handleUploadVideoToB2(
-    sid: string,
-    ep: Episode,
-    key: "videoUrl" | "videoUrl2" | "videoUrl3",
-  ) {
-    const uploadId = `${ep.id}-${key}`;
-    setUploadingEpisode(uploadId);
-    try {
-      await uploadVideoToB2((url) => {
-        patchEpisode(sid, ep.id, { [key]: url });
-        toast.success(`Vídeo enviado com sucesso para ${key}!`);
+      try {
+        const res = await captureAndUploadThumbnail(videoUrl, {
+          episodeTitle: liveEp.title || `Episódio ${liveEp.number}`,
+        });
 
-        const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
-        const liveEp = liveSeason?.episodes.find((e) => e.id === ep.id) ?? ep;
-        void handleDiscoverEpisodeThumbnails(sid, liveEp, url);
-      });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Falha no upload.");
-    } finally {
-      setUploadingEpisode(null);
-    }
-  }
+        const latestEp = formRef.current?.seasons
+          .find((s) => s.id === sid)
+          ?.episodes.find((e) => e.id === ep.id);
+        const latestThumb = latestEp?.thumbnail?.trim() ?? "";
+
+        if (latestThumb && latestThumb !== thumbAtStart) {
+          setCaptureStatus((prev) => {
+            const next = { ...prev };
+            delete next[ep.id];
+            return next;
+          });
+          return;
+        }
+
+        patchEpisode(sid, ep.id, { thumbnail: res.url });
+        setEpisodeThumbnailEditMode(ep.id, "modified");
+        setCaptureStatus((prev) => ({
+          ...prev,
+          [ep.id]: {
+            status: "success",
+            message: "Miniatura capturada e salva com sucesso!",
+          },
+        }));
+        toast.success(`Miniatura do Episódio ${liveEp.number} salva!`);
+      } catch (err) {
+        const errMsg =
+          err instanceof Error ? err.message : "Falha na captura do quadro do vídeo.";
+        setCaptureStatus((prev) => ({
+          ...prev,
+          [ep.id]: {
+            status: "error",
+            message: errMsg,
+          },
+        }));
+        toast.error(`Falha na captura (Ep. ${liveEp.number}): ${errMsg}`);
+      }
+    },
+    [handleDiscoverEpisodeThumbnails, patchEpisode, setEpisodeThumbnailEditMode],
+  );
+
+  const handleUploadVideoToB2 = useCallback(
+    async (
+      sid: string,
+      ep: Episode,
+      key: "videoUrl" | "videoUrl2" | "videoUrl3",
+    ) => {
+      const uploadId = `${ep.id}-${key}`;
+      setUploadingEpisode(uploadId);
+      try {
+        await uploadVideoToB2((url) => {
+          patchEpisode(sid, ep.id, { [key]: url });
+          toast.success(`Vídeo enviado com sucesso para ${key}!`);
+
+          const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
+          const liveEp = liveSeason?.episodes.find((e) => e.id === ep.id) ?? ep;
+          void handleDiscoverEpisodeThumbnails(sid, liveEp, url);
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Falha no upload.");
+      } finally {
+        setUploadingEpisode(null);
+      }
+    },
+    [patchEpisode, handleDiscoverEpisodeThumbnails],
+  );
 
   useEffect(() => {
     if (!hydrated || isSavingRef.current) return;
@@ -927,6 +1013,13 @@ function AdminEditor() {
               serverEpisodes.episodes,
               explicitUserDirtyEpisodeIdsRef.current,
             );
+            sourcesSessionRef.current?.setBaselineSlotsFromEpisodes(
+              serverEpisodes.episodes,
+            );
+            sourcesSessionRef.current?.invalidateEpisodes(
+              serverEpisodes.episodes.map((ep) => ep.id),
+            );
+            setSourcesSyncTick((t) => t + 1);
             setForm({
               ...baseForm,
               seasons: mergeResult.seasons,
@@ -957,6 +1050,8 @@ function AdminEditor() {
     }
 
     initializedRouteKeyRef.current = routeKey;
+    sourcesSessionRef.current?.reset();
+    setSourcesSyncTick((t) => t + 1);
     thumbnailEditModesRef.current = {};
     setThumbnailEditModes({});
     dirtyEpisodeIdsRef.current = new Set();
@@ -1019,6 +1114,9 @@ function AdminEditor() {
         serverEpisodes.episodes,
         explicitUserDirtyEpisodeIdsRef.current,
       );
+      sourcesSessionRef.current?.setBaselineSlotsFromEpisodes(
+        serverEpisodes.episodes,
+      );
       setForm({
         ...base,
         seasons: mergeResult.seasons,
@@ -1037,6 +1135,9 @@ function AdminEditor() {
         serverEpisodes?.episodes ?? [],
         explicitUserDirtyEpisodeIdsRef.current,
       );
+      if (base.syncedAt && base.syncedAt >= (base.updatedAt ?? 0)) {
+        sourcesSessionRef.current?.setBaselineSlotsFromSeasons(base.seasons);
+      }
       setForm(base);
       setGenreText(base.genres.join(", "));
       if (base.syncedAt && base.syncedAt >= (base.updatedAt ?? 0)) {
@@ -1168,30 +1269,7 @@ function AdminEditor() {
     [form, remote, clientMobileBanner],
   );
 
-  if (!form) {
-    return (
-      <div className="space-y-6 pb-12 pt-2">
-        <div className="studio-panel rounded-2xl p-6">
-          <div className="h-4 w-32 animate-pulse rounded bg-white/[0.06]" />
-          <div className="mt-4 flex items-center gap-4">
-            <div className="h-16 w-12 animate-pulse rounded-lg bg-white/[0.06]" />
-            <div className="space-y-2.5 flex-1">
-              <div className="h-6 w-64 max-w-full animate-pulse rounded bg-white/[0.08]" />
-              <div className="h-3.5 w-44 animate-pulse rounded bg-white/[0.05]" />
-            </div>
-          </div>
-        </div>
-        <div className="grid gap-6 xl:grid-cols-12">
-          <div className="studio-panel h-80 animate-pulse rounded-2xl xl:col-span-7" />
-          <div className="studio-panel h-80 animate-pulse rounded-2xl xl:col-span-5" />
-        </div>
-      </div>
-    );
-  }
-
-  const current = form;
-
-  function set<K extends keyof LocalAnime>(key: K, value: LocalAnime[K]) {
+  const set = useCallback(<K extends keyof LocalAnime>(key: K, value: LocalAnime[K]) => {
     if (key === "cover") {
       dirtyMediaRef.current.cover = true;
     } else if (key === "banner") {
@@ -1201,30 +1279,45 @@ function AdminEditor() {
     }
     setForm((f) => (f ? { ...f, [key]: value } : f));
     setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
-  }
+  }, []);
 
-  function toggleRecentBadge(badgeKey: keyof AnimeRecentBadges, enabled: boolean) {
-    dirtyBadgesRef.current = true;
-    setForm((f) => {
-      if (!f) return f;
-      const nextBadges: AnimeRecentBadges = {
-        ...normalizeAnimeRecentBadges(f.recentBadges),
-        [badgeKey]: enabled,
-      };
-      return {
-        ...f,
-        recentBadges: nextBadges,
-      };
-    });
+  const toggleRecentBadge = useCallback(
+    (badgeKey: keyof AnimeRecentBadges, enabled: boolean) => {
+      dirtyBadgesRef.current = true;
+      setForm((f) => {
+        if (!f) return f;
+        const nextBadges: AnimeRecentBadges = {
+          ...normalizeAnimeRecentBadges(f.recentBadges),
+          [badgeKey]: enabled,
+        };
+        return {
+          ...f,
+          recentBadges: nextBadges,
+        };
+      });
+      setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
+    },
+    [],
+  );
+
+  const handleGenreTextChange = useCallback((val: string) => {
+    setGenreText(val);
     setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
-  }
+  }, []);
 
-  function duplicateAsDubbed() {
+  const duplicateAsDubbed = useCallback(() => {
+    const currentForm = formRef.current;
+    if (!currentForm) return;
+
     const newId = `local-${crypto.randomUUID()}`;
-    const baseTitleRomaji = current.titleRomaji ? `${current.titleRomaji} Dublado` : "";
-    const baseTitleEnglish = current.titleEnglish ? `${current.titleEnglish} Dublado` : "";
+    const baseTitleRomaji = currentForm.titleRomaji
+      ? `${currentForm.titleRomaji} Dublado`
+      : "";
+    const baseTitleEnglish = currentForm.titleEnglish
+      ? `${currentForm.titleEnglish} Dublado`
+      : "";
 
-    const clonedSeasons: Season[] = current.seasons.map((s) => ({
+    const clonedSeasons: Season[] = currentForm.seasons.map((s) => ({
       id: `s-${crypto.randomUUID()}`,
       number: s.number,
       title: s.title,
@@ -1246,10 +1339,10 @@ function AdminEditor() {
     }));
 
     const duplicated: LocalAnime = {
-      ...current,
+      ...currentForm,
       id: newId,
-      titleRomaji: baseTitleRomaji || current.titleRomaji,
-      titleEnglish: baseTitleEnglish || current.titleEnglish,
+      titleRomaji: baseTitleRomaji || currentForm.titleRomaji,
+      titleEnglish: baseTitleEnglish || currentForm.titleEnglish,
       recentBadges: { lancamento: false, novo: false, final: false },
       seasons:
         clonedSeasons.length > 0
@@ -1269,18 +1362,22 @@ function AdminEditor() {
     upsertAnime(duplicated);
     toast.success("Cadastro independente criado para a versão dublada!");
     void navigate({ to: "/admin/$id", params: { id: newId } });
-  }
+  }, [upsertAnime, navigate]);
 
-  async function handleDeleteAnime() {
+  const handleDeleteAnime = useCallback(async () => {
+    const currentForm = formRef.current;
+    if (!currentForm) return;
+
+    const currentSyncState = animeSyncStateRef.current;
     const isServerBacked =
-      !current.id.startsWith("local-") &&
-      (animeSyncState === "synced" || !!current.syncedAt);
+      !currentForm.id.startsWith("local-") &&
+      (currentSyncState === "synced" || !!currentForm.syncedAt);
 
     if (isServerBacked) {
       try {
         const token = getBearerToken();
         const res = await fetch(
-          `/api/admin/catalog-anime?id=${encodeURIComponent(current.id)}`,
+          `/api/admin/catalog-anime?id=${encodeURIComponent(currentForm.id)}`,
           {
             method: "DELETE",
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -1314,7 +1411,7 @@ function AdminEditor() {
     if (typeof window !== "undefined") {
       try {
         const existingOps = readOutbox();
-        const filteredOps = existingOps.filter((op) => op.animeId !== current.id);
+        const filteredOps = existingOps.filter((op) => op.animeId !== currentForm.id);
         writeOutbox(filteredOps);
         setOutboxOps(filteredOps);
       } catch (e) {
@@ -1322,27 +1419,31 @@ function AdminEditor() {
       }
     }
 
-    removeAnime(current.id);
+    removeAnime(currentForm.id);
     toast.success(
       isServerBacked
         ? "Anime excluído com sucesso do servidor e do dispositivo."
         : "Anime local excluído.",
     );
     void navigate({ to: "/admin" });
-  }
+  }, [removeAnime, navigate]);
 
-  async function save() {
-    if (isSaving) return;
+  const save = useCallback(async () => {
+    const currentForm = formRef.current;
+    if (!currentForm || isSavingRef.current) return;
 
-    const genres = genreText
+    const currentRouteId = idRef.current;
+    const currentImportId = importIdRef.current;
+
+    const genres = genreTextRef.current
       .split(",")
       .map((g) => g.trim())
       .filter(Boolean);
 
     const next: LocalAnime = {
-      ...current,
+      ...currentForm,
       genres,
-      trailerId: youtubeIdFrom(current.trailerId) ?? (current.trailerId || null),
+      trailerId: youtubeIdFrom(currentForm.trailerId) ?? (currentForm.trailerId || null),
       updatedAt: Date.now(),
     };
 
@@ -1519,7 +1620,7 @@ function AdminEditor() {
 
     // 3. Persistência seletiva 1-para-1 apenas dos episódios alterados, adicionados ou pendentes no outbox
     try {
-      const animeTitle =
+      const animeTitleLabel =
         effectiveAnime.titleRomaji ||
         effectiveAnime.titleEnglish ||
         effectiveAnime.titleNative ||
@@ -1529,14 +1630,14 @@ function AdminEditor() {
           .filter(
             (op) =>
               op.type === "upsert" &&
-              (op.animeId === effectiveAnime.id || op.animeId === current.id),
+              (op.animeId === effectiveAnime.id || op.animeId === currentForm.id),
           )
           .map((op) => op.episodeId),
       );
       const episodeTasks: Array<{
         seasonId: string;
         episodeId: string;
-        promise: ReturnType<typeof persistEpisode>;
+        run: () => Promise<PersistEpisodeResult>;
       }> = [];
       for (const season of effectiveAnime.seasons) {
         for (const ep of season.episodes) {
@@ -1555,19 +1656,37 @@ function AdminEditor() {
           episodeTasks.push({
             seasonId: season.id,
             episodeId: ep.id,
-            promise: persistEpisode(
-              effectiveAnime.id,
-              season.number,
-              ep,
-              animeTitle,
-              { replaceThumbnail: shouldReplaceThumb },
-            ),
+            run: () =>
+              persistEpisode(
+                effectiveAnime.id,
+                season.number,
+                ep,
+                animeTitleLabel,
+                { replaceThumbnail: shouldReplaceThumb },
+              ),
           });
         }
       }
 
       if (episodeTasks.length > 0) {
-        const results = await Promise.all(episodeTasks.map((t) => t.promise));
+        const results = await runWithConcurrency(
+          episodeTasks.map((task) => async (): Promise<PersistEpisodeResult> => {
+            try {
+              return await task.run();
+            } catch (err) {
+              return {
+                confirmed: false,
+                queued: false,
+                status: "pending",
+                error:
+                  err instanceof Error
+                    ? err.message
+                    : "Erro inesperado ao sincronizar episódio.",
+              };
+            }
+          }),
+          EPISODE_SAVE_CONCURRENCY,
+        );
         const resultByPair = new Map<string, PersistEpisodeResult>();
         episodeTasks.forEach((task, idx) => {
           const result = results[idx];
@@ -1652,6 +1771,37 @@ function AdminEditor() {
           ? { ...effectiveAnime, seasons: reconciledSeasons }
           : effectiveAnime;
 
+        // Atualiza baseline dos slots e invalida o cache de fontes apenas dos episódios confirmados no servidor
+        let anySourceInvalidated = false;
+        const confirmedIds = new Set<string>();
+        for (const task of episodeTasks) {
+          const match = resultByPair.get(`${task.seasonId}:${task.episodeId}`);
+          if (!match?.confirmed) continue;
+          const finalId =
+            match.canonicalId && match.status === "synced"
+              ? match.canonicalId
+              : task.episodeId;
+          confirmedIds.add(task.episodeId);
+          confirmedIds.add(finalId);
+        }
+        if (confirmedIds.size > 0 && sourcesSessionRef.current) {
+          for (const season of reconciledSeasons) {
+            for (const ep of season.episodes) {
+              if (confirmedIds.has(ep.id)) {
+                sourcesSessionRef.current.updateEpisodeBaseline(
+                  ep.id,
+                  getEpisodeSlotsSignature(ep),
+                );
+              }
+            }
+          }
+          sourcesSessionRef.current.invalidateEpisodes(confirmedIds);
+          anySourceInvalidated = true;
+        }
+        if (anySourceInvalidated) {
+          setSourcesSyncTick((t) => t + 1);
+        }
+
         const confirmedCount = results.filter((r) => r.confirmed).length;
         const conflictCount = results.filter((r) => r.status === "conflict").length;
         const pendingCount = results.filter((r) => r.status === "pending").length;
@@ -1703,8 +1853,8 @@ function AdminEditor() {
       await flushAnimes();
       invalidateCatalogEpisodesCache(
         effectiveAnime.id,
-        current.id,
-        id,
+        currentForm.id,
+        currentRouteId,
         effectiveAnime.serverCatalogId,
         effectiveAnime.anilistId ? String(effectiveAnime.anilistId) : undefined,
         effectiveAnime.malId ? `mal-${effectiveAnime.malId}` : undefined,
@@ -1723,9 +1873,9 @@ function AdminEditor() {
       if (metadataSavedOnServer) {
         void router.invalidate();
       }
-      if (id === "new" || (metadataSavedOnServer && effectiveAnime.id !== id)) {
+      if (currentRouteId === "new" || (metadataSavedOnServer && effectiveAnime.id !== currentRouteId)) {
         const nextImportId =
-          importId ??
+          currentImportId ??
           (effectiveAnime.anilistId
             ? String(effectiveAnime.anilistId)
             : effectiveAnime.malId
@@ -1740,258 +1890,404 @@ function AdminEditor() {
         });
       }
     }
-  }
+  }, [upsertAnime, removeAnime, router, navigate]);
 
-  function addSeason() {
-    const n = current.seasons.length + 1;
+  const addSeason = useCallback(() => {
+    const nextNumber = (formRef.current?.seasons.length ?? 0) + 1;
 
-    setForm((f) =>
-      f
-        ? {
-            ...f,
-            seasons: [
-              ...f.seasons,
-              {
-                id: `s-${crypto.randomUUID()}`,
-                number: n,
-                title: `Temporada ${n}`,
-                episodes: [],
-              },
-            ],
-          }
-        : f,
-    );
-    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
-    toast.success(`Temporada ${n} adicionada.`);
-  }
-
-  function patchSeason(sid: string, patch: Partial<Season>) {
-    setForm((f) =>
-      f
-        ? {
-            ...f,
-            seasons: f.seasons.map((s) =>
-              s.id === sid ? { ...s, ...patch } : s,
-            ),
-          }
-        : f,
-    );
-    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
-  }
-
-  async function removeSeason(sid: string) {
-    const targetSeason = current.seasons.find((s) => s.id === sid);
-    if (!targetSeason) return;
-
-    const isServerBacked =
-      !current.id.startsWith("local-") &&
-      (animeSyncState === "synced" || !!current.syncedAt);
-
-    if (isServerBacked) {
-      try {
-        const token = getBearerToken();
-        const res = await fetch(
-          `/api/admin/catalog-season?animeId=${encodeURIComponent(current.id)}&seasonNumber=${encodeURIComponent(targetSeason.number)}`,
+    setForm((f) => {
+      if (!f) return f;
+      const n = f.seasons.length + 1;
+      return {
+        ...f,
+        seasons: [
+          ...f.seasons,
           {
-            method: "DELETE",
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-            credentials: "include",
+            id: `s-${crypto.randomUUID()}`,
+            number: n,
+            title: `Temporada ${n}`,
+            episodes: [],
           },
-        );
+        ],
+      };
+    });
+    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
+    toast.success(`Temporada ${nextNumber} adicionada.`);
+  }, []);
 
-        if (!res.ok) {
-          let errDetail = res.statusText;
-          try {
-            const errJson = await res.json();
-            errDetail = errJson.error || errDetail;
-          } catch {
-            errDetail = res.statusText || errDetail;
+  const patchSeason = useCallback((sid: string, patch: Partial<Season>) => {
+    const patchEntries = Object.entries(patch) as Array<
+      [keyof Season, Season[keyof Season]]
+    >;
+    if (patchEntries.length === 0) return;
+
+    setForm((f) => {
+      if (!f) return f;
+      const sIdx = f.seasons.findIndex((s) => s.id === sid);
+      if (sIdx === -1) return f;
+      const season = f.seasons[sIdx];
+      const hasActualChange = patchEntries.some(([k, v]) => !Object.is(season[k], v));
+      if (!hasActualChange) return f;
+      const nextSeasons = f.seasons.slice();
+      nextSeasons[sIdx] = { ...season, ...patch };
+      return {
+        ...f,
+        seasons: nextSeasons,
+      };
+    });
+    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
+  }, []);
+
+  const removeSeason = useCallback(
+    async (sid: string) => {
+      const currentForm = formRef.current;
+      if (!currentForm) return;
+      const targetSeason = currentForm.seasons.find((s) => s.id === sid);
+      if (!targetSeason) return;
+
+      const currentSyncState = animeSyncStateRef.current;
+      const isServerBacked =
+        !currentForm.id.startsWith("local-") &&
+        (currentSyncState === "synced" || !!currentForm.syncedAt);
+
+      if (isServerBacked) {
+        try {
+          const token = getBearerToken();
+          const res = await fetch(
+            `/api/admin/catalog-season?animeId=${encodeURIComponent(currentForm.id)}&seasonNumber=${encodeURIComponent(targetSeason.number)}`,
+            {
+              method: "DELETE",
+              headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+              credentials: "include",
+            },
+          );
+
+          if (!res.ok) {
+            let errDetail = res.statusText;
+            try {
+              const errJson = await res.json();
+              errDetail = errJson.error || errDetail;
+            } catch {
+              errDetail = res.statusText || errDetail;
+            }
+            toast.error(
+              `Falha ao remover temporada no servidor (${res.status}): ${errDetail}. A temporada foi mantida localmente.`,
+            );
+            return;
           }
+        } catch (err) {
+          console.warn("[admin] Erro de rede ao remover temporada no servidor:", err);
           toast.error(
-            `Falha ao remover temporada no servidor (${res.status}): ${errDetail}. A temporada foi mantida localmente.`,
+            "Servidor indisponível. A temporada não foi removida para evitar inconsistência com o servidor.",
           );
           return;
         }
-      } catch (err) {
-        console.warn("[admin] Erro de rede ao remover temporada no servidor:", err);
-        toast.error(
-          "Servidor indisponível. A temporada não foi removida para evitar inconsistência com o servidor.",
-        );
-        return;
       }
-    }
 
-    // 1. Limpa operações pendentes/conflito no outbox para os episódios desta temporada
-    if (typeof window !== "undefined") {
-      try {
-        const existingOps = readOutbox();
-        const filteredOps = existingOps.filter(
-          (op) => !(op.animeId === current.id && op.seasonNumber === targetSeason.number),
-        );
-        if (filteredOps.length !== existingOps.length) {
-          writeOutbox(filteredOps);
-          setOutboxOps(filteredOps);
+      // 1. Limpa operações pendentes/conflito no outbox para os episódios desta temporada
+      if (typeof window !== "undefined") {
+        try {
+          const existingOps = readOutbox();
+          const filteredOps = existingOps.filter(
+            (op) => !(op.animeId === currentForm.id && op.seasonNumber === targetSeason.number),
+          );
+          if (filteredOps.length !== existingOps.length) {
+            writeOutbox(filteredOps);
+            setOutboxOps(filteredOps);
+          }
+        } catch (e) {
+          console.warn("[admin] Erro ao limpar outbox de temporada removida:", e);
         }
-      } catch (e) {
-        console.warn("[admin] Erro ao limpar outbox de temporada removida:", e);
       }
-    }
 
-    // 2. Persist tombstone para garantir que qualquer outro nó/cache saiba da exclusão
-    for (const ep of targetSeason.episodes) {
-      void persistEpisodeDelete(current.id, targetSeason.number, ep.id, ep.number);
-    }
+      // 2. Persist tombstone para garantir que qualquer outro nó/cache saiba da exclusão
+      for (const ep of targetSeason.episodes) {
+        sourcesSessionRef.current?.removeEpisode(ep.id);
+        void persistEpisodeDelete(currentForm.id, targetSeason.number, ep.id, ep.number);
+      }
 
-    // 3. Atualiza estado local de forma segura
-    const updatedSeasons = current.seasons.filter((s) => s.id !== sid);
-    const updatedAnime: LocalAnime = {
-      ...current,
-      seasons: updatedSeasons,
-      updatedAt: Date.now(),
-    };
+      // 3. Atualiza estado local de forma segura
+      const updatedSeasons = currentForm.seasons.filter((s) => s.id !== sid);
+      const updatedAnime: LocalAnime = {
+        ...currentForm,
+        seasons: updatedSeasons,
+        updatedAt: Date.now(),
+      };
 
-    setForm(updatedAnime);
-    upsertAnime(updatedAnime);
-    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
-    toast.success(`Temporada ${targetSeason.number} removida com sucesso.`);
-  }
+      setForm(updatedAnime);
+      upsertAnime(updatedAnime);
+      setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
+      toast.success(`Temporada ${targetSeason.number} removida com sucesso.`);
+    },
+    [upsertAnime],
+  );
 
-  function addEpisode(sid: string) {
+  const addEpisode = useCallback((sid: string) => {
     const newEpisodeId = `e-${crypto.randomUUID()}`;
     dirtyEpisodeIdsRef.current.add(newEpisodeId);
     explicitUserDirtyEpisodeIdsRef.current.add(newEpisodeId);
 
-    setForm((f) =>
-      f
-        ? {
-            ...f,
-            seasons: f.seasons.map((s) => {
-              if (s.id !== sid) return s;
-
-              const number = (s.episodes.at(-1)?.number ?? 0) + 1;
-
-              const ep: Episode = {
-                id: newEpisodeId,
-                number,
-                title: `Episódio ${number}`,
-                published: false,
-              };
-
-              return {
-                ...s,
-                episodes: [...s.episodes, ep],
-              };
-            }),
-          }
-        : f,
-    );
-    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
-  }
-
-  function patchEpisode(
-    sid: string,
-    eid: string,
-    patch: Partial<Episode>,
-  ) {
-    dirtyEpisodeIdsRef.current.add(eid);
-    explicitUserDirtyEpisodeIdsRef.current.add(eid);
-    setForm((f) =>
-      f
-        ? {
-            ...f,
-            seasons: f.seasons.map((s) =>
-              s.id === sid
-                ? {
-                    ...s,
-                    episodes: s.episodes.map((e) =>
-                      e.id === eid ? { ...e, ...patch } : e,
-                    ),
-                  }
-                : s,
-            ),
-          }
-        : f,
-    );
-    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
-  }
-
-  function removeEpisode(sid: string, eid: string) {
-    const season = current.seasons.find((s) => s.id === sid);
-    const targetEp = season?.episodes.find((e) => e.id === eid);
-    dirtyEpisodeIdsRef.current.delete(eid);
-    explicitUserDirtyEpisodeIdsRef.current.delete(eid);
-    revokeEpisodePreviewUrls(eid);
-    setEpisodeCandidates((prev) => {
-      if (!(eid in prev)) return prev;
-      const next = { ...prev };
-      delete next[eid];
-      return next;
-    });
-    setForm((f) =>
-      f
-        ? {
-            ...f,
-            seasons: f.seasons.map((s) =>
-              s.id === sid
-                ? {
-                    ...s,
-                    episodes: s.episodes.filter((e) => e.id !== eid),
-                  }
-                : s,
-            ),
-          }
-        : f,
-    );
-    if (season) {
-      void persistEpisodeDelete(current.id, season.number, eid, targetEp?.number);
-    }
-    setEpisodeThumbnailEditMode(eid, undefined);
-  }
-
-  function handleEpisodeThumbnailChange(sid: string, ep: Episode, value: string) {
-    patchEpisode(sid, ep.id, { thumbnail: value });
-    setEpisodeThumbnailEditMode(ep.id, value.trim() ? "modified" : "cleared");
-  }
-
-  function handleEpisodeThumbnailClear(sid: string, ep: Episode) {
-    patchEpisode(sid, ep.id, { thumbnail: "" });
-    setEpisodeThumbnailEditMode(ep.id, "cleared");
-    setEpisodeCandidates((prev) => {
-      const curr = prev[ep.id];
-      if (!curr) return prev;
+    setForm((f) => {
+      if (!f) return f;
+      const sIdx = f.seasons.findIndex((s) => s.id === sid);
+      if (sIdx === -1) return f;
+      const season = f.seasons[sIdx];
+      const number = (season.episodes.at(-1)?.number ?? 0) + 1;
+      const ep: Episode = {
+        id: newEpisodeId,
+        number,
+        title: `Episódio ${number}`,
+        published: false,
+      };
+      const nextSeasons = f.seasons.slice();
+      nextSeasons[sIdx] = {
+        ...season,
+        episodes: [...season.episodes, ep],
+      };
       return {
-        ...prev,
-        [ep.id]: {
-          ...curr,
-          selectedCandidateId: null,
-        },
+        ...f,
+        seasons: nextSeasons,
       };
     });
+    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
+  }, []);
+
+  const removeEpisode = useCallback(
+    (sid: string, eid: string) => {
+      const currentForm = formRef.current;
+      const season = currentForm?.seasons.find((s) => s.id === sid);
+      const targetEp = season?.episodes.find((e) => e.id === eid);
+      dirtyEpisodeIdsRef.current.delete(eid);
+      explicitUserDirtyEpisodeIdsRef.current.delete(eid);
+      sourcesSessionRef.current?.removeEpisode(eid);
+      revokeEpisodePreviewUrls(eid);
+      setEpisodeCandidates((prev) => {
+        if (!(eid in prev)) return prev;
+        const next = { ...prev };
+        delete next[eid];
+        return next;
+      });
+      setForm((f) => {
+        if (!f) return f;
+        const sIdx = f.seasons.findIndex((s) => s.id === sid);
+        if (sIdx === -1) return f;
+        const targetSeason = f.seasons[sIdx];
+        const nextEpisodes = targetSeason.episodes.filter((e) => e.id !== eid);
+        if (nextEpisodes.length === targetSeason.episodes.length) return f;
+        const nextSeasons = f.seasons.slice();
+        nextSeasons[sIdx] = {
+          ...targetSeason,
+          episodes: nextEpisodes,
+        };
+        return {
+          ...f,
+          seasons: nextSeasons,
+        };
+      });
+      if (currentForm && season) {
+        void persistEpisodeDelete(currentForm.id, season.number, eid, targetEp?.number);
+      }
+      setEpisodeThumbnailEditMode(eid, undefined);
+    },
+    [revokeEpisodePreviewUrls, setEpisodeThumbnailEditMode],
+  );
+
+  const handleEpisodeThumbnailChange = useCallback(
+    (sid: string, ep: Episode, value: string) => {
+      patchEpisode(sid, ep.id, { thumbnail: value });
+      setEpisodeThumbnailEditMode(ep.id, value.trim() ? "modified" : "cleared");
+    },
+    [patchEpisode, setEpisodeThumbnailEditMode],
+  );
+
+  const handleEpisodeThumbnailClear = useCallback(
+    (sid: string, ep: Episode) => {
+      patchEpisode(sid, ep.id, { thumbnail: "" });
+      setEpisodeThumbnailEditMode(ep.id, "cleared");
+      setEpisodeCandidates((prev) => {
+        const curr = prev[ep.id];
+        if (!curr) return prev;
+        return {
+          ...prev,
+          [ep.id]: {
+            ...curr,
+            selectedCandidateId: null,
+          },
+        };
+      });
+    },
+    [patchEpisode, setEpisodeThumbnailEditMode],
+  );
+
+  const handleReloadFromServer = useCallback(
+    () => recoverEpisodesFromServer(idRef.current),
+    [recoverEpisodesFromServer],
+  );
+
+  const handleFlushOutbox = useCallback(async () => {
+    toast.info("Sincronizando operações do outbox...");
+    const res = await flushOutbox();
+    if (typeof window !== "undefined") {
+      setOutboxOps(readOutbox());
+    }
+    if (res.processed > 0) {
+      toast.success(`${res.processed} operação(ões) sincronizada(s) com sucesso!`);
+    }
+    if (res.error) {
+      toast.error(res.error);
+    }
+  }, []);
+
+  const animeTitleRomaji = form?.titleRomaji ?? "";
+  const animeTitleEnglish = form?.titleEnglish ?? "";
+  const animeTitleNative = form?.titleNative ?? "";
+  const animeTitles = useMemo(
+    () =>
+      [animeTitleRomaji, animeTitleEnglish, animeTitleNative].filter(
+        (t): t is string => Boolean(t && t.trim()),
+      ),
+    [animeTitleRomaji, animeTitleEnglish, animeTitleNative],
+  );
+
+  const currentAnimeId = form?.id ?? "";
+  const animeOutboxOps = useMemo(
+    () =>
+      currentAnimeId
+        ? outboxOps.filter((o) => o.animeId === currentAnimeId)
+        : [],
+    [outboxOps, currentAnimeId],
+  );
+
+  const canDelete = useMemo(
+    () =>
+      Boolean(
+        currentAnimeId &&
+          id !== "new" &&
+          stored.some((a) => a.id === currentAnimeId),
+      ),
+    [currentAnimeId, id, stored],
+  );
+
+  const lastMetadataFormRef = useRef<LocalAnime | null>(null);
+  const metadataForm = useMemo(() => {
+    if (!form) {
+      lastMetadataFormRef.current = null;
+      return null;
+    }
+    const prev = lastMetadataFormRef.current;
+    if (prev) {
+      let sameMetadata = true;
+      const keys = new Set([
+        ...Object.keys(prev),
+        ...Object.keys(form),
+      ]) as Set<keyof LocalAnime>;
+      for (const key of keys) {
+        if (key === "seasons" || key === "updatedAt") continue;
+        if (!Object.is(prev[key], form[key])) {
+          sameMetadata = false;
+          break;
+        }
+      }
+      if (sameMetadata) {
+        return prev;
+      }
+    }
+    lastMetadataFormRef.current = form;
+    return form;
+  }, [form]);
+
+  const lastHeaderAnimeRef = useRef<{
+    anime: LocalAnime;
+    seasonCount: number;
+    episodeCount: number;
+  } | null>(null);
+  const headerAnime = useMemo(() => {
+    if (!form) {
+      lastHeaderAnimeRef.current = null;
+      return null;
+    }
+    const seasonCount = form.seasons.length;
+    let episodeCount = 0;
+    for (const s of form.seasons) {
+      episodeCount += s.episodes.length;
+    }
+    const prev = lastHeaderAnimeRef.current;
+    if (
+      prev &&
+      prev.seasonCount === seasonCount &&
+      prev.episodeCount === episodeCount &&
+      prev.anime.id === form.id &&
+      prev.anime.titleRomaji === form.titleRomaji &&
+      prev.anime.titleEnglish === form.titleEnglish &&
+      prev.anime.titleNative === form.titleNative &&
+      prev.anime.cover === form.cover &&
+      prev.anime.hidden === form.hidden &&
+      prev.anime.format === form.format &&
+      prev.anime.status === form.status &&
+      prev.anime.year === form.year &&
+      prev.anime.score === form.score &&
+      prev.anime.syncedAt === form.syncedAt &&
+      prev.anime.updatedAt === form.updatedAt
+    ) {
+      return prev.anime;
+    }
+    lastHeaderAnimeRef.current = {
+      anime: form,
+      seasonCount,
+      episodeCount,
+    };
+    return form;
+  }, [form]);
+
+  const totalEpisodesInEditor = useMemo(
+    () =>
+      form ? form.seasons.reduce((acc, s) => acc + s.episodes.length, 0) : 0,
+    [form],
+  );
+
+  if (!form || !metadataForm || !headerAnime) {
+    return (
+      <div className="space-y-6 pb-12 pt-2">
+        <div className="studio-panel rounded-2xl p-6">
+          <div className="h-4 w-32 animate-pulse rounded bg-white/[0.06]" />
+          <div className="mt-4 flex items-center gap-4">
+            <div className="h-16 w-12 animate-pulse rounded-lg bg-white/[0.06]" />
+            <div className="space-y-2.5 flex-1">
+              <div className="h-6 w-64 max-w-full animate-pulse rounded bg-white/[0.08]" />
+              <div className="h-3.5 w-44 animate-pulse rounded bg-white/[0.05]" />
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-6 xl:grid-cols-12">
+          <div className="studio-panel h-80 animate-pulse rounded-2xl xl:col-span-7" />
+          <div className="studio-panel h-80 animate-pulse rounded-2xl xl:col-span-5" />
+        </div>
+      </div>
+    );
   }
 
+  const current = form;
   const animeTitle =
-    current.titleRomaji || current.titleEnglish || current.titleNative || "Anime";
+    animeTitleRomaji || animeTitleEnglish || animeTitleNative || "Anime";
 
-  const totalEpisodesInEditor = current.seasons.reduce(
-    (acc, s) => acc + s.episodes.length,
-    0,
-  );
+  const conflictCount = animeOutboxOps.filter((o) => o.status === "conflict").length;
+  const pendingCount = animeOutboxOps.filter((o) => o.status !== "conflict").length;
 
   return (
     <div className="studio-enter space-y-6 pb-24 pt-2 sm:pb-12">
       {/* Cabeçalho do Editor */}
-      <EditorHeader
-        anime={current}
+      <MemoEditorHeader
+        anime={headerAnime}
         isNew={id === "new" && !importId}
         importId={importId}
         isSaving={isSaving}
         onSave={save}
         onDuplicateAsDubbed={duplicateAsDubbed}
         onDelete={handleDeleteAnime}
-        onReloadFromServer={() => recoverEpisodesFromServer(id)}
+        onReloadFromServer={handleReloadFromServer}
         isReloading={recoveryState.status === "loading"}
-        outboxOps={outboxOps}
-        canDelete={id !== "new" && stored.some((a) => a.id === current.id)}
+        outboxOps={animeOutboxOps}
+        canDelete={canDelete}
         syncState={animeSyncState}
       />
 
@@ -2045,52 +2341,32 @@ function AdminEditor() {
       </nav>
 
       {/* Banner de Sincronização do Outbox */}
-      {(() => {
-        const animeOutboxOps = outboxOps.filter((o) => o.animeId === form.id);
-        const conflictCount = animeOutboxOps.filter((o) => o.status === "conflict").length;
-        const pendingCount = animeOutboxOps.filter((o) => o.status !== "conflict").length;
-
-        if (animeOutboxOps.length === 0) return null;
-
-        return (
-          <div className="studio-panel flex flex-wrap items-center justify-between gap-3 rounded-xl border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-100 sm:text-sm">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
-              <div className="space-y-0.5">
-                <p className="font-semibold text-amber-200">
-                  Fila de Envio (Outbox): {animeOutboxOps.length} operação(ões) pendente(s)
-                </p>
-                <p className="text-xs text-amber-200/80">
-                  {conflictCount > 0
-                    ? `${conflictCount} em conflito (aguardando correção) e ${pendingCount} pendente(s) de envio ao PostgreSQL.`
-                    : `${pendingCount} operação(ões) aguardando sincronização com o banco.`}
-                </p>
-              </div>
+      {animeOutboxOps.length > 0 && (
+        <div className="studio-panel flex flex-wrap items-center justify-between gap-3 rounded-xl border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-100 sm:text-sm">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+            <div className="space-y-0.5">
+              <p className="font-semibold text-amber-200">
+                Fila de Envio (Outbox): {animeOutboxOps.length} operação(ões) pendente(s)
+              </p>
+              <p className="text-xs text-amber-200/80">
+                {conflictCount > 0
+                  ? `${conflictCount} em conflito (aguardando correção) e ${pendingCount} pendente(s) de envio ao PostgreSQL.`
+                  : `${pendingCount} operação(ões) aguardando sincronização com o banco.`}
+              </p>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                toast.info("Sincronizando operações do outbox...");
-                const res = await flushOutbox();
-                if (typeof window !== "undefined") {
-                  setOutboxOps(readOutbox());
-                }
-                if (res.processed > 0) {
-                  toast.success(`${res.processed} operação(ões) sincronizada(s) com sucesso!`);
-                }
-                if (res.error) {
-                  toast.error(res.error);
-                }
-              }}
-              className="h-9 border-amber-500/40 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20"
-            >
-              Sincronizar agora
-            </Button>
           </div>
-        );
-      })()}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleFlushOutbox}
+            className="h-9 border-amber-500/40 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20"
+          >
+            Sincronizar agora
+          </Button>
+        </div>
+      )}
 
       {/* Banner de Feedback da Recuperação de Episódios do Servidor PostgreSQL */}
       {id !== "new" && recoveryState.status !== "idle" && (
@@ -2126,7 +2402,7 @@ function AdminEditor() {
             size="sm"
             variant="ghost"
             disabled={recoveryState.status === "loading"}
-            onClick={() => void recoverEpisodesFromServer(id)}
+            onClick={handleReloadFromServer}
             className="h-9 gap-1.5 text-xs hover:bg-white/[0.08]"
           >
             <RefreshCw
@@ -2139,28 +2415,21 @@ function AdminEditor() {
 
       {/* Seções condicionadas por aba (Console Daylight) */}
       {(activeTab === "all" || activeTab === "metadata") && (
-        <EditorMetadata
-          form={current}
+        <MemoEditorMetadata
+          form={metadataForm}
           onChange={set}
           onToggleRecentBadge={toggleRecentBadge}
           genreText={genreText}
-          onGenreTextChange={(val) => {
-            setGenreText(val);
-            setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
-          }}
+          onGenreTextChange={handleGenreTextChange}
           resolvedMobileBanner={displayMedia?.mobileBanner ?? null}
           hasCustomDesktopBanner={displayMedia?.hasCustomDesktopBanner ?? false}
         />
       )}
 
       {(activeTab === "all" || activeTab === "seasons") && (
-        <EditorSeasons
+        <MemoEditorSeasons
           animeId={current.id}
-          animeTitles={[
-            current.titleRomaji,
-            current.titleEnglish,
-            current.titleNative,
-          ].filter((t): t is string => Boolean(t && t.trim()))}
+          animeTitles={animeTitles}
           seasons={current.seasons}
           onAddSeason={addSeason}
           onPatchSeason={patchSeason}
@@ -2175,7 +2444,7 @@ function AdminEditor() {
           onUploadVideoToB2={handleUploadVideoToB2}
           uploadingEpisode={uploadingEpisode}
           captureStatus={captureStatus}
-          outboxOps={outboxOps}
+          outboxOps={animeOutboxOps}
           getInheritedThumbnail={getInheritedEpisodeThumbnail}
           thumbnailEditModes={thumbnailEditModes}
           onThumbnailChange={handleEpisodeThumbnailChange}
@@ -2185,11 +2454,13 @@ function AdminEditor() {
           openingSuggestions={openingSuggestions}
           onApplyOpeningSuggestion={handleApplyOpeningSuggestion}
           onDiscardOpeningSuggestion={handleDiscardOpeningSuggestion}
+          sourcesSession={sourcesSessionRef.current ?? undefined}
+          sourcesSyncTick={sourcesSyncTick}
         />
       )}
 
       {/* Barra de Ação Mobile Fixa */}
-      <EditorMobileBar
+      <MemoEditorMobileBar
         title={animeTitle}
         isSaving={isSaving}
         onSave={save}

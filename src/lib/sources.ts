@@ -206,6 +206,7 @@ export async function upsertEpisodeSource(
   options?: {
     fetchImpl?: typeof fetch;
     skipProbe?: boolean;
+    expectedLangHint?: SourceLang | null;
   },
 ): Promise<EpisodeSourceItem> {
   const episodeId = input.episodeId?.trim();
@@ -232,7 +233,10 @@ export async function upsertEpisodeSource(
   const urlPath = parsed.urlPath;
   const imgUrl = parsed.imgUrl;
 
-  const expectedLang = await getEpisodeLanguageHintFromDb(episodeId);
+  const expectedLang =
+    options?.expectedLangHint !== undefined
+      ? options.expectedLangHint
+      : await getEpisodeLanguageHintFromDb(episodeId);
   if (expectedLang && expectedLang !== lang) {
     throw new SourceValidationError(ANITUBE22_WRONG_LANG_ERROR, 400);
   }
@@ -332,13 +336,14 @@ export async function syncCatalogEpisodeSlotsToSources(
     const parsed = parseAnitube22PlayerUrl(slot.url);
     if (!parsed) continue;
 
-    let lang = parseExplicitSourceLang(typeof slot.lang === "string" ? slot.lang : null);
-    if (!lang) {
-      if (cachedHint === undefined) {
-        cachedHint = await getEpisodeLanguageHintFromDb(cleanEpId);
-      }
-      lang = cachedHint ?? "sub";
+    if (cachedHint === undefined) {
+      cachedHint = await getEpisodeLanguageHintFromDb(cleanEpId);
     }
+
+    const explicitLang = parseExplicitSourceLang(
+      typeof slot.lang === "string" ? slot.lang : null,
+    );
+    const lang = explicitLang ?? cachedHint ?? "sub";
 
     desiredKeys.add(`${lang}:${parsed.urlPath}`);
     try {
@@ -355,6 +360,7 @@ export async function syncCatalogEpisodeSlotsToSources(
         {
           fetchImpl: options?.fetchImpl,
           skipProbe: options?.skipProbe,
+          expectedLangHint: cachedHint,
         },
       );
       if (row) saved.push(row);
@@ -376,11 +382,18 @@ export async function syncCatalogEpisodeSlotsToSources(
       [cleanEpId, ANITUBE22_PROVIDER],
     );
 
+    const staleIds: string[] = [];
     for (const row of existingRows) {
       const key = `${normalizeSourceLang(row.lang)}:${row.url_path || ""}`;
       if (!desiredKeys.has(key)) {
-        await sql.query(`DELETE FROM "episode_sources" WHERE "id" = $1;`, [row.id]);
+        staleIds.push(row.id);
       }
+    }
+    if (staleIds.length > 0) {
+      await sql.query(
+        `DELETE FROM "episode_sources" WHERE "id" = ANY($1::uuid[]);`,
+        [staleIds],
+      );
     }
   }
 

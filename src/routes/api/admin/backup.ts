@@ -14,6 +14,8 @@ import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { syncCatalogEpisodeSlotsToSources } from "@/lib/sources";
 import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
+import { parseAnitube22PlayerUrl } from "@/lib/anitube22";
+import { SOURCE_SYNC_CONCURRENCY, runWithConcurrency } from "@/lib/concurrency";
 
 const episodeSchema = z.object({
   id: z.string().trim().min(1).max(128),
@@ -532,16 +534,19 @@ export const Route = createFileRoute("/api/admin/backup")({
                           hasHikariPlayerField,
                         ],
                       );
-                      importedEpisodeSources.push({
-                        episodeId: ep.id,
-                        slots: [
-                          { url: v1, priority: 0 },
-                          { url: v2, priority: 1 },
-                          { url: v3, priority: 2 },
-                          { url: v4, priority: 3 },
-                          { url: v5, priority: 4 },
-                        ],
-                      });
+                      const candidateSlots = [
+                        { url: v1, priority: 0 },
+                        { url: v2, priority: 1 },
+                        { url: v3, priority: 2 },
+                        { url: v4, priority: 3 },
+                        { url: v5, priority: 4 },
+                      ];
+                      if (candidateSlots.some((slot) => Boolean(slot.url && parseAnitube22PlayerUrl(slot.url)))) {
+                        importedEpisodeSources.push({
+                          episodeId: ep.id,
+                          slots: candidateSlots,
+                        });
+                      }
                       importedEpisodes++;
                     }
                   }
@@ -553,10 +558,16 @@ export const Route = createFileRoute("/api/admin/backup")({
               }
             }
 
-            for (const item of importedEpisodeSources) {
-              await syncCatalogEpisodeSlotsToSources(item.episodeId, item.slots, {
-                replaceAnitube22: true,
-              });
+            if (importedEpisodeSources.length > 0) {
+              await runWithConcurrency(
+                importedEpisodeSources.map((item) => () =>
+                  syncCatalogEpisodeSlotsToSources(item.episodeId, item.slots, {
+                    replaceAnitube22: true,
+                    skipProbe: true,
+                  }),
+                ),
+                SOURCE_SYNC_CONCURRENCY,
+              );
             }
 
             // Importação de Configurações se houver

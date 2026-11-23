@@ -103,8 +103,8 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             matchedAnime?.kitsuId ? `kitsu-${matchedAnime.kitsuId}` : undefined,
           ];
 
-          // 4. Buscar registros existentes por ID e por Slot (animeId, seasonNumber, number)
-          const existingByIdRows = await sql.query<{
+          // 4. Buscar registros existentes por ID e por Slot (animeId, seasonNumber, number) em paralelo
+          type ExistingEpisodeLookupRow = {
             id: string;
             animeId: string;
             seasonNumber: number;
@@ -123,49 +123,33 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             openingEndSeconds: number | null;
             published: boolean;
             publishedAt: string | null;
-          }>(
-            `SELECT "id", "animeId", "seasonNumber", "number", "title", "thumbnail",
-                    "duration", "synopsis", "videoUrl", "videoUrl2", "videoUrl3",
-                    "videoUrl4", "videoUrl5", "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
-                    "opening_start_seconds" AS "openingStartSeconds",
-                    "opening_end_seconds" AS "openingEndSeconds",
-                    "published", "publishedAt"
-             FROM "catalog_episode"
-             WHERE "id" = $1 LIMIT 1;`,
-            [data.id],
-          );
-          const existingById = existingByIdRows[0] || null;
+          };
 
-          const existingBySlotRows = await sql.query<{
-            id: string;
-            animeId: string;
-            seasonNumber: number;
-            number: number;
-            title: string | null;
-            thumbnail: string | null;
-            duration: string | null;
-            synopsis: string | null;
-            videoUrl: string | null;
-            videoUrl2: string | null;
-            videoUrl3: string | null;
-            videoUrl4: string | null;
-            videoUrl5: string | null;
-            hikariPlayerEpisodeId: string | null;
-            openingStartSeconds: number | null;
-            openingEndSeconds: number | null;
-            published: boolean;
-            publishedAt: string | null;
-          }>(
-            `SELECT "id", "animeId", "seasonNumber", "number", "title", "thumbnail",
-                    "duration", "synopsis", "videoUrl", "videoUrl2", "videoUrl3",
-                    "videoUrl4", "videoUrl5", "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
-                    "opening_start_seconds" AS "openingStartSeconds",
-                    "opening_end_seconds" AS "openingEndSeconds",
-                    "published", "publishedAt"
-             FROM "catalog_episode"
-             WHERE ("animeId" = $1 OR "animeId" = $2) AND "seasonNumber" = $3 AND "number" = $4 LIMIT 1;`,
-            [canonicalAnimeId, data.animeId, data.seasonNumber, data.number],
-          );
+          const [existingByIdRows, existingBySlotRows] = await Promise.all([
+            sql.query<ExistingEpisodeLookupRow>(
+              `SELECT "id", "animeId", "seasonNumber", "number", "title", "thumbnail",
+                      "duration", "synopsis", "videoUrl", "videoUrl2", "videoUrl3",
+                      "videoUrl4", "videoUrl5", "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+                      "opening_start_seconds" AS "openingStartSeconds",
+                      "opening_end_seconds" AS "openingEndSeconds",
+                      "published", "publishedAt"
+               FROM "catalog_episode"
+               WHERE "id" = $1 LIMIT 1;`,
+              [data.id],
+            ),
+            sql.query<ExistingEpisodeLookupRow>(
+              `SELECT "id", "animeId", "seasonNumber", "number", "title", "thumbnail",
+                      "duration", "synopsis", "videoUrl", "videoUrl2", "videoUrl3",
+                      "videoUrl4", "videoUrl5", "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+                      "opening_start_seconds" AS "openingStartSeconds",
+                      "opening_end_seconds" AS "openingEndSeconds",
+                      "published", "publishedAt"
+               FROM "catalog_episode"
+               WHERE ("animeId" = $1 OR "animeId" = $2) AND "seasonNumber" = $3 AND "number" = $4 LIMIT 1;`,
+              [canonicalAnimeId, data.animeId, data.seasonNumber, data.number],
+            ),
+          ]);
+          const existingById = existingByIdRows[0] || null;
           const existingBySlot = existingBySlotRows[0] || null;
 
           // 5. Conflito de integridade: se o ID recebido já existe, ele NÃO pode pertencer a outro slot
@@ -447,6 +431,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             : openingEndSeconds;
 
           // Sincroniza fontes duráveis em episode_sources sem nunca gravar `time=`
+          // e sem executar probes HTTP externos bloqueantes durante o salvamento normal.
           await syncCatalogEpisodeSlotsToSources(
             effectiveId,
             [
@@ -456,18 +441,21 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
               { url: v4, priority: 3 },
               { url: v5, priority: 4 },
             ],
-            { replaceAnitube22: Boolean(data.replaceSources) },
+            { replaceAnitube22: Boolean(data.replaceSources), skipProbe: true },
           );
           if (Array.isArray(data.sources) && data.sources.length > 0) {
             for (const src of data.sources) {
-              await upsertEpisodeSource({
-                episodeId: effectiveId,
-                provider: src.provider,
-                externalId: src.externalId,
-                lang: src.lang,
-                quality: src.quality ?? null,
-                priority: src.priority ?? 0,
-              });
+              await upsertEpisodeSource(
+                {
+                  episodeId: effectiveId,
+                  provider: src.provider,
+                  externalId: src.externalId,
+                  lang: src.lang,
+                  quality: src.quality ?? null,
+                  priority: src.priority ?? 0,
+                },
+                { skipProbe: true },
+              );
             }
           }
 
