@@ -176,18 +176,20 @@ export const EpisodeCard = memo(function EpisodeCard({
             )}
           </h4>
 
-          <p className="mt-0.5 text-[11px] sm:text-xs font-medium text-zinc-400 truncate">
-            Episódio {episode.episodeNumber}
-          </p>
-          {relativePublishedLabel && (
-            <p
-              data-testid="episode-relative-time"
-              suppressHydrationWarning
-              className="mt-0.5 text-[10.5px] sm:text-[11px] font-normal text-zinc-400/80 truncate"
-            >
-              {relativePublishedLabel}
+          <div className="mt-0.5 flex items-baseline justify-between gap-2 min-w-0">
+            <p className="text-[11px] sm:text-xs font-medium text-zinc-400 whitespace-nowrap shrink-0">
+              Episódio {episode.episodeNumber}
             </p>
-          )}
+            {relativePublishedLabel && (
+              <span
+                data-testid="episode-relative-time"
+                suppressHydrationWarning
+                className="min-w-0 text-[10.5px] sm:text-[11px] font-normal text-zinc-400/80 truncate text-right"
+              >
+                {relativePublishedLabel}
+              </span>
+            )}
+          </div>
         </div>
       </Link>
     </article>

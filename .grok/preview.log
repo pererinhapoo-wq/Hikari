@@ -300,3 +300,38 @@ Error: aborted
 }
 {"telemetry":true,"op":"redis","event":"background_write","operation":"setRedisCatalogBadges","waitUntil":false,"timestamp":"2026-11-23T15:37:54.054Z"}
 {"telemetry":true,"op":"redis","event":"background_write","operation":"setRedisHomeCatalog","waitUntil":false,"timestamp":"2026-11-23T15:37:54.637Z"}
+
+> preview
+> node scripts/with-app-env.mjs vite preview
+
+Warning: Route file "/app/applet/src/routes/api-hikari-ai-review.ts" does not export a Route. This file will not be included in the route tree.
+
+If this file is not intended to be a route, you can exclude it using one of these options:
+  1. Rename the file to "/app/applet/src/routes/-api-hikari-ai-review.ts" (prefix with "-")
+  2. Use 'routeFileIgnorePattern' in your config to match this file
+
+Current configuration:
+  routeFileIgnorePrefix: "-"
+  routeFileIgnorePattern: undefined
+
+ ╭────────── [Build Info] ─────────────╮
+ │                                     │
+ │  - Build Directory: .vercel/output  │
+ │  - Date: 11/23/2026, 3:43:20 PM     │
+ │  - Nitro Version: 3.0.260610-beta   │
+ │  - Nitro Preset: vercel             │
+ │                                     │
+ ╰─────────────────────────────────────╯
+
+  ➜  Local:   http://127.0.0.1:8081/
+Error: aborted
+    at abortIncoming (node:_http_server:838:17)
+    at socketOnClose (node:_http_server:832:3)
+    at Socket.emit (node:events:531:35)
+    at Socket.emit (node:domain:489:12)
+    at TCP.<anonymous> (node:net:347:12)
+    at TCP.callbackTrampoline (node:internal/async_hooks:130:17) {
+  code: 'ECONNRESET'
+}
+{"telemetry":true,"op":"redis","event":"background_write","operation":"setRedisCatalogBadges","waitUntil":false,"timestamp":"2026-11-23T15:43:28.261Z"}
+{"telemetry":true,"op":"redis","event":"background_write","operation":"setRedisHomeCatalog","waitUntil":false,"timestamp":"2026-11-23T15:43:28.878Z"}
