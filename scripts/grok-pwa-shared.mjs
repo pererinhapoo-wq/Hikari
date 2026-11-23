@@ -424,9 +424,11 @@ export function normalizeHeadContext(ctx = {}) {
 
 export function injectGrokPwaHead(html, ctx = {}) {
   if (typeof html !== "string") return html;
-  const hasPerRouteOgImage =
-    /<meta\b[^>]*property=["']og:image["'][^>]*content=["']https?:\/\/[^"']+/i.test(html) &&
-    !html.includes("/og.jpg");
+  const hasPerRouteOgImage = Array.from(html.matchAll(/<meta\b[^>]*>/gi)).some(([tag]) => {
+    const hasOgImageProp = /(?:^|\s)property\s*=\s*(?:"og:image"|'og:image')/i.test(tag);
+    const hasAbsoluteContent = /(?:^|\s)content\s*=\s*(?:"https?:\/\/[^"]+"|'https?:\/\/[^']+')/i.test(tag);
+    return hasOgImageProp && hasAbsoluteContent;
+  });
 
   const { site, projectId, creator, creatorId, host, cwd } = normalizeHeadContext(ctx);
   const documentTitle = titleFromDocument(html);

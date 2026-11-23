@@ -1,11 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { LegalPage } from "@/components/legal-page";
-import { buildCleanCanonical } from "@/lib/seo";
+import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { AlertTriangle, BookOpen, CheckCircle2, FileText, Shield, UserX } from "lucide-react";
 
 export const Route = createFileRoute("/termos")({
   head: () => {
     const canonicalUrl = buildCleanCanonical("/termos");
+    const title = "Termos de Uso | Hikari";
+    const description =
+      "Leia os Termos de Uso do Hikari. Condições para utilização da plataforma, normas de conduta da comunidade, isenção sobre reprodutores externos e direitos autorais.";
     return {
       links: [
         {
@@ -14,21 +17,25 @@ export const Route = createFileRoute("/termos")({
         },
       ],
       meta: [
-        { title: "Termos de Uso | Hikari" },
+        { title },
         {
           name: "description",
-          content:
-            "Leia os Termos de Uso do Hikari. Condições para utilização da plataforma, normas de conduta da comunidade, isenção sobre reprodutores externos e direitos autorais.",
+          content: description,
         },
-        { property: "og:title", content: "Termos de Uso | Hikari" },
+        { property: "og:title", content: title },
         {
           property: "og:description",
-          content:
-            "Leia os Termos de Uso do Hikari. Condições para utilização da plataforma, normas de conduta da comunidade, isenção sobre reprodutores externos e direitos autorais.",
+          content: description,
         },
         { property: "og:url", content: canonicalUrl },
+        { property: "og:image", content: DEFAULT_OG_IMAGE },
+        { property: "og:type", content: "website" },
         { property: "og:locale", content: "pt_BR" },
         { property: "og:site_name", content: "HIKARI" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+        { name: "twitter:image", content: DEFAULT_OG_IMAGE },
       ],
     };
   },

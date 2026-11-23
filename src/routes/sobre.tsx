@@ -1,11 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { LegalPage } from "@/components/legal-page";
-import { buildCleanCanonical } from "@/lib/seo";
+import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { Database, Layers, ShieldAlert, Sparkles, Tv } from "lucide-react";
 
 export const Route = createFileRoute("/sobre")({
   head: () => {
     const canonicalUrl = buildCleanCanonical("/sobre");
+    const title = "Sobre o Hikari | Catálogo e Plataforma de Animes";
+    const description =
+      "Conheça o Hikari: nossa missão, como funciona nosso catálogo integrado ao AniList e nosso compromisso de transparência na reprodução e indexação de animes.";
     return {
       links: [
         {
@@ -14,21 +17,25 @@ export const Route = createFileRoute("/sobre")({
         },
       ],
       meta: [
-        { title: "Sobre o Hikari | Catálogo e Plataforma de Animes" },
+        { title },
         {
           name: "description",
-          content:
-            "Conheça o Hikari: nossa missão, como funciona nosso catálogo integrado ao AniList e nosso compromisso de transparência na reprodução e indexação de animes.",
+          content: description,
         },
-        { property: "og:title", content: "Sobre o Hikari | Catálogo e Plataforma de Animes" },
+        { property: "og:title", content: title },
         {
           property: "og:description",
-          content:
-            "Conheça o Hikari: nossa missão, como funciona nosso catálogo integrado ao AniList e nosso compromisso de transparência na reprodução e indexação de animes.",
+          content: description,
         },
         { property: "og:url", content: canonicalUrl },
+        { property: "og:image", content: DEFAULT_OG_IMAGE },
+        { property: "og:type", content: "website" },
         { property: "og:locale", content: "pt_BR" },
         { property: "og:site_name", content: "HIKARI" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+        { name: "twitter:image", content: DEFAULT_OG_IMAGE },
       ],
     };
   },

@@ -1,11 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LegalPage } from "@/components/legal-page";
-import { buildCleanCanonical } from "@/lib/seo";
+import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { Cookie, Eye, Lock, ShieldCheck, UserCheck } from "lucide-react";
 
 export const Route = createFileRoute("/privacidade")({
   head: () => {
     const canonicalUrl = buildCleanCanonical("/privacidade");
+    const title = "Política de Privacidade e Cookies (LGPD) | Hikari";
+    const description =
+      "Política de Privacidade e Proteção de Dados do Hikari em conformidade com a LGPD. Saiba como tratamos seus dados, o uso de cookies pelo Google e como exercer seus direitos.";
     return {
       links: [
         {
@@ -14,21 +17,25 @@ export const Route = createFileRoute("/privacidade")({
         },
       ],
       meta: [
-        { title: "Política de Privacidade e Cookies (LGPD) | Hikari" },
+        { title },
         {
           name: "description",
-          content:
-            "Política de Privacidade e Proteção de Dados do Hikari em conformidade com a LGPD. Saiba como tratamos seus dados, o uso de cookies pelo Google e como exercer seus direitos.",
+          content: description,
         },
-        { property: "og:title", content: "Política de Privacidade e Cookies (LGPD) | Hikari" },
+        { property: "og:title", content: title },
         {
           property: "og:description",
-          content:
-            "Política de Privacidade e Proteção de Dados do Hikari em conformidade com a LGPD. Saiba como tratamos seus dados, o uso de cookies pelo Google e como exercer seus direitos.",
+          content: description,
         },
         { property: "og:url", content: canonicalUrl },
+        { property: "og:image", content: DEFAULT_OG_IMAGE },
+        { property: "og:type", content: "website" },
         { property: "og:locale", content: "pt_BR" },
         { property: "og:site_name", content: "HIKARI" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+        { name: "twitter:image", content: DEFAULT_OG_IMAGE },
       ],
     };
   },

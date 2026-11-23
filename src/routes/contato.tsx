@@ -1,11 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { LegalPage } from "@/components/legal-page";
-import { buildCleanCanonical } from "@/lib/seo";
+import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { Clock, HelpCircle, Mail, ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/contato")({
   head: () => {
     const canonicalUrl = buildCleanCanonical("/contato");
+    const title = "Contato | Fale com a Equipe Hikari";
+    const description =
+      "Entre em contato com os responsáveis pelo Hikari. Canais de e-mail direto para suporte técnico, remoção de conteúdo, dúvidas de privacidade e sugestões.";
     return {
       links: [
         {
@@ -14,21 +17,25 @@ export const Route = createFileRoute("/contato")({
         },
       ],
       meta: [
-        { title: "Contato | Fale com a Equipe Hikari" },
+        { title },
         {
           name: "description",
-          content:
-            "Entre em contato com os responsáveis pelo Hikari. Canais de e-mail direto para suporte técnico, remoção de conteúdo, dúvidas de privacidade e sugestões.",
+          content: description,
         },
-        { property: "og:title", content: "Contato | Fale com a Equipe Hikari" },
+        { property: "og:title", content: title },
         {
           property: "og:description",
-          content:
-            "Entre em contato com os responsáveis pelo Hikari. Canais de e-mail direto para suporte técnico, remoção de conteúdo, dúvidas de privacidade e sugestões.",
+          content: description,
         },
         { property: "og:url", content: canonicalUrl },
+        { property: "og:image", content: DEFAULT_OG_IMAGE },
+        { property: "og:type", content: "website" },
         { property: "og:locale", content: "pt_BR" },
         { property: "og:site_name", content: "HIKARI" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+        { name: "twitter:image", content: DEFAULT_OG_IMAGE },
       ],
     };
   },

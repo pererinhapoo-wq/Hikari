@@ -303,10 +303,12 @@ test("vercel Host without a public hostname emits no og:image", () => {
 });
 
 test("emits og:image for a public host and prefers a custom card", () => {
+  const empty = mkdtempSync(join(tmpdir(), "grok-og-empty-"));
   const placeholder = injectGrokPwaHead("<html><head></head></html>", {
     appName: "Wild Race",
     host: "wild-race.grok.me",
     site: { title: "Wild Race" },
+    cwd: empty,
   });
   assert.match(
     placeholder,
@@ -318,15 +320,18 @@ test("emits og:image for a public host and prefers a custom card", () => {
     appName: "Wild Race",
     host: "wild-race.grok.me",
     site: { title: "Wild Race", card: "custom", type: "x:game" },
+    cwd: empty,
   });
   assert.match(custom, /property="og:image" content="https:\/\/wild-race\.grok\.me\/og\.jpg"/);
   assert.match(custom, /property="og:type" content="x:game"/);
 });
 
 test("placeholder og:image appends site.color when it is 6-digit hex", () => {
+  const empty = mkdtempSync(join(tmpdir(), "grok-og-empty-"));
   const themed = injectGrokPwaHead("<html><head></head></html>", {
     host: "wild-race.grok.me",
     site: { title: "Wild Race", color: "#FF4D2E" },
+    cwd: empty,
   });
   assert.match(
     themed,
@@ -336,12 +341,14 @@ test("placeholder og:image appends site.color when it is 6-digit hex", () => {
   const invalid = injectGrokPwaHead("<html><head></head></html>", {
     host: "wild-race.grok.me",
     site: { title: "Wild Race", color: "red" },
+    cwd: empty,
   });
   assert.doesNotMatch(invalid, /color=/);
 
   const custom = injectGrokPwaHead("<html><head></head></html>", {
     host: "wild-race.grok.me",
     site: { title: "Wild Race", card: "custom", color: "FF4D2E" },
+    cwd: empty,
   });
   assert.doesNotMatch(custom, /color=/);
 });
@@ -503,4 +510,77 @@ test("vite plugin bakes og identity as a virtual module", () => {
   assert.match(plugin, /virtual:grok-og-identity/);
   assert.match(plugin, /snapshotOgIdentity/);
 });
+
+test("preserves original OG and Twitter tags when og:image points to https://hikaritv.cc.cd/og.jpg", () => {
+  const html = `<html><head><meta property="og:title" content="Hikari Home"><meta property="og:description" content="Home desc"><meta property="og:image" content="https://hikaritv.cc.cd/og.jpg"><meta property="og:url" content="https://hikaritv.cc.cd/"><meta property="og:type" content="website"><meta property="og:site_name" content="HIKARI"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Hikari Home"><meta name="twitter:description" content="Home desc"><meta name="twitter:image" content="https://hikaritv.cc.cd/og.jpg"></head></html>`;
+  const out = injectGrokPwaHead(html, { appName: "HIKARI" });
+  assert.match(out, /content="Hikari Home"/);
+  assert.match(out, /content="Home desc"/);
+  assert.match(out, /content="https:\/\/hikaritv\.cc\.cd\/og\.jpg"/);
+  assert.match(out, /content="https:\/\/hikaritv\.cc\.cd\/"/);
+  assert.match(out, /content="website"/);
+  assert.match(out, /content="HIKARI"/);
+  assert.match(out, /content="summary_large_image"/);
+  assert.match(out, /rel="manifest"/);
+  assert.match(out, /extensions\.js/);
+});
+
+test("preserves original tags when og:image points to external AniList or Kitsu image", () => {
+  const html = `<html><head><meta property="og:title" content="Anime — HIKARI"><meta property="og:description" content="Synopsis"><meta property="og:image" content="https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx21-YCD3128t7z.jpg"><meta property="og:url" content="https://hikaritv.cc.cd/anime/21"><meta property="og:type" content="article"><meta property="og:site_name" content="HIKARI"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Anime — HIKARI"><meta name="twitter:description" content="Synopsis"><meta name="twitter:image" content="https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx21-YCD3128t7z.jpg"></head></html>`;
+  const out = injectGrokPwaHead(html, { appName: "HIKARI" });
+  assert.match(out, /content="https:\/\/s4\.anilist\.co\/file\/anilistcdn\/media\/anime\/cover\/large\/bx21-YCD3128t7z\.jpg"/);
+  assert.match(out, /content="Anime — HIKARI"/);
+  assert.match(out, /content="article"/);
+  assert.match(out, /rel="manifest"/);
+});
+
+test("detects absolute og:image when content attribute appears before property attribute", () => {
+  const html = `<html><head><meta content="https://hikaritv.cc.cd/og.jpg" property="og:image"><meta property="og:title" content="Test Title"></head></html>`;
+  const out = injectGrokPwaHead(html, { appName: "HIKARI" });
+  assert.match(out, /content="Test Title"/);
+  assert.match(out, /content="https:\/\/hikaritv\.cc\.cd\/og\.jpg"/);
+  assert.doesNotMatch(out, /og\.grok\.me/);
+});
+
+test("does not trigger removal of meta tags when /og.jpg is present inside JSON-LD script", () => {
+  const html = `<html><head><meta property="og:title" content="Watch Ep 1"><meta property="og:image" content="https://s4.anilist.co/cover.jpg"><script type="application/ld+json">{"image":"https://hikaritv.cc.cd/og.jpg"}</script></head></html>`;
+  const out = injectGrokPwaHead(html, { appName: "HIKARI" });
+  assert.match(out, /content="Watch Ep 1"/);
+  assert.match(out, /content="https:\/\/s4\.anilist\.co\/cover\.jpg"/);
+  assert.match(out, /application\/ld\+json/);
+});
+
+test("falls back to Grok PWA template when no absolute og:image is present", () => {
+  const html = `<html><head><title>Simple Page</title></head></html>`;
+  const out = injectGrokPwaHead(html, { host: "wild-race.grok.me" });
+  assert.match(out, /name="twitter:card" content="summary_large_image"/);
+  assert.match(out, /property="og:title" content="Simple Page"/);
+});
+
+test("robust hasPerRouteOgImage positive edge cases", () => {
+  const empty = mkdtempSync(join(tmpdir(), "grok-og-empty-"));
+  const html = `<html><head><meta property = 'og:image' content = 'http://example.com/image.jpg'><meta property="og:title" content="Old Title"></head></html>`;
+  const out = injectGrokPwaHead(html, { appName: "Test", cwd: empty });
+  assert.match(out, /content\s*=\s*['']http:\/\/example\.com\/image\.jpg['']/);
+  assert.doesNotMatch(out, /og\.grok\.me/);
+});
+
+test("robust hasPerRouteOgImage negative cases rejecting false positives", () => {
+  const empty = mkdtempSync(join(tmpdir(), "grok-og-empty-"));
+  const negatives = [
+    `<html><head><meta data-property="og:image" data-content="https://hikaritv.cc.cd/og.jpg"><title>Test</title></head></html>`,
+    `<html><head><meta property="og:image" data-content="https://hikaritv.cc.cd/og.jpg"><title>Test</title></head></html>`,
+    `<html><head><meta data-property="og:image" content="https://hikaritv.cc.cd/og.jpg"><title>Test</title></head></html>`,
+    `<html><head><meta property="og:title" content="https://hikaritv.cc.cd/og.jpg"><title>Test</title></head></html>`,
+    `<html><head><meta property="og:image" content="/og.jpg"><title>Test</title></head></html>`,
+    `<html><head><meta property="og:image"><title>Test</title></head></html>`,
+    `<html><head><meta property="og:image"><meta content="https://hikaritv.cc.cd/og.jpg"><title>Test</title></head></html>`,
+  ];
+
+  for (const negHtml of negatives) {
+    const out = injectGrokPwaHead(negHtml, { host: "wild-race.grok.me", appName: "Test", cwd: empty });
+    assert.match(out, /og\.grok\.me/);
+  }
+});
+
 

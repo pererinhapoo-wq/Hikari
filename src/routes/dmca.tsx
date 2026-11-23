@@ -1,11 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { LegalPage } from "@/components/legal-page";
-import { buildCleanCanonical } from "@/lib/seo";
+import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { AlertCircle, CheckSquare, Clock, FileWarning, Mail, ShieldAlert } from "lucide-react";
 
 export const Route = createFileRoute("/dmca")({
   head: () => {
     const canonicalUrl = buildCleanCanonical("/dmca");
+    const title = "DMCA e Notificação de Direitos Autorais | Hikari";
+    const description =
+      "Procedimento formal para envio de notificações de remoção de conteúdo (DMCA / Takedown Notice) no Hikari. Diretrizes, informações exigidas e prazos.";
     return {
       links: [
         {
@@ -14,21 +17,25 @@ export const Route = createFileRoute("/dmca")({
         },
       ],
       meta: [
-        { title: "DMCA e Notificação de Direitos Autorais | Hikari" },
+        { title },
         {
           name: "description",
-          content:
-            "Procedimento formal para envio de notificações de remoção de conteúdo (DMCA / Takedown Notice) no Hikari. Diretrizes, informações exigidas e prazos.",
+          content: description,
         },
-        { property: "og:title", content: "DMCA e Notificação de Direitos Autorais | Hikari" },
+        { property: "og:title", content: title },
         {
           property: "og:description",
-          content:
-            "Procedimento formal para envio de notificações de remoção de conteúdo (DMCA / Takedown Notice) no Hikari. Diretrizes, informações exigidas e prazos.",
+          content: description,
         },
         { property: "og:url", content: canonicalUrl },
+        { property: "og:image", content: DEFAULT_OG_IMAGE },
+        { property: "og:type", content: "website" },
         { property: "og:locale", content: "pt_BR" },
         { property: "og:site_name", content: "HIKARI" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+        { name: "twitter:image", content: DEFAULT_OG_IMAGE },
       ],
     };
   },
