@@ -1220,13 +1220,11 @@ button, a, [role="button"] {
 [data-hidden="true"] .hikari-tv-sparks::after,
 [data-hidden="true"] .hikari-wordmark-aura,
 [data-hidden="true"] .hikari-wordmark-pulse,
-[data-hidden="true"] .hikari-wordmark-sweep,
 [data-hidden="true"] .hikari-tv-frame-ring,
 [data-hidden="true"] .hikari-tv-frame-ring::before,
 [data-hidden="true"] .hikari-tv-frame-corners::before,
 [data-hidden="true"] .hikari-tv-frame-corners::after,
-[data-hidden="true"] .hikari-orbital-lines::before,
-[data-hidden="true"] .hikari-orbital-lines::after {
+[data-hidden="true"] .hikari-orbital-lines::before {
   animation-play-state: paused;
 }
 
@@ -1243,13 +1241,11 @@ button, a, [role="button"] {
 [data-paused="true"] .hikari-tv-sparks::after,
 [data-paused="true"] .hikari-wordmark-aura,
 [data-paused="true"] .hikari-wordmark-pulse,
-[data-paused="true"] .hikari-wordmark-sweep,
 [data-paused="true"] .hikari-tv-frame-ring,
 [data-paused="true"] .hikari-tv-frame-ring::before,
 [data-paused="true"] .hikari-tv-frame-corners::before,
 [data-paused="true"] .hikari-tv-frame-corners::after,
-[data-paused="true"] .hikari-orbital-lines::before,
-[data-paused="true"] .hikari-orbital-lines::after {
+[data-paused="true"] .hikari-orbital-lines::before {
   animation-play-state: paused !important;
 }
 
@@ -1285,10 +1281,8 @@ button, a, [role="button"] {
   .hikari-logo-masked-effects,
   .hikari-wordmark-neon,
   .hikari-wordmark-pulse,
-  .hikari-wordmark-sweep,
   .hikari-orbital-lines,
   .hikari-orbital-lines::before,
-  .hikari-orbital-lines::after,
   .hikari-tv-frame,
   .hikari-tv-frame-ring,
   .hikari-tv-frame-ring::before,
@@ -1730,23 +1724,7 @@ button, a, [role="button"] {
   animation: hikariWordmarkNeonPulse 6.8s ease-in-out infinite;
 }
 
-.hikari-wordmark-sweep {
-  position: absolute;
-  left: 10%;
-  top: 46%;
-  width: 80%;
-  height: 34%;
-  background: linear-gradient(
-    108deg,
-    transparent 34%,
-    rgba(192, 132, 252, 0.24) 44%,
-    rgba(255, 255, 255, 0.68) 50%,
-    rgba(216, 180, 254, 0.28) 56%,
-    transparent 66%
-  );
-  opacity: 0;
-  transform: translate3d(-115%, 0, 0);
-}
+
 
 @keyframes hikariWordmarkAuraPulse {
   0%, 100% {
@@ -1793,22 +1771,7 @@ button, a, [role="button"] {
   }
 }
 
-@keyframes hikariWordmarkLightSweep {
-  0% {
-    transform: translate3d(-115%, 0, 0);
-    opacity: 0;
-  }
-  6% {
-    opacity: 0.85;
-  }
-  22% {
-    opacity: 0.85;
-  }
-  28%, 100% {
-    transform: translate3d(115%, 0, 0);
-    opacity: 0;
-  }
-}
+
 
 /* =========================================================
    HIKARI — CIRCUITO DE ENERGIA E REFLEXO METÁLICO NAS LINHAS
@@ -1861,25 +1824,6 @@ button, a, [role="button"] {
   animation: hikariOrbitalCircuit 5.4s linear infinite;
 }
 
-.hikari-orbital-lines::after {
-  content: "";
-  position: absolute;
-  left: 8%;
-  top: 32%;
-  width: 84%;
-  height: 40%;
-  background: linear-gradient(
-    112deg,
-    transparent 34%,
-    rgba(168, 85, 247, 0.16) 43%,
-    rgba(233, 213, 255, 0.54) 50%,
-    rgba(192, 132, 252, 0.20) 57%,
-    transparent 66%
-  );
-  opacity: 0;
-  transform: translate3d(-115%, 0, 0);
-}
-
 @keyframes hikariOrbitalCircuit {
   0% {
     transform: translate3d(-50%, -50%, 0) rotate(-7deg) scaleY(0.56) rotate(0deg);
@@ -1889,22 +1833,7 @@ button, a, [role="button"] {
   }
 }
 
-@keyframes hikariOrbitalMetallicSheen {
-  0% {
-    transform: translate3d(-115%, 0, 0);
-    opacity: 0;
-  }
-  5% {
-    opacity: 0.68;
-  }
-  21% {
-    opacity: 0.68;
-  }
-  26%, 100% {
-    transform: translate3d(115%, 0, 0);
-    opacity: 0;
-  }
-}
+
 
 /* =========================================================
    HIKARI — ENERGIA LUMINOSA NAS BORDAS DA PLACA "TV"

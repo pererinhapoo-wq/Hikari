@@ -10,6 +10,7 @@ import {
   getCachedProfileMeta,
   setCachedProfileMeta,
 } from "@/lib/profile-client-cache";
+import { useDropdownScrollLock } from "@/lib/scroll-lock";
 import { cn } from "@/lib/utils";
 
 interface ProfileDropdownMenuProps {
@@ -54,6 +55,8 @@ function useDropdownPresence(open: boolean, exitMs = 150) {
 export function ProfileDropdownMenu({ user, onOpenChange }: ProfileDropdownMenuProps) {
   const [open, setOpen] = useState(false);
 
+  useDropdownScrollLock(open);
+
   useEffect(() => {
     onOpenChange?.(open);
   }, [open, onOpenChange]);
@@ -66,7 +69,20 @@ export function ProfileDropdownMenu({ user, onOpenChange }: ProfileDropdownMenuP
   );
   const [imgError, setImgError] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(null);
   const dropdown = useDropdownPresence(open, 150);
+
+  const handleToggle = () => {
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setCoords({
+        top: rect.bottom + 10,
+        right: window.innerWidth - rect.right,
+      });
+    }
+    setOpen((prev) => !prev);
+  };
 
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
@@ -190,8 +206,9 @@ export function ProfileDropdownMenu({ user, onOpenChange }: ProfileDropdownMenuP
     <div ref={menuRef} className="relative inline-block shrink-0 text-left">
       {/* Botão de Perfil: Avatar Circular Premium com Halo Ametista */}
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={handleToggle}
         className={cn(
           "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full select-none cursor-pointer",
           "motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
@@ -230,8 +247,9 @@ export function ProfileDropdownMenu({ user, onOpenChange }: ProfileDropdownMenuP
         <div
           role="menu"
           aria-label="Opções do perfil"
+          style={coords ? { top: `${coords.top}px`, right: `${coords.right}px` } : undefined}
           className={cn(
-            "absolute right-0 top-full mt-2.5 w-60 sm:w-64 origin-top-right overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0b0914]/98 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-2xl z-50 font-sans",
+            "fixed w-60 sm:w-64 origin-top-right overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0b0914]/98 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-2xl z-50 font-sans touch-none",
             "motion-safe:transition-[opacity,transform] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
             dropdown.visible
               ? "opacity-100 translate-y-0 scale-100"

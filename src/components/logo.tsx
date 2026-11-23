@@ -123,7 +123,6 @@ export const Logo = memo(function Logo({
       <div className="hikari-logo-masked-effects" aria-hidden="true">
         <div className="hikari-wordmark-neon">
           <span className="hikari-wordmark-pulse" />
-          <span className="hikari-wordmark-sweep" />
         </div>
         <div className="hikari-orbital-lines" />
       </div>

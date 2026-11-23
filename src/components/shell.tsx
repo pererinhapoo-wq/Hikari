@@ -38,7 +38,7 @@ import {
   cn,
   currentAnimeSeason,
 } from "@/lib/utils";
-import { isScrollLocked, useScrollLock } from "@/lib/scroll-lock";
+import { isScrollLocked, useDropdownScrollLock, useScrollLock } from "@/lib/scroll-lock";
 import {
   setShellUiReady,
   useNotificationsPresentationReady,
@@ -542,6 +542,21 @@ const VisitorDropdownMenu = memo(function VisitorDropdownMenu({
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(null);
+
+  const handleToggle = () => {
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setCoords({
+        top: rect.bottom + 10,
+        right: window.innerWidth - rect.right,
+      });
+    }
+    setOpen((prev) => !prev);
+  };
+
+  useDropdownScrollLock(open);
 
   useEffect(() => {
     onOpenChange?.(open);
@@ -568,8 +583,9 @@ const VisitorDropdownMenu = memo(function VisitorDropdownMenu({
   return (
     <div ref={menuRef} className="relative inline-block shrink-0 text-left font-sans">
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={handleToggle}
         onFocus={() => void prefetchLoginMenu()}
         onPointerDown={(e) => {
           if (e.button === 0) void prefetchLoginMenu();
@@ -599,8 +615,9 @@ const VisitorDropdownMenu = memo(function VisitorDropdownMenu({
         <div
           role="menu"
           aria-label="Menu de visitante"
+          style={coords ? { top: `${coords.top}px`, right: `${coords.right}px` } : undefined}
           className={cn(
-            "absolute right-0 top-full mt-2.5 w-56 origin-top-right overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0b0914]/98 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-2xl z-50 font-sans",
+            "fixed w-56 origin-top-right overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0b0914]/98 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-2xl z-50 font-sans touch-none",
             "animate-in fade-in zoom-in-95 duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
           )}
         >

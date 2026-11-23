@@ -145,18 +145,177 @@ export function acquireScrollLock(): () => void {
   };
 }
 
+// Estado singleton para dropdowns (sem position: fixed no body para não deslocar menus ancorados)
+const activeDropdownLocks = new Set<symbol>();
+let savedDropdownStyles: {
+  htmlOverflow: string;
+  htmlOverscrollBehavior: string;
+  htmlTouchAction: string;
+  bodyOverscrollBehavior: string;
+  bodyTouchAction: string;
+  bodyPaddingRight: string;
+} | null = null;
+let dropdownListenersCleanup: (() => void) | null = null;
+
+const DROPDOWN_SCROLL_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "PageUp",
+  "PageDown",
+  "Home",
+  "End",
+  " ",
+  "Spacebar",
+]);
+
+function isEditableElement(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return (target as HTMLElement).isContentEditable;
+}
+
+function isButtonLikeElement(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest("button, [role='button']"));
+}
+
+/**
+ * Adquire um bloqueio de rolagem específico para menus contextuais/dropdowns fixos.
+ * Mantém window.scrollY intacto (sem position: fixed no body) e bloqueia
+ * rolagem por toque (Android/iOS), wheel/trackpad e teclas de rolagem.
+ */
+export function acquireDropdownScrollLock(): () => void {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return () => {};
+  }
+
+  const lockId = Symbol("hikari-dropdown-scroll-lock");
+
+  if (activeDropdownLocks.size === 0) {
+    const docEl = document.documentElement;
+    const body = document.body;
+
+    const lockedScrollX = window.scrollX || window.pageXOffset || docEl.scrollLeft || 0;
+    const lockedScrollY = window.scrollY || window.pageYOffset || docEl.scrollTop || 0;
+    const scrollbarWidth = window.innerWidth - docEl.clientWidth;
+
+    savedDropdownStyles = {
+      htmlOverflow: docEl.style.overflow,
+      htmlOverscrollBehavior: docEl.style.overscrollBehavior,
+      htmlTouchAction: docEl.style.touchAction,
+      bodyOverscrollBehavior: body.style.overscrollBehavior,
+      bodyTouchAction: body.style.touchAction,
+      bodyPaddingRight: body.style.paddingRight,
+    };
+
+    // Apenas html recebe overflow: hidden; manter body com overflow original evita que
+    // body vire um scroll container independente e desloque <header class="sticky top-0">.
+    docEl.style.overflow = "hidden";
+    docEl.style.overscrollBehavior = "none";
+    docEl.style.touchAction = "none";
+    body.style.overscrollBehavior = "none";
+    body.style.touchAction = "none";
+
+    if (scrollbarWidth > 0) {
+      const currentPaddingRight = Number.parseFloat(window.getComputedStyle(body).paddingRight) || 0;
+      body.style.paddingRight = `${currentPaddingRight + scrollbarWidth}px`;
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!DROPDOWN_SCROLL_KEYS.has(event.key)) return;
+      if (isEditableElement(event.target)) return;
+      if ((event.key === " " || event.key === "Spacebar") && isButtonLikeElement(event.target)) {
+        return;
+      }
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    };
+
+    const handleScroll = () => {
+      if (window.scrollY !== lockedScrollY || window.scrollX !== lockedScrollX) {
+        window.scrollTo({
+          top: lockedScrollY,
+          left: lockedScrollX,
+          behavior: "instant",
+        });
+      }
+    };
+
+    document.addEventListener("touchmove", handleTouchMove, { passive: false, capture: true });
+    window.addEventListener("wheel", handleWheel, { passive: false, capture: true });
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    dropdownListenersCleanup = () => {
+      document.removeEventListener("touchmove", handleTouchMove, { capture: true });
+      window.removeEventListener("wheel", handleWheel, { capture: true });
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }
+
+  activeDropdownLocks.add(lockId);
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+
+    if (!activeDropdownLocks.has(lockId)) {
+      return;
+    }
+
+    activeDropdownLocks.delete(lockId);
+
+    if (activeDropdownLocks.size === 0) {
+      dropdownListenersCleanup?.();
+      dropdownListenersCleanup = null;
+
+      if (savedDropdownStyles) {
+        const docEl = document.documentElement;
+        const body = document.body;
+        const stylesToRestore = savedDropdownStyles;
+        savedDropdownStyles = null;
+
+        docEl.style.overflow = stylesToRestore.htmlOverflow;
+        docEl.style.overscrollBehavior = stylesToRestore.htmlOverscrollBehavior;
+        docEl.style.touchAction = stylesToRestore.htmlTouchAction;
+        body.style.overscrollBehavior = stylesToRestore.bodyOverscrollBehavior;
+        body.style.touchAction = stylesToRestore.bodyTouchAction;
+        body.style.paddingRight = stylesToRestore.bodyPaddingRight;
+      }
+    }
+  };
+}
+
 /**
  * Retorna o número de bloqueios atualmente ativos.
  */
 export function getActiveScrollLockCount(): number {
-  return activeLocks.size;
+  return activeLocks.size + activeDropdownLocks.size;
 }
 
 /**
- * Retorna true se a rolagem estiver atualmente travada por algum modal.
+ * Retorna true se a rolagem estiver atualmente travada por algum modal ou dropdown.
  */
 export function isScrollLocked(): boolean {
-  return activeLocks.size > 0;
+  return activeLocks.size > 0 || activeDropdownLocks.size > 0;
 }
 
 /**
@@ -172,6 +331,22 @@ export function useScrollLock(isOpen: boolean = true): void {
     }
 
     const release = acquireScrollLock();
+    return () => {
+      release();
+    };
+  }, [isOpen]);
+}
+
+/**
+ * Hook React para bloquear a rolagem de fundo enquanto um menu dropdown estiver aberto.
+ */
+export function useDropdownScrollLock(isOpen: boolean = false): void {
+  useEffect(() => {
+    if (!isOpen || typeof window === "undefined") {
+      return;
+    }
+
+    const release = acquireDropdownScrollLock();
     return () => {
       release();
     };
