@@ -6405,7 +6405,6 @@ const RelatedSection = memo(function RelatedSection({
           <AnimeCard
             key={r.id}
             anime={r}
-            imageWidth={120}
             loading="lazy"
             fetchPriority="low"
             priority={false}
