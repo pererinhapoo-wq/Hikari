@@ -52,6 +52,7 @@ import {
 } from "@/components/anime-card";
 
 import { NativeSelect } from "@/components/ui/native-select";
+import { GenresCatalogView } from "@/components/browse/GenresCatalogView";
 
 type AnimeSeason = OfficialAnimeSeason;
 
@@ -184,25 +185,6 @@ function normalizeGenre(
   return genre
     ? genre
     : undefined;
-}
-
-function cnGenre() {
-  return [
-    "flex",
-    "min-h-12",
-    "items-center",
-    "gap-3",
-    "rounded-xl",
-    "border",
-    "border-border",
-    "bg-surface",
-    "px-4",
-    "text-sm",
-    "font-medium",
-    "text-fg",
-    "transition-colors",
-    "hover:bg-elevated",
-  ].join(" ");
 }
 
 export const Route = createFileRoute(
@@ -605,64 +587,21 @@ function BrowsePage() {
     !genre
   ) {
     return (
-      <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
-        <section>
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-elevated">
-              <Tags className="size-5 text-fg" />
-            </div>
-
-            <div>
-              <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-                Gêneros
-              </h1>
-
-              <p className="mt-1 text-sm text-muted">
-                Explore os animes por gênero.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {genres.length === 0 ? (
-          <p className="py-16 text-center text-muted">
-            Nenhum gênero disponível no momento.
-          </p>
-        ) : (
-          <section>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {genres.map(
-                (item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => {
-                      void navigate({
-                        to: "/browse/$section",
-                        params: {
-                          section:
-                            "genres",
-                        },
-                        search: {
-                          genre: item,
-                          page: 1,
-                        },
-                      });
-                    }}
-                    className={cnGenre()}
-                  >
-                    <Tags className="size-4 shrink-0 text-muted" />
-
-                    <span className="truncate">
-                      {item}
-                    </span>
-                  </button>
-                ),
-              )}
-            </div>
-          </section>
-        )}
-      </div>
+      <GenresCatalogView
+        genres={genres}
+        onSelectGenre={(item) => {
+          void navigate({
+            to: "/browse/$section",
+            params: {
+              section: "genres",
+            },
+            search: {
+              genre: item,
+              page: 1,
+            },
+          });
+        }}
+      />
     );
   }
 

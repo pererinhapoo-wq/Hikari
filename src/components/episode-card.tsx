@@ -10,6 +10,7 @@ import {
 } from "@/lib/published-episodes";
 import { cn } from "@/lib/utils";
 import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
+import { formatEpisodeRelativeTime } from "@/lib/relative-published-time";
 
 export const EpisodeCard = memo(function EpisodeCard({
   episode,
@@ -17,12 +18,14 @@ export const EpisodeCard = memo(function EpisodeCard({
   defer,
   first = false,
   showRecentBadges = true,
+  relativeTimeNowMs,
 }: {
   episode: PublishedEpisode;
   priority?: boolean;
   defer?: boolean;
   first?: boolean;
   showRecentBadges?: boolean;
+  relativeTimeNowMs?: number;
 }) {
   // Selo DUB apenas quando o episódio efetivamente exibido for dublado
   const isDub = useMemo(() => isPublishedEpisodeDubbed(episode), [episode]);
@@ -49,6 +52,13 @@ export const EpisodeCard = memo(function EpisodeCard({
   });
   const optimizedThumb = rawThumb ? anilistImage(rawThumb, 320) : "";
   const hasValidThumbnail = Boolean(optimizedThumb);
+
+  const relativePublishedLabel =
+    relativeTimeNowMs !== undefined
+      ? formatEpisodeRelativeTime(episode.publishedTimestamp, relativeTimeNowMs, {
+          published: episode.published,
+        })
+      : null;
 
   return (
     <article className="group relative w-full episode-card-cv">
@@ -169,6 +179,15 @@ export const EpisodeCard = memo(function EpisodeCard({
           <p className="mt-0.5 text-[11px] sm:text-xs font-medium text-zinc-400 truncate">
             Episódio {episode.episodeNumber}
           </p>
+          {relativePublishedLabel && (
+            <p
+              data-testid="episode-relative-time"
+              suppressHydrationWarning
+              className="mt-0.5 text-[10.5px] sm:text-[11px] font-normal text-zinc-400/80 truncate"
+            >
+              {relativePublishedLabel}
+            </p>
+          )}
         </div>
       </Link>
     </article>

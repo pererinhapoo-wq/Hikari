@@ -18,6 +18,7 @@ import {
   parseAnitube22PlayerUrl,
   stripTimeQueryParam,
 } from "@/lib/anitube22";
+import { parseEpisodePublicationTimestamp } from "@/lib/relative-published-time";
 
 export type PublishedEpisodeBadge = "LANÇAMENTO" | "NOVO" | "FINAL" | null;
 
@@ -37,6 +38,8 @@ export type PublishedEpisode = {
   duration?: string;
   videoUrl?: string;
   publishedAt: number;
+  published?: boolean;
+  publishedTimestamp?: number | null;
   badge?: PublishedEpisodeBadge;
   recentBadges?: AnimeRecentBadges;
   audio?: string;
@@ -858,27 +861,36 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
     const buildItem = (
       item: (typeof publishedList)[number],
       publishedAt: number,
-    ): PublishedEpisode => ({
-      animeId: anime.id,
-      animeTitle,
-      animeAltTitles: altTitles,
-      animeCover: anime.cover,
-      animeBanner: anime.banner || anime.cover,
-      seasonId: item.season.id,
-      seasonNumber: item.seasonNumber,
-      seasonTitle: item.season.title || `Temporada ${item.seasonNumber}`,
-      episodeId: item.ep.id,
-      episodeNumber: item.episodeNumber,
-      episodeTitle: item.ep.title || `Episódio ${item.episodeNumber}`,
-      thumbnail: item.resolvedThumb,
-      duration: item.ep.duration?.trim() || undefined,
-      videoUrl: item.validVideo,
-      publishedAt,
-      badge: primaryBadge,
-      recentBadges,
-      ...(item.ep.audio ? { audio: item.ep.audio } : {}),
-      ...(item.ep.audioVersion ? { audioVersion: item.ep.audioVersion } : {}),
-    });
+    ): PublishedEpisode => {
+      const epWithPublishedAt = item.ep as Episode & {
+        publishedAt?: string | number | null;
+      };
+      return {
+        animeId: anime.id,
+        animeTitle,
+        animeAltTitles: altTitles,
+        animeCover: anime.cover,
+        animeBanner: anime.banner || anime.cover,
+        seasonId: item.season.id,
+        seasonNumber: item.seasonNumber,
+        seasonTitle: item.season.title || `Temporada ${item.seasonNumber}`,
+        episodeId: item.ep.id,
+        episodeNumber: item.episodeNumber,
+        episodeTitle: item.ep.title || `Episódio ${item.episodeNumber}`,
+        thumbnail: item.resolvedThumb,
+        duration: item.ep.duration?.trim() || undefined,
+        videoUrl: item.validVideo,
+        publishedAt,
+        published: item.ep.published === true,
+        publishedTimestamp: parseEpisodePublicationTimestamp(
+          epWithPublishedAt.publishedAt,
+        ),
+        badge: primaryBadge,
+        recentBadges,
+        ...(item.ep.audio ? { audio: item.ep.audio } : {}),
+        ...(item.ep.audioVersion ? { audioVersion: item.ep.audioVersion } : {}),
+      };
+    };
 
     if (publishedList.length >= 50) {
       // Regra obrigatória (>= 50 episódios publicados): apenas Episódio 1 e Episódio final publicado
@@ -981,6 +993,9 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
         // O peso de ordenação prioriza a atualização do anime + temporada + número
         const epTime = baseTime + season.number * 1000 + ep.number;
         const resolvedThumb = resolveEpisodeThumbnailUrl(ep);
+        const epWithPublishedAt = ep as Episode & {
+          publishedAt?: string | number | null;
+        };
 
         list.push({
           animeId: anime.id,
@@ -998,6 +1013,10 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
           duration: ep.duration ? ep.duration.trim() : undefined,
           videoUrl: validVideo || ep.videoUrl,
           publishedAt: epTime,
+          published: ep.published === true,
+          publishedTimestamp: parseEpisodePublicationTimestamp(
+            epWithPublishedAt.publishedAt,
+          ),
           badge: primaryBadge,
           recentBadges,
           ...(ep.audio ? { audio: ep.audio } : {}),
@@ -1202,13 +1221,14 @@ export function resolvePublicEpisodes(
       localSeason?.title ||
       `Temporada ${sNum}`;
 
-    const rawPublishedMs = row.publishedAt ? new Date(row.publishedAt).getTime() : NaN;
-    const rawCreatedMs = row.createdAt ? new Date(row.createdAt).getTime() : NaN;
-    const publishedAt = Number.isFinite(rawPublishedMs)
-      ? rawPublishedMs
-      : Number.isFinite(rawCreatedMs)
-        ? rawCreatedMs
-        : Date.now();
+    const realPublishedMs = parseEpisodePublicationTimestamp(row.publishedAt);
+    const rawCreatedMs = parseEpisodePublicationTimestamp(row.createdAt);
+    const publishedAt =
+      realPublishedMs !== null
+        ? realPublishedMs
+        : rawCreatedMs !== null
+          ? rawCreatedMs
+          : Date.now();
 
     const hasUnsyncedLocalBadgeEdit = Boolean(
       localAnime &&
@@ -1240,6 +1260,8 @@ export function resolvePublicEpisodes(
       duration,
       videoUrl: validVideo,
       publishedAt,
+      published: row.published === true,
+      publishedTimestamp: realPublishedMs,
       badge: resolvePrimaryBadgeFromRecentBadges(resolvedBadges),
       recentBadges: resolvedBadges,
       ...(localEp?.audio ? { audio: localEp.audio } : {}),
@@ -1321,6 +1343,9 @@ export function resolvePublicEpisodes(
         const resolvedThumb = resolveEpisodeThumbnailUrl(ep);
 
         const epTime = baseTime + season.number * 1000 + ep.number;
+        const epWithPublishedAt = ep as Episode & {
+          publishedAt?: string | number | null;
+        };
 
         result.push({
           animeId: anime.id,
@@ -1338,6 +1363,10 @@ export function resolvePublicEpisodes(
           duration: ep.duration?.trim() || undefined,
           videoUrl: validVideo,
           publishedAt: epTime,
+          published: ep.published === true,
+          publishedTimestamp: parseEpisodePublicationTimestamp(
+            epWithPublishedAt.publishedAt,
+          ),
           badge: primaryBadge,
           recentBadges,
           ...(ep.audio ? { audio: ep.audio } : {}),

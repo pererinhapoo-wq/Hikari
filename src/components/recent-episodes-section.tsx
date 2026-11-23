@@ -9,8 +9,101 @@ import {
 import { getHomePublicEpisodes } from "@/lib/home-episodes.functions";
 import type { PublicEpisodesResult } from "@/lib/catalog-episodes";
 import { EpisodeCard } from "@/components/episode-card";
+import {
+  formatEpisodeRelativeTime,
+  getNextEpisodeRelativeTickMs,
+} from "@/lib/relative-published-time";
 
 const FOCUS_REFRESH_THROTTLE_MS = 180_000;
+
+function useRelativeEpisodesNow(
+  episodes: ReadonlyArray<
+    Pick<PublishedEpisode, "published" | "publishedTimestamp">
+  >,
+): number {
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const nowMsRef = useRef(nowMs);
+  nowMsRef.current = nowMs;
+
+  useEffect(() => {
+    if (typeof window === "undefined" || episodes.length === 0) {
+      return;
+    }
+
+    let timerId: number | null = null;
+
+    const clearTimer = () => {
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+        timerId = null;
+      }
+    };
+
+    const syncIfChanged = (forceFreshOnStale = false) => {
+      const currentNow = Date.now();
+      const prevNow = nowMsRef.current;
+      const changed =
+        (forceFreshOnStale && currentNow - prevNow > 5_000) ||
+        episodes.some(
+          (ep) =>
+            formatEpisodeRelativeTime(ep.publishedTimestamp, prevNow, {
+              published: ep.published,
+            }) !==
+            formatEpisodeRelativeTime(ep.publishedTimestamp, currentNow, {
+              published: ep.published,
+            }),
+        );
+      if (changed) {
+        nowMsRef.current = currentNow;
+        setNowMs(currentNow);
+      }
+      return currentNow;
+    };
+
+    const scheduleNext = (referenceNow: number) => {
+      clearTimer();
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+      const delay = getNextEpisodeRelativeTickMs(episodes, referenceNow);
+      if (delay === null) return;
+
+      timerId = window.setTimeout(() => {
+        const updatedNow = syncIfChanged(false);
+        scheduleNext(updatedNow);
+      }, delay);
+    };
+
+    const initialNow = syncIfChanged(true);
+    scheduleNext(initialNow);
+
+    const handleVisibilityOrFocus = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        clearTimer();
+        return;
+      }
+      const updatedNow = syncIfChanged(true);
+      scheduleNext(updatedNow);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+    window.addEventListener("focus", handleVisibilityOrFocus);
+
+    return () => {
+      clearTimer();
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+    };
+  }, [episodes]);
+
+  return nowMs;
+}
 
 function EpisodeCardSkeleton() {
   return (
@@ -117,6 +210,13 @@ export function RecentEpisodesSection({
     return getRecentEpisodesSection(animes);
   }, [liveServerResult, effectiveServerResult, initialEpisodes, animes]);
 
+  // Exibe no máximo 18 episódios selecionados para a vitrine
+  const recentEpisodes = useMemo(
+    () => displayEpisodes.slice(0, 18),
+    [displayEpisodes],
+  );
+  const relativeNowMs = useRelativeEpisodesNow(recentEpisodes);
+
   const hasEpisodes = displayEpisodes.length > 0;
   const isLoading = !hasEpisodes && (isSyncing || (!hydrated && serverResult === undefined));
 
@@ -124,9 +224,6 @@ export function RecentEpisodesSection({
   if (!hasEpisodes && !isLoading) {
     return null;
   }
-
-  // Exibe no máximo 18 episódios selecionados para a vitrine
-  const recentEpisodes = displayEpisodes.slice(0, 18);
 
   return (
     <section className="space-y-3 sm:space-y-4 [content-visibility:auto] [contain-intrinsic-size:auto_600px]">
@@ -175,6 +272,7 @@ export function RecentEpisodesSection({
               defer={idx !== 0}
               first={idx === 0}
               showRecentBadges={true}
+              relativeTimeNowMs={relativeNowMs}
             />
           ))}
         </div>
