@@ -35,6 +35,9 @@ export const NativeSelect = forwardRef<
     const containerRef =
       useRef<HTMLDivElement>(null);
 
+    const listboxRef =
+      useRef<HTMLDivElement>(null);
+
     const optionRefs =
       useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -119,18 +122,28 @@ export const NativeSelect = forwardRef<
 
       if (selectedIndex < 0) return;
 
-      const timer =
-        window.setTimeout(() => {
-          optionRefs.current[
-            selectedIndex
-          ]?.scrollIntoView({
-            block: "center",
-            behavior: "instant",
-          });
-        }, 0);
+      const listbox = listboxRef.current;
+      const optionEl =
+        optionRefs.current[selectedIndex];
 
-      return () =>
-        window.clearTimeout(timer);
+      if (!listbox || !optionEl) return;
+
+      const offsetTop =
+        optionEl.offsetParent === listbox
+          ? optionEl.offsetTop
+          : optionEl.offsetTop -
+            listbox.offsetTop;
+
+      const targetScrollTop =
+        offsetTop -
+        (listbox.clientHeight -
+          optionEl.offsetHeight) /
+          2;
+
+      listbox.scrollTop = Math.max(
+        0,
+        targetScrollTop,
+      );
     }, [
       open,
       options,
@@ -258,6 +271,7 @@ export const NativeSelect = forwardRef<
 
         {open && (
           <div
+            ref={listboxRef}
             role="listbox"
             aria-label={
               props["aria-label"]
