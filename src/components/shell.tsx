@@ -674,7 +674,7 @@ export function Shell() {
   const pathname =
     useRouterState({
       select: (s) =>
-        s.location.pathname,
+        (s.resolvedLocation ?? s.location).pathname,
     });
 
   const currentSeasonInfo = currentAnimeSeason();

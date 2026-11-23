@@ -917,7 +917,6 @@ function AnimePageContent({
     (typeof window !== "undefined"
       ? (new URLSearchParams(window.location.search).get("staffId") as string | null)
       : null);
-  const navigate = useNavigate();
 
   const [hasCommentHash, setHasCommentHash] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -3556,37 +3555,19 @@ function AnimePageContent({
                     }}
                     className={cn(
                       "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 px-5 sm:px-6 text-sm sm:text-base font-semibold text-white shadow-[0_4px_20px_rgba(168,85,247,0.35)] transition-[color,background-color,border-color,box-shadow,filter,transform] duration-250 ease-out select-none touch-manipulation [-webkit-tap-highlight-color:transparent] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
-                      "[@media(hover:hover)]:hover:from-purple-500 [@media(hover:hover)]:hover:to-purple-400 [@media(hover:hover)]:hover:shadow-[0_4px_26px_rgba(168,85,247,0.5)] [@media(hover:hover)]:hover:brightness-110",
-                      "[@media(hover:hover)]:motion-safe:hover:scale-[1.02] [@media(hover:hover)]:motion-safe:active:scale-[0.96]",
+                      "[@media(hover:hover)_and_(pointer:fine)]:hover:from-purple-500 [@media(hover:hover)_and_(pointer:fine)]:hover:to-purple-400 [@media(hover:hover)_and_(pointer:fine)]:hover:shadow-[0_4px_26px_rgba(168,85,247,0.5)] [@media(hover:hover)_and_(pointer:fine)]:hover:brightness-110",
+                      "[@media(hover:hover)_and_(pointer:fine)]:motion-safe:hover:scale-[1.02] [@media(hover:hover)_and_(pointer:fine)]:motion-safe:active:scale-[0.96]",
                       "active:brightness-125 active:shadow-[0_0_28px_rgba(168,85,247,0.65)]",
-                      isWatchPressing && "[@media(hover:hover)]:motion-safe:scale-[0.96] brightness-125 shadow-[0_0_28px_rgba(168,85,247,0.65)]"
+                      isWatchPressing && "[@media(hover:hover)_and_(pointer:fine)]:motion-safe:scale-[0.96] brightness-125 shadow-[0_0_28px_rgba(168,85,247,0.65)]"
                     )}
-                    onClick={(e) => {
+                    onClick={() => {
                       setIsWatchPressing(true);
                       setTimeout(() => {
                         setIsWatchPressing(false);
                       }, 250);
-
-                      if (
-                        !e.metaKey &&
-                        !e.altKey &&
-                        !e.ctrlKey &&
-                        !e.shiftKey &&
-                        e.button === 0
-                      ) {
-                        triggerMonetagSmartLinkOnNavigationClick(e);
-                        e.preventDefault();
-                        void navigate({
-                          to: "/watch/$id/$ep",
-                          params: {
-                            id: anime.id,
-                            ep: `ep-${continueTarget?.number || 1}`,
-                          },
-                        });
-                      }
                     }}
                   >
-                    <Play className="size-4 fill-current pointer-events-none transition-transform duration-250 ease-out [@media(hover:hover)]:group-hover:scale-105" />
+                    <Play className="size-4 fill-current pointer-events-none transition-transform duration-250 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105" />
                     <span id="hikari-watch-btn-text" suppressHydrationWarning>
                       {watchButtonLabel}
                     </span>
@@ -4811,21 +4792,20 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
           ep: `ep-${ep.number}`,
         }}
         preload="intent"
-        onClick={(e) => {
-          triggerMonetagSmartLinkOnNavigationClick(e);
+        onClick={() => {
           onSelect(ep.id);
         }}
         className={cn(
           "group relative flex gap-3 rounded-xl border p-2.5 select-none touch-manipulation [-webkit-tap-highlight-color:transparent] [contain:layout_paint_style] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/80",
-          "motion-safe:transition-[border-color,background-color,box-shadow] [@media(hover:hover)]:motion-safe:transition-[transform,border-color,background-color,box-shadow] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:transform-none",
-          "[@media(hover:hover)]:motion-safe:hover:-translate-y-0.5",
-          "[@media(hover:hover)]:motion-safe:active:scale-[0.982] active:border-purple-400/85 active:bg-[#1c1435]/95 active:ring-1 active:ring-purple-400/45 active:shadow-[0_0_24px_rgba(168,85,247,0.38)]",
+          "motion-safe:transition-[border-color,background-color,box-shadow] [@media(hover:hover)_and_(pointer:fine)]:motion-safe:transition-[transform,border-color,background-color,box-shadow] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:transform-none",
+          "[@media(hover:hover)_and_(pointer:fine)]:motion-safe:hover:-translate-y-0.5",
+          "[@media(hover:hover)_and_(pointer:fine)]:motion-safe:active:scale-[0.982] active:border-purple-400/85 active:bg-[#1c1435]/95 active:ring-1 active:ring-purple-400/45 active:shadow-[0_0_24px_rgba(168,85,247,0.38)]",
           watched
-            ? "border-purple-500/30 bg-[#141026]/90 [@media(hover:hover)]:hover:bg-[#1a1530] [@media(hover:hover)]:hover:border-purple-500/50"
-            : "border-purple-500/15 bg-[#0f0d18]/90 [@media(hover:hover)]:hover:border-purple-500/40 [@media(hover:hover)]:hover:bg-[#161326]",
-          "shadow-[0_2px_12px_rgba(0,0,0,0.3)] [@media(hover:hover)]:hover:shadow-[0_4px_20px_rgba(168,85,247,0.15)]",
+            ? "border-purple-500/30 bg-[#141026]/90 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[#1a1530] [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/50"
+            : "border-purple-500/15 bg-[#0f0d18]/90 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/40 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[#161326]",
+          "shadow-[0_2px_12px_rgba(0,0,0,0.3)] [@media(hover:hover)_and_(pointer:fine)]:hover:shadow-[0_4px_20px_rgba(168,85,247,0.15)]",
           isSelecting &&
-            "!border-purple-400/85 !bg-[#1c1435]/95 ring-1 ring-purple-400/45 !shadow-[0_0_24px_rgba(168,85,247,0.4)] [@media(hover:hover)]:motion-safe:animate-[episodeTapPulse_220ms_cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none",
+            "!border-purple-400/85 !bg-[#1c1435]/95 ring-1 ring-purple-400/45 !shadow-[0_0_24px_rgba(168,85,247,0.4)] [@media(hover:hover)_and_(pointer:fine)]:motion-safe:animate-[episodeTapPulse_220ms_cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none",
         )}
       >
         {/* Realce luminoso violeta ao selecionar */}
@@ -4860,7 +4840,7 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
             }
             fallbackClassName="bg-elevated"
             loadedOpacityClass={watched ? "opacity-75" : "opacity-100"}
-            className="size-full object-cover [@media(hover:hover)]:motion-safe:group-hover:scale-105"
+            className="size-full object-cover [@media(hover:hover)_and_(pointer:fine)]:motion-safe:group-hover:scale-105"
           />
 
           <div className="absolute inset-0 bg-black/20 transition-colors motion-reduce:transition-none [@media(hover:hover)]:group-hover:bg-black/5" />

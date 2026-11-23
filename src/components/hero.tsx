@@ -739,7 +739,6 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
                   }),
                 );
               }}
-              onClick={triggerMonetagSmartLinkOnNavigationClick}
               className="group relative inline-flex items-center justify-center gap-2 h-9 sm:h-10 px-4.5 sm:px-5.5 rounded-xl sm:rounded-2xl bg-gradient-to-r from-purple-600 via-purple-500 to-fuchsia-600 active:opacity-90 text-white font-bold text-xs sm:text-sm tracking-wide border border-white/20 shadow-[0_4px_20px_rgba(168,85,247,0.38)] cursor-pointer select-none touch-manipulation [-webkit-tap-highlight-color:transparent] transition-opacity duration-140 ease-out motion-reduce:transition-none"
             >
               <span

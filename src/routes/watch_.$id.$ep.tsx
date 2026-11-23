@@ -449,19 +449,13 @@ function WatchPage() {
     current?.id,
   ]);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-    }
-  }, [id, ep]);
-
   const title = anime
     ? displayTitle(anime)
     : "";
 
   if ((!hydrated || !episodesSettled || isRetrying) && !anime) {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-bg text-fg">
+      <main className="flex min-h-svh items-center justify-center bg-bg text-fg">
         <div className="flex flex-col items-center justify-center gap-3">
           <div
             className="size-8 animate-spin rounded-full border-2 border-white/10 border-t-[#a855f7]"
@@ -483,7 +477,7 @@ function WatchPage() {
     );
 
     return (
-      <div className="flex min-h-dvh flex-col bg-bg text-fg">
+      <div className="flex min-h-svh flex-col bg-bg text-fg">
         <header className="flex h-14 sm:h-16 items-center px-4 sm:px-6 border-b border-white/[0.06] bg-bg sm:bg-bg/80 backdrop-blur-none sm:backdrop-blur-md sticky top-0 z-40">
           <Logo />
         </header>
@@ -536,7 +530,7 @@ function WatchPage() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-bg text-fg">
+    <div className="flex min-h-svh flex-col bg-bg text-fg">
 
       {/* ================================================== */}
       {/* CABEÇALHO */}
