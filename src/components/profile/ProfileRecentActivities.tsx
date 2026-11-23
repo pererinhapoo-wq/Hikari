@@ -11,7 +11,9 @@ import {
   Star,
   XCircle,
 } from "lucide-react";
+import React, { useMemo } from "react";
 import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
+import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import type { MyProfileComment, UserActivityItem } from "@/lib/profile.functions";
 import { cn } from "@/lib/utils";
 import type { TrackingStatus } from "@/types/profile-tracking";
@@ -156,42 +158,47 @@ type UnifiedActivityItem =
       comment: MyProfileComment;
     };
 
-export function ProfileRecentActivities({
+export const ProfileRecentActivities = React.memo(function ProfileRecentActivities({
   activityItems = [],
   comments = [],
   loading = false,
 }: ProfileRecentActivitiesProps) {
-  // 1. Atividades de Animes: todas as atividades reais do usuário relacionadas a animes
-  const animeActivities = activityItems.filter(
-    (item) =>
-      item.resourceType === "anime" ||
-      item.type === "watched_episode" ||
-      item.type === "tracking_added" ||
-      item.type === "tracking_updated",
-  );
+  const { unifiedItems, displayedItems } = useMemo(() => {
+    // 1. Atividades de Animes: todas as atividades reais do usuário relacionadas a animes
+    const animeActivities = activityItems.filter(
+      (item) =>
+        item.resourceType === "anime" ||
+        item.type === "watched_episode" ||
+        item.type === "tracking_added" ||
+        item.type === "tracking_updated",
+    );
 
-  // 2. Ordenação Conjunta: unir ambas as categorias sem registros duplicados e ordenar cronologicamente por data decrescente
-  const unifiedItems: UnifiedActivityItem[] = [
-    ...animeActivities.map((act) => ({
-      kind: "anime_activity" as const,
-      id: `act-${act.id}`,
-      date: act.createdAt,
-      activity: act,
-    })),
-    ...comments.map((comm) => ({
-      kind: "comment" as const,
-      id: `comm-${comm.id}`,
-      date: comm.createdAt,
-      comment: comm,
-    })),
-  ];
+    // 2. Ordenação Conjunta: unir ambas as categorias sem registros duplicados e ordenar cronologicamente por data decrescente
+    const merged: UnifiedActivityItem[] = [
+      ...animeActivities.map((act) => ({
+        kind: "anime_activity" as const,
+        id: `act-${act.id}`,
+        date: act.createdAt,
+        activity: act,
+      })),
+      ...comments.map((comm) => ({
+        kind: "comment" as const,
+        id: `comm-${comm.id}`,
+        date: comm.createdAt,
+        comment: comm,
+      })),
+    ];
 
-  unifiedItems.sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-  );
+    merged.sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
 
-  // Limitação estrita: exibir no máximo 6 registros de atividades recentes na Visão Geral
-  const displayedItems = unifiedItems.slice(0, 6);
+    // Limitação estrita: exibir no máximo 6 registros de atividades recentes na Visão Geral
+    return {
+      unifiedItems: merged,
+      displayedItems: merged.slice(0, 6),
+    };
+  }, [activityItems, comments]);
 
   return (
     <section
@@ -243,19 +250,32 @@ export function ProfileRecentActivities({
               );
               const animeTitle = comm.animeTitle || "Anime";
 
+              const coverAttrs = comm.animeCover
+                ? getResponsiveCoverAttrs(comm.animeCover, "thumb")
+                : null;
+              const coverFallbackSrc = coverAttrs
+                ? (coverAttrs.fallbackSrc ??
+                    (coverAttrs.src !== comm.animeCover ? comm.animeCover : undefined))
+                : undefined;
+
               return (
                 <article
                   key={item.id}
-                  className="group relative flex items-center justify-between gap-3.5 sm:gap-4 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-3.5 sm:p-4 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-colors duration-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-violet-500/35 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[#12101e]"
+                  className="group relative flex items-center justify-between gap-3.5 sm:gap-4 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-3.5 sm:p-4 shadow-sm md:shadow-[0_4px_20px_rgba(0,0,0,0.3)] [contain:layout_paint] [@media(hover:hover)_and_(pointer:fine)]:transition-colors [@media(hover:hover)_and_(pointer:fine)]:duration-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-violet-500/35 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[#12101e]"
                 >
                   <div className="flex items-start gap-3.5 sm:gap-4 min-w-0 flex-1">
                     {/* Capa / Ícone */}
                     <div className="relative aspect-[2/3] w-12 sm:w-14 shrink-0 overflow-hidden rounded-none border border-white/10 bg-[#161424] mt-0.5">
                       <ProfileAnimeImage
-                        src={comm.animeCover}
+                        src={coverAttrs ? coverAttrs.src : null}
+                        sizes={coverAttrs ? "(min-width: 640px) 56px, 48px" : undefined}
+                        fallbackSrc={coverFallbackSrc}
+                        width={56}
+                        height={84}
                         alt=""
                         loading="lazy"
                         decoding="async"
+                        fetchPriority={coverAttrs?.fetchPriority ?? "low"}
                         fallbackClassName="bg-[#161424]"
                         className="size-full object-cover [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
                       />
@@ -375,20 +395,32 @@ export function ProfileRecentActivities({
                   : null;
 
             const trackingStatus = isTracking || act.metadata?.status ? resolveTrackingStatus(act) : null;
+            const coverAttrs = act.resourceCover
+              ? getResponsiveCoverAttrs(act.resourceCover, "thumb")
+              : null;
+            const coverFallbackSrc = coverAttrs
+              ? (coverAttrs.fallbackSrc ??
+                  (coverAttrs.src !== act.resourceCover ? act.resourceCover : undefined))
+              : undefined;
 
             return (
               <article
                 key={item.id}
-                className="group relative flex items-center justify-between gap-3.5 sm:gap-4 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-3.5 sm:p-4 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-colors duration-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-violet-500/35 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[#12101e]"
+                className="group relative flex items-center justify-between gap-3.5 sm:gap-4 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-3.5 sm:p-4 shadow-sm md:shadow-[0_4px_20px_rgba(0,0,0,0.3)] [contain:layout_paint] [@media(hover:hover)_and_(pointer:fine)]:transition-colors [@media(hover:hover)_and_(pointer:fine)]:duration-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-violet-500/35 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[#12101e]"
               >
                 <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
                   {/* Capa / Ícone */}
                   <div className="relative aspect-[2/3] w-12 sm:w-14 shrink-0 overflow-hidden rounded-none border border-white/10 bg-[#161424]">
                     <ProfileAnimeImage
-                      src={act.resourceCover}
+                      src={coverAttrs ? coverAttrs.src : null}
+                      sizes={coverAttrs ? "(min-width: 640px) 56px, 48px" : undefined}
+                      fallbackSrc={coverFallbackSrc}
+                      width={56}
+                      height={84}
                       alt=""
                       loading="lazy"
                       decoding="async"
+                      fetchPriority={coverAttrs?.fetchPriority ?? "low"}
                       fallbackClassName="bg-[#161424]"
                       className="size-full object-cover [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
                     />
@@ -493,4 +525,4 @@ export function ProfileRecentActivities({
       )}
     </section>
   );
-}
+});

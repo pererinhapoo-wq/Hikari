@@ -62,13 +62,11 @@ export const HikariImage = React.memo(function HikariImage({
   const [prevSrc, setPrevSrc] = useState(src);
   const [usingFallback, setUsingFallback] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const [loaded, setLoaded] = useState(false);
 
   if (src !== prevSrc) {
     setPrevSrc(src);
     setUsingFallback(false);
     setHasError(false);
-    setLoaded(false);
   }
 
   const activeSrc = usingFallback ? fallbackSrc : src;
@@ -93,6 +91,8 @@ export const HikariImage = React.memo(function HikariImage({
   const loading: "eager" | "lazy" = loadingProp ?? (priority ? "eager" : isLazy ? "lazy" : "lazy");
   const fetchPriority: "high" | "low" | "auto" =
     fetchPriorityProp ?? (priority ? "high" : "low");
+  const hasCustomOpacity =
+    Boolean(loadedOpacityClass) && loadedOpacityClass !== "opacity-100";
 
   return (
     <img
@@ -107,10 +107,7 @@ export const HikariImage = React.memo(function HikariImage({
       decoding={decoding}
       fetchPriority={fetchPriority}
       draggable={false}
-      onLoad={(e) => {
-        setLoaded(true);
-        onLoad?.(e);
-      }}
+      onLoad={onLoad}
       onError={(e) => {
         if (!usingFallback && fallbackSrc && fallbackSrc !== activeSrc) {
           setUsingFallback(true);
@@ -121,7 +118,7 @@ export const HikariImage = React.memo(function HikariImage({
       }}
       className={cn(
         "size-full object-cover hikari-image-fade opacity-100",
-        loaded && loadedOpacityClass,
+        hasCustomOpacity && loadedOpacityClass,
         className,
       )}
       {...rest}

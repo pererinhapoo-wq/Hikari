@@ -21,6 +21,7 @@ import {
 } from "@/components/anime/EntityWorksExpansion";
 import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import { HikariImage } from "@/components/ui/hikari-image";
+import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { getStudioLogo } from "@/lib/studio-logos";
 import { cn } from "@/lib/utils";
 import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
@@ -387,11 +388,19 @@ const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
     [onCardClick, item],
   );
 
+  const coverAttrs = item.image
+    ? getResponsiveCoverAttrs(item.image, "card-md")
+    : null;
+  const coverFallbackSrc = coverAttrs
+    ? (coverAttrs.fallbackSrc ??
+        (coverAttrs.src !== item.image ? item.image : undefined))
+    : undefined;
+
   return (
     <button
       type="button"
       onClick={handleClick}
-      className="group relative flex w-full min-w-0 flex-col text-left focus:outline-none select-none cursor-pointer outline-none active:scale-[0.98] transition-transform duration-100 ease-out"
+      className="group relative flex w-full min-w-0 flex-col text-left focus:outline-none select-none cursor-pointer outline-none [contain:layout_paint] [@media(hover:hover)_and_(pointer:fine)]:transition-transform [@media(hover:hover)_and_(pointer:fine)]:duration-100 [@media(hover:hover)_and_(pointer:fine)]:ease-out [@media(hover:hover)_and_(pointer:fine)]:active:scale-[0.98]"
     >
       {/* Capa com proporção 2:3 vertical retangular com cantos retos */}
       <div className="
@@ -404,38 +413,47 @@ const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
         border
         border-white/10
         shadow-sm
-        transition-colors
-        duration-200
-        ease-out
+        [@media(hover:hover)_and_(pointer:fine)]:transition-colors
+        [@media(hover:hover)_and_(pointer:fine)]:duration-200
+        [@media(hover:hover)_and_(pointer:fine)]:ease-out
         [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
-        group-active:border-purple-400
+        [@media(hover:hover)_and_(pointer:fine)]:group-active:border-purple-400
       ">
         <ProfileAnimeImage
-          src={item.image}
+          src={coverAttrs ? coverAttrs.src : null}
+          sizes={
+            coverAttrs
+              ? "(min-width: 1280px) 184px, (min-width: 1024px) 220px, (min-width: 640px) 31vw, 31vw"
+              : undefined
+          }
+          fallbackSrc={coverFallbackSrc}
+          width={180}
+          height={270}
           alt=""
           loading="lazy"
           decoding="async"
+          fetchPriority={coverAttrs?.fetchPriority ?? "low"}
           fallbackClassName="bg-[#0d0c16]"
           className="
             size-full
             object-cover
             object-center
-            scale-[0.95]
+            [@media(hover:hover)_and_(pointer:fine)]:scale-[0.95]
             [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98]
-            group-active:scale-[0.96]
+            [@media(hover:hover)_and_(pointer:fine)]:group-active:scale-[0.96]
             motion-reduce:transform-none
           "
         />
 
-        {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint contínuo da box-shadow */}
+        {/* Camada de sombra/glow acelerada por GPU via opacidade (apenas dispositivos com hover/ponteiro preciso) */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
+          className="hidden [@media(hover:hover)_and_(pointer:fine)]:block pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100 group-active:opacity-100"
         />
 
         {/* Indicador sutil de favorito no topo direito (exibido apenas para o proprietário) */}
         {isOwner && (
-          <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
+          <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm [@media(hover:hover)_and_(pointer:fine)]:transition-transform [@media(hover:hover)_and_(pointer:fine)]:duration-200 [@media(hover:hover)_and_(pointer:fine)]:ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
             <Heart className="size-3 fill-rose-500 text-rose-500" />
           </div>
         )}
@@ -444,7 +462,7 @@ const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
       {/* Informações estritamente FORA do pôster */}
       <div className="mt-2 flex flex-col px-0.5 min-w-0">
         <h4
-          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
+          className="truncate text-xs sm:text-sm font-medium text-zinc-100 [@media(hover:hover)_and_(pointer:fine)]:transition-colors [@media(hover:hover)_and_(pointer:fine)]:duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 [@media(hover:hover)_and_(pointer:fine)]:group-active:text-purple-200"
           title={item.title}
         >
           {item.title}
@@ -637,12 +655,22 @@ const FavoriteCarouselCard = React.memo(function FavoriteCarouselCard({
     onCardClick(item);
   }, [onCardClick, item]);
 
+  const coverAttrs = primaryImage
+    ? getResponsiveCoverAttrs(primaryImage, "card-md")
+    : null;
+  const resolvedFallback =
+    studioFallbackLogo ||
+    (coverAttrs
+      ? (coverAttrs.fallbackSrc ??
+          (coverAttrs.src !== primaryImage ? primaryImage : undefined))
+      : undefined);
+
   return (
     <button
       type="button"
       onClick={handleClick}
       className={cn(
-        "group relative flex w-[108px] min-[380px]:w-[122px] sm:w-[138px] md:w-[150px] lg:w-[162px] shrink-0 flex-col min-w-0 text-left outline-none cursor-pointer select-none active:scale-[0.98] transition-transform duration-100 ease-out",
+        "group relative flex w-[108px] min-[380px]:w-[122px] sm:w-[138px] md:w-[150px] lg:w-[162px] shrink-0 flex-col min-w-0 text-left outline-none cursor-pointer select-none [@media(hover:hover)_and_(pointer:fine)]:transition-transform [@media(hover:hover)_and_(pointer:fine)]:duration-100 [@media(hover:hover)_and_(pointer:fine)]:ease-out [@media(hover:hover)_and_(pointer:fine)]:active:scale-[0.98]",
         isSelected && "ring-2 ring-purple-500",
       )}
     >
@@ -657,39 +685,47 @@ const FavoriteCarouselCard = React.memo(function FavoriteCarouselCard({
         border
         border-white/10
         shadow-sm
-        transition-colors
-        duration-200
-        ease-out
+        [@media(hover:hover)_and_(pointer:fine)]:transition-colors
+        [@media(hover:hover)_and_(pointer:fine)]:duration-200
+        [@media(hover:hover)_and_(pointer:fine)]:ease-out
         [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
-        group-active:border-purple-400
+        [@media(hover:hover)_and_(pointer:fine)]:group-active:border-purple-400
         flex
         items-center
         justify-center
       ">
         <HikariImage
-          src={primaryImage}
-          fallbackSrc={studioFallbackLogo}
+          src={coverAttrs ? coverAttrs.src : null}
+          sizes={
+            coverAttrs
+              ? "(min-width: 1024px) 162px, (min-width: 768px) 150px, (min-width: 640px) 138px, (min-width: 380px) 122px, 108px"
+              : undefined
+          }
+          fallbackSrc={resolvedFallback}
+          width={162}
+          height={243}
           alt=""
           loading="lazy"
           decoding="async"
+          fetchPriority={coverAttrs?.fetchPriority ?? "low"}
           fallbackClassName="bg-[#0d0c16]"
           className={cn(
             "size-full motion-reduce:transform-none",
             isStudio
-              ? "object-contain p-4 scale-[0.94] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.97]"
-              : "object-cover object-center scale-[0.95] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98] group-active:scale-[0.96]",
+              ? "object-contain p-4 [@media(hover:hover)_and_(pointer:fine)]:scale-[0.94] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.97]"
+              : "object-cover object-center [@media(hover:hover)_and_(pointer:fine)]:scale-[0.95] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98] [@media(hover:hover)_and_(pointer:fine)]:group-active:scale-[0.96]",
           )}
         />
 
-        {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint contínuo da box-shadow */}
+        {/* Camada de sombra/glow acelerada por GPU via opacidade (apenas dispositivos com hover/ponteiro preciso) */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
+          className="hidden [@media(hover:hover)_and_(pointer:fine)]:block pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100 group-active:opacity-100"
         />
 
         {/* Indicador sutil de favorito no topo direito (exibido apenas para o proprietário) */}
         {isOwner && (
-          <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
+          <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm [@media(hover:hover)_and_(pointer:fine)]:transition-transform [@media(hover:hover)_and_(pointer:fine)]:duration-200 [@media(hover:hover)_and_(pointer:fine)]:ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
             <Heart className="size-3 fill-rose-500 text-rose-500" />
           </div>
         )}
@@ -698,7 +734,7 @@ const FavoriteCarouselCard = React.memo(function FavoriteCarouselCard({
       {/* Informações estritamente FORA do pôster: Título e Subtítulo */}
       <div className="mt-2 flex flex-col px-0.5 min-w-0">
         <h4
-          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
+          className="truncate text-xs sm:text-sm font-medium text-zinc-100 [@media(hover:hover)_and_(pointer:fine)]:transition-colors [@media(hover:hover)_and_(pointer:fine)]:duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 [@media(hover:hover)_and_(pointer:fine)]:group-active:text-purple-200"
           title={item.title}
         >
           {item.title}
@@ -721,7 +757,7 @@ function EmptyFavoritesNotice({
   description: string;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/[0.05] bg-[#0c0a15]/60 p-6 sm:p-8 text-center backdrop-blur-md">
+    <div className="relative overflow-hidden rounded-2xl border border-white/[0.05] bg-[#0c0a15]/90 md:bg-[#0c0a15]/60 p-6 sm:p-8 text-center md:backdrop-blur-md">
       <h4 className="text-sm font-semibold text-zinc-300 mb-1">
         {title}
       </h4>
@@ -757,6 +793,15 @@ function EntityDetailModal({
   const displayImage = isStudio
     ? (entity.image || getStudioLogo(entity.title))
     : entity.image;
+  const displayCoverAttrs = displayImage
+    ? getResponsiveCoverAttrs(displayImage, "card-md")
+    : null;
+  const modalFallback =
+    (isStudio ? getStudioLogo(entity.title) : undefined) ||
+    (displayCoverAttrs
+      ? (displayCoverAttrs.fallbackSrc ??
+          (displayCoverAttrs.src !== displayImage ? displayImage : undefined))
+      : undefined);
 
   // Filtragem de textos e descrições redundantes conforme solicitado pelo usuário
   const cleanDescription = !isRedundantInfo(entity.description)
@@ -783,7 +828,11 @@ function EntityDetailModal({
           <div className="relative aspect-[3/4] w-28 sm:w-36 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#151224] shadow-md mx-auto sm:mx-0 flex items-center justify-center">
             {isAnime ? (
               <ProfileAnimeImage
-                src={displayImage}
+                src={displayCoverAttrs ? displayCoverAttrs.src : null}
+                sizes={displayCoverAttrs ? "(min-width: 640px) 144px, 112px" : undefined}
+                fallbackSrc={modalFallback}
+                width={144}
+                height={192}
                 alt={entity.title}
                 loading="lazy"
                 decoding="async"
@@ -792,8 +841,11 @@ function EntityDetailModal({
               />
             ) : (
               <HikariImage
-                src={displayImage}
-                fallbackSrc={isStudio ? getStudioLogo(entity.title) : undefined}
+                src={displayCoverAttrs ? displayCoverAttrs.src : null}
+                sizes={displayCoverAttrs ? "(min-width: 640px) 144px, 112px" : undefined}
+                fallbackSrc={modalFallback}
+                width={144}
+                height={192}
                 alt={entity.title}
                 loading="lazy"
                 decoding="async"

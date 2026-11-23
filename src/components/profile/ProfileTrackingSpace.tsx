@@ -36,6 +36,7 @@ import {
   invalidateAccountProfileCache,
   invalidatePublicProfileCacheByUserId,
 } from "@/lib/profile-client-cache";
+import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { cn } from "@/lib/utils";
 import {
   STATUS_CONFIG,
@@ -178,11 +179,19 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
     maxEps !== null && maxEps > 0 && watched >= maxEps;
   const isButtonDisabled = isUpdating || isCompletedOrMax;
 
+  const coverAttrs = item.cover
+    ? getResponsiveCoverAttrs(item.cover, "card-md")
+    : null;
+  const coverFallbackSrc = coverAttrs
+    ? (coverAttrs.fallbackSrc ??
+        (coverAttrs.src !== item.cover ? item.cover : undefined))
+    : undefined;
+
   return (
     <article
       data-card-id={item.animeId}
       onClick={(e) => onCardClick(e, item.animeId)}
-      className="group relative flex flex-col min-w-0"
+      className="group relative flex flex-col min-w-0 profile-tracking-card-cv"
     >
       {/* Pôster vertical retangular com cantos retos (sem cantos arredondados, sem textos/estrelas sobrepostos) */}
       <Link
@@ -197,15 +206,15 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
           outline-none
           focus-visible:ring-2
           focus-visible:ring-purple-400
-          transition-transform
-          duration-150
-          ease-out
-          active:scale-[0.96]
-          active:brightness-110
+          [@media(hover:hover)_and_(pointer:fine)]:transition-transform
+          [@media(hover:hover)_and_(pointer:fine)]:duration-150
+          [@media(hover:hover)_and_(pointer:fine)]:ease-out
+          [@media(hover:hover)_and_(pointer:fine)]:active:scale-[0.96]
+          [@media(hover:hover)_and_(pointer:fine)]:active:brightness-110
           [@media(hover:hover)_and_(pointer:fine)]:hover:brightness-105
           motion-reduce:transition-none
           motion-reduce:transform-none
-          -webkit-tap-highlight-color-transparent
+          [-webkit-tap-highlight-color:transparent]
         "
       >
         <div className="
@@ -218,17 +227,26 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
           border
           border-white/10
           shadow-sm
-          transition-colors
-          duration-200
-          ease-out
+          [@media(hover:hover)_and_(pointer:fine)]:transition-colors
+          [@media(hover:hover)_and_(pointer:fine)]:duration-200
+          [@media(hover:hover)_and_(pointer:fine)]:ease-out
           [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
-          group-active:border-purple-400
+          [@media(hover:hover)_and_(pointer:fine)]:group-active:border-purple-400
         ">
           <ProfileAnimeImage
-            src={item.cover}
+            src={coverAttrs ? coverAttrs.src : null}
+            sizes={
+              coverAttrs
+                ? "(min-width: 1024px) 196px, (min-width: 768px) 184px, (min-width: 640px) 168px, 31vw"
+                : undefined
+            }
+            fallbackSrc={coverFallbackSrc}
+            width={180}
+            height={270}
             alt=""
             loading="lazy"
             decoding="async"
+            fetchPriority={coverAttrs?.fetchPriority ?? "low"}
             fallbackClassName="bg-[#0d0c16]"
             className="
               size-full
@@ -237,16 +255,16 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
             "
           />
 
-          {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint da box-shadow */}
+          {/* Camada de sombra/glow acelerada por GPU via opacidade (apenas dispositivos com hover/ponteiro preciso) */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
+            className="hidden [@media(hover:hover)_and_(pointer:fine)]:block pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100 group-active:opacity-100"
           />
 
           {/* Indicador discreto de nota pessoal sobreposto à imagem do anime */}
           {typeof item.score === "number" && item.score > 0 && (
             <div
-              className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 rounded bg-[#0b0914]/90 border border-purple-500/35 px-1.5 py-0.5 text-[10px] font-bold text-purple-200 backdrop-blur-md shadow-sm select-none"
+              className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 rounded bg-[#0b0914]/95 [@media(hover:hover)_and_(pointer:fine)]:bg-[#0b0914]/90 [@media(hover:hover)_and_(pointer:fine)]:backdrop-blur-md border border-purple-500/35 px-1.5 py-0.5 text-[10px] font-bold text-purple-200 shadow-sm select-none"
               title={`Nota pessoal: ${item.score}/10`}
             >
               <Star className="size-2.5 text-[#c084fc] fill-[#c084fc]/50" />
@@ -268,7 +286,7 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
             onCardClick(e, item.animeId);
             triggerMonetagSmartLinkOnNavigationClick(e);
           }}
-          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
+          className="truncate text-xs sm:text-sm font-medium text-zinc-100 [@media(hover:hover)_and_(pointer:fine)]:transition-colors [@media(hover:hover)_and_(pointer:fine)]:duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 [@media(hover:hover)_and_(pointer:fine)]:group-active:text-purple-200"
           title={item.title}
         >
           {item.title}
@@ -381,6 +399,11 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const updatingIdsRef = useRef<Set<string>>(new Set());
   const [activeMobileCardId, setActiveMobileCardId] = useState<string | null>(null);
+  const activeMobileCardIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeMobileCardIdRef.current = activeMobileCardId;
+  }, [activeMobileCardId]);
 
   // Oculta controles no mobile ao tocar fora de qualquer card ativo
   useEffect(() => {
@@ -389,6 +412,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     const handlePointerDownOutside = (e: MouseEvent | TouchEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target?.closest(`[data-card-id="${activeMobileCardId}"]`)) {
+        activeMobileCardIdRef.current = null;
         setActiveMobileCardId(null);
       }
     };
@@ -399,10 +423,13 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     };
   }, [activeMobileCardId]);
 
-  const isMobileOrTouch = useCallback((e?: React.SyntheticEvent) => {
+  const isMobileOrTouch = useCallback((e?: React.MouseEvent) => {
     if (typeof window === "undefined") return false;
+    // Preserva ativação direta via teclado (Enter/Espaço) mesmo em viewports estreitas
+    if (e && e.detail === 0) return false;
     if (e && "nativeEvent" in e && e.nativeEvent instanceof PointerEvent) {
       if (e.nativeEvent.pointerType === "touch") return true;
+      if (e.nativeEvent.pointerType === "mouse") return false;
     }
     const isCoarse = window.matchMedia?.("(hover: none), (pointer: coarse)")?.matches;
     const isMobileWidth = window.innerWidth < 768;
@@ -411,13 +438,14 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
   const handleCardClick = useCallback((e: React.MouseEvent, animeId: string) => {
     if (isReadOnly) return;
-    if (isMobileOrTouch(e) && activeMobileCardId !== animeId) {
+    if (isMobileOrTouch(e) && activeMobileCardIdRef.current !== animeId) {
       // Primeiro toque no card no mobile: revela os controles sem acionar ação acidental
       e.preventDefault();
       e.stopPropagation();
+      activeMobileCardIdRef.current = animeId;
       setActiveMobileCardId(animeId);
     }
-  }, [activeMobileCardId, isMobileOrTouch, isReadOnly]);
+  }, [isMobileOrTouch, isReadOnly]);
 
   const { user: currentViewer } = useCurrentUserState();
   const effectiveViewerId = currentViewer?.id ?? getKnownViewerId() ?? null;

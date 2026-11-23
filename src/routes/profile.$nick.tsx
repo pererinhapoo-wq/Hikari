@@ -1496,7 +1496,7 @@ function PublicProfile() {
         className="anime-stats-category-enter relative min-h-[80vh] w-full pb-16 pt-6 sm:pt-8"
       >
         <div
-          className="pointer-events-none absolute -left-20 top-0 size-96 rounded-full bg-violet-600/10 blur-[120px]"
+          className="pointer-events-none absolute -left-20 top-0 size-96 rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.12)_0%,rgba(124,58,237,0.05)_45%,transparent_70%)]"
           aria-hidden="true"
         />
 

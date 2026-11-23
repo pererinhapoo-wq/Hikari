@@ -846,6 +846,17 @@ textarea:focus {
   contain: layout paint;
 }
 
+.profile-tracking-card-cv {
+  contain: layout paint;
+}
+
+@media (max-width: 767px) {
+  .profile-tracking-card-cv {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 250px;
+  }
+}
+
 .hero-glass-capsule--status {
   background-color: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.28);
