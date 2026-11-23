@@ -158,11 +158,12 @@ export function renderInstallPageHtml(template, { host, url } = {}) {
 }
 
 export function renderWebManifest(hostHeader) {
-  const name = appNameFromHost(hostHeader);
   return JSON.stringify(
     {
-      name,
-      short_name: name,
+      name: "HIKARI",
+      short_name: "HIKARI",
+      lang: "pt-BR",
+      description: "Plataforma de streaming de animes com reprodutor moderno e catálogo independente.",
       id: "/",
       start_url: "/",
       scope: "/",
@@ -174,6 +175,18 @@ export function renderWebManifest(hostHeader) {
           src: "/__grok/icon-180.png",
           sizes: "180x180",
           type: "image/png",
+        },
+        {
+          src: "/__grok/icon-192.png",
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "any",
+        },
+        {
+          src: "/__grok/icon-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any",
         },
       ],
     },

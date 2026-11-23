@@ -420,7 +420,7 @@ function CalendarPage() {
             Período: <strong className="text-fg font-semibold">Semana de {weekInfo.weekRangeLabel}</strong>
           </span>
           <span className="tabular-nums text-purple-300 font-medium">
-            {loading ? "Carregando..." : `${totalWeekEpisodes} animes previstos`}
+            {loading ? "Carregando..." : `${totalWeekEpisodes} lançamentos programados`}
           </span>
         </div>
 
@@ -539,8 +539,8 @@ function CalendarPage() {
               <p className="text-xs text-subtle">
                 {activeDayEpisodes.length}{" "}
                 {activeDayEpisodes.length === 1
-                  ? "episódio programado"
-                  : "episódios programados"}
+                  ? "lançamento programado"
+                  : "lançamentos programados"}
               </p>
             </div>
           </div>
