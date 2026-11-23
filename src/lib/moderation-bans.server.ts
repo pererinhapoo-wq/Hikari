@@ -227,23 +227,13 @@ export async function listActiveBansMap(
     [`${COMMENT_BAN_KEY_PREFIX}%`],
   );
 
-  const expiredKeys: string[] = [];
   for (const row of rows ?? []) {
     const parsed = parseActiveBanJson(row.value);
     if (!parsed) continue;
     if (!isBanActiveAt(parsed, nowMs)) {
-      expiredKeys.push(row.key);
       continue;
     }
     map.set(parsed.userId, parsed);
-  }
-
-  if (expiredKeys.length > 0) {
-    await sql
-      .query(`DELETE FROM "admin_settings" WHERE "key" = ANY($1::text[]);`, [
-        expiredKeys,
-      ])
-      .catch(() => undefined);
   }
 
   return map;

@@ -1870,6 +1870,7 @@ function AdminIndex() {
                       <Link
                         to="/admin/$id"
                         params={{ id: a.id }}
+                        preload={false}
                         search={{
                           importId: a.anilistId
                             ? String(a.anilistId)
@@ -2046,6 +2047,7 @@ function AdminIndex() {
                             <Link
                               to="/admin/$id"
                               params={{ id: a.id }}
+                              preload={false}
                               search={{
                                 importId: a.anilistId
                                   ? String(a.anilistId)

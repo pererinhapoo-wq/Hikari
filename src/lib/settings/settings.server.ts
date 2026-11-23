@@ -30,8 +30,10 @@ export function invalidatePublicSettingsCache(): void {
 async function fetchAllSettingsFromDbStrict(): Promise<HikariAdminSettings> {
   const sql = await getSql();
 
+  const allowedKeys = Object.keys(DEFAULT_ADMIN_SETTINGS);
   const rows = await sql.query<{ key: string; value: string }>(
-    `SELECT "key", "value" FROM "admin_settings";`,
+    `SELECT "key", "value" FROM "admin_settings" WHERE "key" = ANY($1::text[]);`,
+    [allowedKeys],
   );
 
   const dbMap = new Map<string, unknown>();

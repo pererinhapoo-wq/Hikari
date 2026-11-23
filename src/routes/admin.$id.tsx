@@ -112,11 +112,12 @@ export const Route = createFileRoute("/admin/$id")({
     let serverEpisodes: CatalogEpisodesResult | null = null;
 
     if (params.id && params.id !== "new") {
-      try {
-        primary = await fetchAnimeDetail({ data: { id: params.id } });
-      } catch {
-        primary = null;
-      }
+      const [primaryRes, episodesRes] = await Promise.all([
+        fetchAnimeDetail({ data: { id: params.id } }).catch(() => null),
+        getAdminCatalogEpisodes({ data: { animeId: params.id } }).catch(() => null),
+      ]);
+      primary = primaryRes;
+      serverEpisodes = episodesRes;
     }
 
     const externalFallbackId =
@@ -130,6 +131,13 @@ export const Route = createFileRoute("/admin/$id")({
       primary?.source !== "local" &&
       Boolean(primary?.seasons?.some((s: { episodes: unknown[] }) => s.episodes.length > 0));
 
+    // Otimização A1.B: Evitar chamadas externas desnecessárias quando dados persistidos já são suficientes
+    const isPersistedSufficient =
+      Boolean(primary) &&
+      primary?.source === "local" &&
+      Boolean(primary?.seasons?.length && primary.seasons.some((s: { episodes: unknown[] }) => s.episodes.length > 0)) &&
+      (!deps.importId || deps.importId === params.id);
+
     if (!primary) {
       if (deps.importId) {
         try {
@@ -139,6 +147,7 @@ export const Route = createFileRoute("/admin/$id")({
         }
       }
     } else if (
+      !isPersistedSufficient &&
       externalFallbackId &&
       externalFallbackId !== params.id &&
       (!primaryHasRemoteSeasons || (deps.importId && deps.importId !== params.id))
@@ -187,21 +196,19 @@ export const Route = createFileRoute("/admin/$id")({
       remote = primary;
     }
 
-    // Carrega episódios persistidos no PostgreSQL para o anime no painel administrativo
-    if (params.id && params.id !== "new") {
+    if (
+      params.id &&
+      params.id !== "new" &&
+      (!serverEpisodes || serverEpisodes.episodes.length === 0) &&
+      remote?.serverCatalogId &&
+      remote.serverCatalogId !== params.id
+    ) {
       try {
-        serverEpisodes = await getAdminCatalogEpisodes({ data: { animeId: params.id } });
-        if (
-          (!serverEpisodes || serverEpisodes.episodes.length === 0) &&
-          remote?.serverCatalogId &&
-          remote.serverCatalogId !== params.id
-        ) {
-          serverEpisodes = await getAdminCatalogEpisodes({
-            data: { animeId: remote.serverCatalogId },
-          });
-        }
+        serverEpisodes = await getAdminCatalogEpisodes({
+          data: { animeId: remote.serverCatalogId },
+        });
       } catch (err) {
-        console.warn("[admin loader] Erro ao carregar episódios do servidor:", err);
+        console.warn("[admin loader] Erro ao carregar episódios alternativos do servidor:", err);
       }
     }
 
