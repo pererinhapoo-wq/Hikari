@@ -1,7 +1,7 @@
 import { FALLBACK_ANIMES } from "@/lib/fallback-catalog";
 import { stripHtml } from "@/lib/utils";
 
-export const CANONICAL_DOMAIN = "https://grokhikari.vercel.app";
+export const CANONICAL_DOMAIN = "https://hikaritv.cc.cd";
 export const DEFAULT_OG_IMAGE = `${CANONICAL_DOMAIN}/og.jpg`;
 
 export function truncateSynopsis(synopsis?: string | null, maxChars = 155): string {

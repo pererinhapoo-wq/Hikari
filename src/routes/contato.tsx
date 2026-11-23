@@ -1,33 +1,37 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { LegalPage } from "@/components/legal-page";
+import { buildCleanCanonical } from "@/lib/seo";
 import { Clock, HelpCircle, Mail, ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/contato")({
-  head: () => ({
-    links: [
-      {
-        rel: "canonical",
-        href: "https://grokhikari.vercel.app/contato",
-      },
-    ],
-    meta: [
-      { title: "Contato | Fale com a Equipe Hikari" },
-      {
-        name: "description",
-        content:
-          "Entre em contato com os responsáveis pelo Hikari. Canais de e-mail direto para suporte técnico, remoção de conteúdo, dúvidas de privacidade e sugestões.",
-      },
-      { property: "og:title", content: "Contato | Fale com a Equipe Hikari" },
-      {
-        property: "og:description",
-        content:
-          "Entre em contato com os responsáveis pelo Hikari. Canais de e-mail direto para suporte técnico, remoção de conteúdo, dúvidas de privacidade e sugestões.",
-      },
-      { property: "og:url", content: "https://grokhikari.vercel.app/contato" },
-      { property: "og:locale", content: "pt_BR" },
-      { property: "og:site_name", content: "HIKARI" },
-    ],
-  }),
+  head: () => {
+    const canonicalUrl = buildCleanCanonical("/contato");
+    return {
+      links: [
+        {
+          rel: "canonical",
+          href: canonicalUrl,
+        },
+      ],
+      meta: [
+        { title: "Contato | Fale com a Equipe Hikari" },
+        {
+          name: "description",
+          content:
+            "Entre em contato com os responsáveis pelo Hikari. Canais de e-mail direto para suporte técnico, remoção de conteúdo, dúvidas de privacidade e sugestões.",
+        },
+        { property: "og:title", content: "Contato | Fale com a Equipe Hikari" },
+        {
+          property: "og:description",
+          content:
+            "Entre em contato com os responsáveis pelo Hikari. Canais de e-mail direto para suporte técnico, remoção de conteúdo, dúvidas de privacidade e sugestões.",
+        },
+        { property: "og:url", content: canonicalUrl },
+        { property: "og:locale", content: "pt_BR" },
+        { property: "og:site_name", content: "HIKARI" },
+      ],
+    };
+  },
   component: ContatoPage,
 });
 

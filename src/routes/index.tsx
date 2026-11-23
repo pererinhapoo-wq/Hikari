@@ -35,6 +35,11 @@ import {
 import { getHomePublicEpisodes } from "@/lib/home-episodes.functions";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { SectionReveal } from "@/components/section-reveal";
+import {
+  buildCleanCanonical,
+  buildHomeJsonLd,
+  DEFAULT_OG_IMAGE,
+} from "@/lib/seo";
 
 function pickHeroItems(
   trending: SlimAnime[],
@@ -228,8 +233,8 @@ export const Route = createFileRoute("/")({
     const homeTitle = "HIKARI — Assista animes online legendados e dublados";
     const homeDesc =
       "Assista a animes online legendados e dublados em alta definição. Lançamentos da temporada, catálogo completo, calendário semanal e episódios atualizados.";
-    const homeUrl = "https://grokhikari.vercel.app/";
-    const homeImage = "https://grokhikari.vercel.app/og.jpg";
+    const homeUrl = buildCleanCanonical("/");
+    const homeImage = DEFAULT_OG_IMAGE;
 
     return {
       meta: [
@@ -257,22 +262,7 @@ export const Route = createFileRoute("/")({
       scripts: [
         {
           type: "application/ld+json",
-          children: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "WebSite",
-            name: "HIKARI",
-            url: homeUrl,
-            description: homeTitle,
-            inLanguage: "pt-BR",
-            potentialAction: {
-              "@type": "SearchAction",
-              target: {
-                "@type": "EntryPoint",
-                urlTemplate: `${homeUrl}search?q={search_term_string}`,
-              },
-              "query-input": "required name=search_term_string",
-            },
-          }),
+          children: JSON.stringify(buildHomeJsonLd()),
         },
       ],
     };

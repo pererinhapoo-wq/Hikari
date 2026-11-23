@@ -1,33 +1,37 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { LegalPage } from "@/components/legal-page";
+import { buildCleanCanonical } from "@/lib/seo";
 import { AlertTriangle, BookOpen, CheckCircle2, FileText, Shield, UserX } from "lucide-react";
 
 export const Route = createFileRoute("/termos")({
-  head: () => ({
-    links: [
-      {
-        rel: "canonical",
-        href: "https://grokhikari.vercel.app/termos",
-      },
-    ],
-    meta: [
-      { title: "Termos de Uso | Hikari" },
-      {
-        name: "description",
-        content:
-          "Leia os Termos de Uso do Hikari. Condições para utilização da plataforma, normas de conduta da comunidade, isenção sobre reprodutores externos e direitos autorais.",
-      },
-      { property: "og:title", content: "Termos de Uso | Hikari" },
-      {
-        property: "og:description",
-        content:
-          "Leia os Termos de Uso do Hikari. Condições para utilização da plataforma, normas de conduta da comunidade, isenção sobre reprodutores externos e direitos autorais.",
-      },
-      { property: "og:url", content: "https://grokhikari.vercel.app/termos" },
-      { property: "og:locale", content: "pt_BR" },
-      { property: "og:site_name", content: "HIKARI" },
-    ],
-  }),
+  head: () => {
+    const canonicalUrl = buildCleanCanonical("/termos");
+    return {
+      links: [
+        {
+          rel: "canonical",
+          href: canonicalUrl,
+        },
+      ],
+      meta: [
+        { title: "Termos de Uso | Hikari" },
+        {
+          name: "description",
+          content:
+            "Leia os Termos de Uso do Hikari. Condições para utilização da plataforma, normas de conduta da comunidade, isenção sobre reprodutores externos e direitos autorais.",
+        },
+        { property: "og:title", content: "Termos de Uso | Hikari" },
+        {
+          property: "og:description",
+          content:
+            "Leia os Termos de Uso do Hikari. Condições para utilização da plataforma, normas de conduta da comunidade, isenção sobre reprodutores externos e direitos autorais.",
+        },
+        { property: "og:url", content: canonicalUrl },
+        { property: "og:locale", content: "pt_BR" },
+        { property: "og:site_name", content: "HIKARI" },
+      ],
+    };
+  },
   component: TermosPage,
 });
 

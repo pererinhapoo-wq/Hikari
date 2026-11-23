@@ -86,6 +86,7 @@ import { anilistImage, getSmallImageFallback } from "@/lib/image-utils";
 import {
   buildCleanCanonical,
   buildTVSeriesJsonLd,
+  DEFAULT_OG_IMAGE,
   truncateSynopsis,
 } from "@/lib/seo";
 import {
@@ -568,7 +569,7 @@ export const Route = createFileRoute("/anime/$id")({
     const coverImageExtraLarge =
       (remote as { coverImage?: { extraLarge?: string } }).coverImage?.extraLarge ||
       remote.cover ||
-      "https://grokhikari.vercel.app/og.jpg";
+      DEFAULT_OG_IMAGE;
 
     const meta = [
       { title: pageTitle },

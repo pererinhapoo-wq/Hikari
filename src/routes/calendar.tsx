@@ -14,6 +14,7 @@ import {
 } from "@/lib/calendar-timezone";
 import { HikariImage } from "@/components/ui/hikari-image";
 import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
+import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
 
 /* =========================================================
    TIPOS DE DADOS DO CALENDÁRIO
@@ -101,8 +102,8 @@ export const Route = createFileRoute("/calendar")({
     const title = "Calendário de lançamentos da semana — HIKARI";
     const description =
       "Confira os dias e horários de transmissão dos novos episódios de animes da semana no calendário oficial do HIKARI.";
-    const url = "https://grokhikari.vercel.app/calendar";
-    const image = "https://grokhikari.vercel.app/og.jpg";
+    const url = buildCleanCanonical("/calendar");
+    const image = DEFAULT_OG_IMAGE;
 
     return {
       meta: [

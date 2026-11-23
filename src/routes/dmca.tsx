@@ -1,33 +1,37 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { LegalPage } from "@/components/legal-page";
+import { buildCleanCanonical } from "@/lib/seo";
 import { AlertCircle, CheckSquare, Clock, FileWarning, Mail, ShieldAlert } from "lucide-react";
 
 export const Route = createFileRoute("/dmca")({
-  head: () => ({
-    links: [
-      {
-        rel: "canonical",
-        href: "https://grokhikari.vercel.app/dmca",
-      },
-    ],
-    meta: [
-      { title: "DMCA e Notificação de Direitos Autorais | Hikari" },
-      {
-        name: "description",
-        content:
-          "Procedimento formal para envio de notificações de remoção de conteúdo (DMCA / Takedown Notice) no Hikari. Diretrizes, informações exigidas e prazos.",
-      },
-      { property: "og:title", content: "DMCA e Notificação de Direitos Autorais | Hikari" },
-      {
-        property: "og:description",
-        content:
-          "Procedimento formal para envio de notificações de remoção de conteúdo (DMCA / Takedown Notice) no Hikari. Diretrizes, informações exigidas e prazos.",
-      },
-      { property: "og:url", content: "https://grokhikari.vercel.app/dmca" },
-      { property: "og:locale", content: "pt_BR" },
-      { property: "og:site_name", content: "HIKARI" },
-    ],
-  }),
+  head: () => {
+    const canonicalUrl = buildCleanCanonical("/dmca");
+    return {
+      links: [
+        {
+          rel: "canonical",
+          href: canonicalUrl,
+        },
+      ],
+      meta: [
+        { title: "DMCA e Notificação de Direitos Autorais | Hikari" },
+        {
+          name: "description",
+          content:
+            "Procedimento formal para envio de notificações de remoção de conteúdo (DMCA / Takedown Notice) no Hikari. Diretrizes, informações exigidas e prazos.",
+        },
+        { property: "og:title", content: "DMCA e Notificação de Direitos Autorais | Hikari" },
+        {
+          property: "og:description",
+          content:
+            "Procedimento formal para envio de notificações de remoção de conteúdo (DMCA / Takedown Notice) no Hikari. Diretrizes, informações exigidas e prazos.",
+        },
+        { property: "og:url", content: canonicalUrl },
+        { property: "og:locale", content: "pt_BR" },
+        { property: "og:site_name", content: "HIKARI" },
+      ],
+    };
+  },
   component: DmcaPage,
 });
 

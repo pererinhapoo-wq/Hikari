@@ -3,4 +3,4 @@ Allow: /
 Disallow: /admin
 Disallow: /api/
 
-Sitemap: https://grokhikari.vercel.app/sitemap.xml
+Sitemap: https://hikaritv.cc.cd/sitemap.xml
