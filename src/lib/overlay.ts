@@ -717,13 +717,16 @@ export function resolveAdminAnimeWithRemote(
 
 export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime[]): Anime | null {
   const numericId = Number(id);
+  const malIdFromRoute = id.startsWith("mal-") ? Number(id.slice(4)) : NaN;
+  const kitsuIdFromRoute = id.startsWith("kitsu-") ? Number(id.slice(6)) : NaN;
+  const isLocalRequestedId = id.startsWith("local-");
   const isDubbedTitle = (a: LocalAnime) =>
     /\b(dub|dublado|dublada)\b/i.test(`${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`);
 
   // 1. Direct exact match by local ID takes priority (e.g. /anime/local-xxx)
   let byId = locals.find((a) => a.id === id);
 
-  // 2. If id is numeric and not exact match, search by AniList/MAL ID preferring the original/subbed version
+  // 2. If id is external (numeric, mal-*, kitsu-*), search matching local record preferring the original/subbed version
   if (!byId && !isNaN(numericId) && numericId > 0) {
     byId =
       locals.find(
@@ -735,6 +738,17 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
         (a) => a.anilistId === numericId || a.malId === numericId,
       );
   }
+  if (!byId && Number.isFinite(malIdFromRoute) && malIdFromRoute > 0) {
+    byId =
+      locals.find((a) => a.malId === malIdFromRoute && !isDubbedTitle(a)) ||
+      locals.find((a) => a.malId === malIdFromRoute);
+  }
+  if (!byId && Number.isFinite(kitsuIdFromRoute) && kitsuIdFromRoute > 0) {
+    byId =
+      locals.find((a) => a.kitsuId === kitsuIdFromRoute && !isDubbedTitle(a)) ||
+      locals.find((a) => a.kitsuId === kitsuIdFromRoute);
+  }
+
   if (byId) {
     const local = localToAnime(byId);
     const resolvedSeasons = mergeSeasonsWithRemote(local.seasons, remote?.seasons);
@@ -749,6 +763,13 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
         staff: local.staff ?? [],
       };
     }
+
+    const preserveExternalId = !isLocalRequestedId && !remote.id.startsWith("local-");
+    const resolvedId = preserveExternalId ? remote.id : local.id;
+    const resolvedServerCatalogId =
+      remote.serverCatalogId ||
+      byId.serverCatalogId ||
+      (byId.id !== resolvedId ? byId.id : undefined);
 
     const mergedCharacters =
       local.characters && local.characters.length > 0
@@ -777,7 +798,8 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
     return {
       ...remote,
       ...local,
-      serverCatalogId: remote.serverCatalogId || byId.serverCatalogId || undefined,
+      id: resolvedId,
+      serverCatalogId: resolvedServerCatalogId,
       titles: local.titles,
       cover: preferRemoteKitsuCover ? remote.cover : local.cover || remote.cover,
       banner: preferRemoteKitsuBanner ? remote.banner : local.banner || remote.banner,
@@ -800,11 +822,23 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
   const byAni = remote.anilistId
     ? locals.find((a) => a.anilistId === remote.anilistId && !isDubbedTitle(a)) ||
       locals.find((a) => a.anilistId === remote.anilistId)
-    : undefined;
+    : remote.malId
+      ? locals.find((a) => a.malId === remote.malId && !isDubbedTitle(a)) ||
+        locals.find((a) => a.malId === remote.malId)
+      : remote.kitsuId
+        ? locals.find((a) => a.kitsuId === remote.kitsuId && !isDubbedTitle(a)) ||
+          locals.find((a) => a.kitsuId === remote.kitsuId)
+        : undefined;
 
   if (byAni) {
     const local = localToAnime(byAni);
     const resolvedSeasons = mergeSeasonsWithRemote(local.seasons, remote.seasons);
+    const preserveExternalId = !isLocalRequestedId && !remote.id.startsWith("local-");
+    const resolvedId = preserveExternalId ? remote.id : local.id;
+    const resolvedServerCatalogId =
+      remote.serverCatalogId ||
+      byAni.serverCatalogId ||
+      (byAni.id !== resolvedId ? byAni.id : undefined);
 
     const mergedCharacters =
       local.characters && local.characters.length > 0
@@ -833,7 +867,8 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
     return {
       ...remote,
       ...local,
-      id: remote.id,
+      id: resolvedId,
+      serverCatalogId: resolvedServerCatalogId,
       cover: preferRemoteKitsuCover ? remote.cover : local.cover || remote.cover,
       banner: preferRemoteKitsuBanner ? remote.banner : local.banner || remote.banner,
       seasons: resolvedSeasons,

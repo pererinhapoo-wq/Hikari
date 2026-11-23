@@ -6927,13 +6927,10 @@ export const fetchAnimeDetail =
                 : undefined;
 
           try {
-            const { applyDbCatalogOverlayToDetail, buildLocalAnimeFromDb } = await import(
+            const { buildLocalAnimeFromDb } = await import(
               "@/lib/catalog-server-overlay.server"
             );
-            let localDetail = await buildLocalAnimeFromDb(id);
-            if (!localDetail) {
-              localDetail = await applyDbCatalogOverlayToDetail(null, id);
-            }
+            const localDetail = await buildLocalAnimeFromDb(id);
             if (localDetail) {
               const writeStatus = await setRedisAnimeDetail(id, localDetail, localFence);
               if (writeStatus === "fenced") {
@@ -6955,6 +6952,171 @@ export const fetchAnimeDetail =
         }
 
         const flightState = { fenced: false };
+        let dbFallbackExecuted = false;
+
+        const resolveDbFallbackOnce = async (): Promise<Anime | null> => {
+          if (dbFallbackExecuted) {
+            return null;
+          }
+          dbFallbackExecuted = true;
+          try {
+            const { applyDbCatalogOverlayToDetail } = await import(
+              "@/lib/catalog-server-overlay.server"
+            );
+            return await applyDbCatalogOverlayToDetail(null, id);
+          } catch {
+            return null;
+          }
+        };
+
+        const resolveExternalFallback = async (
+          ctx?: CacheFlightContext,
+        ): Promise<Anime | null> => {
+          if (id.startsWith("kitsu-")) {
+            const kitsuId = Number(id.replace("kitsu-", ""));
+            const fallback = FALLBACK_ANIMES.find((a) => a.id === id || a.kitsuId === kitsuId);
+            if (fallback) {
+              const cleanTitles = [
+                fallback.titles.romaji,
+                fallback.titles.english,
+                fallback.titles.native,
+              ].filter(Boolean);
+              const cachedCredits = fromCache<AnimeCreditsResult>(
+                `credits:v1:${fallback.anilistId ?? 0}:${fallback.malId ?? 0}:${kitsuId}:0:${normalizeSearchText(cleanTitles[0] ?? "")}:${fallback.year ?? 0}`,
+              );
+
+              const kitsuFallback: Anime = {
+                ...fallback,
+                id,
+                studios: cachedCredits?.studios ?? [],
+                streamingEpisodes: [],
+                seasons: [
+                  {
+                    id: `s1-${fallback.id}`,
+                    number: 1,
+                    title: "Temporada 1",
+                    episodes: Array.from(
+                      { length: fallback.episodesCount ?? 12 },
+                      (_, i) => ({
+                        id: `ep-${fallback.id}-${i + 1}`,
+                        number: i + 1,
+                        title: `Episódio ${i + 1}`,
+                      }),
+                    ),
+                  },
+                ],
+                recommendations: [],
+                characters: cachedCredits?.characters ?? [],
+                staff: cachedCredits?.staff ?? [],
+                seasonNavigation: {
+                  items: [
+                    {
+                      id: `kitsu-${kitsuId}`,
+                      title: displayTitle(fallback),
+                    },
+                  ],
+                },
+              };
+              try {
+                const { applyDbCatalogOverlayToDetail } = await import(
+                  "@/lib/catalog-server-overlay.server"
+                );
+                const overlaid =
+                  (await applyDbCatalogOverlayToDetail(kitsuFallback, id)) ??
+                  kitsuFallback;
+                if ((!ctx || ctx.isCurrentFlight()) && !flightState.fenced) {
+                  toCache(key, overlaid);
+                }
+                return overlaid;
+              } catch {
+                return kitsuFallback;
+              }
+            }
+            return await resolveDbFallbackOnce();
+          }
+
+          const malId = id.startsWith("mal-")
+            ? Number(id.replace("mal-", ""))
+            : undefined;
+          const anilistId = Number(id);
+
+          // O ID desta rota pode ser um ID do AniList ou MyAnimeList (mal-*).
+          // Se o AniList estiver indisponível, verificamos se o anime está no catálogo seguro
+          const fallback = FALLBACK_ANIMES.find(
+            (a) =>
+              (malId && a.malId === malId) ||
+              (Number.isFinite(anilistId) && a.anilistId === anilistId) ||
+              a.id === id,
+          );
+
+          if (fallback) {
+            const cleanTitles = [
+              fallback.titles.romaji,
+              fallback.titles.english,
+              fallback.titles.native,
+            ].filter(Boolean);
+            const cachedCredits = fromCache<AnimeCreditsResult>(
+              `credits:v1:${fallback.anilistId ?? anilistId ?? 0}:${fallback.malId ?? malId ?? 0}:0:0:${normalizeSearchText(cleanTitles[0] ?? "")}:${fallback.year ?? 0}`,
+            );
+
+            const fallbackDetail: Anime & {
+              seasonNavigation?: SeasonNavigation;
+            } = {
+              ...fallback,
+              id,
+              studios: cachedCredits?.studios ?? [],
+              streamingEpisodes: [],
+              seasons: [
+                {
+                  id: `s1-${id}`,
+                  number: 1,
+                  title: "Temporada 1",
+                  episodes: Array.from(
+                    { length: fallback.episodesCount ?? 12 },
+                    (_, i) => ({
+                      id: id.startsWith("mal-")
+                        ? `mal-ep-${malId}-${i + 1}`
+                        : `ep-${id}-${i + 1}`,
+                      number: i + 1,
+                      title: `Episódio ${i + 1}`,
+                    }),
+                  ),
+                },
+              ],
+              recommendations: [],
+              characters: cachedCredits?.characters ?? [],
+              staff: cachedCredits?.staff ?? [],
+              seasonNavigation: {
+                items: [
+                  {
+                    id,
+                    title: displayTitle(fallback),
+                  },
+                ],
+              },
+            };
+
+            try {
+              const { applyDbCatalogOverlayToDetail } = await import(
+                "@/lib/catalog-server-overlay.server"
+              );
+              const overlaid =
+                (await applyDbCatalogOverlayToDetail(fallbackDetail, id)) ??
+                fallbackDetail;
+              if ((!ctx || ctx.isCurrentFlight()) && !flightState.fenced) {
+                toCache(key, overlaid);
+              }
+              return overlaid;
+            } catch {
+              if ((!ctx || ctx.isCurrentFlight()) && !flightState.fenced) {
+                toCache(key, fallbackDetail);
+              }
+              return fallbackDetail;
+            }
+          }
+
+          return await resolveDbFallbackOnce();
+        };
 
         return await withCache<Anime | null>(
           key,
@@ -7535,7 +7697,7 @@ export const fetchAnimeDetail =
             })();
 
             if (!fresh) {
-              return null;
+              return await resolveExternalFallback(ctx);
             }
 
             let finalDetail: Anime = fresh;
@@ -7614,150 +7776,7 @@ export const fetchAnimeDetail =
             return true;
           },
           fallback: async (_err, ctx) => {
-            if (id.startsWith("kitsu-")) {
-              const kitsuId = Number(id.replace("kitsu-", ""));
-              const fallback = FALLBACK_ANIMES.find((a) => a.id === id || a.kitsuId === kitsuId);
-              if (fallback) {
-                const cleanTitles = [
-                  fallback.titles.romaji,
-                  fallback.titles.english,
-                  fallback.titles.native,
-                ].filter(Boolean);
-                const cachedCredits = fromCache<AnimeCreditsResult>(
-                  `credits:v1:${fallback.anilistId ?? 0}:${fallback.malId ?? 0}:${kitsuId}:0:${normalizeSearchText(cleanTitles[0] ?? "")}:${fallback.year ?? 0}`,
-                );
-
-                const kitsuFallback: Anime = {
-                  ...fallback,
-                  id,
-                  studios: cachedCredits?.studios ?? [],
-                  streamingEpisodes: [],
-                  seasons: [
-                    {
-                      id: `s1-${fallback.id}`,
-                      number: 1,
-                      title: "Temporada 1",
-                      episodes: Array.from(
-                        { length: fallback.episodesCount ?? 12 },
-                        (_, i) => ({
-                          id: `ep-${fallback.id}-${i + 1}`,
-                          number: i + 1,
-                          title: `Episódio ${i + 1}`,
-                        }),
-                      ),
-                    },
-                  ],
-                  recommendations: [],
-                  characters: cachedCredits?.characters ?? [],
-                  staff: cachedCredits?.staff ?? [],
-                  seasonNavigation: {
-                    items: [
-                      {
-                        id: `kitsu-${kitsuId}`,
-                        title: displayTitle(fallback),
-                      },
-                    ],
-                  },
-                };
-                try {
-                  const { applyDbCatalogOverlayToDetail } = await import(
-                    "@/lib/catalog-server-overlay.server"
-                  );
-                  const overlaid =
-                    (await applyDbCatalogOverlayToDetail(kitsuFallback, id)) ??
-                    kitsuFallback;
-                  if ((!ctx || ctx.isCurrentFlight()) && !flightState.fenced) {
-                    toCache(key, overlaid);
-                  }
-                  return overlaid;
-                } catch {
-                  return kitsuFallback;
-                }
-              }
-              return null;
-            }
-
-            const malId = id.startsWith("mal-")
-              ? Number(id.replace("mal-", ""))
-              : undefined;
-            const anilistId = Number(id);
-
-            // O ID desta rota pode ser um ID do AniList ou MyAnimeList (mal-*).
-            // Se o AniList estiver indisponível, verificamos se o anime está no catálogo seguro
-            const fallback = FALLBACK_ANIMES.find(
-              (a) =>
-                (malId && a.malId === malId) ||
-                (Number.isFinite(anilistId) && a.anilistId === anilistId) ||
-                a.id === id,
-            );
-
-            if (fallback) {
-              const cleanTitles = [
-                fallback.titles.romaji,
-                fallback.titles.english,
-                fallback.titles.native,
-              ].filter(Boolean);
-              const cachedCredits = fromCache<AnimeCreditsResult>(
-                `credits:v1:${fallback.anilistId ?? anilistId ?? 0}:${fallback.malId ?? malId ?? 0}:0:0:${normalizeSearchText(cleanTitles[0] ?? "")}:${fallback.year ?? 0}`,
-              );
-
-              const fallbackDetail: Anime & {
-                seasonNavigation?: SeasonNavigation;
-              } = {
-                ...fallback,
-                id,
-                studios: cachedCredits?.studios ?? [],
-                streamingEpisodes: [],
-                seasons: [
-                  {
-                    id: `s1-${id}`,
-                    number: 1,
-                    title: "Temporada 1",
-                    episodes: Array.from(
-                      { length: fallback.episodesCount ?? 12 },
-                      (_, i) => ({
-                        id: id.startsWith("mal-")
-                          ? `mal-ep-${malId}-${i + 1}`
-                          : `ep-${id}-${i + 1}`,
-                        number: i + 1,
-                        title: `Episódio ${i + 1}`,
-                      }),
-                    ),
-                  },
-                ],
-                recommendations: [],
-                characters: cachedCredits?.characters ?? [],
-                staff: cachedCredits?.staff ?? [],
-                seasonNavigation: {
-                  items: [
-                    {
-                      id,
-                      title: displayTitle(fallback),
-                    },
-                  ],
-                },
-              };
-
-              try {
-                const { applyDbCatalogOverlayToDetail } = await import(
-                  "@/lib/catalog-server-overlay.server"
-                );
-                const overlaid =
-                  (await applyDbCatalogOverlayToDetail(fallbackDetail, id)) ??
-                  fallbackDetail;
-                if ((!ctx || ctx.isCurrentFlight()) && !flightState.fenced) {
-                  toCache(key, overlaid);
-                }
-                return overlaid;
-              } catch {
-                if ((!ctx || ctx.isCurrentFlight()) && !flightState.fenced) {
-                  toCache(key, fallbackDetail);
-                }
-                return fallbackDetail;
-              }
-            }
-
-            return null;
+            return await resolveExternalFallback(ctx);
           },
         },
       );

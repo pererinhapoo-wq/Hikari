@@ -1,14 +1,16 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-router";
 import {
   ChevronLeft,
   ChevronRight,
   EyeOff,
   HeartHandshake,
+  RotateCcw,
   ShieldAlert,
 } from "lucide-react";
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -25,7 +27,7 @@ const EpisodeCommentsSection = lazy(() =>
   })),
 );
 
-import { fetchAnimeDetail } from "@/lib/api";
+import { fetchAnimeDetail, fromCache, toCache } from "@/lib/api";
 import { anilistImage, getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { mergeDetail } from "@/lib/overlay";
 import { buildCleanCanonical, buildWatchJsonLd, DEFAULT_OG_IMAGE } from "@/lib/seo";
@@ -34,6 +36,7 @@ import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlin
 import {
   buildResolvedSeasons,
   executeGetCatalogEpisodes,
+  getCachedCatalogEpisodes,
   getCachedResolvedSeasons,
   getCatalogEpisodes,
   primeCatalogEpisodesCache,
@@ -49,6 +52,7 @@ import {
 } from "@/lib/hikari-player";
 import {
   displayTitle,
+  type Anime,
   type Episode,
   type Season,
 } from "@/lib/types";
@@ -57,6 +61,47 @@ function parseEpisodeNumber(epStr?: string): number {
   if (!epStr) return 1;
   const match = epStr.match(/ep-(?:\d+-)?(\d+)$/i) || epStr.match(/(\d+)$/);
   return match ? parseInt(match[1], 10) : 1;
+}
+
+function buildMinimalWatchAnime(
+  id: string,
+  seasons: Season[],
+  catalogAnimeId?: string,
+): Anime {
+  const firstWithThumb = seasons
+    .flatMap((s) => s.episodes ?? [])
+    .find((ep) => Boolean(ep.thumbnail?.trim()));
+  return {
+    id,
+    titles: {
+      romaji: "Anime",
+      english: "",
+      native: "",
+    },
+    cover: firstWithThumb?.thumbnail?.trim() || "",
+    banner: "",
+    synopsis: "",
+    score: null,
+    genres: [],
+    format: "TV",
+    status: "RELEASING",
+    episodesCount: seasons.reduce(
+      (acc, season) => acc + (season.episodes?.length ?? 0),
+      0,
+    ),
+    season: null,
+    year: null,
+    trailerId: null,
+    source: "local",
+    studios: [],
+    streamingEpisodes: [],
+    seasons,
+    recommendations: [],
+    characters: [],
+    staff: [],
+    serverCatalogId: catalogAnimeId || id,
+    hasEpisode: true,
+  };
 }
 
 // Helpers de resolução de stream e validação de mídia são importados de "@/lib/published-episodes"
@@ -87,18 +132,36 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
   },
 
   loader: async ({ params }) => {
-    if (params.id.startsWith("local-")) {
-      return { remote: null, catalogEpisodes: null };
-    }
+    const detailKey = `detail:v7:${params.id}`;
+    const cachedRemote =
+      typeof window !== "undefined"
+        ? fromCache<Anime | null>(detailKey, () =>
+            fetchAnimeDetail({ data: { id: params.id } }),
+          )
+        : null;
+    const cachedClientEpisodes =
+      typeof window !== "undefined" ? getCachedCatalogEpisodes(params.id) : null;
 
     const [remote, initialCatalogEpisodes] = await Promise.all([
-      fetchAnimeDetail({
-        data: { id: params.id },
-      }),
-      (typeof window === "undefined"
-        ? executeGetCatalogEpisodes(params.id)
-        : getCatalogEpisodes({ data: { animeId: params.id } })
-      ).catch(() => null),
+      cachedRemote
+        ? Promise.resolve(cachedRemote)
+        : fetchAnimeDetail({
+            data: { id: params.id },
+          }).then((fetched) => {
+            if (fetched && typeof window !== "undefined") {
+              toCache(detailKey, fetched);
+              if (fetched.id && fetched.id !== params.id) {
+                toCache(`detail:v7:${fetched.id}`, fetched);
+              }
+            }
+            return fetched;
+          }),
+      cachedClientEpisodes
+        ? Promise.resolve(cachedClientEpisodes)
+        : (typeof window === "undefined"
+            ? executeGetCatalogEpisodes(params.id)
+            : getCatalogEpisodes({ data: { animeId: params.id } })
+          ).catch(() => null),
     ]);
 
     let catalogEpisodes = initialCatalogEpisodes;
@@ -107,10 +170,16 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
       remote.serverCatalogId !== params.id &&
       (!catalogEpisodes || catalogEpisodes.episodes.length === 0)
     ) {
-      catalogEpisodes = await (typeof window === "undefined"
-        ? executeGetCatalogEpisodes(remote.serverCatalogId)
-        : getCatalogEpisodes({ data: { animeId: remote.serverCatalogId } })
-      ).catch(() => catalogEpisodes);
+      const cachedServerEps =
+        typeof window !== "undefined"
+          ? getCachedCatalogEpisodes(remote.serverCatalogId)
+          : null;
+      catalogEpisodes =
+        cachedServerEps ??
+        (await (typeof window === "undefined"
+          ? executeGetCatalogEpisodes(remote.serverCatalogId)
+          : getCatalogEpisodes({ data: { animeId: remote.serverCatalogId } })
+        ).catch(() => catalogEpisodes));
     }
 
     return { remote, catalogEpisodes };
@@ -208,6 +277,7 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
 });
 
 function WatchPage() {
+  const router = useRouter();
   const { id, ep } = Route.useParams();
   const targetEpNum = parseEpisodeNumber(ep);
 
@@ -248,14 +318,28 @@ function WatchPage() {
     return getCachedResolvedSeasons(episodeCatalogId, baseAnime?.seasons);
   });
 
+  const [settledCatalogId, setSettledCatalogId] = useState<string | null>(() =>
+    catalogEpisodes ? episodeCatalogId : null,
+  );
+  const [isRetrying, setIsRetrying] = useState(false);
+
   useEffect(() => {
-    if (!episodeCatalogId) return;
+    if (!episodeCatalogId) {
+      setSettledCatalogId("");
+      return;
+    }
 
     let cancelled = false;
-    void resolveEpisodes(episodeCatalogId, baseAnime?.seasons).then((seasons) => {
-      if (cancelled) return;
-      setResolvedSeasons(seasons);
-    });
+    void resolveEpisodes(episodeCatalogId, baseAnime?.seasons)
+      .then((seasons) => {
+        if (cancelled) return;
+        setResolvedSeasons(seasons);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSettledCatalogId(episodeCatalogId);
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -263,13 +347,45 @@ function WatchPage() {
   }, [episodeCatalogId, baseAnime?.seasons]);
 
   const anime = useMemo(() => {
-    if (!baseAnime) return null;
+    const hasResolvedEpisodes = Boolean(
+      resolvedSeasons?.some((s) => (s.episodes?.length ?? 0) > 0),
+    );
+    if (!baseAnime) {
+      if (hasResolvedEpisodes && resolvedSeasons) {
+        return buildMinimalWatchAnime(
+          id,
+          resolvedSeasons,
+          catalogEpisodes?.animeId || episodeCatalogId,
+        );
+      }
+      return null;
+    }
     if (!resolvedSeasons) return baseAnime;
     return {
       ...baseAnime,
       seasons: resolvedSeasons,
     };
-  }, [baseAnime, resolvedSeasons]);
+  }, [baseAnime, resolvedSeasons, id, catalogEpisodes?.animeId, episodeCatalogId]);
+
+  const episodesSettled =
+    Boolean(catalogEpisodes) || settledCatalogId === episodeCatalogId;
+
+  const handleRetry = useCallback(async () => {
+    if (isRetrying) return;
+    setIsRetrying(true);
+    try {
+      await router.invalidate();
+      if (episodeCatalogId) {
+        const seasons = await resolveEpisodes(episodeCatalogId, baseAnime?.seasons);
+        setResolvedSeasons(seasons);
+        setSettledCatalogId(episodeCatalogId);
+      }
+    } catch {
+      // Mantém estado de indisponibilidade para nova tentativa manual
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [isRetrying, router, episodeCatalogId, baseAnime?.seasons]);
 
   const episodes = useMemo(() => {
     if (!anime) {
@@ -343,7 +459,7 @@ function WatchPage() {
     ? displayTitle(anime)
     : "";
 
-  if (!hydrated && !anime) {
+  if ((!hydrated || !episodesSettled || isRetrying) && !anime) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-bg text-fg">
         <div className="flex flex-col items-center justify-center gap-3">
@@ -360,18 +476,62 @@ function WatchPage() {
   }
 
   if (!anime) {
+    const hasValidAnimeDestination = Boolean(
+      remote?.id ||
+        baseAnime?.id ||
+        (catalogEpisodes?.episodes?.length ?? 0) > 0,
+    );
+
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-bg text-fg">
-        <div className="flex flex-col items-center justify-center gap-3">
-          <div
-            className="size-8 animate-spin rounded-full border-2 border-white/10 border-t-[#a855f7]"
-            aria-label="Carregando"
-          />
-          <span className="text-sm text-white/50">
-            Carregando...
-          </span>
-        </div>
-      </main>
+      <div className="flex min-h-dvh flex-col bg-bg text-fg">
+        <header className="flex h-14 sm:h-16 items-center px-4 sm:px-6 border-b border-white/[0.06] bg-bg sm:bg-bg/80 backdrop-blur-none sm:backdrop-blur-md sticky top-0 z-40">
+          <Logo />
+        </header>
+
+        <main className="mx-auto flex w-full max-w-6xl flex-1 items-center justify-center px-4 py-24 text-center">
+          <div className="max-w-md">
+            <p className="font-display text-2xl">
+              Anime não encontrado
+            </p>
+            <p className="mt-2 text-sm text-muted">
+              Não foi possível carregar os dados deste episódio no momento.
+            </p>
+
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  void handleRetry();
+                }}
+                disabled={isRetrying}
+                className="rounded-xl border-white/15 bg-white/[0.04] text-white hover:bg-white/[0.08]"
+              >
+                <RotateCcw className="size-4 mr-1.5" />
+                Tentar novamente
+              </Button>
+
+              {hasValidAnimeDestination && id && (
+                <Link
+                  to="/anime/$id"
+                  params={{ id }}
+                  className="text-sm text-muted underline hover:text-white transition-colors"
+                >
+                  Voltar ao anime
+                </Link>
+              )}
+
+              <Link
+                to="/"
+                className="text-sm text-muted underline hover:text-white transition-colors"
+              >
+                Voltar ao início
+              </Link>
+            </div>
+          </div>
+        </main>
+      </div>
     );
   }
 
