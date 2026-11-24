@@ -31,10 +31,17 @@ type CookieInfo = {
   kb: string;
 };
 
-type IndexedDbInfo = {
+type ObjectStoreDetail = {
   name: string;
-  stores?: string[];
-  status?: string;
+  count: number;
+  indexes: string[];
+};
+
+type IndexedDbDetail = {
+  name: string;
+  version: number;
+  stores: ObjectStoreDetail[];
+  status: string;
 };
 
 type CacheInfo = {
@@ -54,6 +61,7 @@ type StorageEstimateInfo = {
   usage: number;
   quota: number;
   percentage: string;
+  usageDetails?: Record<string, number>;
 };
 
 function formatBytes(bytes: number): string {
@@ -80,7 +88,7 @@ function DiagnosticPage() {
   const [cookiesTotal, setCookiesTotal] = useState(0);
 
   // IndexedDB state
-  const [indexedDbs, setIndexedDbs] = useState<IndexedDbInfo[]>([]);
+  const [indexedDbDetails, setIndexedDbDetails] = useState<IndexedDbDetail[]>([]);
   const [idbAvailable, setIdbAvailable] = useState(false);
 
   // Cache Storage state
@@ -101,10 +109,10 @@ function DiagnosticPage() {
     local: true,
     session: false,
     cookies: false,
-    idb: false,
+    idb: true,
     caches: false,
     sw: false,
-    estimate: false,
+    estimate: true,
   });
 
   const toggleSection = (section: string) => {
@@ -232,25 +240,89 @@ function DiagnosticPage() {
       // ignore
     }
 
-    // 4. IndexedDB
+    // 4. IndexedDB Detailed Inspection (Read-Only)
     try {
-      const idb = window.indexedDB as IDBFactory & { databases?: () => Promise<Array<{ name?: string; version?: number }>> };
+      const idb = window.indexedDB as IDBFactory & {
+        databases?: () => Promise<Array<{ name?: string; version?: number }>>;
+      };
       if (idb && typeof idb.databases === "function") {
         setIdbAvailable(true);
         const dbs = await idb.databases();
-        const dbInfos: IndexedDbInfo[] = [];
-        for (const db of dbs) {
-          if (db.name) {
-            dbInfos.push({
-              name: db.name,
-              status: "Disponível",
+        const dbDetails: IndexedDbDetail[] = [];
+
+        for (const dbMeta of dbs) {
+          if (!dbMeta.name) continue;
+          const dbName = dbMeta.name;
+          const dbVersion = dbMeta.version ?? 1;
+
+          const detail: IndexedDbDetail = {
+            name: dbName,
+            version: dbVersion,
+            stores: [],
+            status: "Lido com sucesso",
+          };
+
+          try {
+            await new Promise<void>((resolve) => {
+              const openReq = indexedDB.open(dbName);
+              openReq.onerror = () => {
+                detail.status = "Erro ao abrir banco";
+                resolve();
+              };
+              openReq.onsuccess = (e) => {
+                const db = (e.target as IDBOpenDBRequest).result;
+                const storeNames = Array.from(db.objectStoreNames);
+
+                const storePromises = storeNames.map((storeName) => {
+                  return new Promise<ObjectStoreDetail>((storeResolve) => {
+                    const storeDetail: ObjectStoreDetail = {
+                      name: storeName,
+                      count: 0,
+                      indexes: [],
+                    };
+                    try {
+                      const tx = db.transaction(storeName, "readonly");
+                      const store = tx.objectStore(storeName);
+                      storeDetail.indexes = Array.from(store.indexNames);
+
+                      const countReq = store.count();
+                      countReq.onsuccess = () => {
+                        storeDetail.count = countReq.result ?? 0;
+                        storeResolve(storeDetail);
+                      };
+                      countReq.onerror = () => {
+                        storeResolve(storeDetail);
+                      };
+                    } catch {
+                      storeResolve(storeDetail);
+                    }
+                  });
+                });
+
+                Promise.all(storePromises).then((stores) => {
+                  detail.stores = stores;
+                  db.close();
+                  resolve();
+                });
+              };
             });
+          } catch {
+            detail.status = "Erro na transação";
           }
+
+          dbDetails.push(detail);
         }
-        setIndexedDbs(dbInfos);
+        setIndexedDbDetails(dbDetails);
       } else if (typeof indexedDB !== "undefined") {
         setIdbAvailable(true);
-        setIndexedDbs([{ name: "IndexedDB disponível (listagem de bancos não suportada pelo navegador)", status: "Suporte parcial" }]);
+        setIndexedDbDetails([
+          {
+            name: "IndexedDB disponível (listagem automática de bancos não suportada pelo navegador)",
+            version: 0,
+            stores: [],
+            status: "Suporte parcial",
+          },
+        ]);
       }
     } catch {
       setIdbAvailable(false);
@@ -319,11 +391,13 @@ function DiagnosticPage() {
       setSwAvailable(false);
     }
 
-    // 7. Storage Estimate
+    // 7. Storage Estimate & Details
     try {
       if (typeof navigator !== "undefined" && navigator.storage && typeof navigator.storage.estimate === "function") {
         setEstimateAvailable(true);
-        const est = await navigator.storage.estimate();
+        const est = (await navigator.storage.estimate()) as StorageEstimate & {
+          usageDetails?: Record<string, number>;
+        };
         const usage = est.usage ?? 0;
         const quota = est.quota ?? 0;
         const pct = quota > 0 ? ((usage / quota) * 100).toFixed(2) + "%" : "N/A";
@@ -331,6 +405,7 @@ function DiagnosticPage() {
           usage,
           quota,
           percentage: pct,
+          usageDetails: est.usageDetails,
         });
       }
     } catch {
@@ -348,6 +423,8 @@ function DiagnosticPage() {
   if (!isClient) {
     return null;
   }
+
+  const totalDbStoresCount = indexedDbDetails.reduce((acc, db) => acc + (db.stores?.length || 0), 0);
 
   return (
     <div className="max-w-md mx-auto px-4 py-6 space-y-5 text-fg pb-20">
@@ -395,7 +472,7 @@ function DiagnosticPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-muted">IndexedDB:</span>
-              <span className="font-semibold">{idbAvailable ? `${indexedDbs.length} banco(s)` : "Indisponível"}</span>
+              <span className="font-semibold">{idbAvailable ? `${indexedDbDetails.length} banco(s), ${totalDbStoresCount} store(s)` : "Indisponível"}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted">Cache Storage:</span>
@@ -516,26 +593,45 @@ function DiagnosticPage() {
         )}
       </div>
 
-      {/* 5. IndexedDB */}
+      {/* 5. Detalhamento do IndexedDB */}
       <div className="border border-white/10 rounded-xl bg-elevated/40 overflow-hidden">
         <button
           onClick={() => toggleSection("idb")}
           className="w-full px-4 py-3 flex justify-between items-center text-left font-bold text-sm bg-elevated/80 cursor-pointer"
         >
-          <span>IndexedDB ({idbAvailable ? `${indexedDbs.length} banco(s)` : "Indisponível"})</span>
+          <span>Detalhamento do IndexedDB ({idbAvailable ? `${indexedDbDetails.length} banco(s)` : "Indisponível"})</span>
           <span className="text-xs text-purple-400">{expandedSections.idb ? "▲" : "▼"}</span>
         </button>
         {expandedSections.idb && (
-          <div className="p-4 space-y-2 text-xs border-t border-white/10">
+          <div className="p-4 space-y-3 text-xs border-t border-white/10">
             {!idbAvailable ? (
               <p className="text-muted py-2 text-center">API IndexedDB não suportada neste ambiente.</p>
-            ) : indexedDbs.length === 0 ? (
+            ) : indexedDbDetails.length === 0 ? (
               <p className="text-muted py-2 text-center">Nenhum banco IndexedDB encontrado.</p>
             ) : (
-              indexedDbs.map((db) => (
-                <div key={db.name} className="bg-elevated/60 p-2.5 rounded-lg border border-white/5 flex justify-between items-center">
-                  <span className="font-mono text-purple-300">{db.name}</span>
-                  <span className="text-muted">{db.status || "Ativo"}</span>
+              indexedDbDetails.map((db) => (
+                <div key={db.name} className="bg-elevated/60 p-3 rounded-lg border border-white/5 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <span className="font-mono font-bold text-purple-300 break-all">{db.name}</span>
+                    <span className="text-[10px] bg-purple-950/60 text-purple-300 px-2 py-0.5 rounded border border-purple-800/40 shrink-0">v{db.version}</span>
+                  </div>
+                  <div className="text-[11px] text-muted">Status: {db.status}</div>
+                  {db.stores && db.stores.length > 0 && (
+                    <div className="space-y-1.5 pt-1.5 border-t border-white/5">
+                      <span className="font-semibold text-[11px] text-zinc-300 uppercase tracking-wider">Object Stores ({db.stores.length}):</span>
+                      {db.stores.map((store) => (
+                        <div key={store.name} className="bg-black/30 p-2 rounded border border-white/5 space-y-0.5">
+                          <div className="flex justify-between">
+                            <span className="font-mono font-semibold text-emerald-300">{store.name}</span>
+                            <span className="font-semibold text-amber-300">{store.count} registros</span>
+                          </div>
+                          {store.indexes.length > 0 && (
+                            <div className="text-[10px] text-muted">Índices: {store.indexes.join(", ")}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -602,7 +698,7 @@ function DiagnosticPage() {
         )}
       </div>
 
-      {/* 8. Storage Estimate */}
+      {/* 8. Estimativa Geral (Origin Storage) */}
       <div className="border border-white/10 rounded-xl bg-elevated/40 overflow-hidden">
         <button
           onClick={() => toggleSection("estimate")}
@@ -612,25 +708,40 @@ function DiagnosticPage() {
           <span className="text-xs text-purple-400">{expandedSections.estimate ? "▲" : "▼"}</span>
         </button>
         {expandedSections.estimate && (
-          <div className="p-4 space-y-2 text-xs border-t border-white/10">
+          <div className="p-4 space-y-3 text-xs border-t border-white/10">
             {!estimateAvailable || !estimate ? (
               <p className="text-muted py-2 text-center">API navigator.storage.estimate não suportada.</p>
             ) : (
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-muted">Uso Atual da Origem:</span>
-                  <span className="font-bold text-amber-400">{formatBytes(estimate.usage)}</span>
+              <div className="space-y-3">
+                <div className="bg-elevated/60 p-3 rounded-lg border border-white/5 space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-muted">Uso Atual da Origem:</span>
+                    <span className="font-bold text-amber-400">{formatBytes(estimate.usage)} ({estimate.usage} bytes)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted">Quota Máxima Disponível:</span>
+                    <span className="font-semibold">{formatBytes(estimate.quota)} ({estimate.quota} bytes)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted">Percentual Utilizado:</span>
+                    <span className="font-semibold">{estimate.percentage}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted">Quota Máxima Disponível:</span>
-                  <span className="font-semibold">{formatBytes(estimate.quota)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted">Percentual Utilizado:</span>
-                  <span className="font-semibold">{estimate.percentage}</span>
-                </div>
+
+                {estimate.usageDetails && Object.keys(estimate.usageDetails).length > 0 && (
+                  <div className="space-y-1.5 pt-1 border-t border-white/5">
+                    <span className="font-semibold text-[11px] text-zinc-300 uppercase tracking-wider">Detalhamento por Categoria (usageDetails):</span>
+                    {Object.entries(estimate.usageDetails).map(([cat, val]) => (
+                      <div key={cat} className="bg-elevated/60 px-3 py-2 rounded-lg border border-white/5 flex justify-between items-center">
+                        <span className="font-mono text-zinc-300 capitalize">{cat}</span>
+                        <span className="font-semibold">{formatBytes(val as number)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <p className="text-[10px] text-muted italic pt-1">
-                  Nota: Esta estimativa é fornecida pelo navegador e agrupa todos os dados da origem (LocalStorage, IndexedDB, Cache Storage, etc.). Não deve ser somada diretamente aos itens individuais.
+                  Nota: Esta estimativa é fornecida pelo navegador e agrupa todos os dados da origem. Não deve ser somada diretamente aos itens individuais do LocalStorage ou IndexedDB.
                 </p>
               </div>
             )}
