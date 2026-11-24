@@ -328,19 +328,23 @@ export function ProfileAnimeEditModal({
 
   return (
     <div
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !saving) {
-          onClose();
-        }
-      }}
       className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overscroll-contain animate-in fade-in duration-200"
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-anime-title"
     >
-      <div className="relative flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-[#0d0918] shadow-[0_25px_70px_rgba(0,0,0,0.85)]">
+      {/* Backdrop click detector */}
+      <div
+        className="absolute inset-0 cursor-pointer"
+        onClick={() => {
+          if (!saving) onClose();
+        }}
+        aria-hidden="true"
+      />
+
+      <div className="relative z-10 flex max-h-[92vh] w-full max-w-lg flex-col min-h-0 overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-[#0d0918] shadow-[0_25px_70px_rgba(0,0,0,0.85)]">
         {/* Cabeçalho com dados resumidos do anime */}
-        <div className="flex items-center justify-between border-b border-white/[0.08] bg-[#140e24]/70 px-4 py-3 sm:px-6 sm:py-4">
+        <div className="shrink-0 flex items-center justify-between border-b border-white/[0.08] bg-[#140e24]/70 px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative size-12 sm:size-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#161226]">
               <HikariImage
@@ -391,7 +395,7 @@ export function ProfileAnimeEditModal({
         )}
 
         {/* Formulário de Edição */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto min-h-0 overscroll-contain p-4 sm:p-6 space-y-5">
           {/* 1. Status de Acompanhamento */}
           <div className="space-y-2">
             <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300">
