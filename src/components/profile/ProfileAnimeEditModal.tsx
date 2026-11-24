@@ -342,7 +342,7 @@ export function ProfileAnimeEditModal({
         aria-hidden="true"
       />
 
-      <div className="relative z-10 flex max-h-[92vh] w-full max-w-lg flex-col min-h-0 overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-[#0d0918] shadow-[0_25px_70px_rgba(0,0,0,0.85)]">
+      <div className="relative z-10 flex min-h-0 max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-[#0d0918] shadow-[0_25px_70px_rgba(0,0,0,0.85)]">
         {/* Cabeçalho com dados resumidos do anime */}
         <div className="shrink-0 flex items-center justify-between border-b border-white/[0.08] bg-[#140e24]/70 px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex items-center gap-3 min-w-0">
