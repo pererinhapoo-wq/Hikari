@@ -25,7 +25,7 @@ const MODULES: NavModule[] = [
   { id: "cache", label: "Cache", icon: <Database className="size-4" />, badge: "Planejado" },
   { id: "storage", label: "Armazenamento", icon: <HardDrive className="size-4" />, badge: "Planejado" },
   { id: "player", label: "Player", icon: <PlaySquare className="size-4" />, badge: "Planejado" },
-  { id: "compatibility", label: "Compatibilidade", icon: <Smartphone className="size-4" />, badge: "Planejado" },
+  { id: "compatibility", label: "Compatibilidade", icon: <Smartphone className="size-4" />, badge: "Ativo" },
   { id: "errors", label: "Erros", icon: <AlertOctagon className="size-4" />, badge: "Planejado" },
   { id: "infrastructure", label: "Infraestrutura", icon: <Server className="size-4" />, badge: "Planejado" },
 ];

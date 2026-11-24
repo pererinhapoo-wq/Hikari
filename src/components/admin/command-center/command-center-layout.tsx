@@ -5,6 +5,7 @@ import { SystemHealthBanner } from "./system-health-banner";
 import { MetricCard } from "./metric-card";
 import { SubsystemStatus } from "./subsystem-status";
 import { EmptyEventFeed } from "./empty-event-feed";
+import { CompatibilityPanel } from "./modules/compatibility-panel";
 import { ArrowLeft, ShieldAlert } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -251,6 +252,8 @@ export function CommandCenterLayout() {
                 <EmptyEventFeed />
               </div>
             </div>
+          ) : activeModule === "compatibility" ? (
+            <CompatibilityPanel />
           ) : (
             <div className="max-w-4xl mx-auto py-12 px-6 rounded-xl border border-[#262B36] bg-[#111318] text-center space-y-3">
               <div className="inline-flex items-center justify-center size-12 rounded-xl bg-[#181B22] border border-[#262B36] text-[#06B6D4]">
