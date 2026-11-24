@@ -447,7 +447,50 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
       [animeId],
     );
 
-    const row = rows[0];
+    let row = rows[0];
+    if (!row) {
+      try {
+        const trackingRows = await sql.query<{ animeSnapshot: unknown }>(
+          `SELECT "animeSnapshot" FROM "user_anime_tracking" WHERE "animeId" = $1 LIMIT 1`,
+          [animeId],
+        );
+        const snapRaw = trackingRows[0]?.animeSnapshot;
+        let anilistId: number | null = null;
+        let malId: number | null = null;
+        let kitsuId: number | null = null;
+        if (snapRaw) {
+          const snap = typeof snapRaw === "string" ? JSON.parse(snapRaw) : snapRaw;
+          anilistId = snap?.anilistId ? Number(snap.anilistId) : null;
+          malId = snap?.malId ? Number(snap.malId) : null;
+          kitsuId = snap?.kitsuId ? Number(snap.kitsuId) : null;
+        }
+        if (anilistId || malId || kitsuId) {
+          const matchRows = await sql.query<DbCatalogAnimeRow>(
+            `SELECT "id", "title", "anilistId", "malId", "kitsuId",
+                    "titleRomaji", "titleEnglish", "titleNative",
+                    "cover", "banner", "synopsis", "format", "status",
+                    "episodesCount", "year", "season", "genres", "trailerId",
+                    "hidden", "score", "updatedAt"
+             FROM "catalog_anime"
+             WHERE "hidden" = false
+               AND (
+                 ($1::int IS NOT NULL AND "anilistId" = $1)
+                 OR ($2::int IS NOT NULL AND "malId" = $2)
+                 OR ($3::int IS NOT NULL AND "kitsuId" = $3)
+               )
+             ORDER BY "updatedAt" DESC
+             LIMIT 1;`,
+            [anilistId, malId, kitsuId],
+          );
+          if (matchRows[0]) {
+            row = matchRows[0];
+          }
+        }
+      } catch {
+        // Ignora falhas
+      }
+    }
+
     if (!row) return null;
 
     const seasonRows = await sql.query<{

@@ -314,12 +314,28 @@ export async function lookupCatalogRowForTracking(
     return directRows[0];
   }
 
+  // 1.5. Busca por snapshot gravado no user_anime_tracking caso o ID direto tenha sido excluído e readicionado com novo ID
+  let fallbackSnapshot = snapshot;
+  if (!fallbackSnapshot) {
+    try {
+      const trackingRows = await sql.query<{ animeSnapshot: unknown }>(
+        `SELECT "animeSnapshot" FROM "user_anime_tracking" WHERE "animeId" = $1 LIMIT 1`,
+        [cleanId],
+      );
+      if (trackingRows[0]?.animeSnapshot) {
+        fallbackSnapshot = parseTrackingSnapshot(trackingRows[0].animeSnapshot);
+      }
+    } catch {
+      // Ignora falhas na consulta de tracking
+    }
+  }
+
   // 2. Busca por IDs externos somente quando a obra solicitada não for dublada separada
   const reqTitles = [
-    snapshot?.title,
-    snapshot?.titleRomaji,
-    snapshot?.titleEnglish,
-    snapshot?.titleNative,
+    fallbackSnapshot?.title,
+    fallbackSnapshot?.titleRomaji,
+    fallbackSnapshot?.titleEnglish,
+    fallbackSnapshot?.titleNative,
   ]
     .filter((v): v is string => typeof v === "string")
     .join(" ");
@@ -329,9 +345,9 @@ export async function lookupCatalogRowForTracking(
   }
 
   const parsed = parseIdsFromAnimeId(cleanId);
-  const anilistId = toPositiveInt(snapshot?.anilistId) ?? parsed.anilistId;
-  const malId = toPositiveInt(snapshot?.malId) ?? parsed.malId;
-  const kitsuId = toPositiveInt(snapshot?.kitsuId) ?? parsed.kitsuId;
+  const anilistId = toPositiveInt(fallbackSnapshot?.anilistId) ?? parsed.anilistId;
+  const malId = toPositiveInt(fallbackSnapshot?.malId) ?? parsed.malId;
+  const kitsuId = toPositiveInt(fallbackSnapshot?.kitsuId) ?? parsed.kitsuId;
 
   if (!anilistId && !malId && !kitsuId) {
     return null;
