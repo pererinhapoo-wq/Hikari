@@ -20,7 +20,7 @@ export interface NavModule {
 
 const MODULES: NavModule[] = [
   { id: "overview", label: "Visão Geral", icon: <LayoutDashboard className="size-4" />, badge: "Ativo" },
-  { id: "performance", label: "Desempenho", icon: <Gauge className="size-4" />, badge: "Planejado" },
+  { id: "performance", label: "Desempenho", icon: <Gauge className="size-4" />, badge: "Ativo" },
   { id: "network", label: "Rede e Conexão", icon: <Network className="size-4" />, badge: "Planejado" },
   { id: "cache", label: "Cache", icon: <Database className="size-4" />, badge: "Planejado" },
   { id: "storage", label: "Armazenamento", icon: <HardDrive className="size-4" />, badge: "Ativo" },

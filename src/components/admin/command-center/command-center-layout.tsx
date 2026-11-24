@@ -7,6 +7,7 @@ import { SubsystemStatus } from "./subsystem-status";
 import { EmptyEventFeed } from "./empty-event-feed";
 import { CompatibilityPanel } from "./modules/compatibility-panel";
 import { StoragePanel } from "./modules/storage-panel";
+import { PerformancePanel } from "./modules/performance-panel";
 import { ArrowLeft, ShieldAlert } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -345,6 +346,8 @@ export function CommandCenterLayout() {
                 <EmptyEventFeed />
               </div>
             </div>
+          ) : activeModule === "performance" ? (
+            <PerformancePanel />
           ) : activeModule === "storage" ? (
             <StoragePanel
               audit={storageAudit}
