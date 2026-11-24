@@ -8,6 +8,11 @@ import { EmptyEventFeed } from "./empty-event-feed";
 import { CompatibilityPanel } from "./modules/compatibility-panel";
 import { StoragePanel } from "./modules/storage-panel";
 import { PerformancePanel } from "./modules/performance-panel";
+import { NetworkPanel } from "./modules/network-panel";
+import { CachePanel } from "./modules/cache-panel";
+import { PlayerPanel } from "./modules/player-panel";
+import { ErrorsPanel } from "./modules/errors-panel";
+import { InfrastructurePanel } from "./modules/infrastructure-panel";
 import { ArrowLeft, ShieldAlert } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -348,14 +353,38 @@ export function CommandCenterLayout() {
             </div>
           ) : activeModule === "performance" ? (
             <PerformancePanel />
+          ) : activeModule === "network" ? (
+            <NetworkPanel />
+          ) : activeModule === "cache" ? (
+            <CachePanel
+              storageAudit={storageAudit}
+              isStorageLoading={isStorageLoading}
+              onRefreshStorage={handleRefreshStorage}
+              diagnostics={diagnostics}
+              isDiagnosticsLoading={isLoading}
+              diagnosticsError={requestError}
+              onRefreshDiagnostics={handleRefresh}
+            />
           ) : activeModule === "storage" ? (
             <StoragePanel
               audit={storageAudit}
               isLoading={isStorageLoading}
               onRefresh={handleRefreshStorage}
             />
+          ) : activeModule === "player" ? (
+            <PlayerPanel />
           ) : activeModule === "compatibility" ? (
             <CompatibilityPanel />
+          ) : activeModule === "errors" ? (
+            <ErrorsPanel />
+          ) : activeModule === "infrastructure" ? (
+            <InfrastructurePanel
+              diagnostics={diagnostics}
+              isLoading={isLoading}
+              requestError={requestError}
+              onRefresh={handleRefresh}
+              lastUpdated={lastUpdated}
+            />
           ) : (
             <div className="max-w-4xl mx-auto py-12 px-6 rounded-xl border border-[#262B36] bg-[#111318] text-center space-y-3">
               <div className="inline-flex items-center justify-center size-12 rounded-xl bg-[#181B22] border border-[#262B36] text-[#06B6D4]">
