@@ -857,6 +857,7 @@ export function Hero({
     isLockedHorizontal: boolean;
     isLockedVertical: boolean;
     hasMoved: boolean;
+    safetyTimerId: number | null;
   }>({
     active: false,
     pointerId: null,
@@ -867,7 +868,25 @@ export function Hero({
     isLockedHorizontal: false,
     isLockedVertical: false,
     hasMoved: false,
+    safetyTimerId: null,
   });
+
+  // Cleanup de segurança para desmontagem e remoção de listeners globais
+  useEffect(() => {
+    const currentPointerState = pointerState.current;
+    return () => {
+      if (currentPointerState.safetyTimerId !== null) {
+        if (typeof window !== "undefined") {
+          window.clearTimeout(currentPointerState.safetyTimerId);
+        }
+        currentPointerState.safetyTimerId = null;
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("pointerup", handleGlobalPointerUp);
+        window.removeEventListener("pointercancel", handleGlobalPointerUp);
+      }
+    };
+  }, [handleGlobalPointerUp]);
 
   // Executa tarefas em momentos ociosos com fallback seguro e postergação
   const scheduleIdleTask = useCallback(
@@ -1094,16 +1113,92 @@ export function Hero({
     return () => window.clearTimeout(timeout);
   }, [activeTransition]);
 
-  // Manipulação de gestos de toque/ponteiro
-  // A imagem permanece visualmente estática durante o arrasto, acionando a transição suave de escurecimento ao soltar
+  const handleGlobalPointerUpRef = useRef<(e: PointerEvent) => void>(() => {});
+
+  // Manipulação de gestos de toque/ponteiro com proteção robusta contra estados órfãos e dangling pointers
+  const handlePointerUpOrCancel = useCallback((e?: React.PointerEvent<HTMLElement> | PointerEvent) => {
+    const state = pointerState.current;
+    if (!state.active) return;
+    if (e && "pointerId" in e && state.pointerId !== null && e.pointerId !== state.pointerId) return;
+
+    state.active = false;
+    state.pointerId = null;
+
+    if (state.safetyTimerId !== null) {
+      if (typeof window !== "undefined") {
+        window.clearTimeout(state.safetyTimerId);
+      }
+      state.safetyTimerId = null;
+    }
+
+    if (typeof window !== "undefined") {
+      window.removeEventListener("pointerup", handleGlobalPointerUpRef.current);
+      window.removeEventListener("pointercancel", handleGlobalPointerUpRef.current);
+    }
+
+    try {
+      if (containerRef.current && typeof containerRef.current.hasPointerCapture === "function" && state.pointerId !== null) {
+        if (containerRef.current.hasPointerCapture(state.pointerId)) {
+          containerRef.current.releasePointerCapture(state.pointerId);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    if (state.isLockedHorizontal) {
+      const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 390;
+      const threshold = Math.max(35, Math.min(viewportWidth, 600) * 0.12);
+      const dx = state.currentX - state.startX;
+      const elapsed = Date.now() - state.startTime;
+      const isQuickSwipe = elapsed < 350 && Math.abs(dx) > 25;
+
+      const shouldAdvance = dx < -threshold || (isQuickSwipe && dx < 0);
+      const shouldReturn = dx > threshold || (isQuickSwipe && dx > 0);
+
+      if (shouldAdvance) {
+        triggerTransition("next");
+      } else if (shouldReturn) {
+        triggerTransition("prev");
+      }
+
+      // Reinicia o temporizador APENAS quando houver interação horizontal efetiva (swipe)
+      resetAutoTimer();
+    }
+  }, [triggerTransition, resetAutoTimer]);
+
+  const handleGlobalPointerUp = useCallback((e: PointerEvent) => {
+    handlePointerUpOrCancel(e);
+  }, [handlePointerUpOrCancel]);
+
+  handleGlobalPointerUpRef.current = handleGlobalPointerUp;
+
   const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
     if (total < 2 || e.button !== 0) return;
 
-    // Se houver uma transição em andamento, conclui-a imediatamente para liberar o novo gesto sem travamento
     if (transitioningRef.current !== null) {
       setIndex(transitioningRef.current.toIndex);
       setTransitioning(null);
     }
+
+    const st = pointerState.current;
+    if (st.safetyTimerId !== null) {
+      window.clearTimeout(st.safetyTimerId);
+      st.safetyTimerId = null;
+    }
+
+    // Safety fallback: se o ponteiro permanecer ativo por mais de 2500ms sem swipe horizontal ou movimento,
+    // encerra automaticamente a interação para evitar congelamento do autoplay (dangling pointer)
+    const safetyTimerId = window.setTimeout(() => {
+      const stateRef = pointerState.current;
+      if (stateRef.active && !stateRef.isLockedHorizontal && Math.abs(stateRef.currentX - stateRef.startX) < 8) {
+        stateRef.active = false;
+        stateRef.pointerId = null;
+        stateRef.safetyTimerId = null;
+        window.removeEventListener("pointerup", handleGlobalPointerUp);
+        window.removeEventListener("pointercancel", handleGlobalPointerUp);
+      }
+    }, 2500);
 
     pointerState.current = {
       active: true,
@@ -1115,7 +1210,13 @@ export function Hero({
       isLockedHorizontal: false,
       isLockedVertical: false,
       hasMoved: false,
+      safetyTimerId,
     };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("pointerup", handleGlobalPointerUp);
+      window.addEventListener("pointercancel", handleGlobalPointerUp);
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
@@ -1132,6 +1233,12 @@ export function Hero({
         if (absY >= absX) {
           state.isLockedVertical = true;
           state.active = false;
+          if (state.safetyTimerId !== null) {
+            window.clearTimeout(state.safetyTimerId);
+            state.safetyTimerId = null;
+          }
+          window.removeEventListener("pointerup", handleGlobalPointerUp);
+          window.removeEventListener("pointercancel", handleGlobalPointerUp);
           return;
         }
         state.isLockedHorizontal = true;
@@ -1154,41 +1261,6 @@ export function Hero({
         ensureSlidePreloaded("next");
       }
     }
-  };
-
-  const handlePointerUpOrCancel = (e: React.PointerEvent<HTMLElement>) => {
-    const state = pointerState.current;
-    if (!state.active || state.pointerId !== e.pointerId) return;
-
-    state.active = false;
-    state.pointerId = null;
-
-    try {
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
-    } catch {
-      // ignore
-    }
-
-    if (state.isLockedHorizontal) {
-      const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 390;
-      const threshold = Math.max(35, Math.min(viewportWidth, 600) * 0.12);
-      const dx = state.currentX - state.startX;
-      const elapsed = Date.now() - state.startTime;
-      const isQuickSwipe = elapsed < 350 && Math.abs(dx) > 25;
-
-      const shouldAdvance = dx < -threshold || (isQuickSwipe && dx < 0);
-      const shouldReturn = dx > threshold || (isQuickSwipe && dx > 0);
-
-      if (shouldAdvance) {
-        triggerTransition("next");
-      } else if (shouldReturn) {
-        triggerTransition("prev");
-      }
-    }
-
-    resetAutoTimer();
   };
 
   // Previne clique inadvertido em links ou botões se o usuário fez um gesto de deslizar
@@ -1219,6 +1291,7 @@ export function Hero({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUpOrCancel}
       onPointerCancel={handlePointerUpOrCancel}
+      onLostPointerCapture={handlePointerUpOrCancel}
       onClickCapture={handleClickCapture}
       style={{ touchAction: "pan-y" }}
       className="relative -mx-4 overflow-hidden bg-black border-b border-white/5 shadow-[0_12px_40px_rgba(0,0,0,0.85)] sm:-mx-6 md:mx-0 md:rounded-3xl md:border md:border-white/10 md:shadow-[0_20px_50px_rgba(0,0,0,0.7)] min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end select-none touch-pan-y cursor-default [contain:layout_style]"
