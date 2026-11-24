@@ -12,9 +12,16 @@ export function DialogContent({
   children,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Content>) {
+  const isStudioDialog =
+    typeof className === "string" && className.includes("hikari-studio-dialog");
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-bg/80 data-[state=open]:animate-in data-[state=closed]:animate-out" />
+      <DialogPrimitive.Overlay
+        className={cn(
+          "fixed inset-0 z-50 data-[state=open]:animate-in data-[state=closed]:animate-out",
+          isStudioDialog ? "bg-black/80 backdrop-blur-xs" : "bg-bg/80",
+        )}
+      />
       <DialogPrimitive.Content
         className={cn(
           "fixed top-1/2 left-1/2 z-50 w-[min(100%-1.5rem,28rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl bg-surface p-5 shadow-[var(--shadow-border)]",

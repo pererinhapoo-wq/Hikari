@@ -2278,7 +2278,7 @@ function AdminEditor() {
         syncState={animeSyncState}
       />
 
-      {/* Abas de Navegação do Editor (Console Daylight) */}
+      {/* Abas de Navegação do Editor */}
       <nav
         aria-label="Seções do editor"
         className="flex flex-wrap items-center gap-2 border-b border-[var(--studio-line)] pb-4"
@@ -2290,7 +2290,7 @@ function AdminEditor() {
             "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-all cursor-pointer",
             activeTab === "all"
               ? "bg-[var(--studio-accent)] text-white shadow-sm"
-              : "border border-[var(--studio-line)] bg-[var(--studio-panel)] text-[var(--color-muted)] hover:border-blue-300 hover:text-[var(--color-fg)]"
+              : "border border-[var(--studio-line)] bg-[var(--studio-panel)] text-[var(--color-muted)] hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-[var(--color-fg)]"
           )}
         >
           <Info className="size-3.5" />
@@ -2303,10 +2303,10 @@ function AdminEditor() {
             "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-all cursor-pointer",
             activeTab === "metadata"
               ? "bg-[var(--studio-accent)] text-white shadow-sm"
-              : "border border-[var(--studio-line)] bg-[var(--studio-panel)] text-[var(--color-muted)] hover:border-blue-300 hover:text-[var(--color-fg)]"
+              : "border border-[var(--studio-line)] bg-[var(--studio-panel)] text-[var(--color-muted)] hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-[var(--color-fg)]"
           )}
         >
-          <Info className="size-3.5 text-blue-600" />
+          <Info className="size-3.5 text-purple-400" />
           <span>Metadados &amp; Imagens</span>
         </button>
         <button
@@ -2316,12 +2316,19 @@ function AdminEditor() {
             "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-all cursor-pointer",
             activeTab === "seasons"
               ? "bg-[var(--studio-accent)] text-white shadow-sm"
-              : "border border-[var(--studio-line)] bg-[var(--studio-panel)] text-[var(--color-muted)] hover:border-blue-300 hover:text-[var(--color-fg)]"
+              : "border border-[var(--studio-line)] bg-[var(--studio-panel)] text-[var(--color-muted)] hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-[var(--color-fg)]"
           )}
         >
-          <Layers className="size-3.5 text-teal-600" />
+          <Layers className="size-3.5 text-teal-400" />
           <span>Temporadas &amp; Episódios</span>
-          <span className="studio-mono rounded bg-slate-200/60 px-1.5 py-0.5 text-[10px] text-slate-800">
+          <span
+            className={cn(
+              "studio-mono rounded px-1.5 py-0.5 text-[10px]",
+              activeTab === "seasons"
+                ? "bg-white/20 text-white"
+                : "bg-white/[0.08] text-zinc-200",
+            )}
+          >
             {current.seasons.length}T · {totalEpisodesInEditor}E
           </span>
         </button>

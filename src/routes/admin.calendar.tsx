@@ -789,7 +789,7 @@ function AdminCalendarRecurrencesPage() {
           if (!open && !busyRowId) setPendingDelete(null);
         }}
       >
-        <DialogContent className="border-white/10 bg-[#141024] text-zinc-100 sm:max-w-md">
+        <DialogContent className="hikari-studio-dialog border border-white/[0.08] bg-[#12101e] text-zinc-100 shadow-2xl sm:max-w-md">
           <DialogTitle className="text-base font-bold text-white">
             Remover programação recorrente?
           </DialogTitle>

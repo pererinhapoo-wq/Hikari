@@ -850,7 +850,7 @@ function AdminIndex() {
                 className="flex flex-col gap-2 sm:flex-row"
               >
                 <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
+                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-500" />
                   <Input
                     value={importQ}
                     onChange={(e) => setImportQ(e.target.value)}
@@ -861,7 +861,7 @@ function AdminIndex() {
                 <Button
                   type="submit"
                   disabled={searchingAniList || !importQ.trim()}
-                  className="h-10 shrink-0 bg-blue-700 px-4 text-xs font-semibold text-white hover:bg-blue-800"
+                  className="h-10 shrink-0 bg-purple-600 px-4 text-xs font-semibold text-white hover:bg-purple-700"
                 >
                   {searchingAniList ? (
                     <>
@@ -875,7 +875,7 @@ function AdminIndex() {
               </form>
 
               {hits.length > 0 && (
-                <div className="studio-scroll max-h-80 divide-y divide-slate-200 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50">
+                <div className="studio-scroll max-h-80 divide-y divide-white/[0.06] overflow-y-auto rounded-xl border border-white/[0.08] bg-[#161226]">
                   {hits.slice(0, 10).map((hit) => {
                     const alreadyInCatalog =
                       catalogIndex.byId.has(hit.id) ||
@@ -885,10 +885,10 @@ function AdminIndex() {
                     return (
                       <div
                         key={hit.id}
-                        className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 transition-colors hover:bg-slate-50"
+                        className="flex flex-wrap items-center justify-between gap-3 bg-[#12101e] p-3 transition-colors hover:bg-[#1a172e]/70"
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <div className="h-14 w-10 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-100">
+                          <div className="h-14 w-10 shrink-0 overflow-hidden rounded border border-white/[0.08] bg-[#161226]">
                             {hit.cover ? (
                               <img
                                 src={hit.cover}
@@ -897,17 +897,17 @@ function AdminIndex() {
                                 loading="lazy"
                               />
                             ) : (
-                              <div className="grid size-full place-items-center text-[10px] text-slate-400">
+                              <div className="grid size-full place-items-center text-[10px] text-zinc-500">
                                 —
                               </div>
                             )}
                           </div>
 
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-slate-900">
+                            <p className="truncate text-sm font-semibold text-zinc-100">
                               {displayTitle(hit)}
                             </p>
-                            <p className="mt-0.5 truncate text-xs text-slate-500">
+                            <p className="mt-0.5 truncate text-xs text-zinc-400">
                               {hit.year || "—"} · {hit.format || "TV"} ·{" "}
                               {(hit.genres || []).slice(0, 3).join(", ") ||
                                 "Sem gênero"}
@@ -924,8 +924,8 @@ function AdminIndex() {
                             className={cn(
                               "h-9 text-xs font-semibold",
                               alreadyInCatalog
-                                ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
-                                : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
+                                ? "border-amber-500/30 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                                : "border-purple-500/30 bg-purple-500/15 text-purple-200 hover:bg-purple-600 hover:text-white",
                             )}
                           >
                             {alreadyInCatalog ? "Atualizar" : "Importar"}
@@ -938,7 +938,7 @@ function AdminIndex() {
                               variant="outline"
                               onClick={() => importHit(hit, true)}
                               title="Importar como novo cadastro independente (ex: versão dublada)"
-                              className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
+                              className="h-9 border-white/[0.08] bg-[#161226] text-xs text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
                             >
                               Novo cadastro
                             </Button>
@@ -952,7 +952,7 @@ function AdminIndex() {
             </div>
           ) : (
             <div className="space-y-4">
-              <p className="text-xs leading-relaxed text-slate-600">
+              <p className="text-xs leading-relaxed text-zinc-400">
                 Gere um arquivo JSON completo com todas as temporadas, episódios e
                 metadados ou restaure um backup sincronizando em lotes de 100
                 com o PostgreSQL.
@@ -961,14 +961,14 @@ function AdminIndex() {
                 <Button
                   type="button"
                   onClick={exportJson}
-                  className="h-10 bg-blue-700 px-4 text-xs font-semibold text-white hover:bg-blue-800"
+                  className="h-10 bg-purple-600 px-4 text-xs font-semibold text-white hover:bg-purple-700"
                 >
                   <Download className="mr-1.5 size-4" />
                   Baixar hikari-catalogo.json ({animes.length} animes)
                 </Button>
 
-                <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50">
-                  <Upload className="size-4 text-blue-700" />
+                <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-white/[0.08] bg-[#161226] px-4 text-xs font-semibold text-zinc-200 transition-colors hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white">
+                  <Upload className="size-4 text-purple-400" />
                   <span>Selecionar arquivo JSON para restaurar</span>
                   <input
                     type="file"
@@ -1055,16 +1055,16 @@ function AdminIndex() {
                   <Link
                     key={item.to}
                     to={item.to}
-                    className="group flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3 transition-colors hover:border-blue-300 hover:bg-blue-50/60"
+                    className="group flex items-start gap-3 rounded-lg border border-white/[0.08] bg-[#161226] p-3 transition-colors hover:border-purple-500/40 hover:bg-[#1f1a36]"
                   >
-                    <div className="grid size-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-blue-700 transition-colors group-hover:border-blue-300 group-hover:bg-blue-700 group-hover:text-white">
+                    <div className="grid size-8 shrink-0 place-items-center rounded-md border border-white/[0.08] bg-[#12101e] text-purple-400 transition-colors group-hover:border-purple-500/40 group-hover:bg-purple-600 group-hover:text-white">
                       <Icon className="size-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-semibold text-slate-900">
+                      <p className="truncate text-xs font-semibold text-zinc-100">
                         {item.title}
                       </p>
-                      <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                      <p className="mt-0.5 truncate text-[11px] text-zinc-400">
                         {item.description}
                       </p>
                     </div>
@@ -1084,7 +1084,7 @@ function AdminIndex() {
                 type="button"
                 onClick={() => void checkSystem(true)}
                 disabled={isCheckingSystem}
-                className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900"
+                className="flex size-8 items-center justify-center rounded-lg border border-white/[0.08] bg-[#161226] text-zinc-400 transition-colors hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-zinc-100 cursor-pointer"
                 title="Verificar conectividade agora"
                 aria-label="Atualizar estado do sistema"
               >
@@ -1099,14 +1099,14 @@ function AdminIndex() {
           >
             <div
               id="system-status"
-              className="scroll-mt-24 divide-y divide-slate-200"
+              className="scroll-mt-24 divide-y divide-white/[0.06]"
             >
               <div className="flex items-center justify-between gap-3 pb-3">
                 <div className="min-w-0">
-                  <span className="block text-xs font-semibold text-slate-900">
+                  <span className="block text-xs font-semibold text-zinc-100">
                     Conexão PostgreSQL
                   </span>
-                  <span className="studio-mono mt-0.5 block truncate text-[11px] text-slate-500">
+                  <span className="studio-mono mt-0.5 block truncate text-[11px] text-zinc-400">
                     {systemStatus?.dbSource === "neon"
                       ? "Neon Cloud Database (Pooled)"
                       : "PostgreSQL Ativo"}
@@ -1116,8 +1116,8 @@ function AdminIndex() {
                   className={cn(
                     "studio-mono inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold",
                     systemStatus?.connected
-                      ? "text-emerald-700"
-                      : "text-rose-700",
+                      ? "text-emerald-400"
+                      : "text-rose-400",
                   )}
                 >
                   {systemStatus?.connected ? (
@@ -1134,10 +1134,10 @@ function AdminIndex() {
               {systemStatus?.connected &&
                 typeof systemStatus.serverAnimesCount === "number" && (
                   <div className="flex items-center justify-between gap-3 py-3 text-xs">
-                    <span className="text-slate-600">
+                    <span className="text-zinc-400">
                       Registros persistidos no servidor
                     </span>
-                    <span className="studio-mono text-[11px] font-semibold text-slate-900">
+                    <span className="studio-mono text-[11px] font-semibold text-zinc-100">
                       {systemStatus.serverAnimesCount} animes ·{" "}
                       {systemStatus.serverPublishedEpisodesCount ?? 0}/
                       {systemStatus.serverEpisodesCount ?? 0} eps pub.
@@ -1147,17 +1147,17 @@ function AdminIndex() {
 
               <div className="flex items-center justify-between gap-3 py-3 text-xs">
                 <div>
-                  <span className="block font-semibold text-slate-900">
+                  <span className="block font-semibold text-zinc-100">
                     Fila Outbox (Escritas Pendentes)
                   </span>
-                  <span className="mt-0.5 block text-[11px] text-slate-500">
+                  <span className="mt-0.5 block text-[11px] text-zinc-400">
                     Alterações locais aguardando confirmação remota
                   </span>
                 </div>
                 <span
                   className={cn(
                     "studio-mono font-semibold",
-                    pendingCount > 0 ? "text-amber-700" : "text-emerald-700",
+                    pendingCount > 0 ? "text-amber-400" : "text-emerald-400",
                   )}
                 >
                   {pendingCount} pendência(s)
@@ -1166,17 +1166,17 @@ function AdminIndex() {
 
               <div className="flex items-center justify-between gap-3 pt-3 text-xs">
                 <div>
-                  <span className="block font-semibold text-slate-900">
+                  <span className="block font-semibold text-zinc-100">
                     Conflitos de Sincronização
                   </span>
-                  <span className="mt-0.5 block text-[11px] text-slate-500">
+                  <span className="mt-0.5 block text-[11px] text-zinc-400">
                     Operações rejeitadas por validação no servidor
                   </span>
                 </div>
                 <span
                   className={cn(
                     "studio-mono font-semibold",
-                    conflictCount > 0 ? "text-rose-700" : "text-slate-500",
+                    conflictCount > 0 ? "text-rose-400" : "text-zinc-400",
                   )}
                 >
                   {conflictCount} conflito(s)
@@ -1185,15 +1185,15 @@ function AdminIndex() {
             </div>
 
             {conflictOps.length > 0 && (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs">
-                <p className="font-semibold text-rose-800">
+              <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs">
+                <p className="font-semibold text-rose-300">
                   Operações em conflito
                 </p>
                 <ul className="mt-1.5 space-y-1.5">
                   {conflictOps.slice(0, 3).map((op) => (
                     <li
                       key={op.id}
-                      className="flex items-center justify-between gap-2 text-[11px] text-rose-700"
+                      className="flex items-center justify-between gap-2 text-[11px] text-rose-200"
                     >
                       <span className="truncate">
                         {op.animeId} · T{op.seasonNumber} E
@@ -1207,7 +1207,7 @@ function AdminIndex() {
                           refreshOutbox();
                           toast.info("Conflito descartado da fila local.");
                         }}
-                        className="shrink-0 text-[11px] font-semibold text-rose-800 underline hover:text-rose-950"
+                        className="shrink-0 text-[11px] font-semibold text-rose-300 underline hover:text-white cursor-pointer"
                       >
                         Descartar
                       </button>
@@ -1217,14 +1217,14 @@ function AdminIndex() {
               </div>
             )}
 
-            <div className="mt-4 border-t border-slate-200 pt-3.5">
+            <div className="mt-4 border-t border-white/[0.08] pt-3.5">
               {pendingCount > 0 ? (
                 <Button
                   type="button"
                   size="sm"
                   disabled={isSyncingOutbox}
                   onClick={handleManualSync}
-                  className="h-9 w-full border border-amber-300 bg-amber-50 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                  className="h-9 w-full border border-amber-500/30 bg-amber-500/15 text-xs font-semibold text-amber-300 hover:bg-amber-500/25"
                 >
                   <RefreshCw
                     className={cn(
@@ -1239,12 +1239,12 @@ function AdminIndex() {
                   </span>
                 </Button>
               ) : (
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-                  <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
+                  <span className="inline-flex items-center gap-1.5 font-medium text-emerald-400">
                     <CheckCircle2 className="size-3.5" />
                     <span>Catálogo 100% sincronizado</span>
                   </span>
-                  <span className="studio-mono text-[11px] text-slate-500">
+                  <span className="studio-mono text-[11px] text-zinc-400">
                     AniList: {catalogStats.anilistLinkedAnimes} · Dublados:{" "}
                     {catalogStats.dubbedAnimes}
                   </span>
@@ -1262,7 +1262,7 @@ function AdminIndex() {
           description="Histórico real de alterações no acervo e fila local."
           icon={<Clock className="size-4" />}
           right={
-            <span className="studio-mono text-xs text-slate-500">
+            <span className="studio-mono text-xs text-zinc-400">
               {recentActivities.length > 0
                 ? `${recentActivities.length} registros`
                 : "Vazio"}
@@ -1271,25 +1271,25 @@ function AdminIndex() {
         >
           {recentActivities.length === 0 ? (
             <div className="space-y-2.5 py-12 text-center">
-              <div className="mx-auto grid size-10 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
+              <div className="mx-auto grid size-10 place-items-center rounded-xl border border-white/[0.08] bg-[#161226] text-zinc-400">
                 <Activity className="size-5" />
               </div>
-              <p className="text-xs font-semibold text-slate-900">
+              <p className="text-xs font-semibold text-zinc-100">
                 Nenhuma atividade recente registrada
               </p>
-              <p className="mx-auto max-w-xs text-xs leading-relaxed text-slate-500">
+              <p className="mx-auto max-w-xs text-xs leading-relaxed text-zinc-400">
                 As atualizações de animes, episódios e operações de sincronização
                 aparecerão aqui conforme forem realizadas.
               </p>
             </div>
           ) : (
-            <ul className="divide-y divide-slate-200">
+            <ul className="divide-y divide-white/[0.06]">
               {recentActivities.map((act) => (
                 <li
                   key={act.id}
                   className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
                 >
-                  <div className="h-11 w-8 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-100">
+                  <div className="h-11 w-8 shrink-0 overflow-hidden rounded border border-white/[0.08] bg-[#161226]">
                     {act.cover ? (
                       <img
                         src={act.cover}
@@ -1298,35 +1298,35 @@ function AdminIndex() {
                         loading="lazy"
                       />
                     ) : (
-                      <div className="grid size-full place-items-center text-[10px] font-bold text-slate-400">
+                      <div className="grid size-full place-items-center text-[10px] font-bold text-zinc-500">
                         光
                       </div>
                     )}
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold leading-snug text-slate-900">
+                    <p className="truncate text-xs font-semibold leading-snug text-zinc-100">
                       {act.title}
                     </p>
-                    <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                    <p className="mt-0.5 truncate text-[11px] text-zinc-400">
                       {act.details}
                     </p>
                   </div>
 
                   <div className="shrink-0 text-right">
-                    <span className="studio-mono block text-[10px] text-slate-500">
+                    <span className="studio-mono block text-[10px] text-zinc-400">
                       {formatTime(act.timestamp)}
                     </span>
                     {act.type === "outbox-conflict" ? (
-                      <span className="studio-mono inline-block text-[10px] font-semibold text-rose-700">
+                      <span className="studio-mono inline-block text-[10px] font-semibold text-rose-400">
                         Conflito
                       </span>
                     ) : act.type === "outbox-pending" ? (
-                      <span className="studio-mono inline-block text-[10px] font-semibold text-amber-700">
+                      <span className="studio-mono inline-block text-[10px] font-semibold text-amber-400">
                         Na fila
                       </span>
                     ) : (
-                      <span className="studio-mono inline-block text-[10px] font-semibold text-blue-700">
+                      <span className="studio-mono inline-block text-[10px] font-semibold text-purple-400">
                         Salvo
                       </span>
                     )}
@@ -1336,11 +1336,11 @@ function AdminIndex() {
             </ul>
           )}
 
-          <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3.5 text-[11px] text-slate-500">
+          <div className="mt-4 flex items-center justify-between border-t border-white/[0.08] pt-3.5 text-[11px] text-zinc-400">
             <span>Fonte: IndexedDB &amp; Outbox</span>
             <Link
               to="/admin/quick-update"
-              className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline"
+              className="inline-flex items-center gap-1 font-semibold text-purple-400 hover:text-purple-300 hover:underline"
             >
               <span>Atualização Rápida</span>
               <ArrowRight className="size-3" />
@@ -1353,16 +1353,16 @@ function AdminIndex() {
       <section id="catalog" className="scroll-mt-20 space-y-4 pt-2">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-baseline gap-3">
-            <h2 className="font-display text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+            <h2 className="font-display text-xl font-bold tracking-tight text-zinc-100 sm:text-2xl">
               Catálogo de Títulos
             </h2>
-            <span className="studio-mono text-xs font-semibold text-slate-500">
+            <span className="studio-mono text-xs font-semibold text-zinc-400">
               {filtered.length} de {animes.length}
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <div className="flex items-center gap-1.5 text-xs text-zinc-400">
               <span className="hidden sm:inline">Exibir:</span>
               <select
                 value={itemsPerPage}
@@ -1376,15 +1376,15 @@ function AdminIndex() {
               </select>
             </div>
 
-            <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
+            <div className="flex items-center rounded-lg border border-white/[0.08] bg-[#161226] p-0.5">
               <button
                 type="button"
                 onClick={() => setViewMode("grid")}
                 className={cn(
-                  "flex size-8 items-center justify-center rounded-md transition-colors",
+                  "flex size-8 items-center justify-center rounded-md transition-colors cursor-pointer",
                   viewMode === "grid"
-                    ? "bg-blue-700 text-white"
-                    : "text-slate-500 hover:text-slate-900",
+                    ? "bg-purple-600 text-white"
+                    : "text-zinc-400 hover:text-zinc-100",
                 )}
                 title="Visualização em grade de cards"
                 aria-label="Ver em grade"
@@ -1395,10 +1395,10 @@ function AdminIndex() {
                 type="button"
                 onClick={() => setViewMode("table")}
                 className={cn(
-                  "flex size-8 items-center justify-center rounded-md transition-colors",
+                  "flex size-8 items-center justify-center rounded-md transition-colors cursor-pointer",
                   viewMode === "table"
-                    ? "bg-blue-700 text-white"
-                    : "text-slate-500 hover:text-slate-900",
+                    ? "bg-purple-600 text-white"
+                    : "text-zinc-400 hover:text-zinc-100",
                 )}
                 title="Visualização em tabela detalhada"
                 aria-label="Ver em tabela"
@@ -1413,7 +1413,7 @@ function AdminIndex() {
         <div className="studio-panel space-y-3 rounded-xl p-4">
           <div className="flex flex-col gap-2.5 sm:flex-row">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-500" />
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
@@ -1424,7 +1424,7 @@ function AdminIndex() {
                 <button
                   type="button"
                   onClick={() => setQ("")}
-                  className="absolute top-1/2 right-2.5 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700"
+                  className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded p-1 text-zinc-400 hover:bg-white/[0.06] hover:text-white cursor-pointer"
                   aria-label="Limpar pesquisa"
                 >
                   <X className="size-3.5" />
@@ -1433,7 +1433,7 @@ function AdminIndex() {
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
-              <ArrowUpDown className="hidden size-4 shrink-0 text-blue-700 sm:block" />
+              <ArrowUpDown className="hidden size-4 shrink-0 text-purple-400 sm:block" />
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortOption)}
@@ -1452,8 +1452,8 @@ function AdminIndex() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
-            <span className="mr-1 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+          <div className="flex flex-wrap items-center gap-2 border-t border-white/[0.08] pt-3">
+            <span className="mr-1 flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400">
               <Filter className="size-3" />
               Filtros:
             </span>
@@ -1521,7 +1521,7 @@ function AdminIndex() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="ml-auto flex h-9 items-center gap-1 rounded-md px-2.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                className="ml-auto flex h-9 items-center gap-1 rounded-md px-2.5 text-xs font-semibold text-purple-300 hover:bg-purple-500/15 hover:text-white cursor-pointer"
               >
                 <X className="size-3.5" />
                 Limpar filtros
@@ -1539,11 +1539,11 @@ function AdminIndex() {
                 className="studio-panel h-44 animate-pulse rounded-xl p-3.5"
               >
                 <div className="flex gap-3">
-                  <div className="h-28 w-20 rounded-lg bg-slate-200" />
+                  <div className="h-28 w-20 rounded-lg bg-white/[0.08]" />
                   <div className="flex-1 space-y-2.5 py-1">
-                    <div className="h-4 w-3/4 rounded bg-slate-200" />
-                    <div className="h-3 w-1/2 rounded bg-slate-100" />
-                    <div className="h-3 w-1/3 rounded bg-slate-100" />
+                    <div className="h-4 w-3/4 rounded bg-white/[0.08]" />
+                    <div className="h-3 w-1/2 rounded bg-white/[0.05]" />
+                    <div className="h-3 w-1/3 rounded bg-white/[0.05]" />
                   </div>
                 </div>
               </div>
@@ -1551,14 +1551,14 @@ function AdminIndex() {
           </div>
         ) : animes.length === 0 ? (
           <StudioEmptyState
-            icon={<Film className="size-6 text-blue-700" />}
+            icon={<Film className="size-6 text-purple-400" />}
             title="Nenhum título no catálogo local"
             description="Seu catálogo ainda está vazio neste navegador. Você pode cadastrar um título novo, importar do AniList ou restaurar um backup JSON."
             action={
               <>
                 <Button
                   asChild
-                  className="h-10 bg-blue-700 px-4 text-xs font-semibold text-white hover:bg-blue-800"
+                  className="h-10 bg-purple-600 px-4 text-xs font-semibold text-white hover:bg-purple-700"
                 >
                   <Link to="/admin/$id" params={{ id: "new" }}>
                     <Plus className="mr-1.5 size-3.5" />
@@ -1572,9 +1572,9 @@ function AdminIndex() {
                     setToolsOpen(true);
                     setToolsTab("anilist");
                   }}
-                  className="h-10 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
+                  className="h-10 border-white/[0.08] bg-[#161226] text-xs text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
                 >
-                  <Sparkles className="mr-1.5 size-3.5 text-blue-700" />
+                  <Sparkles className="mr-1.5 size-3.5 text-purple-400" />
                   Importar do AniList
                 </Button>
               </>
@@ -1591,7 +1591,7 @@ function AdminIndex() {
                 variant="outline"
                 size="sm"
                 onClick={clearFilters}
-                className="h-9 border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                className="h-9 border-purple-500/30 bg-purple-500/15 text-xs font-semibold text-purple-200 hover:bg-purple-600 hover:text-white"
               >
                 Limpar busca e filtros
               </Button>
@@ -1608,10 +1608,10 @@ function AdminIndex() {
               return (
                 <article
                   key={a.id}
-                  className="studio-panel group flex flex-col justify-between rounded-xl p-3.5 transition-colors hover:border-blue-300"
+                  className="studio-panel group flex flex-col justify-between rounded-xl p-3.5 transition-colors hover:border-purple-500/40"
                 >
                   <div className="flex gap-3.5">
-                    <div className="relative h-28 w-20 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                    <div className="relative h-28 w-20 shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-[#161226]">
                       {a.cover ? (
                         <img
                           src={a.cover}
@@ -1620,12 +1620,12 @@ function AdminIndex() {
                           loading="lazy"
                         />
                       ) : (
-                        <div className="grid size-full place-items-center bg-blue-50 font-display text-sm font-bold text-blue-700">
+                        <div className="grid size-full place-items-center bg-purple-500/15 font-display text-sm font-bold text-purple-300">
                           {title.slice(0, 2).toUpperCase()}
                         </div>
                       )}
 
-                      <span className="studio-mono absolute right-1 bottom-1 rounded bg-slate-900/85 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                      <span className="studio-mono absolute right-1 bottom-1 rounded border border-white/10 bg-black/80 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-100">
                         {episodesCount} ep
                       </span>
                     </div>
@@ -1634,42 +1634,42 @@ function AdminIndex() {
                       <div>
                         <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-bold tracking-wider uppercase">
                           {a.hidden && (
-                            <span className="text-rose-700">Oculto</span>
+                            <span className="text-rose-400">Oculto</span>
                           )}
                           {isDub && (
-                            <span className="text-teal-700">Dublado</span>
+                            <span className="text-teal-400">Dublado</span>
                           )}
-                          <span className="studio-mono text-slate-500">
+                          <span className="studio-mono text-zinc-400">
                             {a.format || "TV"}
                           </span>
                         </div>
 
                         <h3
-                          className="line-clamp-2 text-sm font-semibold leading-snug text-slate-900 transition-colors group-hover:text-blue-700"
+                          className="line-clamp-2 text-sm font-semibold leading-snug text-zinc-100 transition-colors group-hover:text-purple-300"
                           title={title}
                         >
                           {title}
                         </h3>
 
                         {a.titleRomaji && a.titleEnglish && (
-                          <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                          <p className="mt-0.5 truncate text-[11px] text-zinc-400">
                             {a.titleRomaji}
                           </p>
                         )}
                       </div>
 
-                      <p className="studio-tabular pt-2 text-[11px] text-slate-500">
+                      <p className="studio-tabular pt-2 text-[11px] text-zinc-400">
                         {a.year || "—"} · {a.seasons.length} temp.
                         {a.anilistId ? ` · #${a.anilistId}` : " · Original"}
                       </p>
                     </div>
                   </div>
 
-                  <div className="mt-3.5 flex items-center gap-1.5 border-t border-slate-200 pt-2.5">
+                  <div className="mt-3.5 flex items-center gap-1.5 border-t border-white/[0.08] pt-2.5">
                     <Button
                       asChild
                       size="sm"
-                      className="h-9 flex-1 border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700 hover:bg-blue-700 hover:text-white"
+                      className="h-9 flex-1 border border-purple-500/30 bg-purple-500/15 text-xs font-semibold text-purple-200 hover:bg-purple-600 hover:text-white"
                     >
                       <Link
                         to="/admin/$id"
@@ -1695,7 +1695,7 @@ function AdminIndex() {
                       variant="outline"
                       onClick={() => duplicateAsDubbed(a)}
                       title="Criar cadastro independente para a versão dublada deste anime"
-                      className="size-9 border-slate-200 bg-white p-0 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      className="size-9 border-white/[0.08] bg-[#161226] p-0 text-zinc-400 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-zinc-100"
                     >
                       <Copy className="size-3.5" />
                       <span className="sr-only">Versão Dublada</span>
@@ -1718,10 +1718,10 @@ function AdminIndex() {
                           ? "Tornar anime visível"
                           : "Ocultar do site público"
                       }
-                      className="size-9 border-slate-200 bg-white p-0 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      className="size-9 border-white/[0.08] bg-[#161226] p-0 text-zinc-400 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-zinc-100"
                     >
                       {a.hidden ? (
-                        <EyeOff className="size-3.5 text-amber-600" />
+                        <EyeOff className="size-3.5 text-amber-400" />
                       ) : (
                         <Eye className="size-3.5" />
                       )}
@@ -1734,7 +1734,7 @@ function AdminIndex() {
                       variant="ghost"
                       onClick={() => setPendingDelete(a.id)}
                       title="Excluir anime"
-                      className="size-9 p-0 text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                      className="size-9 p-0 text-zinc-400 hover:bg-rose-500/15 hover:text-rose-300"
                     >
                       <Trash2 className="size-3.5" />
                       <span className="sr-only">Excluir</span>
@@ -1748,7 +1748,7 @@ function AdminIndex() {
           <div className="studio-panel overflow-x-auto rounded-xl">
             <table className="w-full border-collapse text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
+                <tr className="border-b border-white/[0.08] bg-[#161226] text-[11px] font-semibold tracking-wider text-zinc-400 uppercase">
                   <th className="w-14 px-4 py-3">Capa</th>
                   <th className="px-4 py-3">Título</th>
                   <th className="hidden px-4 py-3 sm:table-cell">
@@ -1762,7 +1762,7 @@ function AdminIndex() {
                   <th className="px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 bg-white">
+              <tbody className="divide-y divide-white/[0.06] bg-[#12101e]">
                 {paginatedAnimes.map((a) => {
                   const meta = catalogIndex.metaById.get(a.id);
                   const episodesCount = meta?.episodesCount ?? 0;
@@ -1772,10 +1772,10 @@ function AdminIndex() {
                   return (
                     <tr
                       key={a.id}
-                      className="transition-colors hover:bg-slate-50/80"
+                      className="transition-colors hover:bg-[#1a172e]/70"
                     >
                       <td className="px-4 py-2.5">
-                        <div className="h-12 w-9 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-100">
+                        <div className="h-12 w-9 shrink-0 overflow-hidden rounded border border-white/[0.08] bg-[#161226]">
                           {a.cover ? (
                             <img
                               src={a.cover}
@@ -1784,7 +1784,7 @@ function AdminIndex() {
                               loading="lazy"
                             />
                           ) : (
-                            <div className="grid size-full place-items-center text-[10px] text-slate-400">
+                            <div className="grid size-full place-items-center text-[10px] text-zinc-500">
                               —
                             </div>
                           )}
@@ -1792,35 +1792,35 @@ function AdminIndex() {
                       </td>
 
                       <td className="min-w-44 px-4 py-2.5">
-                        <p className="line-clamp-1 font-semibold text-slate-900">
+                        <p className="line-clamp-1 font-semibold text-zinc-100">
                           {title}
                         </p>
                         <div className="mt-0.5 flex items-center gap-1.5">
                           {isDub && (
-                            <span className="studio-mono text-[10px] font-semibold text-teal-700">
+                            <span className="studio-mono text-[10px] font-semibold text-teal-400">
                               [Dublado]
                             </span>
                           )}
                           {a.titleRomaji && (
-                            <span className="max-w-xs truncate text-[11px] text-slate-500">
+                            <span className="max-w-xs truncate text-[11px] text-zinc-400">
                               {a.titleRomaji}
                             </span>
                           )}
                         </div>
                       </td>
 
-                      <td className="studio-tabular hidden px-4 py-2.5 text-slate-600 sm:table-cell">
+                      <td className="studio-tabular hidden px-4 py-2.5 text-zinc-300 sm:table-cell">
                         {a.year || "—"} · {a.format || "TV"}
                       </td>
 
-                      <td className="studio-tabular hidden px-4 py-2.5 text-slate-600 md:table-cell">
+                      <td className="studio-tabular hidden px-4 py-2.5 text-zinc-300 md:table-cell">
                         {a.seasons.length} temp. ·{" "}
-                        <span className="font-semibold text-slate-900">
+                        <span className="font-semibold text-zinc-100">
                           {episodesCount} eps
                         </span>
                       </td>
 
-                      <td className="studio-mono hidden px-4 py-2.5 text-[11px] text-slate-500 lg:table-cell">
+                      <td className="studio-mono hidden px-4 py-2.5 text-[11px] text-zinc-400 lg:table-cell">
                         {a.anilistId
                           ? `AniList #${a.anilistId}`
                           : "Original local"}
@@ -1828,11 +1828,11 @@ function AdminIndex() {
 
                       <td className="px-4 py-2.5 text-center">
                         {a.hidden ? (
-                          <span className="studio-mono inline-flex rounded border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                          <span className="studio-mono inline-flex rounded border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-300">
                             Oculto
                           </span>
                         ) : (
-                          <span className="studio-mono inline-flex rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                          <span className="studio-mono inline-flex rounded border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
                             Ativo
                           </span>
                         )}
@@ -1843,7 +1843,7 @@ function AdminIndex() {
                           <Button
                             asChild
                             size="sm"
-                            className="h-8 border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-700 hover:text-white"
+                            className="h-8 border border-purple-500/30 bg-purple-500/15 px-3 text-xs font-semibold text-purple-200 hover:bg-purple-600 hover:text-white"
                           >
                             <Link
                               to="/admin/$id"
@@ -1869,7 +1869,7 @@ function AdminIndex() {
                             variant="ghost"
                             onClick={() => duplicateAsDubbed(a)}
                             title="Versão Dublada"
-                            className="size-8 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                            className="size-8 text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100"
                           >
                             <Copy className="size-3.5" />
                           </Button>
@@ -1880,10 +1880,10 @@ function AdminIndex() {
                             variant="ghost"
                             onClick={() => toggleHidden(a.id)}
                             title={a.hidden ? "Exibir" : "Ocultar"}
-                            className="size-8 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                            className="size-8 text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100"
                           >
                             {a.hidden ? (
-                              <EyeOff className="size-3.5 text-amber-600" />
+                              <EyeOff className="size-3.5 text-amber-400" />
                             ) : (
                               <Eye className="size-3.5" />
                             )}
@@ -1895,7 +1895,7 @@ function AdminIndex() {
                             variant="ghost"
                             onClick={() => setPendingDelete(a.id)}
                             title="Excluir anime"
-                            className="size-8 text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                            className="size-8 text-zinc-400 hover:bg-rose-500/15 hover:text-rose-300"
                           >
                             <Trash2 className="size-3.5" />
                           </Button>
@@ -1911,10 +1911,10 @@ function AdminIndex() {
 
         {/* Paginação */}
         {totalPages > 1 && (
-          <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-200 pt-4 text-xs text-slate-600 sm:flex-row">
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-white/[0.08] pt-4 text-xs text-zinc-400 sm:flex-row">
             <span className="studio-tabular">
-              Página <strong className="text-slate-900">{currentPage}</strong>{" "}
-              de <strong className="text-slate-900">{totalPages}</strong> (
+              Página <strong className="text-zinc-100">{currentPage}</strong>{" "}
+              de <strong className="text-zinc-100">{totalPages}</strong> (
               {filtered.length} animes filtrados)
             </span>
 
@@ -1925,7 +1925,7 @@ function AdminIndex() {
                 variant="outline"
                 disabled={currentPage <= 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
+                className="h-9 border-white/[0.08] bg-[#161226] text-xs text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
               >
                 <ChevronLeft className="mr-1 size-3.5" />
                 Anterior
@@ -1943,10 +1943,10 @@ function AdminIndex() {
                       type="button"
                       onClick={() => setCurrentPage(pageNum)}
                       className={cn(
-                        "studio-mono size-9 rounded-md text-xs font-semibold transition-colors",
+                        "studio-mono size-9 rounded-md text-xs font-semibold transition-colors cursor-pointer",
                         currentPage === pageNum
-                          ? "bg-blue-700 text-white"
-                          : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+                          ? "bg-purple-600 text-white"
+                          : "border border-white/[0.08] bg-[#161226] text-zinc-300 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white",
                       )}
                     >
                       {pageNum}
@@ -1963,7 +1963,7 @@ function AdminIndex() {
                 onClick={() =>
                   setCurrentPage((p) => Math.min(totalPages, p + 1))
                 }
-                className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
+                className="h-9 border-white/[0.08] bg-[#161226] text-xs text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
               >
                 Próxima
                 <ChevronRight className="ml-1 size-3.5" />
@@ -1978,16 +1978,16 @@ function AdminIndex() {
         open={Boolean(pendingDelete)}
         onOpenChange={() => setPendingDelete(null)}
       >
-        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-md">
+        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-white/[0.08] bg-[#12101e] text-zinc-100 shadow-2xl sm:max-w-md">
           <div className="flex items-start gap-3.5">
-            <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-rose-500/30 bg-rose-500/15 text-rose-400">
               <AlertTriangle className="size-5" />
             </div>
             <div>
-              <DialogTitle className="font-display text-lg font-bold text-slate-900">
+              <DialogTitle className="font-display text-lg font-bold text-zinc-100">
                 Excluir título do catálogo?
               </DialogTitle>
-              <DialogDescription className="mt-1.5 text-xs leading-relaxed text-slate-600">
+              <DialogDescription className="mt-1.5 text-xs leading-relaxed text-zinc-400">
                 Todas as temporadas e episódios associados a este anime serão
                 removidos do catálogo no servidor e neste dispositivo. A base
                 pública do AniList continuará inalterada.
@@ -1995,12 +1995,12 @@ function AdminIndex() {
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end gap-2 border-t border-slate-200 pt-3">
+          <div className="mt-6 flex justify-end gap-2 border-t border-white/[0.08] pt-3">
             <Button
               type="button"
               variant="outline"
               onClick={() => setPendingDelete(null)}
-              className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
+              className="h-9 border-white/[0.08] bg-[#161226] text-xs text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
             >
               Cancelar
             </Button>

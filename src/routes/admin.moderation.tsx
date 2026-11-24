@@ -488,11 +488,11 @@ function AdminModeration() {
         backLabel="Voltar ao Painel"
         status={
           summary.reportedComments > 0 ? (
-            <span className="studio-tabular font-semibold text-amber-700">
+            <span className="studio-tabular font-semibold text-amber-400">
               {summary.reportedComments} comentário(s) com denúncia pendente
             </span>
           ) : (
-            <span className="font-semibold text-emerald-700">
+            <span className="font-semibold text-emerald-400">
               Sem denúncias pendentes
             </span>
           )
@@ -503,7 +503,7 @@ function AdminModeration() {
               type="button"
               variant="outline"
               onClick={() => setUserLookupOpen(true)}
-              className="h-9 gap-1.5 border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+              className="h-9 gap-1.5 border-rose-500/30 bg-rose-500/15 px-3 text-xs font-semibold text-rose-300 hover:bg-rose-500/25"
             >
               <Ban className="size-3.5" />
               Aplicar Banimento
@@ -513,7 +513,7 @@ function AdminModeration() {
               variant="outline"
               onClick={handleRefreshAll}
               disabled={isRefreshing}
-              className="h-9 gap-1.5 border-slate-300 bg-white px-3.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              className="h-9 gap-1.5 border-white/[0.08] bg-[#161226] px-3.5 text-xs font-semibold text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
             >
               <RefreshCw
                 className={cn("size-3.5", isRefreshing && "animate-spin")}
@@ -556,11 +556,11 @@ function AdminModeration() {
       />
 
       {/* Navegação por Abas */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-3">
         <div
           role="tablist"
           aria-label="Seções de moderação"
-          className="inline-flex flex-wrap gap-1.5 rounded-xl border border-slate-200 bg-white p-1"
+          className="inline-flex flex-wrap gap-1.5 rounded-xl border border-white/[0.08] bg-[#12101e] p-1"
         >
           {(
             [
@@ -599,10 +599,10 @@ function AdminModeration() {
                   setPage(1);
                 }}
                 className={cn(
-                  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors",
+                  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors cursor-pointer",
                   selected
-                    ? "bg-blue-700 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "text-zinc-400 hover:bg-[#1a172e] hover:text-zinc-100",
                 )}
               >
                 <Icon className="size-3.5 shrink-0" />
@@ -613,10 +613,10 @@ function AdminModeration() {
                     selected
                       ? "bg-white/20 text-white"
                       : "alert" in tab && tab.alert
-                        ? "bg-amber-100 text-amber-800"
+                        ? "bg-amber-500/20 text-amber-300"
                         : "danger" in tab && tab.danger
-                          ? "bg-rose-100 text-rose-800"
-                          : "bg-slate-100 text-slate-600",
+                          ? "bg-rose-500/20 text-rose-300"
+                          : "bg-white/[0.08] text-zinc-300",
                   )}
                 >
                   {tab.badge}
@@ -633,7 +633,7 @@ function AdminModeration() {
           <StudioPanel bodyClassName="p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="relative flex-1">
-                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-500" />
                 <Input
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
@@ -645,7 +645,7 @@ function AdminModeration() {
                   <button
                     type="button"
                     onClick={() => setSearchInput("")}
-                    className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded p-1 text-zinc-400 hover:bg-white/[0.06] hover:text-white cursor-pointer"
                     aria-label="Limpar busca"
                   >
                     <X className="size-3.5" />
@@ -672,10 +672,10 @@ function AdminModeration() {
                         setPage(1);
                       }}
                       className={cn(
-                        "h-8 rounded-lg border px-3 text-xs font-semibold transition-colors",
+                        "h-8 rounded-lg border px-3 text-xs font-semibold transition-colors cursor-pointer",
                         commentFilter === chip.id
-                          ? "border-blue-600 bg-blue-50 text-blue-700"
-                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+                          ? "border-purple-500/40 bg-purple-500/20 text-purple-200"
+                          : "border-white/[0.08] bg-[#161226] text-zinc-400 hover:border-purple-500/30 hover:bg-[#1f1a36] hover:text-zinc-100",
                       )}
                     >
                       {chip.label}
@@ -692,9 +692,9 @@ function AdminModeration() {
             <StudioEmptyState
               icon={
                 activeTab === "reports" ? (
-                  <Check className="size-6 text-emerald-600" />
+                  <Check className="size-6 text-emerald-400" />
                 ) : (
-                  <MessageSquare className="size-6 text-slate-400" />
+                  <MessageSquare className="size-6 text-zinc-400" />
                 )
               }
               title={
@@ -721,7 +721,7 @@ function AdminModeration() {
                       setCommentFilter("all");
                       setPage(1);
                     }}
-                    className="h-9 border-slate-300 bg-white text-xs text-slate-700"
+                    className="h-9 border-white/[0.08] bg-[#161226] text-xs text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
                   >
                     Limpar filtros
                   </Button>
@@ -762,10 +762,10 @@ function AdminModeration() {
               </div>
 
               {totalPages > 1 && (
-                <div className="studio-panel flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 text-xs text-slate-600">
+                <div className="studio-panel flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 text-xs text-zinc-400">
                   <span className="studio-tabular">
-                    Mostrando <strong className="text-slate-900">{comments.length}</strong>{" "}
-                    de <strong className="text-slate-900">{totalFiltered}</strong>{" "}
+                    Mostrando <strong className="text-zinc-100">{comments.length}</strong>{" "}
+                    de <strong className="text-zinc-100">{totalFiltered}</strong>{" "}
                     comentários
                   </span>
                   <div className="flex items-center gap-1.5">
@@ -775,12 +775,12 @@ function AdminModeration() {
                       size="sm"
                       disabled={page <= 1 || loadingComments}
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      className="size-8 border-slate-300 bg-white p-0 text-slate-700 hover:bg-slate-50"
+                      className="size-8 border-white/[0.08] bg-[#161226] p-0 text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
                       aria-label="Página anterior"
                     >
                       <ChevronLeft className="size-4" />
                     </Button>
-                    <span className="studio-mono px-2 text-xs font-semibold text-slate-700">
+                    <span className="studio-mono px-2 text-xs font-semibold text-zinc-200">
                       {page} / {totalPages}
                     </span>
                     <Button
@@ -789,7 +789,7 @@ function AdminModeration() {
                       size="sm"
                       disabled={page >= totalPages || loadingComments}
                       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      className="size-8 border-slate-300 bg-white p-0 text-slate-700 hover:bg-slate-50"
+                      className="size-8 border-white/[0.08] bg-[#161226] p-0 text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
                       aria-label="Próxima página"
                     >
                       <ChevronRight className="size-4" />
@@ -822,64 +822,64 @@ function AdminModeration() {
             }
           >
             {loadingBans ? (
-              <div className="flex items-center justify-center py-10 text-xs text-slate-500">
-                <Loader2 className="mr-2 size-4 animate-spin text-blue-600" />
+              <div className="flex items-center justify-center py-10 text-xs text-zinc-400">
+                <Loader2 className="mr-2 size-4 animate-spin text-purple-400" />
                 Carregando suspensões ativas...
               </div>
             ) : activeBans.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 py-10 text-center">
-                <ShieldCheck className="size-8 text-emerald-600" />
-                <p className="mt-2 text-sm font-semibold text-slate-900">
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-white/[0.12] bg-[#161226] py-10 text-center">
+                <ShieldCheck className="size-8 text-emerald-400" />
+                <p className="mt-2 text-sm font-semibold text-zinc-100">
                   Nenhum banimento temporário ativo
                 </p>
-                <p className="mt-1 max-w-md text-xs text-slate-500">
+                <p className="mt-1 max-w-md text-xs text-zinc-400">
                   Use "Aplicar Banimento" acima ou o botão de suspensão direto nos
                   cards de comentários para restringir contas temporariamente.
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200">
+              <div className="divide-y divide-white/[0.06] overflow-hidden rounded-lg border border-white/[0.08]">
                 {activeBans.map((ban) => (
                     <div
                       key={ban.banId}
-                      className="flex flex-col gap-4 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-4 bg-[#12101e] p-4 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="min-w-0 flex-1 space-y-1.5">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-semibold text-slate-900">
+                          <span className="text-sm font-semibold text-zinc-100">
                             {ban.userName}
                           </span>
                           {ban.userNick && (
-                            <span className="studio-mono text-xs text-slate-500">
+                            <span className="studio-mono text-xs text-zinc-400">
                               @{ban.userNick}
                             </span>
                           )}
                           <ActiveBanRemainingBadge expiresAt={ban.expiresAt} />
                         </div>
 
-                        <p className="text-xs leading-relaxed text-slate-700">
-                          <span className="font-semibold text-slate-900">
+                        <p className="text-xs leading-relaxed text-zinc-300">
+                          <span className="font-semibold text-zinc-100">
                             Motivo:
                           </span>{" "}
                           {ban.reason}
                         </p>
 
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-zinc-400">
                           <span>
                             Duração:{" "}
-                            <strong className="text-slate-700">
+                            <strong className="text-zinc-200">
                               {ban.durationLabel}
                             </strong>
                           </span>
                           <span>
                             Expira em:{" "}
-                            <strong className="studio-tabular text-slate-700">
+                            <strong className="studio-tabular text-zinc-200">
                               {formatBanDateTime(ban.expiresAt)}
                             </strong>
                           </span>
                           <span>
                             Aplicado por:{" "}
-                            <strong className="text-slate-700">
+                            <strong className="text-zinc-200">
                               {ban.bannedByName || ban.bannedBy}
                             </strong>
                           </span>
@@ -897,7 +897,7 @@ function AdminModeration() {
                               userName: ban.userName,
                             })
                           }
-                          className="h-9 gap-1.5 border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                          className="h-9 gap-1.5 border-emerald-500/30 bg-emerald-500/15 px-3 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25"
                         >
                           <ShieldCheck className="size-3.5" />
                           Remover Banimento
@@ -915,13 +915,13 @@ function AdminModeration() {
             icon={<History className="size-4" />}
           >
             {banHistory.length === 0 ? (
-              <p className="py-6 text-center text-xs text-slate-500">
+              <p className="py-6 text-center text-xs text-zinc-400">
                 Nenhuma ocorrência de banimento registrada até o momento.
               </p>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <div className="overflow-x-auto rounded-lg border border-white/[0.08]">
                 <table className="w-full text-left text-xs">
-                  <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
+                  <thead className="border-b border-white/[0.08] bg-[#161226] text-[11px] font-semibold tracking-wider text-zinc-400 uppercase">
                     <tr>
                       <th className="px-4 py-2.5">Evento</th>
                       <th className="px-4 py-2.5">Usuário</th>
@@ -930,46 +930,46 @@ function AdminModeration() {
                       <th className="px-4 py-2.5 text-right">Data</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
+                  <tbody className="divide-y divide-white/[0.06] bg-[#12101e]">
                     {banHistory.map((entry) => (
-                      <tr key={entry.id} className="hover:bg-slate-50">
+                      <tr key={entry.id} className="hover:bg-[#1a172e]/70">
                         <td className="px-4 py-3">
                           {entry.action === "ban" ? (
-                            <span className="inline-flex items-center rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                            <span className="inline-flex items-center rounded-md border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-300">
                               Banido
                             </span>
                           ) : entry.action === "unban" ? (
-                            <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                            <span className="inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">
                               Revogado
                             </span>
                           ) : (
-                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                            <span className="inline-flex items-center rounded-md border border-white/[0.08] bg-[#161226] px-2 py-0.5 text-[11px] font-semibold text-zinc-300">
                               Expirado
                             </span>
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="font-semibold text-slate-900">
+                          <div className="font-semibold text-zinc-100">
                             {entry.userName || entry.userId}
                           </div>
                           {(entry.userNick || entry.userEmail) && (
-                            <div className="studio-mono text-[11px] text-slate-500">
+                            <div className="studio-mono text-[11px] text-zinc-400">
                               {entry.userNick ? `@${entry.userNick}` : entry.userEmail}
                             </div>
                           )}
                         </td>
-                        <td className="max-w-sm px-4 py-3 text-slate-700">
+                        <td className="max-w-sm px-4 py-3 text-zinc-300">
                           {entry.durationLabel && (
-                            <span className="mr-1.5 font-semibold text-slate-900">
+                            <span className="mr-1.5 font-semibold text-zinc-100">
                               [{entry.durationLabel}]
                             </span>
                           )}
                           <span>{entry.reason}</span>
                         </td>
-                        <td className="px-4 py-3 text-slate-600">
+                        <td className="px-4 py-3 text-zinc-300">
                           {entry.actorName || entry.actorId}
                         </td>
-                        <td className="studio-tabular px-4 py-3 text-right text-slate-500">
+                        <td className="studio-tabular px-4 py-3 text-right text-zinc-400">
                           {formatBanDateTime(entry.createdAt)}
                         </td>
                       </tr>
@@ -991,36 +991,36 @@ function AdminModeration() {
           }
         }}
       >
-        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-md">
-          <DialogTitle className="font-display text-lg font-bold text-slate-900">
+        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-white/[0.08] bg-[#12101e] text-zinc-100 shadow-2xl sm:max-w-md">
+          <DialogTitle className="font-display text-lg font-bold text-zinc-100">
             {pendingAction?.type === "delete"
               ? "Excluir comentário permanentemente?"
               : "Marcar denúncias como resolvidas?"}
           </DialogTitle>
-          <DialogDescription className="text-xs leading-relaxed text-slate-600">
+          <DialogDescription className="text-xs leading-relaxed text-zinc-400">
             {pendingAction?.type === "delete"
               ? "Esta ação removerá o comentário do PostgreSQL juntamente com todas as respostas vinculadas, curtidas e denúncias."
               : "As denúncias pendentes deste comentário serão arquivadas como resolvidas e o comentário permanecerá publicado."}
           </DialogDescription>
 
           {pendingAction && (
-            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-              <p className="font-semibold text-slate-900">
+            <div className="mt-3 rounded-lg border border-white/[0.08] bg-[#161226] p-3 text-xs text-zinc-300">
+              <p className="font-semibold text-zinc-100">
                 {pendingAction.comment.userName}
               </p>
-              <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-slate-600">
+              <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-zinc-300">
                 {pendingAction.comment.content}
               </p>
             </div>
           )}
 
-          <div className="mt-5 flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+          <div className="mt-5 flex flex-col-reverse gap-2 border-t border-white/[0.08] pt-4 sm:flex-row sm:justify-end">
             <Button
               type="button"
               variant="outline"
               disabled={processingAction}
               onClick={() => setPendingAction(null)}
-              className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
+              className="h-9 border-white/[0.08] bg-[#161226] text-xs text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
             >
               Cancelar
             </Button>
@@ -1031,7 +1031,7 @@ function AdminModeration() {
               className={
                 pendingAction?.type === "delete"
                   ? "h-9 bg-rose-600 px-4 text-xs font-semibold text-white hover:bg-rose-700"
-                  : "h-9 bg-blue-700 px-4 text-xs font-semibold text-white hover:bg-blue-800"
+                  : "h-9 bg-purple-600 px-4 text-xs font-semibold text-white hover:bg-purple-700"
               }
             >
               {processingAction ? (
@@ -1058,25 +1058,25 @@ function AdminModeration() {
           }
         }}
       >
-        <DialogContent className="hikari-studio-dialog border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-md">
-          <DialogTitle className="font-display text-lg font-bold text-slate-900">
+        <DialogContent className="hikari-studio-dialog border border-white/[0.08] bg-[#12101e] text-zinc-100 shadow-2xl sm:max-w-md">
+          <DialogTitle className="font-display text-lg font-bold text-zinc-100">
             Remover banimento antecipadamente?
           </DialogTitle>
-          <DialogDescription className="text-xs leading-relaxed text-slate-600">
+          <DialogDescription className="text-xs leading-relaxed text-zinc-400">
             O usuário{" "}
-            <strong className="text-slate-900">
+            <strong className="text-zinc-100">
               {revokeTarget?.userName}
             </strong>{" "}
             recuperará imediatamente o acesso para publicar comentários,
             respostas e anexar imagens.
           </DialogDescription>
-          <div className="mt-4 flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+          <div className="mt-4 flex flex-col-reverse gap-2 border-t border-white/[0.08] pt-4 sm:flex-row sm:justify-end">
             <Button
               type="button"
               variant="outline"
               disabled={revokingBan}
               onClick={() => setRevokeTarget(null)}
-              className="h-9 border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-50"
+              className="h-9 border-white/[0.08] bg-[#161226] text-xs text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
             >
               Cancelar
             </Button>
@@ -1097,18 +1097,18 @@ function AdminModeration() {
         open={userLookupOpen}
         onOpenChange={(open) => setUserLookupOpen(open)}
       >
-        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-lg">
-          <DialogTitle className="font-display text-lg font-bold text-slate-900">
+        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-white/[0.08] bg-[#12101e] text-zinc-100 shadow-2xl sm:max-w-lg">
+          <DialogTitle className="font-display text-lg font-bold text-zinc-100">
             Selecionar Usuário para Banimento
           </DialogTitle>
-          <DialogDescription className="text-xs text-slate-600">
+          <DialogDescription className="text-xs text-zinc-400">
             Pesquise por nome, @nick ou e-mail para aplicar uma suspensão
             temporária de comentários.
           </DialogDescription>
 
           <div className="mt-4 space-y-3">
             <div className="relative">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-500" />
               <Input
                 value={userLookupQuery}
                 onChange={(e) => setUserLookupQuery(e.target.value)}
@@ -1117,14 +1117,14 @@ function AdminModeration() {
               />
             </div>
 
-            <div className="max-h-72 divide-y divide-slate-200 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50">
+            <div className="studio-scroll max-h-72 divide-y divide-white/[0.06] overflow-y-auto rounded-lg border border-white/[0.08] bg-[#161226]">
               {userLookupLoading ? (
-                <div className="flex items-center justify-center py-8 text-xs text-slate-500">
-                  <Loader2 className="mr-2 size-4 animate-spin text-blue-600" />
+                <div className="flex items-center justify-center py-8 text-xs text-zinc-400">
+                  <Loader2 className="mr-2 size-4 animate-spin text-purple-400" />
                   Buscando contas...
                 </div>
               ) : userLookupResults.length === 0 ? (
-                <p className="py-8 text-center text-xs text-slate-500">
+                <p className="py-8 text-center text-xs text-zinc-400">
                   Nenhuma conta encontrada.
                 </p>
               ) : (
@@ -1133,18 +1133,18 @@ function AdminModeration() {
                   return (
                     <div
                       key={u.id}
-                      className="flex items-center justify-between gap-3 bg-white px-3.5 py-2.5"
+                      className="flex items-center justify-between gap-3 bg-[#12101e] px-3.5 py-2.5"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold text-slate-900">
+                        <p className="truncate text-xs font-semibold text-zinc-100">
                           {u.displayName || u.name}
                           {u.activeBan && (
-                            <span className="ml-2 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                            <span className="ml-2 rounded border border-rose-500/30 bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-rose-300">
                               Já banido
                             </span>
                           )}
                         </p>
-                        <p className="studio-mono truncate text-[11px] text-slate-500">
+                        <p className="studio-mono truncate text-[11px] text-zinc-400">
                           {u.nick ? `@${u.nick} · ` : ""}
                           {u.email}
                         </p>
@@ -1162,7 +1162,7 @@ function AdminModeration() {
                             userNick: u.nick,
                           });
                         }}
-                        className="h-8 shrink-0 bg-rose-600 px-3 text-[11px] font-semibold text-white hover:bg-rose-700 disabled:bg-slate-200 disabled:text-slate-500"
+                        className="h-8 shrink-0 bg-rose-600 px-3 text-[11px] font-semibold text-white hover:bg-rose-700 disabled:bg-white/[0.08] disabled:text-zinc-500"
                       >
                         {protectedUser ? "Protegido" : "Selecionar"}
                       </Button>
@@ -1197,12 +1197,12 @@ function AdminModeration() {
           if (!open) setPreviewImageUrl(null);
         }}
       >
-        <DialogContent className="hikari-studio-dialog border border-slate-200 bg-white text-slate-900 shadow-2xl sm:max-w-2xl">
-          <DialogTitle className="font-display text-base font-bold text-slate-900">
+        <DialogContent className="hikari-studio-dialog border border-white/[0.08] bg-[#12101e] text-zinc-100 shadow-2xl sm:max-w-2xl">
+          <DialogTitle className="font-display text-base font-bold text-zinc-100">
             Imagem Anexada ao Comentário
           </DialogTitle>
           {previewImageUrl && (
-            <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+            <div className="mt-2 overflow-hidden rounded-lg border border-white/[0.08] bg-[#0b0914]">
               <img
                 src={previewImageUrl}
                 alt="Anexo do comentário"
@@ -1237,7 +1237,7 @@ function useBanCountdownNowMs(expiresAt: number | null): number {
 function ActiveBanRemainingBadge({ expiresAt }: { expiresAt: number }) {
   const nowMs = useBanCountdownNowMs(expiresAt);
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+    <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-300">
       <Clock className="size-3" />
       Restante: {formatBanRemaining(expiresAt, nowMs)}
     </span>
@@ -1248,7 +1248,7 @@ function AuthorBanStatusBadge({ ban }: { ban: ActiveUserBan }) {
   const nowMs = useBanCountdownNowMs(ban.expiresAt);
   if (ban.expiresAt <= nowMs) return null;
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+    <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-300">
       <Ban className="size-3" />
       Banido · {formatBanRemaining(ban.expiresAt, nowMs)}
     </span>
@@ -1280,36 +1280,36 @@ const CommentModerationCard = memo(function CommentModerationCard({
     <article
       className={cn(
         "studio-panel overflow-hidden rounded-xl transition-colors",
-        comment.pendingReportCount > 0 && "border-amber-300",
+        comment.pendingReportCount > 0 && "border-amber-500/40",
       )}
     >
       {/* Topo do Card: Autor & Contexto */}
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3.5 sm:px-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/[0.08] bg-[#161226]/70 px-4 py-3.5 sm:px-5">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           {comment.userImage ? (
             <img
               src={comment.userImage}
               alt={comment.userName}
-              className="size-10 shrink-0 rounded-lg border border-slate-200 object-cover"
+              className="size-10 shrink-0 rounded-lg border border-white/[0.08] object-cover"
             />
           ) : (
-            <div className="grid size-10 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500">
+            <div className="grid size-10 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#12101e] text-zinc-400">
               <User className="size-5" />
             </div>
           )}
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="truncate text-sm font-semibold text-slate-900">
+              <span className="truncate text-sm font-semibold text-zinc-100">
                 {comment.userName}
               </span>
               {comment.userNick && (
-                <span className="studio-mono text-xs text-slate-500">
+                <span className="studio-mono text-xs text-zinc-400">
                   @{comment.userNick}
                 </span>
               )}
               {comment.userRole === "admin" && (
-                <span className="studio-mono rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 uppercase">
+                <span className="studio-mono rounded border border-purple-500/30 bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-bold text-purple-300 uppercase">
                   Admin
                 </span>
               )}
@@ -1317,13 +1317,13 @@ const CommentModerationCard = memo(function CommentModerationCard({
                 <AuthorBanStatusBadge ban={comment.authorActiveBan} />
               )}
               {comment.parentId && (
-                <span className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                <span className="rounded border border-white/[0.08] bg-[#12101e] px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
                   Resposta
                 </span>
               )}
             </div>
 
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-400">
               <span>{formatDate(comment.createdAt)}</span>
               {comment.userEmail && (
                 <span className="studio-mono truncate">{comment.userEmail}</span>
@@ -1335,14 +1335,14 @@ const CommentModerationCard = memo(function CommentModerationCard({
         {/* Status badges à direita */}
         <div className="flex flex-wrap items-center gap-1.5">
           {comment.isSpoiler && (
-            <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
-              <AlertTriangle className="size-3.5 text-amber-600" />
+            <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] font-semibold text-amber-300">
+              <AlertTriangle className="size-3.5 text-amber-400" />
               Spoiler
             </span>
           )}
           {comment.pendingReportCount > 0 && (
-            <span className="studio-tabular inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
-              <ShieldAlert className="size-3.5 text-rose-600" />
+            <span className="studio-tabular inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/15 px-2.5 py-1 text-[11px] font-semibold text-rose-300">
+              <ShieldAlert className="size-3.5 text-rose-400" />
               {comment.pendingReportCount}{" "}
               {comment.pendingReportCount === 1 ? "denúncia" : "denúncias"}
             </span>
@@ -1354,7 +1354,7 @@ const CommentModerationCard = memo(function CommentModerationCard({
       <div className="space-y-4 p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
           <div className="studio-panel-alt flex-1 rounded-lg p-3.5">
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800">
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-200">
               {comment.content || "(Comentário apenas com imagem anexada)"}
             </p>
           </div>
@@ -1363,7 +1363,7 @@ const CommentModerationCard = memo(function CommentModerationCard({
             <button
               type="button"
               onClick={() => onPreviewImage(comment.imageUrl!)}
-              className="group relative h-24 w-32 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 text-left"
+              className="group relative h-24 w-32 shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-[#161226] text-left cursor-pointer"
               title="Ampliar imagem anexada"
             >
               <img
@@ -1371,7 +1371,7 @@ const CommentModerationCard = memo(function CommentModerationCard({
                 alt="Anexo do comentário"
                 className="size-full object-cover transition-transform group-hover:scale-105"
               />
-              <span className="absolute right-1.5 bottom-1.5 inline-flex items-center gap-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[10px] font-medium text-white">
+              <span className="absolute right-1.5 bottom-1.5 inline-flex items-center gap-1 rounded border border-white/10 bg-black/80 px-1.5 py-0.5 text-[10px] font-medium text-zinc-100">
                 <ImageIcon className="size-2.5" />
                 Ver
               </span>
@@ -1381,13 +1381,13 @@ const CommentModerationCard = memo(function CommentModerationCard({
 
         {/* Motivos das Denúncias */}
         {comment.pendingReportCount > 0 && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[11px] font-bold tracking-wide text-amber-800 uppercase">
+              <span className="text-[11px] font-bold tracking-wide text-amber-300 uppercase">
                 Motivos sinalizados
               </span>
               {comment.firstReportedAt && (
-                <span className="studio-tabular text-[11px] text-amber-700">
+                <span className="studio-tabular text-[11px] text-amber-300/80">
                   Primeira denúncia em {formatDate(comment.firstReportedAt)}
                 </span>
               )}
@@ -1397,13 +1397,13 @@ const CommentModerationCard = memo(function CommentModerationCard({
                 comment.reportReasons.map((reason) => (
                   <span
                     key={reason.value}
-                    className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-white px-2 py-0.5 text-xs font-medium text-amber-900"
+                    className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-[#161226] px-2 py-0.5 text-xs font-medium text-amber-200"
                   >
                     {reason.label}
                   </span>
                 ))
               ) : (
-                <span className="text-xs text-amber-800">
+                <span className="text-xs text-amber-200">
                   Motivo não detalhado
                 </span>
               )}
@@ -1412,21 +1412,21 @@ const CommentModerationCard = memo(function CommentModerationCard({
         )}
 
         {/* Metadados de Anime, Episódio e Engajamento */}
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-600">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-[#161226] px-3.5 py-2.5 text-xs text-zinc-400">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <div className="flex items-center gap-1.5">
-              <Film className="size-3.5 text-slate-400" />
-              <span className="font-medium text-slate-800">
+              <Film className="size-3.5 text-zinc-500" />
+              <span className="font-medium text-zinc-200">
                 {comment.animeTitle || comment.animeId}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <MessageCircle className="size-3.5 text-slate-400" />
+              <MessageCircle className="size-3.5 text-zinc-500" />
               <span className="studio-mono text-[11px]">
                 Ep: {comment.episodeId}
               </span>
             </div>
-            <div className="studio-tabular flex items-center gap-3 text-[11px] text-slate-500">
+            <div className="studio-tabular flex items-center gap-3 text-[11px] text-zinc-400">
               <span className="inline-flex items-center gap-1">
                 <ThumbsUp className="size-3" />
                 {comment.likesCount}
@@ -1444,7 +1444,7 @@ const CommentModerationCard = memo(function CommentModerationCard({
               to="/anime/$id"
               params={{ id: comment.animeId }}
               target="_blank"
-              className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:underline"
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-400 hover:text-purple-300 hover:underline"
             >
               <ExternalLink className="size-3" />
               Ver página do anime
@@ -1453,7 +1453,7 @@ const CommentModerationCard = memo(function CommentModerationCard({
         </div>
 
         {/* Barra de Ações */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.08] pt-3">
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
@@ -1463,8 +1463,8 @@ const CommentModerationCard = memo(function CommentModerationCard({
               className={cn(
                 "h-8 gap-1.5 px-3 text-xs font-medium",
                 comment.isSpoiler
-                  ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+                  ? "border-amber-500/30 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                  : "border-white/[0.08] bg-[#161226] text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white",
               )}
             >
               <Eye className="size-3.5" />
@@ -1477,7 +1477,7 @@ const CommentModerationCard = memo(function CommentModerationCard({
                 variant="outline"
                 size="sm"
                 onClick={onResolveReports}
-                className="h-8 gap-1.5 border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                className="h-8 gap-1.5 border-emerald-500/30 bg-emerald-500/15 px-3 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25"
               >
                 <Check className="size-3.5" />
                 Resolver Denúncias
@@ -1492,7 +1492,7 @@ const CommentModerationCard = memo(function CommentModerationCard({
                 variant="outline"
                 size="sm"
                 onClick={onRevokeAuthorBan}
-                className="h-8 gap-1.5 border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                className="h-8 gap-1.5 border-emerald-500/30 bg-emerald-500/15 px-3 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25"
               >
                 <ShieldCheck className="size-3.5" />
                 Remover Ban
@@ -1509,7 +1509,7 @@ const CommentModerationCard = memo(function CommentModerationCard({
                     ? "Administrador de infraestrutura protegido"
                     : "Suspender usuário temporariamente de comentar"
                 }
-                className="h-8 gap-1.5 border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                className="h-8 gap-1.5 border-rose-500/30 bg-rose-500/15 px-3 text-xs font-semibold text-rose-300 hover:bg-rose-500/25 disabled:border-white/[0.08] disabled:bg-white/[0.05] disabled:text-zinc-500"
               >
                 <Ban className="size-3.5" />
                 {comment.isSystemAdmin ? "Conta Protegida" : "Banir Usuário"}

@@ -818,7 +818,7 @@ export function EditorMetadata({
 
       {/* Modal de Busca e Pré-visualização de Imagens no Kitsu */}
       <Dialog open={kitsuModalOpen} onOpenChange={setKitsuModalOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto w-[min(100%-1.5rem,42rem)] border-white/10 bg-[#0f0d18] p-5 text-[#f4f4f1]">
+        <DialogContent className="hikari-studio-dialog max-h-[90vh] overflow-y-auto w-[min(100%-1.5rem,42rem)] border border-white/[0.08] bg-[#12101e] p-5 text-[#f4f4f1] shadow-2xl">
           <DialogTitle className="flex items-center gap-2 font-display text-lg font-semibold text-white">
             <Search className="size-4 text-violet-400" />
             <span>Buscar Imagens no Kitsu</span>
