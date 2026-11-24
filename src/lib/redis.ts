@@ -4038,3 +4038,61 @@ export async function invalidateRedisHomeTrending(
     );
   }
 }
+
+export interface RedisHealthPingResult {
+  configured: boolean;
+  ok: boolean;
+  status: "ok" | "unconfigured" | "timeout" | "error";
+  latencyMs: number | null;
+  error?: string;
+}
+
+export async function pingRedisHealth(): Promise<RedisHealthPingResult> {
+  if (typeof window !== "undefined" || !redisClient) {
+    return {
+      configured: false,
+      ok: false,
+      status: "unconfigured",
+      latencyMs: null,
+    };
+  }
+
+  const start = performance.now();
+  try {
+    const pong = await withRedisTimeout(redisClient.ping(), "pingRedisHealth");
+    const latencyMs = Math.max(0, Math.round(performance.now() - start));
+    if (typeof pong === "string" && pong.toUpperCase() === "PONG") {
+      return {
+        configured: true,
+        ok: true,
+        status: "ok",
+        latencyMs,
+      };
+    }
+    return {
+      configured: true,
+      ok: false,
+      status: "error",
+      latencyMs,
+      error: "Resposta inesperada ao comando PING do Redis.",
+    };
+  } catch (err) {
+    const latencyMs = Math.max(0, Math.round(performance.now() - start));
+    const { errorName, errorMessage } = sanitizeRedisErrorMessage(err);
+    const isTimeout =
+      err instanceof Error &&
+      (err.message === "Redis timeout" || err.name === "TimeoutError");
+    return {
+      configured: true,
+      ok: false,
+      status: isTimeout ? "timeout" : "error",
+      latencyMs,
+      error: isTimeout
+        ? `Timeout após ${REDIS_TIMEOUT_MS} ms no PING do Redis.`
+        : errorName === "UnknownError"
+          ? errorMessage
+          : `${errorName}: ${errorMessage}`,
+    };
+  }
+}
+
