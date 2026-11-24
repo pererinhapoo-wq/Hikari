@@ -16,6 +16,7 @@ import { Route as AdultRouteImport } from './routes/adult'
 import { Route as ApiAnilistRouteImport } from './routes/api-anilist'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as ContatoRouteImport } from './routes/contato'
+import { Route as DiagnosticRouteImport } from './routes/diagnostic'
 import { Route as DmcaRouteImport } from './routes/dmca'
 import { Route as EpisodesRouteImport } from './routes/episodes'
 import { Route as LoginRouteImport } from './routes/login'
@@ -128,6 +129,11 @@ const CalendarRoute = CalendarRouteImport.update({
 const ContatoRoute = ContatoRouteImport.update({
   id: '/contato',
   path: '/contato',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DiagnosticRoute = DiagnosticRouteImport.update({
+  id: '/diagnostic',
+  path: '/diagnostic',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DmcaRoute = DmcaRouteImport.update({
@@ -532,6 +538,7 @@ export interface FileRoutesByFullPath {
   '/api-anilist': typeof ApiAnilistRoute
   '/calendar': typeof CalendarRoute
   '/contato': typeof ContatoRoute
+  '/diagnostic': typeof DiagnosticRoute
   '/dmca': typeof DmcaRoute
   '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
@@ -617,6 +624,7 @@ export interface FileRoutesByTo {
   '/api-anilist': typeof ApiAnilistRoute
   '/calendar': typeof CalendarRoute
   '/contato': typeof ContatoRoute
+  '/diagnostic': typeof DiagnosticRoute
   '/dmca': typeof DmcaRoute
   '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
@@ -705,6 +713,7 @@ export interface FileRoutesById {
   '/api-anilist': typeof ApiAnilistRoute
   '/calendar': typeof CalendarRoute
   '/contato': typeof ContatoRoute
+  '/diagnostic': typeof DiagnosticRoute
   '/dmca': typeof DmcaRoute
   '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
@@ -794,6 +803,7 @@ export interface FileRouteTypes {
     | '/api-anilist'
     | '/calendar'
     | '/contato'
+    | '/diagnostic'
     | '/dmca'
     | '/episodes'
     | '/login'
@@ -879,6 +889,7 @@ export interface FileRouteTypes {
     | '/api-anilist'
     | '/calendar'
     | '/contato'
+    | '/diagnostic'
     | '/dmca'
     | '/episodes'
     | '/login'
@@ -966,6 +977,7 @@ export interface FileRouteTypes {
     | '/api-anilist'
     | '/calendar'
     | '/contato'
+    | '/diagnostic'
     | '/dmca'
     | '/episodes'
     | '/login'
@@ -1054,6 +1066,7 @@ export interface RootRouteChildren {
   ApiAnilistRoute: typeof ApiAnilistRoute
   CalendarRoute: typeof CalendarRoute
   ContatoRoute: typeof ContatoRoute
+  DiagnosticRoute: typeof DiagnosticRoute
   DmcaRoute: typeof DmcaRoute
   EpisodesRoute: typeof EpisodesRoute
   LoginRoute: typeof LoginRoute
@@ -1162,6 +1175,13 @@ declare module '@tanstack/react-router' {
       path: '/contato'
       fullPath: '/contato'
       preLoaderRoute: typeof ContatoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/diagnostic': {
+      id: '/diagnostic'
+      path: '/diagnostic'
+      fullPath: '/diagnostic'
+      preLoaderRoute: typeof DiagnosticRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dmca': {
@@ -1789,6 +1809,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAnilistRoute: ApiAnilistRoute,
   CalendarRoute: CalendarRoute,
   ContatoRoute: ContatoRoute,
+  DiagnosticRoute: DiagnosticRoute,
   DmcaRoute: DmcaRoute,
   EpisodesRoute: EpisodesRoute,
   LoginRoute: LoginRoute,
