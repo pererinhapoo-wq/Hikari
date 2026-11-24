@@ -39,6 +39,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminIdRouteImport } from './routes/admin.$id'
 import { Route as AdminBackupRouteImport } from './routes/admin.backup'
 import { Route as AdminCalendarRouteImport } from './routes/admin.calendar'
+import { Route as AdminDiagnosticsRouteImport } from './routes/admin.diagnostics'
 import { Route as AdminHealthRouteImport } from './routes/admin.health'
 import { Route as AdminHikariAiRouteImport } from './routes/admin.hikari-ai'
 import { Route as AdminImagesRouteImport } from './routes/admin.images'
@@ -244,6 +245,11 @@ const AdminBackupRoute = AdminBackupRouteImport.update({
 const AdminCalendarRoute = AdminCalendarRouteImport.update({
   id: '/calendar',
   path: '/calendar',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDiagnosticsRoute = AdminDiagnosticsRouteImport.update({
+  id: '/diagnostics',
+  path: '/diagnostics',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminHealthRoute = AdminHealthRouteImport.update({
@@ -560,6 +566,7 @@ export interface FileRoutesByFullPath {
   '/admin/$id': typeof AdminIdRoute
   '/admin/backup': typeof AdminBackupRoute
   '/admin/calendar': typeof AdminCalendarRoute
+  '/admin/diagnostics': typeof AdminDiagnosticsRoute
   '/admin/health': typeof AdminHealthRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/images': typeof AdminImagesRoute
@@ -646,6 +653,7 @@ export interface FileRoutesByTo {
   '/admin/$id': typeof AdminIdRoute
   '/admin/backup': typeof AdminBackupRoute
   '/admin/calendar': typeof AdminCalendarRoute
+  '/admin/diagnostics': typeof AdminDiagnosticsRoute
   '/admin/health': typeof AdminHealthRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/images': typeof AdminImagesRoute
@@ -735,6 +743,7 @@ export interface FileRoutesById {
   '/admin/$id': typeof AdminIdRoute
   '/admin/backup': typeof AdminBackupRoute
   '/admin/calendar': typeof AdminCalendarRoute
+  '/admin/diagnostics': typeof AdminDiagnosticsRoute
   '/admin/health': typeof AdminHealthRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/images': typeof AdminImagesRoute
@@ -825,6 +834,7 @@ export interface FileRouteTypes {
     | '/admin/$id'
     | '/admin/backup'
     | '/admin/calendar'
+    | '/admin/diagnostics'
     | '/admin/health'
     | '/admin/hikari-ai'
     | '/admin/images'
@@ -911,6 +921,7 @@ export interface FileRouteTypes {
     | '/admin/$id'
     | '/admin/backup'
     | '/admin/calendar'
+    | '/admin/diagnostics'
     | '/admin/health'
     | '/admin/hikari-ai'
     | '/admin/images'
@@ -999,6 +1010,7 @@ export interface FileRouteTypes {
     | '/admin/$id'
     | '/admin/backup'
     | '/admin/calendar'
+    | '/admin/diagnostics'
     | '/admin/health'
     | '/admin/hikari-ai'
     | '/admin/images'
@@ -1336,6 +1348,13 @@ declare module '@tanstack/react-router' {
       path: '/calendar'
       fullPath: '/admin/calendar'
       preLoaderRoute: typeof AdminCalendarRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/diagnostics': {
+      id: '/admin/diagnostics'
+      path: '/diagnostics'
+      fullPath: '/admin/diagnostics'
+      preLoaderRoute: typeof AdminDiagnosticsRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/health': {
@@ -1737,6 +1756,7 @@ interface AdminRouteChildren {
   AdminIdRoute: typeof AdminIdRoute
   AdminBackupRoute: typeof AdminBackupRoute
   AdminCalendarRoute: typeof AdminCalendarRoute
+  AdminDiagnosticsRoute: typeof AdminDiagnosticsRoute
   AdminHealthRoute: typeof AdminHealthRoute
   AdminHikariAiRoute: typeof AdminHikariAiRoute
   AdminImagesRoute: typeof AdminImagesRoute
@@ -1752,6 +1772,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminIdRoute: AdminIdRoute,
   AdminBackupRoute: AdminBackupRoute,
   AdminCalendarRoute: AdminCalendarRoute,
+  AdminDiagnosticsRoute: AdminDiagnosticsRoute,
   AdminHealthRoute: AdminHealthRoute,
   AdminHikariAiRoute: AdminHikariAiRoute,
   AdminImagesRoute: AdminImagesRoute,
