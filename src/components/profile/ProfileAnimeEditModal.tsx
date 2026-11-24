@@ -8,7 +8,8 @@ import {
   X,
   Loader2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { HikariImage } from "@/components/ui/hikari-image";
 import { cn } from "@/lib/utils";
 import type {
@@ -200,12 +201,21 @@ const SCORE_LABELS: Record<number, string> = {
   1: "1 — Horrível",
 };
 
+const emptySubscribe = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 export function ProfileAnimeEditModal({
   isOpen,
   item,
   onClose,
   onSave,
 }: ProfileAnimeEditModalProps) {
+  const isClient = useSyncExternalStore(
+    emptySubscribe,
+    getClientSnapshot,
+    getServerSnapshot,
+  );
   const [prevAnimeId, setPrevAnimeId] = useState(item?.animeId);
   const [status, setStatus] = useState<TrackingStatus>(item?.status || "watching");
   const [score, setScore] = useState<number | null>(item?.score ?? null);
@@ -253,7 +263,9 @@ export function ProfileAnimeEditModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, saving, onClose]);
 
-  if (!isOpen || !item) return null;
+  if (!isClient || typeof document === "undefined" || !isOpen || !item) {
+    return null;
+  }
 
   const maxEps = item.episodesCount ?? item.animeSnapshot?.episodesCount ?? null;
 
@@ -326,7 +338,7 @@ export function ProfileAnimeEditModal({
     }
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overscroll-contain animate-in fade-in duration-200"
       role="dialog"
@@ -577,6 +589,7 @@ export function ProfileAnimeEditModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
