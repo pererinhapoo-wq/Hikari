@@ -10,6 +10,7 @@ import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 import { normalizeHikariPlayerEpisodeId } from "@/lib/hikari-player";
 import { hasEpisodePlayableSource } from "@/lib/published-episodes";
 import { useHikariStore } from "@/lib/store";
+import { toast } from "sonner";
 
 export const OUTBOX_STORAGE_KEY = "hikari-episode-outbox-v1";
 const MAX_OUTBOX_SIZE = 40;
@@ -558,6 +559,11 @@ export function enqueue(input: OutboxOperationInput): OutboxOperation | null {
     console.warn(
       "[episode-writer] Fila do Outbox atingiu a capacidade máxima (40 operações). Conecte-se para sincronizar.",
     );
+    if (typeof window !== "undefined") {
+      toast.warning("Fila de sincronização cheia (40 operações). Alterações locais preservadas; conecte-se para sincronizar.", {
+        id: "outbox-full-warning",
+      });
+    }
     return null;
   }
 
