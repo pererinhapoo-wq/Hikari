@@ -21,6 +21,7 @@ import {
   Menu,
   MessageSquare,
   Plus,
+  Radio,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -271,6 +272,14 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
             keywords: "saude diagnostico latencia uptime node",
           },
           {
+            id: "diagnostics",
+            label: "Central de Diagnóstico",
+            description: "Command Center de telemetria e rede",
+            icon: Radio,
+            to: "/admin/diagnostics",
+            keywords: "diagnostico command center telemetria rede cache",
+          },
+          {
             id: "backup",
             label: "Backup & Dados",
             description: "Exportação e restauração segura em JSON",
@@ -334,6 +343,7 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     !pathname.startsWith("/admin/images") &&
     !pathname.startsWith("/admin/calendar") &&
     !pathname.startsWith("/admin/health") &&
+    !pathname.startsWith("/admin/diagnostics") &&
     !pathname.startsWith("/admin/backup");
 
   const isItemActive = (item: NavItem) => {
@@ -351,6 +361,9 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     }
     if (item.id === "settings") {
       return pathname.startsWith("/admin/settings");
+    }
+    if (item.id === "diagnostics") {
+      return pathname.startsWith("/admin/diagnostics");
     }
     return pathname.startsWith(item.to);
   };
@@ -385,6 +398,9 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     }
     if (pathname.startsWith("/admin/health")) {
       return { section: "Sistema & Infra", current: "Saúde do Sistema" };
+    }
+    if (pathname.startsWith("/admin/diagnostics")) {
+      return { section: "Sistema & Infra", current: "Central de Diagnóstico" };
     }
     if (pathname.startsWith("/admin/maintenance")) {
       return { section: "Sistema & Infra", current: "Manutenção & Cache" };
