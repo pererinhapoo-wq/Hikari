@@ -31,7 +31,7 @@ export function slimSnapshot(anime: SlimAnime): SlimAnime {
     kitsuId: anime.kitsuId,
     titles: anime.titles ?? { romaji: "", english: "", native: "" },
     cover: anime.cover ?? "",
-    banner: anime.banner ?? "",
+    banner: "",
     synopsis: "", // sem sinopse completa para otimizar espaço no localStorage
     score: anime.score ?? null,
     genres: (anime.genres ?? []).slice(0, 3),
@@ -42,8 +42,25 @@ export function slimSnapshot(anime: SlimAnime): SlimAnime {
     year: anime.year ?? null,
     trailerId: null,
     color: anime.color,
-    source: anime.source ?? "cache",
+    source: "cache",
   };
+}
+
+export function measureLocalStorageSizes(): Record<string, number> {
+  if (typeof window === "undefined" || !window.localStorage) return {};
+  const result: Record<string, number> = {};
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key) {
+        const val = window.localStorage.getItem(key);
+        result[key] = val ? new Blob([val]).size : 0;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return result;
 }
 
 function slimSnapshotsRecord(
