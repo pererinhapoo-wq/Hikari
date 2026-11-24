@@ -1,6 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
-import { measureLocalStorageSizes } from "@/lib/store";
+import {
+  collectBrowserStorageAudit,
+  formatStorageBytes,
+  type CacheInfo,
+  type CookieAuditInfo,
+  type IndexedDbDetail,
+  type LocalStorageItemInfo,
+  type ServiceWorkerInfo,
+  type SessionStorageItemInfo,
+  type StorageEstimateInfo,
+  type UserStateSubStructureInfo,
+} from "@/lib/browser-storage-diagnostics";
 
 export const Route = createFileRoute("/diagnostic")({
   component: DiagnosticPage,
@@ -31,37 +42,11 @@ type CookieInfo = {
   kb: string;
 };
 
-type ObjectStoreDetail = {
-  name: string;
-  count: number;
-  indexes: string[];
-};
-
-type IndexedDbDetail = {
-  name: string;
-  version: number;
-  stores: ObjectStoreDetail[];
-  status: string;
-};
-
-type CacheInfo = {
+type LegacyCacheInfo = {
   name: string;
   requestCount: number;
   estimatedBytes: number;
   kb: string;
-};
-
-type ServiceWorkerInfo = {
-  scope: string;
-  state: string;
-  isHikari: boolean;
-};
-
-type StorageEstimateInfo = {
-  usage: number;
-  quota: number;
-  percentage: string;
-  usageDetails?: Record<string, number>;
 };
 
 function formatBytes(bytes: number): string {
@@ -92,7 +77,7 @@ function DiagnosticPage() {
   const [idbAvailable, setIdbAvailable] = useState(false);
 
   // Cache Storage state
-  const [cachesList, setCachesList] = useState<CacheInfo[]>([]);
+  const [cachesList, setCachesList] = useState<LegacyCacheInfo[]>([]);
   const [cachesAvailable, setCachesAvailable] = useState(false);
 
   // Service Workers state
@@ -122,297 +107,69 @@ function DiagnosticPage() {
   const runAudit = useCallback(async () => {
     if (typeof window === "undefined") return;
 
-    // 1. LocalStorage
-    try {
-      const rawSizes = measureLocalStorageSizes();
-      const mapped: StorageItemInfo[] = [];
-      let cumulative = 0;
+    const report = await collectBrowserStorageAudit();
 
-      for (const [key, bytes] of Object.entries(rawSizes)) {
-        cumulative += bytes;
-        let category = "Outros";
-        if (key === "hikari-user-state-v1") category = "Estado Principal";
-        else if (key === "hikari-catalog-fallback-v1") category = "Catálogo Fallback";
-        else if (key === "hikari_anime_user_cache_v1") category = "Cache de Usuário por Anime";
-        else if (key === "hikari-episode-outbox-v1") category = "Outbox Offline";
-        else if (key === "hikari-deleted-episodes-v1") category = "Tombstones";
-        else if (key === "hikari-catalog-v1") category = "Catálogo Legado";
-        else if (key.startsWith("progress") || key.startsWith("ep-progress")) category = "Progresso Granular";
-
-        mapped.push({
-          key,
-          bytes,
-          kb: formatBytes(bytes),
-          category,
-        });
-      }
-      mapped.sort((a, b) => b.bytes - a.bytes);
-      setLocalStorageItems(mapped);
-      setLocalStorageTotal(cumulative);
-
-      // Composição de hikari-user-state-v1
-      const subs: SubStructureInfo[] = [];
-      const userStateRaw = window.localStorage.getItem("hikari-user-state-v1");
-      if (userStateRaw) {
-        const parsed = JSON.parse(userStateRaw);
-        const stateObj = parsed?.state ?? parsed;
-        const targetKeys = [
-          "snapshots",
-          "watchedEpisodes",
-          "myList",
-          "continueWatching",
-          "userSnapshots",
-          "userWatchedEpisodes",
-          "userLists",
-          "userContinueWatching",
-          "userFavorites",
-        ];
-
-        for (const targetKey of targetKeys) {
-          const val = stateObj[targetKey];
-          if (val !== undefined) {
-            const jsonVal = JSON.stringify(val);
-            const subBytes = new Blob([jsonVal]).size;
-            subs.push({
-              name: targetKey,
-              bytes: subBytes,
-              kb: formatBytes(subBytes),
-            });
-          }
-        }
-        subs.sort((a, b) => b.bytes - a.bytes);
-      }
-      setSubStructures(subs);
-    } catch {
-      // ignore
+    if (report.localStorage.available) {
+      setLocalStorageItems(
+        report.localStorage.items.map((item: LocalStorageItemInfo) => ({
+          key: item.key,
+          bytes: item.bytes,
+          kb: formatStorageBytes(item.bytes),
+          category: item.category,
+        })),
+      );
+      setLocalStorageTotal(report.localStorage.totalBytes);
+      setSubStructures(
+        report.localStorage.subStructures.map((sub: UserStateSubStructureInfo) => ({
+          name: sub.name,
+          bytes: sub.bytes,
+          kb: formatStorageBytes(sub.bytes),
+        })),
+      );
     }
 
-    // 2. SessionStorage
-    try {
-      if (window.sessionStorage) {
-        const sItems: SessionItemInfo[] = [];
-        let sTotal = 0;
-        for (let i = 0; i < window.sessionStorage.length; i++) {
-          const key = window.sessionStorage.key(i);
-          if (key) {
-            const val = window.sessionStorage.getItem(key);
-            const bytes = val ? new Blob([val]).size : 0;
-            sTotal += bytes;
-            sItems.push({
-              key,
-              bytes,
-              kb: formatBytes(bytes),
-            });
-          }
-        }
-        sItems.sort((a, b) => b.bytes - a.bytes);
-        setSessionStorageItems(sItems);
-        setSessionStorageTotal(sTotal);
-      }
-    } catch {
-      // ignore
+    if (report.sessionStorage.available) {
+      setSessionStorageItems(
+        report.sessionStorage.items.map((item: SessionStorageItemInfo) => ({
+          key: item.key,
+          bytes: item.bytes,
+          kb: formatStorageBytes(item.bytes),
+        })),
+      );
+      setSessionStorageTotal(report.sessionStorage.totalBytes);
     }
 
-    // 3. Cookies
-    try {
-      const cookieStr = document.cookie || "";
-      const cookieArr = cookieStr ? cookieStr.split(";") : [];
-      const parsedCookies: CookieInfo[] = [];
-      let cTotal = 0;
-
-      for (const c of cookieArr) {
-        const trimmed = c.trim();
-        if (!trimmed) continue;
-        const eqIdx = trimmed.indexOf("=");
-        const name = eqIdx !== -1 ? trimmed.substring(0, eqIdx).trim() : trimmed;
-        const bytes = new Blob([trimmed]).size;
-        cTotal += bytes;
-        parsedCookies.push({
-          name,
-          bytes,
-          kb: formatBytes(bytes),
-        });
-      }
-      parsedCookies.sort((a, b) => b.bytes - a.bytes);
-      setCookies(parsedCookies);
-      setCookiesTotal(cTotal);
-    } catch {
-      // ignore
+    if (report.cookies.available) {
+      setCookies(
+        report.cookies.items.map((c: CookieAuditInfo) => ({
+          name: c.name,
+          bytes: c.bytes,
+          kb: formatStorageBytes(c.bytes),
+        })),
+      );
+      setCookiesTotal(report.cookies.totalBytes);
     }
 
-    // 4. IndexedDB Detailed Inspection (Read-Only)
-    try {
-      const idb = window.indexedDB as IDBFactory & {
-        databases?: () => Promise<Array<{ name?: string; version?: number }>>;
-      };
-      if (idb && typeof idb.databases === "function") {
-        setIdbAvailable(true);
-        const dbs = await idb.databases();
-        const dbDetails: IndexedDbDetail[] = [];
+    setIdbAvailable(report.indexedDb.available);
+    setIndexedDbDetails(report.indexedDb.databases);
 
-        for (const dbMeta of dbs) {
-          if (!dbMeta.name) continue;
-          const dbName = dbMeta.name;
-          const dbVersion = dbMeta.version ?? 1;
+    setCachesAvailable(report.cacheStorage.available);
+    setCachesList(
+      report.cacheStorage.items.map((ch: CacheInfo) => ({
+        name: ch.name,
+        requestCount: ch.requestCount,
+        estimatedBytes: ch.estimatedBytes,
+        kb: ch.formattedSize,
+      })),
+    );
 
-          const detail: IndexedDbDetail = {
-            name: dbName,
-            version: dbVersion,
-            stores: [],
-            status: "Lido com sucesso",
-          };
+    setSwAvailable(report.serviceWorkers.available);
+    setSwList(report.serviceWorkers.items);
 
-          try {
-            await new Promise<void>((resolve) => {
-              const openReq = indexedDB.open(dbName);
-              openReq.onerror = () => {
-                detail.status = "Erro ao abrir banco";
-                resolve();
-              };
-              openReq.onsuccess = (e) => {
-                const db = (e.target as IDBOpenDBRequest).result;
-                const storeNames = Array.from(db.objectStoreNames);
+    setEstimateAvailable(report.estimate.available);
+    setEstimate(report.estimate.data);
 
-                const storePromises = storeNames.map((storeName) => {
-                  return new Promise<ObjectStoreDetail>((storeResolve) => {
-                    const storeDetail: ObjectStoreDetail = {
-                      name: storeName,
-                      count: 0,
-                      indexes: [],
-                    };
-                    try {
-                      const tx = db.transaction(storeName, "readonly");
-                      const store = tx.objectStore(storeName);
-                      storeDetail.indexes = Array.from(store.indexNames);
-
-                      const countReq = store.count();
-                      countReq.onsuccess = () => {
-                        storeDetail.count = countReq.result ?? 0;
-                        storeResolve(storeDetail);
-                      };
-                      countReq.onerror = () => {
-                        storeResolve(storeDetail);
-                      };
-                    } catch {
-                      storeResolve(storeDetail);
-                    }
-                  });
-                });
-
-                Promise.all(storePromises).then((stores) => {
-                  detail.stores = stores;
-                  db.close();
-                  resolve();
-                });
-              };
-            });
-          } catch {
-            detail.status = "Erro na transação";
-          }
-
-          dbDetails.push(detail);
-        }
-        setIndexedDbDetails(dbDetails);
-      } else if (typeof indexedDB !== "undefined") {
-        setIdbAvailable(true);
-        setIndexedDbDetails([
-          {
-            name: "IndexedDB disponível (listagem automática de bancos não suportada pelo navegador)",
-            version: 0,
-            stores: [],
-            status: "Suporte parcial",
-          },
-        ]);
-      }
-    } catch {
-      setIdbAvailable(false);
-    }
-
-    // 5. Cache Storage
-    try {
-      if (typeof window !== "undefined" && "caches" in window) {
-        setCachesAvailable(true);
-        const cacheNames = await window.caches.keys();
-        const cacheInfos: CacheInfo[] = [];
-
-        for (const name of cacheNames) {
-          const cache = await window.caches.open(name);
-          const requests = await cache.keys();
-          let estBytes = 0;
-
-          for (const req of requests) {
-            try {
-              const match = await cache.match(req);
-              if (match && match.headers) {
-                const len = match.headers.get("content-length");
-                if (len) {
-                  const parsedLen = parseInt(len, 10);
-                  if (!Number.isNaN(parsedLen)) {
-                    estBytes += parsedLen;
-                  }
-                }
-              }
-            } catch {
-              // ignore individual match failures
-            }
-          }
-
-          cacheInfos.push({
-            name,
-            requestCount: requests.length,
-            estimatedBytes: estBytes,
-            kb: estBytes > 0 ? formatBytes(estBytes) : "Não disponível (sem Content-Length)",
-          });
-        }
-        setCachesList(cacheInfos);
-      }
-    } catch {
-      setCachesAvailable(false);
-    }
-
-    // 6. Service Workers
-    try {
-      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
-        setSwAvailable(true);
-        const regs = await navigator.serviceWorker.getRegistrations();
-        const swInfos: ServiceWorkerInfo[] = [];
-        for (const reg of regs) {
-          const scope = reg.scope || "Desconhecido";
-          const active = reg.active?.state || reg.waiting?.state || reg.installing?.state || "inativo";
-          swInfos.push({
-            scope,
-            state: active,
-            isHikari: scope.includes(window.location.origin),
-          });
-        }
-        setSwList(swInfos);
-      }
-    } catch {
-      setSwAvailable(false);
-    }
-
-    // 7. Storage Estimate & Details
-    try {
-      if (typeof navigator !== "undefined" && navigator.storage && typeof navigator.storage.estimate === "function") {
-        setEstimateAvailable(true);
-        const est = (await navigator.storage.estimate()) as StorageEstimate & {
-          usageDetails?: Record<string, number>;
-        };
-        const usage = est.usage ?? 0;
-        const quota = est.quota ?? 0;
-        const pct = quota > 0 ? ((usage / quota) * 100).toFixed(2) + "%" : "N/A";
-        setEstimate({
-          usage,
-          quota,
-          percentage: pct,
-          usageDetails: est.usageDetails,
-        });
-      }
-    } catch {
-      setEstimateAvailable(false);
-    }
-
-    setLastMeasuredAt(new Date().toLocaleTimeString());
+    setLastMeasuredAt(report.measuredAt || new Date().toLocaleTimeString());
   }, []);
 
   useEffect(() => {

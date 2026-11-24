@@ -6,6 +6,7 @@ import { MetricCard } from "./metric-card";
 import { SubsystemStatus } from "./subsystem-status";
 import { EmptyEventFeed } from "./empty-event-feed";
 import { CompatibilityPanel } from "./modules/compatibility-panel";
+import { StoragePanel } from "./modules/storage-panel";
 import { ArrowLeft, ShieldAlert } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -13,6 +14,11 @@ import {
   type CommandCenterDiagnosticsReport,
   type DiagnosticStatus,
 } from "@/lib/admin-diagnostics.functions";
+import {
+  collectBrowserStorageAudit,
+  formatStorageBytes,
+  type BrowserStorageAuditReport,
+} from "@/lib/browser-storage-diagnostics";
 
 function formatRuntimeUptime(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -30,10 +36,15 @@ export function CommandCenterLayout() {
   const [isLoading, setIsLoading] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState("--:--:--");
+  const [storageAudit, setStorageAudit] =
+    useState<BrowserStorageAuditReport | null>(null);
+  const [isStorageLoading, setIsStorageLoading] = useState(false);
 
   const isMountedRef = useRef(true);
   const inFlightRef = useRef(false);
   const hasFetchedInitialRef = useRef(false);
+  const storageInFlightRef = useRef(false);
+  const hasRunInitialStorageAuditRef = useRef(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -70,6 +81,23 @@ export function CommandCenterLayout() {
     }
   }, []);
 
+  const runStorageAudit = useCallback(async () => {
+    if (storageInFlightRef.current) return;
+    storageInFlightRef.current = true;
+    setIsStorageLoading(true);
+
+    try {
+      const report = await collectBrowserStorageAudit();
+      if (!isMountedRef.current) return;
+      setStorageAudit(report);
+    } finally {
+      storageInFlightRef.current = false;
+      if (isMountedRef.current) {
+        setIsStorageLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (activeModule === "overview" && !hasFetchedInitialRef.current) {
       hasFetchedInitialRef.current = true;
@@ -77,10 +105,22 @@ export function CommandCenterLayout() {
     }
   }, [activeModule, runDiagnostics]);
 
+  useEffect(() => {
+    if (!hasRunInitialStorageAuditRef.current) {
+      hasRunInitialStorageAuditRef.current = true;
+      void runStorageAudit();
+    }
+  }, [runStorageAudit]);
+
   const handleRefresh = useCallback(() => {
     if (isLoading || inFlightRef.current) return;
     void runDiagnostics();
   }, [isLoading, runDiagnostics]);
+
+  const handleRefreshStorage = useCallback(() => {
+    if (isStorageLoading || storageInFlightRef.current) return;
+    void runStorageAudit();
+  }, [isStorageLoading, runStorageAudit]);
 
   const currentModuleObj = MODULES.find((m) => m.id === activeModule);
 
@@ -159,6 +199,59 @@ export function CommandCenterLayout() {
           footerRight: "--",
         };
 
+  const storageProps = (() => {
+    if (!storageAudit) {
+      return {
+        status: "NÃO VERIFICADO" as DiagnosticStatus,
+        value: isStorageLoading ? "..." : "--",
+        description: "Armazenamento local do navegador",
+        footerLeft: isStorageLoading
+          ? "Status: Inspecionando navegador..."
+          : "Status: Aguardando navegador",
+        footerRight: "Client-only",
+      };
+    }
+
+    const localLabel = storageAudit.localStorage.available
+      ? `LS: ${storageAudit.localStorage.keyCount} chave(s)`
+      : `LS: ${storageAudit.localStorage.status === "blocked" ? "bloqueado" : "indisponível"}`;
+
+    const idbLabel =
+      storageAudit.indexedDb.status === "available"
+        ? `IDB: ${storageAudit.indexedDb.databaseCount} banco(s)`
+        : storageAudit.indexedDb.status === "partial"
+          ? "IDB: parcial"
+          : "IDB: indisponível";
+
+    const footerCounts = `${localLabel} • ${idbLabel}`;
+
+    if (storageAudit.estimate.available && storageAudit.estimate.data) {
+      const fullyReliable =
+        storageAudit.localStorage.available &&
+        storageAudit.indexedDb.status === "available";
+      return {
+        status: (fullyReliable ? "SAUDÁVEL" : "ATENÇÃO") as DiagnosticStatus,
+        value: formatStorageBytes(storageAudit.estimate.data.usage),
+        description: `Uso estimado da origem (${storageAudit.estimate.data.percentage} de ${formatStorageBytes(storageAudit.estimate.data.quota)})`,
+        footerLeft: footerCounts,
+        footerRight: `Quota: ${storageAudit.estimate.data.percentage}`,
+      };
+    }
+
+    const hasAnyLocalRead =
+      storageAudit.localStorage.available || storageAudit.indexedDb.available;
+
+    return {
+      status: (hasAnyLocalRead ? "ATENÇÃO" : "INDISPONÍVEL") as DiagnosticStatus,
+      value: "Indisponível",
+      description:
+        storageAudit.estimate.reason ??
+        "navigator.storage.estimate() indisponível",
+      footerLeft: footerCounts,
+      footerRight: "Sem estimativa",
+    };
+  })();
+
   return (
     <div className="fixed inset-0 z-50 bg-[#090A0F] text-[#E5E7EB] font-sans overflow-y-auto flex flex-col">
       {/* Top Operational Header */}
@@ -233,11 +326,11 @@ export function CommandCenterLayout() {
                 <MetricCard
                   title="Storage Quota"
                   type="storage"
-                  description="LocalStorage & IndexedDB size"
-                  status="NÃO VERIFICADO"
-                  value="--"
-                  footerLeft="Status: Aguardando Sonda"
-                  footerRight="Não integrado"
+                  description={storageProps.description}
+                  status={storageProps.status}
+                  value={storageProps.value}
+                  footerLeft={storageProps.footerLeft}
+                  footerRight={storageProps.footerRight}
                 />
               </div>
 
@@ -252,6 +345,12 @@ export function CommandCenterLayout() {
                 <EmptyEventFeed />
               </div>
             </div>
+          ) : activeModule === "storage" ? (
+            <StoragePanel
+              audit={storageAudit}
+              isLoading={isStorageLoading}
+              onRefresh={handleRefreshStorage}
+            />
           ) : activeModule === "compatibility" ? (
             <CompatibilityPanel />
           ) : (
