@@ -871,6 +871,11 @@ export function Hero({
     safetyTimerId: null,
   });
 
+  const handlePointerUpOrCancelRef = useRef<(e?: React.PointerEvent<HTMLElement> | PointerEvent) => void>(() => {});
+  const handleGlobalPointerUp = useRef((e: PointerEvent) => {
+    handlePointerUpOrCancelRef.current(e);
+  }).current;
+
   // Cleanup de segurança para desmontagem e remoção de listeners globais
   useEffect(() => {
     const currentPointerState = pointerState.current;
@@ -1113,7 +1118,7 @@ export function Hero({
     return () => window.clearTimeout(timeout);
   }, [activeTransition]);
 
-  const handleGlobalPointerUpRef = useRef<(e: PointerEvent) => void>(() => {});
+
 
   // Manipulação de gestos de toque/ponteiro com proteção robusta contra estados órfãos e dangling pointers
   const handlePointerUpOrCancel = useCallback((e?: React.PointerEvent<HTMLElement> | PointerEvent) => {
@@ -1132,8 +1137,8 @@ export function Hero({
     }
 
     if (typeof window !== "undefined") {
-      window.removeEventListener("pointerup", handleGlobalPointerUpRef.current);
-      window.removeEventListener("pointercancel", handleGlobalPointerUpRef.current);
+      window.removeEventListener("pointerup", handleGlobalPointerUp);
+      window.removeEventListener("pointercancel", handleGlobalPointerUp);
     }
 
     try {
@@ -1165,13 +1170,9 @@ export function Hero({
       // Reinicia o temporizador APENAS quando houver interação horizontal efetiva (swipe)
       resetAutoTimer();
     }
-  }, [triggerTransition, resetAutoTimer]);
+  }, [triggerTransition, resetAutoTimer, handleGlobalPointerUp]);
 
-  const handleGlobalPointerUp = useCallback((e: PointerEvent) => {
-    handlePointerUpOrCancel(e);
-  }, [handlePointerUpOrCancel]);
-
-  handleGlobalPointerUpRef.current = handleGlobalPointerUp;
+  handlePointerUpOrCancelRef.current = handlePointerUpOrCancel;
 
   const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
     if (total < 2 || e.button !== 0) return;
