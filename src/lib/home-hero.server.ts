@@ -87,7 +87,6 @@ export interface HeroAudienceRawRow {
   playbackUsers7d: number;
   playbackUsers14d: number;
   manualUsers14d: number;
-  trackingUsers14d: number;
 }
 
 export interface HeroAudienceMetrics {
@@ -96,7 +95,6 @@ export interface HeroAudienceMetrics {
   playbackUsers7d: number;
   playbackUsers14d: number;
   manualUsers14d: number;
-  trackingUsers14d: number;
 }
 
 export interface ScoredHeroCandidate {
@@ -287,7 +285,6 @@ export function reconcileAudienceMetricsForRow(
     playbackUsers7d: 0,
     playbackUsers14d: 0,
     manualUsers14d: 0,
-    trackingUsers14d: 0,
   };
 
   for (const key of keys) {
@@ -298,7 +295,6 @@ export function reconcileAudienceMetricsForRow(
     agg.playbackUsers7d += m.playbackUsers7d;
     agg.playbackUsers14d += m.playbackUsers14d;
     agg.manualUsers14d += m.manualUsers14d;
-    agg.trackingUsers14d += m.trackingUsers14d;
   }
 
   return agg;
@@ -367,8 +363,7 @@ export function computeEngagementScore(metrics: HeroAudienceMetrics): number {
     Math.max(0, metrics.progUsers14d - metrics.progUsers7d) * 1.4 +
     metrics.playbackUsers7d * 3.5 +
     Math.max(0, metrics.playbackUsers14d - metrics.playbackUsers7d) * 1.6 +
-    metrics.manualUsers14d * 0.65 +
-    metrics.trackingUsers14d * 1.1;
+    metrics.manualUsers14d * 0.65;
 
   if (weighted <= 0) return 0;
   return Math.round(Math.log1p(weighted) * 32 * 100) / 100;
@@ -866,12 +861,6 @@ async function queryCatalogCandidatesFromNeon(): Promise<HeroCatalogAnimeCandida
        SELECT DISTINCT w."animeId"
        FROM "user_watched_episode" w
        WHERE w."watchedAt" >= NOW() - INTERVAL '14 days'
-       UNION
-       SELECT DISTINCT t."animeId"
-       FROM "user_anime_tracking" t
-       WHERE t."updatedAt" >= NOW() - INTERVAL '14 days'
-         AND t."status" = 'watching'
-         AND t."episodesWatched" >= 1
      )
      SELECT
        a."id",
@@ -990,28 +979,16 @@ async function queryAudienceMetricsFromNeon(): Promise<Map<string, HeroAudienceM
          FROM "user_watched_episode" w
          WHERE w."watchedAt" >= NOW() - INTERVAL '14 days'
          GROUP BY w."animeId"
-       ),
-       tracking AS (
-         SELECT
-           t."animeId",
-           COUNT(DISTINCT t."userId")::int AS "trackingUsers14d"
-         FROM "user_anime_tracking" t
-         WHERE t."updatedAt" >= NOW() - INTERVAL '14 days'
-           AND t."status" = 'watching'
-           AND t."episodesWatched" >= 1
-         GROUP BY t."animeId"
        )
        SELECT
-         COALESCE(prog."animeId", watched."animeId", tracking."animeId") AS "animeId",
+         COALESCE(prog."animeId", watched."animeId") AS "animeId",
          COALESCE(prog."progUsers7d", 0)::int AS "progUsers7d",
          COALESCE(prog."progUsers14d", 0)::int AS "progUsers14d",
          COALESCE(watched."playbackUsers7d", 0)::int AS "playbackUsers7d",
          COALESCE(watched."playbackUsers14d", 0)::int AS "playbackUsers14d",
-         COALESCE(watched."manualUsers14d", 0)::int AS "manualUsers14d",
-         COALESCE(tracking."trackingUsers14d", 0)::int AS "trackingUsers14d"
+         COALESCE(watched."manualUsers14d", 0)::int AS "manualUsers14d"
        FROM prog
-       FULL OUTER JOIN watched ON watched."animeId" = prog."animeId"
-       FULL OUTER JOIN tracking ON tracking."animeId" = COALESCE(prog."animeId", watched."animeId");`,
+       FULL OUTER JOIN watched ON watched."animeId" = prog."animeId";`,
     );
 
     for (const row of rows ?? []) {
@@ -1023,7 +1000,6 @@ async function queryAudienceMetricsFromNeon(): Promise<Map<string, HeroAudienceM
         playbackUsers7d: Number(row.playbackUsers7d) || 0,
         playbackUsers14d: Number(row.playbackUsers14d) || 0,
         manualUsers14d: Number(row.manualUsers14d) || 0,
-        trackingUsers14d: Number(row.trackingUsers14d) || 0,
       });
     }
   } catch (err) {

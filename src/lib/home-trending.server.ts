@@ -1,4 +1,10 @@
 import { getSql } from "@/lib/db";
+import {
+  CALENDAR_TIMEZONE,
+  getTodayRangeSaoPaulo,
+  getWeekdaySaoPaulo,
+} from "@/lib/calendar-timezone";
+import { currentAnimeSeason } from "@/lib/utils";
 import type { AnimeRecentBadgesLookup } from "@/lib/catalog-badges";
 import { buildHikariPlayerEpisodeUrl } from "@/lib/hikari-player";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
@@ -24,7 +30,7 @@ const DAY_MS = 24 * HOUR_MS;
 const FUTURE_CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1000;
 
 export type TrendingTimeBucket = "0_48h" | "2_7d" | "7_14d" | "14_30d";
-export type TrendingSignalKind = "playback" | "progress" | "tracking" | "manual";
+export type TrendingSignalKind = "playback" | "progress" | "comment";
 
 export const TRENDING_SIGNAL_WEIGHTS: Record<
   TrendingSignalKind,
@@ -42,17 +48,11 @@ export const TRENDING_SIGNAL_WEIGHTS: Record<
     "7_14d": 1.4,
     "14_30d": 0.4,
   },
-  tracking: {
+  comment: {
     "0_48h": 2.2,
-    "2_7d": 2.2,
-    "7_14d": 1.1,
-    "14_30d": 0.35,
-  },
-  manual: {
-    "0_48h": 1.1,
-    "2_7d": 1.1,
-    "7_14d": 0.55,
-    "14_30d": 0.15,
+    "2_7d": 1.5,
+    "7_14d": 0.7,
+    "14_30d": 0.25,
   },
 };
 
@@ -84,10 +84,15 @@ export interface TrendingCatalogAnimeCandidateRow {
   hidden: boolean | null;
   score: number | null;
   popularity: number | null;
+  trending?: number | null;
   updatedAt: string | Date | null;
   publishedEpisodeCount: number;
   latestEpisodePublishedAt: string | Date | null;
   epSources: TrendingEpisodeSourceRow[] | null;
+  hasTodayAiringSchedule?: boolean | null;
+  hasWeekAiringSchedule?: boolean | null;
+  hasTodayWeeklyRecurrence?: boolean | null;
+  hasActiveWeeklyRecurrence?: boolean | null;
 }
 
 export interface TrendingUserAnimeSignalRow {
@@ -95,8 +100,9 @@ export interface TrendingUserAnimeSignalRow {
   animeId: string;
   playbackAt: string | Date | number | null;
   progressAt: string | Date | number | null;
-  trackingAt: string | Date | number | null;
-  manualAt: string | Date | number | null;
+  commentAt?: string | Date | number | null;
+  /** Ignorado intencionalmente: marcação manual ("assistido") não influencia Em Alta */
+  manualAt?: string | Date | number | null;
 }
 
 export interface ScoredTrendingItem {
@@ -104,6 +110,9 @@ export interface ScoredTrendingItem {
   workKey: string;
   audienceRaw: number;
   audienceScore: number;
+  calendarBoost: number;
+  publishedEpisodeBoost: number;
+  seasonBoost: number;
   editorialBoost: number;
   fallbackRankScore: number;
   uniqueUsers: number;
@@ -147,17 +156,6 @@ export function isAdultTrendingCandidate(genres?: string[] | null): boolean {
       g === "rx"
     );
   });
-}
-
-function hasExplicitAudioVariantTag(row: {
-  title?: string | null;
-  titleRomaji?: string | null;
-  titleEnglish?: string | null;
-  titleNative?: string | null;
-}): boolean {
-  return /\b(dub|dublado|dublada|legendado|legendada|audio dual|dual audio)\b/i.test(
-    `${row.title ?? ""} ${row.titleRomaji ?? ""} ${row.titleEnglish ?? ""} ${row.titleNative ?? ""}`,
-  );
 }
 
 export function isDubbedTrendingRow(row: {
@@ -206,11 +204,6 @@ export function normalizeTrendingBaseTitleKey(row: {
     .trim();
 }
 
-/**
- * Resolve um ID compatível com `/anime/$id`.
- * IDs `local-*` ou slugs customizados só são aceitos quando houver ID externo
- * (`anilistId`, `malId` ou `kitsuId`) para garantir navegação pública funcional.
- */
 export function resolveTrendingWatchId(row: {
   id: string;
   anilistId?: number | null;
@@ -252,7 +245,16 @@ export function resolveTrendingWatchId(row: {
     return `kitsu-${Math.floor(row.kitsuId)}`;
   }
 
-  return null;
+  const lowerId = rawId.toLowerCase();
+  if (
+    lowerId === "null" ||
+    lowerId === "undefined" ||
+    /[\s/?#\\]/.test(rawId)
+  ) {
+    return null;
+  }
+
+  return rawId;
 }
 
 export function isTrendingEpisodeRowPlayable(
@@ -338,6 +340,9 @@ interface ParsedTrendingCandidate {
   slimAnime: SlimAnime;
   latestEpisodePublishedAtMs: number;
   fallbackRankScore: number;
+  calendarBoost: number;
+  publishedEpisodeBoost: number;
+  seasonBoost: number;
 }
 
 function hasConflictingExternalIds(
@@ -374,56 +379,115 @@ function hasConflictingExternalIds(
   return false;
 }
 
-function computeCatalogFallbackRankScore(params: {
+export function computeTrendingRankScore(params: {
   status: string | null;
   score: number | null;
   popularity: number | null;
+  trending?: number | null;
   latestEpisodePublishedAtMs: number;
   publishedEpisodeCount: number;
+  hasPublishedPlayable: boolean;
+  hasTodaySchedule: boolean;
+  hasTodayRecurrence: boolean;
+  hasWeekSchedule: boolean;
+  hasActiveRecurrence: boolean;
+  isCurrentSeason: boolean;
   nowMs: number;
-}): number {
+}): {
+  rankScore: number;
+  calendarBoost: number;
+  publishedEpisodeBoost: number;
+  seasonBoost: number;
+} {
   const {
     status,
     score,
     popularity,
+    trending,
     latestEpisodePublishedAtMs,
     publishedEpisodeCount,
+    hasPublishedPlayable,
+    hasTodaySchedule,
+    hasTodayRecurrence,
+    hasWeekSchedule,
+    hasActiveRecurrence,
+    isCurrentSeason,
     nowMs,
   } = params;
 
-  const releasingBoost = status === "RELEASING" ? 120 : 0;
+  // 1. Calendário de lançamentos (catalog_airing_schedule / catalog_weekly_recurrence)
+  // Independe de já haver episódio publicado no Hikari.
+  let calendarBoost = 0;
+  if (hasTodaySchedule || hasTodayRecurrence) {
+    calendarBoost = 90;
+  } else if (hasWeekSchedule || hasActiveRecurrence) {
+    calendarBoost = 40;
+  }
+
+  // 2. Publicação real de episódios recentes no Hikari (sinal independente do calendário)
+  let publishedEpisodeBoost = 0;
   const recentEpDays =
-    latestEpisodePublishedAtMs > 0
+    hasPublishedPlayable && latestEpisodePublishedAtMs > 0
       ? Math.max(0, (nowMs - latestEpisodePublishedAtMs) / DAY_MS)
       : Infinity;
-  const recentEpisodeBoost =
-    recentEpDays <= 7 ? 60 : recentEpDays <= 30 ? 25 : 0;
-  const popPart = Math.log1p(Math.max(0, popularity ?? 0)) * 8;
-  const scorePart = Math.max(0, score ?? 65) * 0.5;
-  const episodeDepthPart = Math.min(24, Math.max(0, publishedEpisodeCount)) * 0.25;
+  if (hasPublishedPlayable && recentEpDays <= 21) {
+    const recencyPart =
+      recentEpDays <= 2
+        ? 55
+        : recentEpDays <= 7
+          ? 42
+          : recentEpDays <= 14
+            ? 24
+            : 10;
+    const releasingBonus = status === "RELEASING" ? 8 : 0;
+    publishedEpisodeBoost = recencyPart + releasingBonus;
+  }
 
-  return (
+  // 3. Popularidade da temporada atual com métricas reais do catálogo (sem usar data de cadastro)
+  let seasonBoost = 0;
+  const safePop = typeof popularity === "number" && Number.isFinite(popularity) ? Math.max(0, popularity) : 0;
+  const safeTrend = typeof trending === "number" && Number.isFinite(trending) ? Math.max(0, trending) : 0;
+  const safeScore = typeof score === "number" && Number.isFinite(score) ? Math.max(0, score) : 0;
+  const hasCurrentSeasonPopularity =
+    isCurrentSeason && (safePop >= 3000 || safeTrend >= 10 || safeScore >= 72);
+
+  if (hasCurrentSeasonPopularity) {
+    const popContribution = safePop > 0 ? Math.min(35, Math.log1p(safePop) * 2.5) : 0;
+    const trendContribution = safeTrend > 0 ? Math.min(20, Math.log1p(safeTrend) * 4) : 0;
+    const scoreContribution = safeScore >= 70 ? Math.min(10, (safeScore - 70) * 0.4) : 0;
+    seasonBoost =
+      Math.round((25 + popContribution + trendContribution + scoreContribution) * 100) / 100;
+  }
+
+  const popPart = safePop > 0 ? Math.log1p(safePop) * 3 : 0;
+  const scorePart = safeScore > 0 ? safeScore * 0.25 : 0;
+  const episodeDepthPart = hasPublishedPlayable
+    ? Math.min(24, Math.max(0, publishedEpisodeCount)) * 0.25
+    : 0;
+
+  const rankScore =
     Math.round(
-      (releasingBoost +
-        recentEpisodeBoost +
+      (calendarBoost +
+        publishedEpisodeBoost +
+        seasonBoost +
         popPart +
         scorePart +
         episodeDepthPart) *
         100,
-    ) / 100
-  );
+    ) / 100;
+
+  return { rankScore, calendarBoost, publishedEpisodeBoost, seasonBoost };
 }
 
 interface ConsolidatedUserWorkSignals {
   playbackAtMs: number;
   progressAtMs: number;
-  trackingAtMs: number;
-  manualAtMs: number;
+  commentAtMs: number;
 }
 
 export function scoreAndRankHomeTrending(
   rows: TrendingCatalogAnimeCandidateRow[],
-  badgesLookup: AnimeRecentBadgesLookup,
+  _badgesLookup: AnimeRecentBadgesLookup,
   signals: TrendingUserAnimeSignalRow[],
   nowMs = Date.now(),
 ): ScoredTrendingItem[] {
@@ -434,23 +498,32 @@ export function scoreAndRankHomeTrending(
     hasAudioTag: boolean;
   }> = [];
 
+  const currentSeason = currentAnimeSeason(new Date(nowMs));
+
   for (const row of rows) {
     if (!row || row.hidden === true) continue;
     if (isAdultTrendingCandidate(row.genres)) continue;
     if (!isNonStubTrendingTitle(row)) continue;
-    if (!row.publishedEpisodeCount || row.publishedEpisodeCount < 1) continue;
 
+    const publishedCount = Number(row.publishedEpisodeCount ?? 0) || 0;
     const epList = Array.isArray(row.epSources) ? row.epSources : [];
     const hasPlayableEp = epList.some((ep) => isTrendingEpisodeRowPlayable(ep));
-    if (!hasPlayableEp) continue;
+    const hasPublishedPlayable = publishedCount >= 1 && hasPlayableEp;
 
-    const hasAudioTag = hasExplicitAudioVariantTag(row);
+    const isCurrentSeason = Boolean(
+      row.season &&
+        row.year &&
+        row.season.trim().toUpperCase() === currentSeason.season.toUpperCase() &&
+        Number(row.year) === currentSeason.year,
+    );
+
+    const hasAudioTag = /\b(dub|dublado|dublada|legendado|legendada|audio dual|dual audio)\b/i.test(
+      `${row.title ?? ""} ${row.titleRomaji ?? ""} ${row.titleEnglish ?? ""} ${row.titleNative ?? ""}`,
+    );
     const baseTitleKey = normalizeTrendingBaseTitleKey(row);
 
     const watchId = resolveTrendingWatchId(row);
     if (!watchId) {
-      // Guarda variante sem ID externo apenas para eventual consolidação de audiência
-      // se for explicitamente uma variação Dublado/Legendado de um candidato válido.
       if (hasAudioTag && baseTitleKey) {
         audioTaggedRowsForAliasResolution.push({
           row,
@@ -499,15 +572,33 @@ export function scoreAndRankHomeTrending(
       genres: Array.isArray(row.genres) ? row.genres.filter(Boolean) : [],
       format: row.format?.trim() || "TV",
       status: row.status?.trim() || "FINISHED",
-      episodesCount: row.episodesCount ?? row.publishedEpisodeCount,
+      episodesCount: hasPublishedPlayable
+        ? (row.episodesCount ?? publishedCount)
+        : (row.episodesCount ?? null),
       season: row.season?.trim() || null,
       year: row.year ?? null,
       trailerId: null,
       source: "local",
       catalogUpdatedAt: updatedAtMs || latestEpisodePublishedAtMs || undefined,
       serverCatalogId: row.id,
-      hasEpisode: true,
+      hasEpisode: hasPublishedPlayable,
     };
+
+    const rankRes = computeTrendingRankScore({
+      status: row.status,
+      score: row.score,
+      popularity: row.popularity,
+      trending: row.trending ?? null,
+      latestEpisodePublishedAtMs,
+      publishedEpisodeCount: publishedCount,
+      hasPublishedPlayable,
+      hasTodaySchedule: Boolean(row.hasTodayAiringSchedule),
+      hasTodayRecurrence: Boolean(row.hasTodayWeeklyRecurrence),
+      hasWeekSchedule: Boolean(row.hasWeekAiringSchedule),
+      hasActiveRecurrence: Boolean(row.hasActiveWeeklyRecurrence),
+      isCurrentSeason,
+      nowMs,
+    });
 
     parsedCandidates.push({
       row,
@@ -517,14 +608,10 @@ export function scoreAndRankHomeTrending(
       baseTitleKey,
       slimAnime,
       latestEpisodePublishedAtMs,
-      fallbackRankScore: computeCatalogFallbackRankScore({
-        status: row.status,
-        score: row.score,
-        popularity: row.popularity,
-        latestEpisodePublishedAtMs,
-        publishedEpisodeCount: row.publishedEpisodeCount,
-        nowMs,
-      }),
+      fallbackRankScore: rankRes.rankScore,
+      calendarBoost: rankRes.calendarBoost,
+      publishedEpisodeBoost: rankRes.publishedEpisodeBoost,
+      seasonBoost: rankRes.seasonBoost,
     });
   }
 
@@ -532,9 +619,6 @@ export function scoreAndRankHomeTrending(
     return [];
   }
 
-  // Union-Find para agrupar exclusivamente variantes da mesma obra:
-  // 1) IDs externos / watchId idênticos
-  // 2) Variantes explícitas de áudio (Dublado/Legendado) com título-base idêntico e sem conflito de IDs
   const parent = parsedCandidates.map((_, idx) => idx);
   const find = (i: number): number => {
     let cur = i;
@@ -599,7 +683,6 @@ export function scoreAndRankHomeTrending(
     }
   }
 
-  // Agrupa candidatos por componente canônico (obra)
   const workGroups = new Map<string, ParsedTrendingCandidate[]>();
   const rootToWorkKey = new Map<number, string>();
   for (let i = 0; i < parsedCandidates.length; i++) {
@@ -614,12 +697,10 @@ export function scoreAndRankHomeTrending(
     workGroups.set(workKey, group);
   }
 
-  // Mapa de aliases (todos os IDs possíveis -> workKey) para reconciliação antes da agregação
   const aliasToWorkKey = new Map<string, string>();
   const workPrimaryCandidate = new Map<string, ParsedTrendingCandidate>();
 
   for (const [workKey, group] of workGroups.entries()) {
-    // Escolhe card representativo: prefere original (não dublado), match direto watchId == row.id, mais episódios
     const sortedGroup = [...group].sort((a, b) => {
       if (a.isDubbed !== b.isDubbed) return a.isDubbed ? 1 : -1;
       const aDirect = a.row.id === a.watchId ? 1 : 0;
@@ -645,7 +726,6 @@ export function scoreAndRankHomeTrending(
     }
   }
 
-  // Vincula variantes explícitas dublado/legendado sem ID externo ao trabalho correspondente
   for (const extra of audioTaggedRowsForAliasResolution) {
     const candidateIndices = baseTitleCandidates.get(extra.baseTitleKey);
     if (!candidateIndices || candidateIndices.length === 0) continue;
@@ -661,7 +741,6 @@ export function scoreAndRankHomeTrending(
     }
   }
 
-  // Consolidação estritamente por (workKey, userId) ANTES da soma por obra
   const userSignalsByWork = new Map<
     string,
     Map<string, ConsolidatedUserWorkSignals>
@@ -678,8 +757,12 @@ export function scoreAndRankHomeTrending(
 
     const playbackMs = toTrendingTimestampMs(sig.playbackAt);
     const progressMs = toTrendingTimestampMs(sig.progressAt);
-    const trackingMs = toTrendingTimestampMs(sig.trackingAt);
-    const manualMs = toTrendingTimestampMs(sig.manualAt);
+    const commentMs = toTrendingTimestampMs(sig.commentAt);
+    // sig.manualAt é ignorado propositalmente: marcações manuais ("assistido") não geram sinal em Em Alta
+
+    if (playbackMs <= 0 && progressMs <= 0 && commentMs <= 0) {
+      continue;
+    }
 
     let usersMap = userSignalsByWork.get(workKey);
     if (!usersMap) {
@@ -691,14 +774,12 @@ export function scoreAndRankHomeTrending(
     if (existing) {
       if (playbackMs > existing.playbackAtMs) existing.playbackAtMs = playbackMs;
       if (progressMs > existing.progressAtMs) existing.progressAtMs = progressMs;
-      if (trackingMs > existing.trackingAtMs) existing.trackingAtMs = trackingMs;
-      if (manualMs > existing.manualAtMs) existing.manualAtMs = manualMs;
+      if (commentMs > existing.commentAtMs) existing.commentAtMs = commentMs;
     } else {
       usersMap.set(cleanUserId, {
         playbackAtMs: playbackMs,
         progressAtMs: progressMs,
-        trackingAtMs: trackingMs,
-        manualAtMs: manualMs,
+        commentAtMs: commentMs,
       });
     }
   }
@@ -706,6 +787,15 @@ export function scoreAndRankHomeTrending(
   const scored: ScoredTrendingItem[] = [];
 
   for (const [workKey, primary] of workPrimaryCandidate.entries()) {
+    const group = workGroups.get(workKey) ?? [primary];
+    const effectiveCalendarBoost = Math.max(
+      ...group.map((g) => g.calendarBoost),
+    );
+    const effectivePublishedEpisodeBoost = Math.max(
+      ...group.map((g) => g.publishedEpisodeBoost),
+    );
+    const effectiveSeasonBoost = Math.max(...group.map((g) => g.seasonBoost));
+
     const usersMap = userSignalsByWork.get(workKey);
     let audienceRaw = 0;
     let uniqueUsers = 0;
@@ -723,20 +813,13 @@ export function scoreAndRankHomeTrending(
           userSig.progressAtMs,
           nowMs,
         );
-        const wTracking = getSignalWeightForTimestamp(
-          "tracking",
-          userSig.trackingAtMs,
-          nowMs,
-        );
-        const wManual = getSignalWeightForTimestamp(
-          "manual",
-          userSig.manualAtMs,
+        const wComment = getSignalWeightForTimestamp(
+          "comment",
+          userSig.commentAtMs,
           nowMs,
         );
 
-        // Regra fundamental: consolida no sinal mais forte do usuário para a obra,
-        // evitando dupla contagem entre tabelas, múltiplos episódios e variantes dub/leg.
-        const contribution = Math.max(wPlayback, wProgress, wTracking, wManual);
+        const contribution = Math.max(wPlayback, wProgress, wComment);
         if (contribution <= 0) continue;
 
         audienceRaw += contribution;
@@ -745,8 +828,7 @@ export function scoreAndRankHomeTrending(
         const userLatestMs = Math.max(
           wPlayback > 0 ? userSig.playbackAtMs : 0,
           wProgress > 0 ? userSig.progressAtMs : 0,
-          wTracking > 0 ? userSig.trackingAtMs : 0,
-          wManual > 0 ? userSig.manualAtMs : 0,
+          wComment > 0 ? userSig.commentAtMs : 0,
         );
         if (userLatestMs > latestActivityMs) {
           latestActivityMs = userLatestMs;
@@ -759,7 +841,17 @@ export function scoreAndRankHomeTrending(
         ? Math.round(Math.log1p(audienceRaw) * 40 * 1000) / 1000
         : 0;
 
-    // Bônus editorial pequeno somente para animes que possuem audiência real
+    // Critério estrito: exige ao menos um sinal real (comunidade, calendário, episódio recente publicado ou popularidade da temporada atual).
+    // Nunca preenche vagas com cadastros sem relevância.
+    const totalRealSignal =
+      audienceScore +
+      effectiveCalendarBoost +
+      effectivePublishedEpisodeBoost +
+      effectiveSeasonBoost;
+    if (totalRealSignal <= 0) {
+      continue;
+    }
+
     let editorialBoost = 0;
     if (audienceScore > 0) {
       const latestEpAgeDays =
@@ -784,35 +876,35 @@ export function scoreAndRankHomeTrending(
       workKey,
       audienceRaw: Math.round(audienceRaw * 1000) / 1000,
       audienceScore,
+      calendarBoost: effectiveCalendarBoost,
+      publishedEpisodeBoost: effectivePublishedEpisodeBoost,
+      seasonBoost: effectiveSeasonBoost,
       editorialBoost,
       fallbackRankScore: primary.fallbackRankScore,
       uniqueUsers,
       latestActivityMs,
-      isFallbackFill: audienceScore <= 0,
+      isFallbackFill: false,
     });
   }
 
-  // Ordenação determinística e estável:
-  // 1) Animes com audiência real sempre vêm antes de itens de preenchimento.
-  // 2) Entre itens com audiência real, ordena por (audienceScore + editorialBoost), uniqueUsers, atividade recente.
-  // 3) Entre itens sem audiência real, ordena pelo score secundário determinístico do catálogo.
   scored.sort((a, b) => {
-    const aHasAudience = a.audienceScore > 0 ? 1 : 0;
-    const bHasAudience = b.audienceScore > 0 ? 1 : 0;
-    if (aHasAudience !== bHasAudience) {
-      return bHasAudience - aHasAudience;
+    const aTotal =
+      a.audienceScore +
+      a.calendarBoost +
+      a.publishedEpisodeBoost +
+      a.seasonBoost +
+      a.editorialBoost;
+    const bTotal =
+      b.audienceScore +
+      b.calendarBoost +
+      b.publishedEpisodeBoost +
+      b.seasonBoost +
+      b.editorialBoost;
+    if (bTotal !== aTotal) return bTotal - aTotal;
+    if (b.uniqueUsers !== a.uniqueUsers) return b.uniqueUsers - a.uniqueUsers;
+    if (b.latestActivityMs !== a.latestActivityMs) {
+      return b.latestActivityMs - a.latestActivityMs;
     }
-
-    if (aHasAudience === 1) {
-      const aTotal = a.audienceScore + a.editorialBoost;
-      const bTotal = b.audienceScore + b.editorialBoost;
-      if (bTotal !== aTotal) return bTotal - aTotal;
-      if (b.uniqueUsers !== a.uniqueUsers) return b.uniqueUsers - a.uniqueUsers;
-      if (b.latestActivityMs !== a.latestActivityMs) {
-        return b.latestActivityMs - a.latestActivityMs;
-      }
-    }
-
     if (b.fallbackRankScore !== a.fallbackRankScore) {
       return b.fallbackRankScore - a.fallbackRankScore;
     }
@@ -878,8 +970,66 @@ async function queryTrendingCatalogCandidatesFromNeon(): Promise<
   TrendingCatalogAnimeCandidateRow[]
 > {
   const sql = await getSql();
+  const todayRange = getTodayRangeSaoPaulo();
+  const todayWeekday = getWeekdaySaoPaulo(todayRange.todayKey);
+  const weekStartSec = todayRange.startTimestamp - 86400;
+  const weekEndSec = todayRange.endTimestamp + 6 * 86400;
+  const currentSeason = currentAnimeSeason();
+
   const rows = await sql.query<TrendingCatalogAnimeCandidateRow>(
-    `SELECT
+    `WITH ep_stats AS (
+       SELECT
+         e."animeId",
+         COUNT(*)::int AS "publishedEpisodeCount",
+         MAX(COALESCE(e."publishedAt", e."createdAt")) AS "latestEpisodePublishedAt"
+       FROM "catalog_episode" e
+       WHERE e."published" = true
+         AND (
+           (e."videoUrl" IS NOT NULL AND BTRIM(e."videoUrl") <> '' AND BTRIM(e."videoUrl") <> '#')
+           OR (e."videoUrl2" IS NOT NULL AND BTRIM(e."videoUrl2") <> '' AND BTRIM(e."videoUrl2") <> '#')
+           OR (e."videoUrl3" IS NOT NULL AND BTRIM(e."videoUrl3") <> '' AND BTRIM(e."videoUrl3") <> '#')
+           OR (e."videoUrl4" IS NOT NULL AND BTRIM(e."videoUrl4") <> '' AND BTRIM(e."videoUrl4") <> '#')
+           OR (e."videoUrl5" IS NOT NULL AND BTRIM(e."videoUrl5") <> '' AND BTRIM(e."videoUrl5") <> '#')
+           OR (e."hikari_player_episode_id" IS NOT NULL AND BTRIM(e."hikari_player_episode_id") <> '')
+         )
+       GROUP BY e."animeId"
+     ),
+     airing_stats AS (
+       SELECT
+         s."animeId",
+         BOOL_OR(s."airingAt" >= to_timestamp($1) AND s."airingAt" <= to_timestamp($2)) AS "hasTodayAiringSchedule",
+         true AS "hasWeekAiringSchedule"
+       FROM "catalog_airing_schedule" s
+       WHERE s."airingAt" >= to_timestamp($3)
+         AND s."airingAt" <= to_timestamp($4)
+       GROUP BY s."animeId"
+     ),
+     recurrence_stats AS (
+       SELECT
+         r."animeId",
+         BOOL_OR(r."dayOfWeek" = $5) AS "hasTodayWeeklyRecurrence",
+         true AS "hasActiveWeeklyRecurrence"
+       FROM "catalog_weekly_recurrence" r
+       WHERE r."active" = true
+         AND r."timezone" = $6
+       GROUP BY r."animeId"
+     ),
+     recent_engagement_ids AS (
+       SELECT DISTINCT p."animeId"
+       FROM "user_episode_progress" p
+       WHERE p."updatedAt" >= NOW() - INTERVAL '30 days'
+         AND p."accumulatedTime" >= 60
+       UNION
+       SELECT DISTINCT w."animeId"
+       FROM "user_watched_episode" w
+       WHERE w."watchedAt" >= NOW() - INTERVAL '30 days'
+         AND w."origin" = 'playback'
+       UNION
+       SELECT DISTINCT c."animeId"
+       FROM "comment" c
+       WHERE c."createdAt" >= NOW() - INTERVAL '30 days'
+     )
+     SELECT
        a."id",
        a."title",
        a."anilistId",
@@ -898,29 +1048,20 @@ async function queryTrendingCatalogCandidatesFromNeon(): Promise<
        COALESCE(a."hidden", false) AS "hidden",
        a."score",
        a."popularity",
+       a."trending",
        a."updatedAt",
-       ep_stats."publishedEpisodeCount",
+       COALESCE(ep_stats."publishedEpisodeCount", 0)::int AS "publishedEpisodeCount",
        ep_stats."latestEpisodePublishedAt",
-       ep_sample."epSources"
+       ep_sample."epSources",
+       COALESCE(airing_stats."hasTodayAiringSchedule", false) AS "hasTodayAiringSchedule",
+       COALESCE(airing_stats."hasWeekAiringSchedule", false) AS "hasWeekAiringSchedule",
+       COALESCE(recurrence_stats."hasTodayWeeklyRecurrence", false) AS "hasTodayWeeklyRecurrence",
+       COALESCE(recurrence_stats."hasActiveWeeklyRecurrence", false) AS "hasActiveWeeklyRecurrence"
      FROM "catalog_anime" a
-     INNER JOIN (
-       SELECT
-         e."animeId",
-         COUNT(*)::int AS "publishedEpisodeCount",
-         MAX(COALESCE(e."publishedAt", e."createdAt")) AS "latestEpisodePublishedAt"
-       FROM "catalog_episode" e
-       WHERE e."published" = true
-         AND (
-           (e."videoUrl" IS NOT NULL AND BTRIM(e."videoUrl") <> '' AND BTRIM(e."videoUrl") <> '#')
-           OR (e."videoUrl2" IS NOT NULL AND BTRIM(e."videoUrl2") <> '' AND BTRIM(e."videoUrl2") <> '#')
-           OR (e."videoUrl3" IS NOT NULL AND BTRIM(e."videoUrl3") <> '' AND BTRIM(e."videoUrl3") <> '#')
-           OR (e."videoUrl4" IS NOT NULL AND BTRIM(e."videoUrl4") <> '' AND BTRIM(e."videoUrl4") <> '#')
-           OR (e."videoUrl5" IS NOT NULL AND BTRIM(e."videoUrl5") <> '' AND BTRIM(e."videoUrl5") <> '#')
-           OR (e."hikari_player_episode_id" IS NOT NULL AND BTRIM(e."hikari_player_episode_id") <> '')
-         )
-       GROUP BY e."animeId"
-     ) ep_stats ON ep_stats."animeId" = a."id"
-     INNER JOIN LATERAL (
+     LEFT JOIN ep_stats ON ep_stats."animeId" = a."id"
+     LEFT JOIN airing_stats ON airing_stats."animeId" = a."id"
+     LEFT JOIN recurrence_stats ON recurrence_stats."animeId" = a."id"
+     LEFT JOIN LATERAL (
        SELECT JSONB_AGG(
          JSONB_BUILD_OBJECT(
            'videoUrl', s."videoUrl",
@@ -953,10 +1094,43 @@ async function queryTrendingCatalogCandidatesFromNeon(): Promise<
          ORDER BY e2."seasonNumber" ASC, e2."number" ASC
          LIMIT 5
        ) s
-     ) ep_sample ON ep_sample."epSources" IS NOT NULL
+     ) ep_sample ON ep_stats."publishedEpisodeCount" > 0
      WHERE COALESCE(a."hidden", false) = false
        AND a."archived_at" IS NULL
-       AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])));`,
+       AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])))
+       AND (
+         (ep_stats."animeId" IS NOT NULL AND ep_stats."latestEpisodePublishedAt" >= NOW() - INTERVAL '21 days')
+         OR airing_stats."animeId" IS NOT NULL
+         OR recurrence_stats."animeId" IS NOT NULL
+         OR (
+           a."season" IS NOT NULL
+           AND UPPER(BTRIM(a."season")) = $7
+           AND a."year" = $8
+           AND (
+             COALESCE(a."popularity", 0) >= 3000
+             OR COALESCE(a."trending", 0) >= 10
+             OR COALESCE(a."score", 0) >= 72
+           )
+         )
+         OR EXISTS (
+           SELECT 1
+           FROM recent_engagement_ids re
+           WHERE re."animeId" = a."id"
+             OR (a."anilistId" IS NOT NULL AND re."animeId" = a."anilistId"::text)
+             OR (a."malId" IS NOT NULL AND re."animeId" = ('mal-' || a."malId"::text))
+             OR (a."kitsuId" IS NOT NULL AND re."animeId" = ('kitsu-' || a."kitsuId"::text))
+         )
+       );`,
+    [
+      todayRange.startTimestamp,
+      todayRange.endTimestamp,
+      weekStartSec,
+      weekEndSec,
+      todayWeekday,
+      CALENDAR_TIMEZONE,
+      currentSeason.season.toUpperCase(),
+      currentSeason.year,
+    ],
   );
 
   return Array.isArray(rows) ? rows : [];
@@ -972,12 +1146,12 @@ async function queryTrendingAudienceSignalsFromNeon(): Promise<
          SELECT
            w."userId",
            w."animeId",
-           MAX(w."watchedAt") FILTER (WHERE w."origin" = 'playback') AS "playbackAt",
+           MAX(w."watchedAt") AS "playbackAt",
            NULL::timestamptz AS "progressAt",
-           NULL::timestamptz AS "trackingAt",
-           MAX(w."watchedAt") FILTER (WHERE w."origin" = 'manual') AS "manualAt"
+           NULL::timestamptz AS "commentAt"
          FROM "user_watched_episode" w
          WHERE w."watchedAt" >= NOW() - INTERVAL '30 days'
+           AND w."origin" = 'playback'
          GROUP BY w."userId", w."animeId"
 
          UNION ALL
@@ -987,8 +1161,7 @@ async function queryTrendingAudienceSignalsFromNeon(): Promise<
            p."animeId",
            NULL::timestamptz AS "playbackAt",
            MAX(p."updatedAt") AS "progressAt",
-           NULL::timestamptz AS "trackingAt",
-           NULL::timestamptz AS "manualAt"
+           NULL::timestamptz AS "commentAt"
          FROM "user_episode_progress" p
          WHERE p."updatedAt" >= NOW() - INTERVAL '30 days'
            AND p."accumulatedTime" >= 60
@@ -997,25 +1170,21 @@ async function queryTrendingAudienceSignalsFromNeon(): Promise<
          UNION ALL
 
          SELECT
-           t."userId",
-           t."animeId",
+           c."userId",
+           c."animeId",
            NULL::timestamptz AS "playbackAt",
            NULL::timestamptz AS "progressAt",
-           MAX(t."updatedAt") AS "trackingAt",
-           NULL::timestamptz AS "manualAt"
-         FROM "user_anime_tracking" t
-         WHERE t."updatedAt" >= NOW() - INTERVAL '30 days'
-           AND t."status" = 'watching'
-           AND t."episodesWatched" >= 1
-         GROUP BY t."userId", t."animeId"
+           MAX(c."createdAt") AS "commentAt"
+         FROM "comment" c
+         WHERE c."createdAt" >= NOW() - INTERVAL '30 days'
+         GROUP BY c."userId", c."animeId"
        )
        SELECT
          "userId",
          "animeId",
          MAX("playbackAt") AS "playbackAt",
          MAX("progressAt") AS "progressAt",
-         MAX("trackingAt") AS "trackingAt",
-         MAX("manualAt") AS "manualAt"
+         MAX("commentAt") AS "commentAt"
        FROM raw_signals
        GROUP BY "userId", "animeId";`,
     );
@@ -1056,19 +1225,26 @@ const defaultHomeTrendingDeps: HomeTrendingDeps = {
   queryAudienceSignals: queryTrendingAudienceSignalsFromNeon,
 };
 
+export interface HomeTrendingResult {
+  ok: boolean;
+  items: SlimAnime[];
+}
+
 export async function getHomeTrendingPayloadWithDeps(
   deps: HomeTrendingDeps = defaultHomeTrendingDeps,
   nowMs = Date.now(),
 ): Promise<HomeTrendingPayload | null> {
-  // 1. Cache quente em memória RAM
+  const currentDayKey = getTodayRangeSaoPaulo(new Date(nowMs)).todayKey;
+
   if (
     ramTrendingPayload &&
-    nowMs - ramTrendingPayload.timestamp < TRENDING_RAM_CACHE_TTL_MS
+    nowMs - ramTrendingPayload.timestamp < TRENDING_RAM_CACHE_TTL_MS &&
+    getTodayRangeSaoPaulo(new Date(ramTrendingPayload.payload.generatedAt)).todayKey ===
+      currentDayKey
   ) {
     return ramTrendingPayload.payload;
   }
 
-  // 2. Singleflight por instância
   if (trendingInFlight) {
     return trendingInFlight;
   }
@@ -1078,12 +1254,13 @@ export async function getHomeTrendingPayloadWithDeps(
 
   const currentFlight = (async (): Promise<HomeTrendingPayload | null> => {
     try {
-      // 3. Upstash Redis compartilhado antes do Neon
       const redisRead = await deps.getRedisTrending();
       if (
         redisRead.status === "hit" &&
         redisRead.payload &&
-        redisRead.payload.items.length > 0
+        redisRead.payload.items.length > 0 &&
+        getTodayRangeSaoPaulo(new Date(redisRead.payload.generatedAt)).todayKey ===
+          currentDayKey
       ) {
         staleTrendingPayload = redisRead.payload;
         if (requestEpoch === trendingEpoch) {
@@ -1102,7 +1279,6 @@ export async function getHomeTrendingPayloadWithDeps(
             ? null
             : undefined;
 
-      // 4. Miss em RAM e Redis: consulta Neon (catálogo, badges cacheadas e sinais de audiência)
       const [catalogRows, badgesLookup, audienceSignals] = await Promise.all([
         deps.queryCatalog(),
         deps.queryBadges().catch(() => ({
@@ -1124,7 +1300,18 @@ export async function getHomeTrendingPayloadWithDeps(
       );
 
       if (scored.length === 0) {
-        return staleTrendingPayload;
+        const emptyPayload: HomeTrendingPayload = {
+          v: 1,
+          generatedAt: nowMs,
+          items: [],
+        };
+        if (requestEpoch === trendingEpoch) {
+          ramTrendingPayload = {
+            payload: emptyPayload,
+            timestamp: Date.now(),
+          };
+        }
+        return emptyPayload;
       }
 
       const payload = buildHomeTrendingPayload(
@@ -1133,20 +1320,18 @@ export async function getHomeTrendingPayloadWithDeps(
         MAX_HOME_TRENDING_CACHE_ITEMS,
       );
 
-      if (payload.items.length === 0) {
-        return staleTrendingPayload;
-      }
-
       staleTrendingPayload = payload;
       if (requestEpoch === trendingEpoch) {
         ramTrendingPayload = {
           payload,
           timestamp: Date.now(),
         };
-        deps.scheduleWrite(
-          deps.setRedisTrending(payload, activeFence),
-          "setRedisHomeTrending",
-        );
+        if (payload.items.length > 0) {
+          deps.scheduleWrite(
+            deps.setRedisTrending(payload, activeFence),
+            "setRedisHomeTrending",
+          );
+        }
       }
 
       return payload;
@@ -1179,6 +1364,21 @@ export async function getHomeTrendingItemsWithDeps(
   }
   const safeLimit = Math.max(1, Math.min(maxItems, MAX_HOME_TRENDING_ITEMS));
   return payload.items.slice(0, safeLimit);
+}
+
+export async function getHomeTrendingResult(
+  nowMs = Date.now(),
+  maxItems = MAX_HOME_TRENDING_ITEMS,
+): Promise<HomeTrendingResult> {
+  const payload = await getHomeTrendingPayloadWithDeps(defaultHomeTrendingDeps, nowMs);
+  if (!payload || !Array.isArray(payload.items)) {
+    return { ok: false, items: [] };
+  }
+  const safeLimit = Math.max(1, Math.min(maxItems, MAX_HOME_TRENDING_ITEMS));
+  return {
+    ok: true,
+    items: payload.items.slice(0, safeLimit),
+  };
 }
 
 export async function getHomeTrendingItems(

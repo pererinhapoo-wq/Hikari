@@ -192,8 +192,8 @@ describe("home-hero dynamic selection, scoring, rotation & caching", () => {
     ];
 
     const audience = new Map<string, HeroAudienceMetrics>([
-      ["700010", { progUsers7d: 18, progUsers14d: 25, playbackUsers7d: 12, playbackUsers14d: 16, manualUsers14d: 2, trackingUsers14d: 20 }],
-      ["700011", { progUsers7d: 10, progUsers14d: 14, playbackUsers7d: 8, playbackUsers14d: 11, manualUsers14d: 1, trackingUsers14d: 12 }],
+      ["700010", { progUsers7d: 18, progUsers14d: 25, playbackUsers7d: 12, playbackUsers14d: 16, manualUsers14d: 2 }],
+      ["700011", { progUsers7d: 10, progUsers14d: 14, playbackUsers7d: 8, playbackUsers14d: 11, manualUsers14d: 1 }],
     ]);
 
     const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), audience, nowMs);
@@ -596,7 +596,6 @@ describe("home-hero dynamic selection, scoring, rotation & caching", () => {
           playbackUsers7d: 6,
           playbackUsers14d: 9,
           manualUsers14d: 0,
-          trackingUsers14d: 4,
         },
       ],
       [
@@ -607,7 +606,6 @@ describe("home-hero dynamic selection, scoring, rotation & caching", () => {
           playbackUsers7d: 0,
           playbackUsers14d: 0,
           manualUsers14d: 10,
-          trackingUsers14d: 0,
         },
       ],
     ]);

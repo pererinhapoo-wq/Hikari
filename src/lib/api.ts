@@ -5290,10 +5290,10 @@ export const fetchHomeCatalog =
           .then((m) => m.getHomeTrendingItems())
           .catch((err) => {
             console.warn(
-              "[Hikari] Falha segura ao selecionar ranking Em Alta (fallback para catálogo):",
+              "[Hikari] Falha segura ao selecionar ranking Em Alta:",
               err instanceof Error ? err.message : err,
             );
-            return [];
+            return [] as SlimAnime[];
           }),
       ]);
 
@@ -5316,14 +5316,14 @@ export const fetchHomeCatalog =
         return {
           ...overlaid,
           ...(heroItems.length > 0 ? { heroItems } : {}),
-          ...(emAltaItems.length > 0 ? { emAltaItems } : {}),
+          emAltaItems,
         };
       } catch (err) {
         console.warn("[Hikari] Falha ao mesclar catálogo do banco na Home:", err);
         return {
           ...catalog,
           ...(heroItems.length > 0 ? { heroItems } : {}),
-          ...(emAltaItems.length > 0 ? { emAltaItems } : {}),
+          emAltaItems,
         };
       }
     },

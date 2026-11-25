@@ -376,11 +376,8 @@ function Home() {
   }, [data.emAltaItems, locals]);
 
   const emAltaItems = useMemo(
-    () =>
-      dynamicEmAltaItems.length > 0
-        ? dynamicEmAltaItems
-        : selectHomeSectionItems(legacyEmAltaSource, homeWithEpisodeCount),
-    [dynamicEmAltaItems, legacyEmAltaSource, homeWithEpisodeCount],
+    () => (Array.isArray(data.emAltaItems) ? dynamicEmAltaItems : []),
+    [data.emAltaItems, dynamicEmAltaItems],
   );
 
   const dynamicHeroItems = useMemo(() => {
