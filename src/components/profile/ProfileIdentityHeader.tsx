@@ -7,6 +7,7 @@ import {
   MoreHorizontal,
   Pencil,
   Shield,
+  ShieldAlert,
   Trash2,
   Users,
   UserX,
@@ -42,6 +43,7 @@ export interface ProfileIdentityHeaderProps {
   isVerified?: boolean;
   canManageVerification?: boolean;
   onToggleVerification?: () => void;
+  onOpenReport?: () => void;
 }
 
 export const ProfileIdentityHeader = memo(function ProfileIdentityHeader({
@@ -68,6 +70,7 @@ export const ProfileIdentityHeader = memo(function ProfileIdentityHeader({
   isVerified = false,
   canManageVerification = false,
   onToggleVerification,
+  onOpenReport,
 }: ProfileIdentityHeaderProps) {
   const displayHandle = nick ? `@${nick}` : "@hikari_membro";
   const initial = (nick || name || "U").charAt(0).toUpperCase();
@@ -362,6 +365,22 @@ export const ProfileIdentityHeader = memo(function ProfileIdentityHeader({
                       >
                         <UserX className="size-4 text-rose-400 shrink-0" />
                         <span>{isBlockedByMe ? "Desbloquear Usuário" : "Bloquear Usuário"}</span>
+                      </button>
+                    )}
+
+                    {/* Denunciar Perfil (quando não é dono) */}
+                    {!isOwner && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          onOpenReport?.();
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-rose-300 hover:bg-rose-500/10 hover:text-rose-200 transition-colors text-left cursor-pointer"
+                      >
+                        <ShieldAlert className="size-4 text-rose-400 shrink-0" />
+                        <span>Denunciar perfil</span>
                       </button>
                     )}
                   </div>

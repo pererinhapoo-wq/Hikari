@@ -64,7 +64,7 @@ export const Route = createFileRoute("/admin/moderation")({
   component: AdminModeration,
 });
 
-type ModerationTab = "comments" | "reports" | "bans";
+type ModerationTab = "comments" | "reports" | "profile_reports" | "bans";
 type CommentFilter = "all" | "reported" | "spoilers" | "roots" | "replies";
 
 const INITIAL_SUMMARY: AdminCommentsSummary = {
@@ -140,6 +140,77 @@ function AdminModeration() {
 
   // Preview ampliado de imagem anexada em comentário
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
+  // Denúncias de Perfil
+  const [profileReports, setProfileReports] = useState<any[]>([]);
+  const [loadingProfileReports, setLoadingProfileReports] = useState(false);
+  const [profileReportStatusFilter, setProfileReportStatusFilter] = useState<string>("pending");
+  const [profileReportPage, setProfileReportPage] = useState(1);
+  const [profileReportTotal, setProfileReportTotal] = useState(0);
+  const [selectedProfileReport, setSelectedProfileReport] = useState<any | null>(null);
+  const [profileReportNotes, setProfileReportNotes] = useState("");
+  const [updatingProfileReport, setUpdatingProfileReport] = useState(false);
+
+  const loadProfileReports = useCallback(async () => {
+    setLoadingProfileReports(true);
+    try {
+      const token = getBearerToken();
+      const params = new URLSearchParams({
+        status: profileReportStatusFilter,
+        page: String(profileReportPage),
+      });
+      const res = await fetch(`/api/admin/profile-reports?${params.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao carregar denúncias de perfil.");
+      }
+      setProfileReports(Array.isArray(data?.reports) ? data.reports : []);
+      setProfileReportTotal(data?.pagination?.total || 0);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar denúncias de perfil.");
+    } finally {
+      setLoadingProfileReports(false);
+    }
+  }, [profileReportStatusFilter, profileReportPage]);
+
+  useEffect(() => {
+    if (activeTab === "profile_reports") {
+      void loadProfileReports();
+    }
+  }, [activeTab, loadProfileReports]);
+
+  const handleUpdateProfileReportStatus = async (reportId: string, status: string, notes?: string) => {
+    if (updatingProfileReport) return;
+    setUpdatingProfileReport(true);
+    try {
+      const token = getBearerToken();
+      const res = await fetch("/api/admin/profile-reports", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          reportId,
+          status,
+          adminNotes: notes,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao atualizar denúncia.");
+      }
+      toast.success("Denúncia atualizada com sucesso!");
+      setSelectedProfileReport(null);
+      void loadProfileReports();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar denúncia.");
+    } finally {
+      setUpdatingProfileReport(false);
+    }
+  };
 
   // Debounce da busca de comentários (ignora render inicial com busca vazia)
   useEffect(() => {
@@ -578,6 +649,13 @@ function AdminModeration() {
                 alert: summary.reportedComments > 0,
               },
               {
+                id: "profile_reports" as const,
+                label: "Denúncias de Perfil",
+                icon: ShieldAlert,
+                badge: profileReportTotal,
+                alert: profileReportTotal > 0,
+              },
+              {
                 id: "bans" as const,
                 label: "Banimentos & Histórico",
                 icon: Ban,
@@ -802,6 +880,150 @@ function AdminModeration() {
         </div>
       )}
 
+      {/* Aba de Denúncias de Perfil */}
+      {activeTab === "profile_reports" && (
+        <div className="space-y-4">
+          <StudioPanel bodyClassName="p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {(
+                  [
+                    { id: "pending", label: "Pendentes" },
+                    { id: "reviewing", label: "Em Análise" },
+                    { id: "resolved", label: "Resolvidas" },
+                    { id: "rejected", label: "Rejeitadas" },
+                    { id: "all", label: "Todas" },
+                  ] as const
+                ).map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    onClick={() => {
+                      setProfileReportStatusFilter(chip.id);
+                      setProfileReportPage(1);
+                    }}
+                    className={cn(
+                      "h-8 rounded-lg border px-3 text-xs font-semibold transition-colors cursor-pointer",
+                      profileReportStatusFilter === chip.id
+                        ? "border-purple-500/40 bg-purple-500/20 text-purple-200"
+                        : "border-white/[0.08] bg-[#161226] text-zinc-400 hover:border-purple-500/30 hover:bg-[#1f1a36] hover:text-zinc-100",
+                    )}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </StudioPanel>
+
+          {loadingProfileReports ? (
+            <StudioLoadingState message="Consultando denúncias de perfil no PostgreSQL..." />
+          ) : profileReports.length === 0 ? (
+            <StudioEmptyState
+              icon={<Check className="size-6 text-emerald-400" />}
+              title="Nenhuma denúncia de perfil encontrada"
+              description="Não há registros de denúncias para o filtro selecionado."
+            />
+          ) : (
+            <div className="space-y-3">
+              {profileReports.map((report) => (
+                <div
+                  key={report.id}
+                  className="flex flex-col gap-4 rounded-xl border border-white/[0.08] bg-[#12101e] p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-xs font-semibold text-purple-300">
+                        {report.reasonLabel}
+                      </span>
+                      <span
+                        className={cn(
+                          "rounded-md px-2 py-0.5 text-[11px] font-bold uppercase",
+                          report.status === "pending"
+                            ? "bg-amber-500/20 text-amber-300"
+                            : report.status === "reviewing"
+                              ? "bg-sky-500/20 text-sky-300"
+                              : report.status === "resolved"
+                                ? "bg-emerald-500/20 text-emerald-300"
+                                : "bg-zinc-500/20 text-zinc-300",
+                        )}
+                      >
+                        {report.status === "pending"
+                          ? "Pendente"
+                          : report.status === "reviewing"
+                            ? "Em Análise"
+                            : report.status === "resolved"
+                              ? "Resolvida"
+                              : "Rejeitada"}
+                      </span>
+                      <span className="studio-tabular text-[11px] text-zinc-400">
+                        {new Date(report.createdAt).toLocaleString("pt-BR")}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-1">
+                      {report.reportedUser.image ? (
+                        <img
+                          src={report.reportedUser.image}
+                          alt=""
+                          className="size-9 rounded-full object-cover ring-1 ring-purple-500/30"
+                        />
+                      ) : (
+                        <div className="flex size-9 items-center justify-center rounded-full bg-purple-900/40 text-xs font-bold text-purple-300">
+                          {(report.reportedUser.name || "U").charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-zinc-100">
+                            {report.reportedUser.name}
+                          </span>
+                          <span className="studio-mono text-xs text-purple-300">
+                            @{report.reportedUser.nick}
+                          </span>
+                        </div>
+                        <Link
+                          to="/profile/$nick"
+                          params={{ nick: report.reportedUser.nick }}
+                          className="inline-flex items-center gap-1 text-xs text-[#c084fc] hover:underline"
+                        >
+                          <span>Ver perfil denunciado</span>
+                          <ExternalLink className="size-3" />
+                        </Link>
+                      </div>
+                    </div>
+
+                    {report.description && (
+                      <p className="rounded-lg bg-[#161226] p-2.5 text-xs text-zinc-300">
+                        <strong className="text-zinc-100">Descrição:</strong> {report.description}
+                      </p>
+                    )}
+
+                    <div className="text-[11px] text-zinc-500">
+                      Denunciante: {report.reporterUser?.name || report.reporterUserId} (Sigilo preservado)
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedProfileReport(report);
+                        setProfileReportNotes(report.adminNotes || "");
+                      }}
+                      className="h-9 gap-1.5 border border-purple-500/30 bg-purple-500/20 px-3 text-xs font-semibold text-purple-200 hover:bg-purple-500/30"
+                    >
+                      Gerenciar Denúncia
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Aba 3: Banimentos Ativos & Histórico Auditável */}
       {activeTab === "bans" && (
         <div className="space-y-6">
@@ -981,6 +1203,106 @@ function AdminModeration() {
           </StudioPanel>
         </div>
       )}
+
+      {/* Modal de Gestão da Denúncia de Perfil */}
+      <Dialog
+        open={selectedProfileReport !== null}
+        onOpenChange={(open) => {
+          if (!open && !updatingProfileReport) {
+            setSelectedProfileReport(null);
+          }
+        }}
+      >
+        <DialogContent className="hikari-studio-dialog border border-white/[0.08] bg-[#12101e] text-zinc-100 shadow-2xl sm:max-w-lg">
+          <DialogTitle className="font-display text-lg font-bold text-zinc-100">
+            Gerenciar Denúncia de Perfil
+          </DialogTitle>
+          <DialogDescription className="text-xs text-zinc-400">
+            Atualize o status ou adicione notas administrativas para o registro de denúncia.
+          </DialogDescription>
+
+          {selectedProfileReport && (
+            <div className="mt-4 space-y-4">
+              <div className="rounded-xl border border-white/[0.08] bg-[#161226] p-3 text-xs space-y-2">
+                <div>
+                  <span className="text-zinc-400">Perfil Denunciado:</span>{" "}
+                  <strong className="text-zinc-100">
+                    {selectedProfileReport.reportedUser.name} (@{selectedProfileReport.reportedUser.nick})
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-zinc-400">Motivo:</span>{" "}
+                  <strong className="text-purple-300">{selectedProfileReport.reasonLabel}</strong>
+                </div>
+                {selectedProfileReport.description && (
+                  <div>
+                    <span className="text-zinc-400">Descrição:</span>{" "}
+                    <span className="text-zinc-200">{selectedProfileReport.description}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-200">Notas Administrativas</label>
+                <Input
+                  value={profileReportNotes}
+                  onChange={(e) => setProfileReportNotes(e.target.value)}
+                  placeholder="Ex: Analisado, perfil advertido / falso positivo..."
+                  className="studio-input h-9 text-xs"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={updatingProfileReport}
+                  onClick={() =>
+                    handleUpdateProfileReportStatus(
+                      selectedProfileReport.id,
+                      "reviewing",
+                      profileReportNotes,
+                    )
+                  }
+                  className="h-9 bg-sky-600 text-xs font-semibold text-white hover:bg-sky-700"
+                >
+                  Em Análise
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={updatingProfileReport}
+                  onClick={() =>
+                    handleUpdateProfileReportStatus(
+                      selectedProfileReport.id,
+                      "resolved",
+                      profileReportNotes,
+                    )
+                  }
+                  className="h-9 bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700"
+                >
+                  Marcar Resolvida
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={updatingProfileReport}
+                  onClick={() =>
+                    handleUpdateProfileReportStatus(
+                      selectedProfileReport.id,
+                      "rejected",
+                      profileReportNotes,
+                    )
+                  }
+                  className="h-9 bg-rose-600 text-xs font-semibold text-white hover:bg-rose-700"
+                >
+                  Rejeitar Denúncia
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Confirmação de Ação em Comentário */}
       <Dialog

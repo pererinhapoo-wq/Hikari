@@ -51,6 +51,7 @@ import {
 } from "@/types/profile-tracking";
 
 import { ProfileIdentityHeader } from "@/components/profile/ProfileIdentityHeader";
+import { ProfileReportModal } from "@/components/profile/ProfileReportModal";
 import {
   ProfileNavRail,
   type ProfileSpace,
@@ -511,6 +512,7 @@ function PublicProfile() {
   const [isBlockedByMe, setIsBlockedByMe] = useState(() => Boolean(initialBundle?.profile.isBlockedByMe));
   const [isBlockedByTarget, setIsBlockedByTarget] = useState(() => Boolean(initialBundle?.profile.isBlockedByTarget));
   const [blockLoading, setBlockLoading] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   // Modal de Conexões (Seguidores / Seguindo)
   const [connectionsOpen, setConnectionsOpen] = useState(false);
@@ -1580,6 +1582,13 @@ function PublicProfile() {
           actions={headerActions}
           onOpenFollowers={handleOpenFollowers}
           onOpenFollowing={handleOpenFollowing}
+          onOpenReport={() => {
+            if (!currentUser?.id) {
+              toast.error("É necessário estar autenticado para denunciar um perfil.");
+              return;
+            }
+            setReportModalOpen(true);
+          }}
         />
 
         {/* Notificação se o usuário estiver bloqueado */}
@@ -1758,6 +1767,17 @@ function PublicProfile() {
             profileOwnerId={profile?.userId ?? null}
           />
         </Suspense>
+      )}
+
+      {/* Modal de Denúncia de Perfil */}
+      {profile && (
+        <ProfileReportModal
+          open={reportModalOpen}
+          onOpenChange={setReportModalOpen}
+          targetUserId={profile.userId}
+          targetNick={profile.nick}
+          targetName={profile.name || profile.nick}
+        />
       )}
     </div>
   );

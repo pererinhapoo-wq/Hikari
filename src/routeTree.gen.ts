@@ -82,6 +82,7 @@ import { Route as ApiAdminImagesRouteImport } from './routes/api/admin/images'
 import { Route as ApiAdminKitsuImageSearchRouteImport } from './routes/api/admin/kitsu-image-search'
 import { Route as ApiAdminMaintenanceRouteImport } from './routes/api/admin/maintenance'
 import { Route as ApiAdminOpeningSuggestionsRouteImport } from './routes/api/admin/opening-suggestions'
+import { Route as ApiAdminProfileReportsRouteImport } from './routes/api/admin/profile-reports'
 import { Route as ApiAdminSettingsRouteImport } from './routes/api/admin/settings'
 import { Route as ApiAdminUploadThumbnailRouteImport } from './routes/api/admin/upload-thumbnail'
 import { Route as ApiAdminUsersRouteImport } from './routes/api/admin/users'
@@ -95,6 +96,7 @@ import { Route as ApiCronCleanupProgressRouteImport } from './routes/api/cron.cl
 import { Route as ApiCronDrainProgressRouteImport } from './routes/api/cron.drain-progress'
 import { Route as ApiPlaybackHeartbeatRouteImport } from './routes/api/playback.heartbeat'
 import { Route as ApiProfileFollowRouteImport } from './routes/api/profile.follow'
+import { Route as ApiProfileReportRouteImport } from './routes/api/profile.report'
 import { Route as WatchIdEpRouteImport } from './routes/watch_.$id.$ep'
 
 const IndexRoute = IndexRouteImport.update({
@@ -465,6 +467,11 @@ const ApiAdminOpeningSuggestionsRoute =
     path: '/api/admin/opening-suggestions',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiAdminProfileReportsRoute = ApiAdminProfileReportsRouteImport.update({
+  id: '/api/admin/profile-reports',
+  path: '/api/admin/profile-reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminSettingsRoute = ApiAdminSettingsRouteImport.update({
   id: '/api/admin/settings',
   path: '/api/admin/settings',
@@ -528,6 +535,11 @@ const ApiPlaybackHeartbeatRoute = ApiPlaybackHeartbeatRouteImport.update({
 const ApiProfileFollowRoute = ApiProfileFollowRouteImport.update({
   id: '/api/profile/follow',
   path: '/api/profile/follow',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiProfileReportRoute = ApiProfileReportRouteImport.update({
+  id: '/api/profile/report',
+  path: '/api/profile/report',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WatchIdEpRoute = WatchIdEpRouteImport.update({
@@ -610,6 +622,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/kitsu-image-search': typeof ApiAdminKitsuImageSearchRoute
   '/api/admin/maintenance': typeof ApiAdminMaintenanceRoute
   '/api/admin/opening-suggestions': typeof ApiAdminOpeningSuggestionsRoute
+  '/api/admin/profile-reports': typeof ApiAdminProfileReportsRoute
   '/api/admin/settings': typeof ApiAdminSettingsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -623,6 +636,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/drain-progress': typeof ApiCronDrainProgressRoute
   '/api/playback/heartbeat': typeof ApiPlaybackHeartbeatRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
+  '/api/profile/report': typeof ApiProfileReportRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
 }
 export interface FileRoutesByTo {
@@ -697,6 +711,7 @@ export interface FileRoutesByTo {
   '/api/admin/kitsu-image-search': typeof ApiAdminKitsuImageSearchRoute
   '/api/admin/maintenance': typeof ApiAdminMaintenanceRoute
   '/api/admin/opening-suggestions': typeof ApiAdminOpeningSuggestionsRoute
+  '/api/admin/profile-reports': typeof ApiAdminProfileReportsRoute
   '/api/admin/settings': typeof ApiAdminSettingsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -710,6 +725,7 @@ export interface FileRoutesByTo {
   '/api/cron/drain-progress': typeof ApiCronDrainProgressRoute
   '/api/playback/heartbeat': typeof ApiPlaybackHeartbeatRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
+  '/api/profile/report': typeof ApiProfileReportRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
 }
 export interface FileRoutesById {
@@ -787,6 +803,7 @@ export interface FileRoutesById {
   '/api/admin/kitsu-image-search': typeof ApiAdminKitsuImageSearchRoute
   '/api/admin/maintenance': typeof ApiAdminMaintenanceRoute
   '/api/admin/opening-suggestions': typeof ApiAdminOpeningSuggestionsRoute
+  '/api/admin/profile-reports': typeof ApiAdminProfileReportsRoute
   '/api/admin/settings': typeof ApiAdminSettingsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -800,6 +817,7 @@ export interface FileRoutesById {
   '/api/cron/drain-progress': typeof ApiCronDrainProgressRoute
   '/api/playback/heartbeat': typeof ApiPlaybackHeartbeatRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
+  '/api/profile/report': typeof ApiProfileReportRoute
   '/watch_/$id/$ep': typeof WatchIdEpRoute
 }
 export interface FileRouteTypes {
@@ -878,6 +896,7 @@ export interface FileRouteTypes {
     | '/api/admin/kitsu-image-search'
     | '/api/admin/maintenance'
     | '/api/admin/opening-suggestions'
+    | '/api/admin/profile-reports'
     | '/api/admin/settings'
     | '/api/admin/upload-thumbnail'
     | '/api/admin/users'
@@ -891,6 +910,7 @@ export interface FileRouteTypes {
     | '/api/cron/drain-progress'
     | '/api/playback/heartbeat'
     | '/api/profile/follow'
+    | '/api/profile/report'
     | '/watch/$id/$ep'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -965,6 +985,7 @@ export interface FileRouteTypes {
     | '/api/admin/kitsu-image-search'
     | '/api/admin/maintenance'
     | '/api/admin/opening-suggestions'
+    | '/api/admin/profile-reports'
     | '/api/admin/settings'
     | '/api/admin/upload-thumbnail'
     | '/api/admin/users'
@@ -978,6 +999,7 @@ export interface FileRouteTypes {
     | '/api/cron/drain-progress'
     | '/api/playback/heartbeat'
     | '/api/profile/follow'
+    | '/api/profile/report'
     | '/watch/$id/$ep'
   id:
     | '__root__'
@@ -1054,6 +1076,7 @@ export interface FileRouteTypes {
     | '/api/admin/kitsu-image-search'
     | '/api/admin/maintenance'
     | '/api/admin/opening-suggestions'
+    | '/api/admin/profile-reports'
     | '/api/admin/settings'
     | '/api/admin/upload-thumbnail'
     | '/api/admin/users'
@@ -1067,6 +1090,7 @@ export interface FileRouteTypes {
     | '/api/cron/drain-progress'
     | '/api/playback/heartbeat'
     | '/api/profile/follow'
+    | '/api/profile/report'
     | '/watch_/$id/$ep'
   fileRoutesById: FileRoutesById
 }
@@ -1127,6 +1151,7 @@ export interface RootRouteChildren {
   ApiAdminKitsuImageSearchRoute: typeof ApiAdminKitsuImageSearchRoute
   ApiAdminMaintenanceRoute: typeof ApiAdminMaintenanceRoute
   ApiAdminOpeningSuggestionsRoute: typeof ApiAdminOpeningSuggestionsRoute
+  ApiAdminProfileReportsRoute: typeof ApiAdminProfileReportsRoute
   ApiAdminSettingsRoute: typeof ApiAdminSettingsRoute
   ApiAdminUploadThumbnailRoute: typeof ApiAdminUploadThumbnailRoute
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
@@ -1135,6 +1160,7 @@ export interface RootRouteChildren {
   ApiCronDrainProgressRoute: typeof ApiCronDrainProgressRoute
   ApiPlaybackHeartbeatRoute: typeof ApiPlaybackHeartbeatRoute
   ApiProfileFollowRoute: typeof ApiProfileFollowRoute
+  ApiProfileReportRoute: typeof ApiProfileReportRoute
   WatchIdEpRoute: typeof WatchIdEpRoute
 }
 
@@ -1651,6 +1677,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminOpeningSuggestionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/profile-reports': {
+      id: '/api/admin/profile-reports'
+      path: '/api/admin/profile-reports'
+      fullPath: '/api/admin/profile-reports'
+      preLoaderRoute: typeof ApiAdminProfileReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/settings': {
       id: '/api/admin/settings'
       path: '/api/admin/settings'
@@ -1740,6 +1773,13 @@ declare module '@tanstack/react-router' {
       path: '/api/profile/follow'
       fullPath: '/api/profile/follow'
       preLoaderRoute: typeof ApiProfileFollowRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/profile/report': {
+      id: '/api/profile/report'
+      path: '/api/profile/report'
+      fullPath: '/api/profile/report'
+      preLoaderRoute: typeof ApiProfileReportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/watch_/$id/$ep': {
@@ -1879,6 +1919,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminKitsuImageSearchRoute: ApiAdminKitsuImageSearchRoute,
   ApiAdminMaintenanceRoute: ApiAdminMaintenanceRoute,
   ApiAdminOpeningSuggestionsRoute: ApiAdminOpeningSuggestionsRoute,
+  ApiAdminProfileReportsRoute: ApiAdminProfileReportsRoute,
   ApiAdminSettingsRoute: ApiAdminSettingsRoute,
   ApiAdminUploadThumbnailRoute: ApiAdminUploadThumbnailRoute,
   ApiAdminUsersRoute: ApiAdminUsersRoute,
@@ -1887,6 +1928,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronDrainProgressRoute: ApiCronDrainProgressRoute,
   ApiPlaybackHeartbeatRoute: ApiPlaybackHeartbeatRoute,
   ApiProfileFollowRoute: ApiProfileFollowRoute,
+  ApiProfileReportRoute: ApiProfileReportRoute,
   WatchIdEpRoute: WatchIdEpRoute,
 }
 export const routeTree = rootRouteImport
