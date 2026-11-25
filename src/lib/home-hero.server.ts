@@ -1,4 +1,9 @@
 import { getSql } from "@/lib/db";
+import {
+  CALENDAR_TIMEZONE,
+  getTodayRangeSaoPaulo,
+  getWeekdaySaoPaulo,
+} from "@/lib/calendar-timezone";
 import type { AnimeRecentBadgesLookup } from "@/lib/catalog-badges";
 import { buildHikariPlayerEpisodeUrl } from "@/lib/hikari-player";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
@@ -29,6 +34,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
 export interface HeroEpisode1SourceRow {
+  number?: number | null;
+  seasonNumber?: number | null;
   videoUrl?: string | null;
   videoUrl2?: string | null;
   videoUrl3?: string | null;
@@ -65,7 +72,12 @@ export interface HeroCatalogAnimeCandidateRow {
   publishedEpisodeCount: number;
   firstEpisodePublishedAt: string | Date | null;
   latestEpisodePublishedAt: string | Date | null;
-  ep1Sources: HeroEpisode1SourceRow[] | null;
+  ep1Sources?: HeroEpisode1SourceRow[] | null;
+  epSources?: HeroEpisode1SourceRow[] | null;
+  hasTodayAiringSchedule?: boolean | null;
+  hasWeekAiringSchedule?: boolean | null;
+  hasTodayWeeklyRecurrence?: boolean | null;
+  hasActiveWeeklyRecurrence?: boolean | null;
 }
 
 export interface HeroAudienceRawRow {
@@ -95,10 +107,12 @@ export interface ScoredHeroCandidate {
   kitsuId: number | null;
   isDubbed: boolean;
   hasDistinctBanner: boolean;
+  hasPublishedEpisode: boolean;
   titleKey: string;
   noveltyScore: number;
   newEpisodeScore: number;
   engagementScore: number;
+  calendarScore: number;
   evergreenScore: number;
 }
 
@@ -192,10 +206,10 @@ export function normalizeHeroTitleKey(row: {
 }
 
 /**
- * Resolve um ID compatível com `/watch/$id/ep-1` e `/anime/$id` sem alterar essas rotas.
- * Registros `local-*` ou slugs customizados sem ID externo (`anilistId`/`malId`/`kitsuId`)
- * retornam `null` porque `/watch_.$id.$ep.tsx` retorna `{ remote: null, catalogEpisodes: null }`
- * para `local-*` e `fetchAnimeDetail` exige ID numérico, `mal-*` ou `kitsu-*`.
+ * Resolve o ID de navegação compatível com `/anime/$id` e `/watch/$id/$ep`.
+ * Prioriza IDs canônicos externos quando presentes (preservando aliases e logos),
+ * e aceita identificadores internos válidos do catálogo do Hikari (`local-*` ou slugs próprios)
+ * quando não há ID externo vinculado.
  */
 export function resolveHeroWatchId(row: {
   id: string;
@@ -226,7 +240,16 @@ export function resolveHeroWatchId(row: {
     return `kitsu-${Math.floor(row.kitsuId)}`;
   }
 
-  return null;
+  const lowerId = rawId.toLowerCase();
+  if (
+    lowerId === "null" ||
+    lowerId === "undefined" ||
+    /[\s/?#\\]/.test(rawId)
+  ) {
+    return null;
+  }
+
+  return rawId;
 }
 
 export function isHeroEpisodeRowPlayable(ep: HeroEpisode1SourceRow | null | undefined): boolean {
@@ -282,38 +305,31 @@ export function reconcileAudienceMetricsForRow(
 }
 
 export function computeNoveltyScore(params: {
-  animeCreatedAtMs: number;
+  animeCreatedAtMs?: number;
   firstEpisodePublishedAtMs: number;
   publishedEpisodeCount: number;
   badges: { lancamento: boolean; novo: boolean; final: boolean } | null;
   nowMs: number;
 }): number {
-  const { animeCreatedAtMs, firstEpisodePublishedAtMs, publishedEpisodeCount, nowMs } =
-    params;
+  const { firstEpisodePublishedAtMs, publishedEpisodeCount, nowMs } = params;
 
-  const createdDays =
-    animeCreatedAtMs > 0 ? Math.max(0, (nowMs - animeCreatedAtMs) / DAY_MS) : Infinity;
-  const firstEpDays =
-    firstEpisodePublishedAtMs > 0
-      ? Math.max(0, (nowMs - firstEpisodePublishedAtMs) / DAY_MS)
-      : Infinity;
-
-  // Distingue um anime recém-chegado ao Hikari de um título antigo que recebeu novo episódio:
-  // Só usa firstEpisodePublishedAt se a estreia do primeiro episódio for recente e não for um
-  // catálogo histórico antigo com dezenas de episódios publicados há muito tempo.
-  let effectiveAgeDays = createdDays;
-  if (firstEpDays <= NOVELTY_TAIL_DAYS && publishedEpisodeCount <= 26) {
-    effectiveAgeDays = Math.min(createdDays, firstEpDays);
-  } else if (firstEpDays > NOVELTY_TAIL_DAYS && createdDays > NOVELTY_WINDOW_DAYS) {
-    effectiveAgeDays = firstEpDays;
+  // A data de cadastro/atualização do catálogo não promove um anime sozinha:
+  // novidade exige episódio efetivamente publicado recentemente e catálogo sazonal (<= 26 eps).
+  if (!publishedEpisodeCount || publishedEpisodeCount < 1 || publishedEpisodeCount > 26) {
+    return 0;
+  }
+  if (firstEpisodePublishedAtMs <= 0) {
+    return 0;
   }
 
+  const firstEpDays = Math.max(0, (nowMs - firstEpisodePublishedAtMs) / DAY_MS);
+
   let baseScore = 0;
-  if (effectiveAgeDays <= NOVELTY_WINDOW_DAYS) {
-    baseScore = 110 * Math.exp(-effectiveAgeDays / 12);
-  } else if (effectiveAgeDays <= NOVELTY_TAIL_DAYS) {
+  if (firstEpDays <= NOVELTY_WINDOW_DAYS) {
+    baseScore = 110 * Math.exp(-firstEpDays / 12);
+  } else if (firstEpDays <= NOVELTY_TAIL_DAYS) {
     const tailRatio =
-      (NOVELTY_TAIL_DAYS - effectiveAgeDays) / (NOVELTY_TAIL_DAYS - NOVELTY_WINDOW_DAYS);
+      (NOVELTY_TAIL_DAYS - firstEpDays) / (NOVELTY_TAIL_DAYS - NOVELTY_WINDOW_DAYS);
     baseScore = 110 * Math.exp(-NOVELTY_WINDOW_DAYS / 12) * Math.max(0, tailRatio);
   }
 
@@ -377,6 +393,44 @@ export function computeEvergreenScore(params: {
   return Math.round((scorePart + popPart + statusPart + recentActivityPart) * 100) / 100;
 }
 
+export function computeCalendarScore(params: {
+  hasTodaySchedule: boolean;
+  hasWeekSchedule: boolean;
+  hasTodayRecurrence: boolean;
+  hasActiveRecurrence: boolean;
+  hasPublishedEpisode: boolean;
+  score: number | null;
+}): number {
+  const {
+    hasTodaySchedule,
+    hasWeekSchedule,
+    hasTodayRecurrence,
+    hasActiveRecurrence,
+    hasPublishedEpisode,
+    score,
+  } = params;
+
+  if (!hasTodaySchedule && !hasWeekSchedule && !hasTodayRecurrence && !hasActiveRecurrence) {
+    return 0;
+  }
+
+  let baseScore = 0;
+  if (hasTodaySchedule) {
+    baseScore = 98;
+  } else if (hasTodayRecurrence) {
+    baseScore = 94;
+  } else if (hasWeekSchedule) {
+    baseScore = 76;
+  } else if (hasActiveRecurrence) {
+    baseScore = 68;
+  }
+
+  const playableBonus = hasPublishedEpisode ? 12 : 0;
+  const qualityTie = Math.min(10, Math.max(0, (score ?? 70) / 10));
+
+  return Math.round((baseScore + playableBonus + qualityTie) * 100) / 100;
+}
+
 export function scoreAndDeduplicateHeroCandidates(
   rows: HeroCatalogAnimeCandidateRow[],
   _badgesLookup: AnimeRecentBadgesLookup,
@@ -389,11 +443,47 @@ export function scoreAndDeduplicateHeroCandidates(
     if (!row || row.hidden === true) continue;
     if (isAdultHeroCandidate(row.genres)) continue;
     if (!isNonStubHeroTitle(row)) continue;
-    if (!row.publishedEpisodeCount || row.publishedEpisodeCount < 1) continue;
 
-    const ep1List = Array.isArray(row.ep1Sources) ? row.ep1Sources : [];
-    const hasPlayableEp1 = ep1List.some((ep1) => isHeroEpisodeRowPlayable(ep1));
-    if (!hasPlayableEp1) continue;
+    const rawSources = [
+      ...(Array.isArray(row.epSources) ? row.epSources : []),
+      ...(Array.isArray(row.ep1Sources) ? row.ep1Sources : []),
+    ];
+    const playableSources = rawSources.filter((ep) => isHeroEpisodeRowPlayable(ep));
+    const publishedCount = Number(row.publishedEpisodeCount ?? 0) || 0;
+    const hasPublishedPlayableEpisode = publishedCount >= 1 && playableSources.length > 0;
+
+    let firstAvailableEpisodeNumber: number | undefined;
+    if (hasPublishedPlayableEpisode) {
+      const sortedPlayable = [...playableSources].sort((a, b) => {
+        const sa = typeof a.seasonNumber === "number" && Number.isFinite(a.seasonNumber) ? a.seasonNumber : 1;
+        const sb = typeof b.seasonNumber === "number" && Number.isFinite(b.seasonNumber) ? b.seasonNumber : 1;
+        if (sa !== sb) return sa - sb;
+        const na = typeof a.number === "number" && Number.isFinite(a.number) ? a.number : 1;
+        const nb = typeof b.number === "number" && Number.isFinite(b.number) ? b.number : 1;
+        return na - nb;
+      });
+      const firstEpNum = sortedPlayable[0]?.number;
+      if (typeof firstEpNum === "number" && Number.isFinite(firstEpNum) && firstEpNum >= 1) {
+        firstAvailableEpisodeNumber = Math.floor(firstEpNum);
+      }
+    }
+
+    const audienceMetrics = reconcileAudienceMetricsForRow(row, audienceByKey);
+    const engagementScore = computeEngagementScore(audienceMetrics);
+    const calendarScore = computeCalendarScore({
+      hasTodaySchedule: Boolean(row.hasTodayAiringSchedule),
+      hasWeekSchedule: Boolean(row.hasWeekAiringSchedule),
+      hasTodayRecurrence: Boolean(row.hasTodayWeeklyRecurrence),
+      hasActiveRecurrence: Boolean(row.hasActiveWeeklyRecurrence),
+      hasPublishedEpisode: hasPublishedPlayableEpisode,
+      score: row.score,
+    });
+
+    // Elegibilidade estrita: precisa ter episódio publicado reproduzível, engajamento real
+    // da comunidade ou programação ativa de calendário/recorrência (nunca só cadastro).
+    if (!hasPublishedPlayableEpisode && engagementScore <= 0 && calendarScore <= 0) {
+      continue;
+    }
 
     const watchId = resolveHeroWatchId(row);
     if (!watchId) continue;
@@ -416,33 +506,35 @@ export function scoreAndDeduplicateHeroCandidates(
       row.titleNative?.trim() ||
       "Anime";
 
-    const animeCreatedAtMs = toHeroTimestampMs(row.createdAt);
     const firstEpisodePublishedAtMs = toHeroTimestampMs(row.firstEpisodePublishedAt);
     const latestEpisodePublishedAtMs = toHeroTimestampMs(row.latestEpisodePublishedAt);
     const animeUpdatedAtMs = toHeroTimestampMs(row.updatedAt);
 
-    const noveltyScore = computeNoveltyScore({
-      animeCreatedAtMs,
-      firstEpisodePublishedAtMs,
-      publishedEpisodeCount: row.publishedEpisodeCount,
-      badges: null,
-      nowMs,
-    });
-    const newEpisodeScore = computeNewEpisodeScore({
-      latestEpisodePublishedAtMs,
-      status: row.status,
-      score: row.score,
-      nowMs,
-    });
-    const audienceMetrics = reconcileAudienceMetricsForRow(row, audienceByKey);
-    const engagementScore = computeEngagementScore(audienceMetrics);
-    const evergreenScore = computeEvergreenScore({
-      score: row.score,
-      popularity: row.popularity,
-      status: row.status,
-      latestEpisodePublishedAtMs,
-      nowMs,
-    });
+    const noveltyScore = hasPublishedPlayableEpisode
+      ? computeNoveltyScore({
+          firstEpisodePublishedAtMs,
+          publishedEpisodeCount: publishedCount,
+          badges: null,
+          nowMs,
+        })
+      : 0;
+    const newEpisodeScore = hasPublishedPlayableEpisode
+      ? computeNewEpisodeScore({
+          latestEpisodePublishedAtMs,
+          status: row.status,
+          score: row.score,
+          nowMs,
+        })
+      : 0;
+    const evergreenScore = hasPublishedPlayableEpisode
+      ? computeEvergreenScore({
+          score: row.score,
+          popularity: row.popularity,
+          status: row.status,
+          latestEpisodePublishedAtMs,
+          nowMs,
+        })
+      : 0;
 
     const slimAnime: SlimAnime = {
       id: watchId,
@@ -462,14 +554,21 @@ export function scoreAndDeduplicateHeroCandidates(
       genres: Array.isArray(row.genres) ? row.genres.filter(Boolean) : [],
       format: row.format?.trim() || "TV",
       status: row.status?.trim() || "FINISHED",
-      episodesCount: row.episodesCount ?? row.publishedEpisodeCount,
+      episodesCount: hasPublishedPlayableEpisode
+        ? row.episodesCount ?? publishedCount
+        : row.episodesCount ?? null,
       season: row.season?.trim() || null,
       year: row.year ?? null,
       trailerId: row.trailerId?.trim() || null,
       source: "local",
       catalogUpdatedAt: animeUpdatedAtMs || latestEpisodePublishedAtMs || undefined,
       serverCatalogId: row.id,
-      hasEpisode: true,
+      hasEpisode: hasPublishedPlayableEpisode,
+      ...(hasPublishedPlayableEpisode &&
+      firstAvailableEpisodeNumber !== undefined &&
+      firstAvailableEpisodeNumber !== 1
+        ? { firstAvailableEpisodeNumber }
+        : {}),
     };
 
     const titleKey = normalizeHeroTitleKey(row) || watchId;
@@ -482,19 +581,29 @@ export function scoreAndDeduplicateHeroCandidates(
       kitsuId: row.kitsuId ?? null,
       isDubbed: isDubbedHeroRow(row),
       hasDistinctBanner: distinctBanner,
+      hasPublishedEpisode: hasPublishedPlayableEpisode,
       titleKey,
       noveltyScore,
       newEpisodeScore,
       engagementScore,
+      calendarScore,
       evergreenScore,
     });
   }
 
-  // Deduplicação preferindo banner horizontal próprio, versão original (não dublada) e maior pontuação
+  // Deduplicação preferindo banner horizontal próprio, versão original (não dublada),
+  // episódio publicado real e maior pontuação
   const bestRankKey = (c: ScoredHeroCandidate): number =>
     (c.hasDistinctBanner ? 100000 : 0) +
     (!c.isDubbed ? 10000 : 0) +
-    Math.max(c.noveltyScore, c.newEpisodeScore, c.engagementScore, c.evergreenScore);
+    (c.hasPublishedEpisode ? 1000 : 0) +
+    Math.max(
+      c.noveltyScore,
+      c.newEpisodeScore,
+      c.engagementScore,
+      c.calendarScore,
+      c.evergreenScore,
+    );
 
   const sortedForDedup = [...candidates].sort((a, b) => bestRankKey(b) - bestRankKey(a));
   const deduped: ScoredHeroCandidate[] = [];
@@ -542,7 +651,7 @@ export function buildHeroBannerPool(
         if (added >= limit || poolItems.length >= MAX_HERO_POOL_SIZE) break;
         if (usedIds.has(c.anime.id)) continue;
         const score = getScore(c);
-        if (bucket !== "preenchimento" && score <= 0) continue;
+        if (score <= 0) continue;
 
         usedIds.add(c.anime.id);
         poolItems.push({
@@ -560,6 +669,7 @@ export function buildHeroBannerPool(
     addFromBucket("novidade", tierCandidates, (c) => c.noveltyScore, 6);
     addFromBucket("episodio_novo", tierCandidates, (c) => c.newEpisodeScore, 8);
     addFromBucket("engajamento", tierCandidates, (c) => c.engagementScore, 8);
+    addFromBucket("calendario", tierCandidates, (c) => c.calendarScore, 8);
     addFromBucket("preenchimento", tierCandidates, (c) => c.evergreenScore, MAX_HERO_POOL_SIZE);
   };
 
@@ -623,13 +733,14 @@ export function selectHeroSlidesForWindow(
     const nov = tierItems.filter((i) => i.bucket === "novidade");
     const ep = tierItems.filter((i) => i.bucket === "episodio_novo");
     const eng = tierItems.filter((i) => i.bucket === "engajamento");
+    const cal = tierItems.filter((i) => i.bucket === "calendario");
     const fill = tierItems.filter((i) => i.bucket === "preenchimento");
 
-    // Quotas equilibradas: ~2 novidades, 2-3 episódios novos, 2-3 engajamento, restante preenchimento
+    // Quotas equilibradas: ~2 novidades, ~3 episódios novos, ~2 engajamento, ~2 calendário, restante preenchimento
     const novTarget = Math.min(2, targetMax - selected.length);
     selected.push(...pickRotatedFromBucket(nov, novTarget, windowIndex, usedIds, usedTitleKeys));
 
-    const epTarget = Math.min(nov.length > 0 ? 3 : 3, targetMax - selected.length);
+    const epTarget = Math.min(3, targetMax - selected.length);
     selected.push(...pickRotatedFromBucket(ep, epTarget, windowIndex, usedIds, usedTitleKeys));
 
     const engTarget = Math.min(
@@ -637,6 +748,9 @@ export function selectHeroSlidesForWindow(
       targetMax - selected.length,
     );
     selected.push(...pickRotatedFromBucket(eng, engTarget, windowIndex, usedIds, usedTitleKeys));
+
+    const calTarget = Math.min(2, targetMax - selected.length);
+    selected.push(...pickRotatedFromBucket(cal, calTarget, windowIndex, usedIds, usedTitleKeys));
 
     if (selected.length < targetMax) {
       selected.push(
@@ -699,8 +813,67 @@ export function resetHomeHeroTestState(): void {
 
 async function queryCatalogCandidatesFromNeon(): Promise<HeroCatalogAnimeCandidateRow[]> {
   const sql = await getSql();
+  const todayRange = getTodayRangeSaoPaulo();
+  const todayWeekday = getWeekdaySaoPaulo(todayRange.todayKey);
+  const weekStartSec = todayRange.startTimestamp - 86400;
+  const weekEndSec = todayRange.endTimestamp + 6 * 86400;
+
   const rows = await sql.query<HeroCatalogAnimeCandidateRow>(
-    `SELECT
+    `WITH ep_stats AS (
+       SELECT
+         e."animeId",
+         COUNT(*)::int AS "publishedEpisodeCount",
+         MIN(COALESCE(e."publishedAt", e."createdAt")) AS "firstEpisodePublishedAt",
+         MAX(COALESCE(e."publishedAt", e."createdAt")) AS "latestEpisodePublishedAt"
+       FROM "catalog_episode" e
+       WHERE e."published" = true
+         AND (
+           (e."videoUrl" IS NOT NULL AND BTRIM(e."videoUrl") <> '' AND BTRIM(e."videoUrl") <> '#')
+           OR (e."videoUrl2" IS NOT NULL AND BTRIM(e."videoUrl2") <> '' AND BTRIM(e."videoUrl2") <> '#')
+           OR (e."videoUrl3" IS NOT NULL AND BTRIM(e."videoUrl3") <> '' AND BTRIM(e."videoUrl3") <> '#')
+           OR (e."videoUrl4" IS NOT NULL AND BTRIM(e."videoUrl4") <> '' AND BTRIM(e."videoUrl4") <> '#')
+           OR (e."videoUrl5" IS NOT NULL AND BTRIM(e."videoUrl5") <> '' AND BTRIM(e."videoUrl5") <> '#')
+           OR (e."hikari_player_episode_id" IS NOT NULL AND BTRIM(e."hikari_player_episode_id") <> '')
+         )
+       GROUP BY e."animeId"
+     ),
+     airing_stats AS (
+       SELECT
+         s."animeId",
+         BOOL_OR(s."airingAt" >= to_timestamp($1) AND s."airingAt" <= to_timestamp($2)) AS "hasTodayAiringSchedule",
+         true AS "hasWeekAiringSchedule"
+       FROM "catalog_airing_schedule" s
+       WHERE s."airingAt" >= to_timestamp($3)
+         AND s."airingAt" <= to_timestamp($4)
+       GROUP BY s."animeId"
+     ),
+     recurrence_stats AS (
+       SELECT
+         r."animeId",
+         BOOL_OR(r."dayOfWeek" = $5) AS "hasTodayWeeklyRecurrence",
+         true AS "hasActiveWeeklyRecurrence"
+       FROM "catalog_weekly_recurrence" r
+       WHERE r."active" = true
+         AND r."timezone" = $6
+       GROUP BY r."animeId"
+     ),
+     recent_engagement_ids AS (
+       SELECT DISTINCT p."animeId"
+       FROM "user_episode_progress" p
+       WHERE p."updatedAt" >= NOW() - INTERVAL '14 days'
+         AND p."accumulatedTime" >= 60
+       UNION
+       SELECT DISTINCT w."animeId"
+       FROM "user_watched_episode" w
+       WHERE w."watchedAt" >= NOW() - INTERVAL '14 days'
+       UNION
+       SELECT DISTINCT t."animeId"
+       FROM "user_anime_tracking" t
+       WHERE t."updatedAt" >= NOW() - INTERVAL '14 days'
+         AND t."status" = 'watching'
+         AND t."episodesWatched" >= 1
+     )
+     SELECT
        a."id",
        a."title",
        a."anilistId",
@@ -725,48 +898,69 @@ async function queryCatalogCandidatesFromNeon(): Promise<HeroCatalogAnimeCandida
        a."trending",
        a."createdAt",
        a."updatedAt",
-       ep_stats."publishedEpisodeCount",
+       COALESCE(ep_stats."publishedEpisodeCount", 0)::int AS "publishedEpisodeCount",
        ep_stats."firstEpisodePublishedAt",
        ep_stats."latestEpisodePublishedAt",
-       ep1."ep1Sources"
+       ep_sample."epSources",
+       COALESCE(airing_stats."hasTodayAiringSchedule", false) AS "hasTodayAiringSchedule",
+       COALESCE(airing_stats."hasWeekAiringSchedule", false) AS "hasWeekAiringSchedule",
+       COALESCE(recurrence_stats."hasTodayWeeklyRecurrence", false) AS "hasTodayWeeklyRecurrence",
+       COALESCE(recurrence_stats."hasActiveWeeklyRecurrence", false) AS "hasActiveWeeklyRecurrence"
      FROM "catalog_anime" a
-     INNER JOIN (
-       SELECT
-         e."animeId",
-         COUNT(*)::int AS "publishedEpisodeCount",
-         MIN(COALESCE(e."publishedAt", e."createdAt")) AS "firstEpisodePublishedAt",
-         MAX(COALESCE(e."publishedAt", e."createdAt")) AS "latestEpisodePublishedAt"
-       FROM "catalog_episode" e
-       WHERE e."published" = true
-         AND (
-           (e."videoUrl" IS NOT NULL AND BTRIM(e."videoUrl") <> '' AND BTRIM(e."videoUrl") <> '#')
-           OR (e."videoUrl2" IS NOT NULL AND BTRIM(e."videoUrl2") <> '' AND BTRIM(e."videoUrl2") <> '#')
-           OR (e."videoUrl3" IS NOT NULL AND BTRIM(e."videoUrl3") <> '' AND BTRIM(e."videoUrl3") <> '#')
-           OR (e."videoUrl4" IS NOT NULL AND BTRIM(e."videoUrl4") <> '' AND BTRIM(e."videoUrl4") <> '#')
-           OR (e."videoUrl5" IS NOT NULL AND BTRIM(e."videoUrl5") <> '' AND BTRIM(e."videoUrl5") <> '#')
-           OR (e."hikari_player_episode_id" IS NOT NULL AND BTRIM(e."hikari_player_episode_id") <> '')
-         )
-       GROUP BY e."animeId"
-     ) ep_stats ON ep_stats."animeId" = a."id"
-     INNER JOIN LATERAL (
-       SELECT JSONB_AGG(
-         JSONB_BUILD_OBJECT(
-           'videoUrl', e1."videoUrl",
-           'videoUrl2', e1."videoUrl2",
-           'videoUrl3', e1."videoUrl3",
-           'videoUrl4', e1."videoUrl4",
-           'videoUrl5', e1."videoUrl5",
-           'hikariPlayerEpisodeId', e1."hikari_player_episode_id"
-         )
-       ) AS "ep1Sources"
-       FROM "catalog_episode" e1
-       WHERE e1."animeId" = a."id"
-         AND e1."published" = true
-         AND e1."number" = 1
-     ) ep1 ON ep1."ep1Sources" IS NOT NULL
+     LEFT JOIN ep_stats ON ep_stats."animeId" = a."id"
+     LEFT JOIN airing_stats ON airing_stats."animeId" = a."id"
+     LEFT JOIN recurrence_stats ON recurrence_stats."animeId" = a."id"
+     LEFT JOIN LATERAL (
+       SELECT JSONB_AGG(sub.*) AS "epSources"
+       FROM (
+         SELECT
+           e."number",
+           e."seasonNumber",
+           e."videoUrl",
+           e."videoUrl2",
+           e."videoUrl3",
+           e."videoUrl4",
+           e."videoUrl5",
+           e."hikari_player_episode_id" AS "hikariPlayerEpisodeId"
+         FROM "catalog_episode" e
+         WHERE e."animeId" = a."id"
+           AND e."published" = true
+           AND (
+             (e."videoUrl" IS NOT NULL AND BTRIM(e."videoUrl") <> '' AND BTRIM(e."videoUrl") <> '#')
+             OR (e."videoUrl2" IS NOT NULL AND BTRIM(e."videoUrl2") <> '' AND BTRIM(e."videoUrl2") <> '#')
+             OR (e."videoUrl3" IS NOT NULL AND BTRIM(e."videoUrl3") <> '' AND BTRIM(e."videoUrl3") <> '#')
+             OR (e."videoUrl4" IS NOT NULL AND BTRIM(e."videoUrl4") <> '' AND BTRIM(e."videoUrl4") <> '#')
+             OR (e."videoUrl5" IS NOT NULL AND BTRIM(e."videoUrl5") <> '' AND BTRIM(e."videoUrl5") <> '#')
+             OR (e."hikari_player_episode_id" IS NOT NULL AND BTRIM(e."hikari_player_episode_id") <> '')
+           )
+         ORDER BY e."seasonNumber" ASC, e."number" ASC
+         LIMIT 10
+       ) sub
+     ) ep_sample ON ep_stats."publishedEpisodeCount" > 0
      WHERE COALESCE(a."hidden", false) = false
        AND a."archived_at" IS NULL
-       AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])));`,
+       AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])))
+       AND (
+         ep_stats."animeId" IS NOT NULL
+         OR airing_stats."animeId" IS NOT NULL
+         OR recurrence_stats."animeId" IS NOT NULL
+         OR EXISTS (
+           SELECT 1
+           FROM recent_engagement_ids re
+           WHERE re."animeId" = a."id"
+             OR (a."anilistId" IS NOT NULL AND re."animeId" = a."anilistId"::text)
+             OR (a."malId" IS NOT NULL AND re."animeId" = ('mal-' || a."malId"::text))
+             OR (a."kitsuId" IS NOT NULL AND re."animeId" = ('kitsu-' || a."kitsuId"::text))
+         )
+       );`,
+    [
+      todayRange.startTimestamp,
+      todayRange.endTimestamp,
+      weekStartSec,
+      weekEndSec,
+      todayWeekday,
+      CALENDAR_TIMEZONE,
+    ],
   );
 
   return Array.isArray(rows) ? rows : [];

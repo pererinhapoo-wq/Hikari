@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import {
   buildHeroBannerPool,
+  computeCalendarScore,
   getHomeHeroItemsWithDeps,
   invalidateHomeHeroLocalCache,
   MAX_HERO_SLIDES,
@@ -12,7 +13,9 @@ import {
   type HeroCatalogAnimeCandidateRow,
   type HomeHeroDeps,
 } from "@/lib/home-hero.server";
+import { pickHeroItems } from "@/lib/home-hero-fallback";
 import type { AnimeRecentBadgesLookup } from "@/lib/catalog-badges";
+import type { SlimAnime } from "@/lib/types";
 import {
   getRedisHeroBannerPoolWithFence,
   HERO_BANNER_GEN_KEY,
@@ -326,17 +329,29 @@ describe("home-hero dynamic selection, scoring, rotation & caching", () => {
     assert.equal(scored[0].isDubbed, false);
   });
 
-  it("excludes hidden, +18/Hentai, pure local-*, missing ep-1, and non-playable candidates", () => {
+  it("excludes hidden, +18/Hentai, invalid IDs, and non-playable zero-signal candidates while accepting internal IDs and non-ep-1 episodes", () => {
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
     const rows: HeroCatalogAnimeCandidateRow[] = [
       makeCandidateRow({ id: "101", hidden: true }, nowMs),
       makeCandidateRow({ id: "102", genres: ["Action", "Hentai"] }, nowMs),
+      makeCandidateRow({ id: "bad/id", anilistId: null, malId: null, kitsuId: null }, nowMs),
+      // ID interno puro do Hikari (local-*) sem ID externo deve ser elegível
       makeCandidateRow({ id: "local-pure", anilistId: null, malId: null, kitsuId: null }, nowMs),
+      // ID interno customizado sem ID externo e apenas episódio 5 publicado (sem ep-1)
+      makeCandidateRow({
+        id: "hikari-ep5-only",
+        anilistId: null,
+        malId: null,
+        kitsuId: null,
+        publishedEpisodeCount: 1,
+        ep1Sources: [],
+        epSources: [{ number: 5, seasonNumber: 1, videoUrl: "https://cdn.example.com/ep5.mp4" }],
+      }, nowMs),
       // local-* COM anilistId válido resolve para o ID canônico 176301 com serverCatalogId local-mapped
       makeCandidateRow({ id: "local-mapped", anilistId: 176301, title: "Solo Leveling" }, nowMs),
-      // Sem episódio 1 (ep1Sources vazio)
-      makeCandidateRow({ id: "103", ep1Sources: [] }, nowMs),
-      // Episódio 1 com fonte inválida (#) e sem hikariPlayerEpisodeId
+      // Sem episódio publicado e sem outros sinais (calendário/engajamento)
+      makeCandidateRow({ id: "103", publishedEpisodeCount: 0, ep1Sources: [] }, nowMs),
+      // Episódio com fonte inválida (#) e sem hikariPlayerEpisodeId nem outros sinais
       makeCandidateRow({ id: "104", ep1Sources: [{ videoUrl: "#" }] }, nowMs),
       // Episódio 1 válido via Hikari Player ID
       makeCandidateRow({ id: "105", ep1Sources: [{ hikariPlayerEpisodeId: "ep_valid_105" }] }, nowMs),
@@ -344,9 +359,18 @@ describe("home-hero dynamic selection, scoring, rotation & caching", () => {
 
     const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), new Map(), nowMs);
     const ids = scored.map((s) => s.anime.id).sort();
-    assert.deepEqual(ids, ["105", "176301"]);
+    assert.deepEqual(ids, ["105", "176301", "hikari-ep5-only", "local-pure"]);
+
     const mapped = scored.find((s) => s.anime.id === "176301");
     assert.equal(mapped?.anime.serverCatalogId, "local-mapped");
+
+    const pureLocal = scored.find((s) => s.anime.id === "local-pure");
+    assert.equal(pureLocal?.anime.serverCatalogId, "local-pure");
+    assert.equal(pureLocal?.anime.hasEpisode, true);
+
+    const ep5Only = scored.find((s) => s.anime.id === "hikari-ep5-only");
+    assert.equal(ep5Only?.anime.hasEpisode, true);
+    assert.equal(ep5Only?.anime.firstAvailableEpisodeNumber, 5);
   });
 
   it("handles empty or failing audience query cleanly without breaking selection", async () => {
@@ -605,5 +629,227 @@ describe("home-hero dynamic selection, scoring, rotation & caching", () => {
 
     assert.equal(mockRedis.store.has(HERO_BANNER_REDIS_KEY), false);
     assert.equal(mockRedis.store.get(HERO_BANNER_GEN_KEY), "4");
+  });
+
+  it("excludes newly registered anime without real signals and ignores createdAt alone for novelty", () => {
+    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
+    const rows: HeroCatalogAnimeCandidateRow[] = [
+      // Recém-cadastrado hoje com score/popularidade altos, mas sem episódio publicado, sem engajamento e sem calendário
+      makeCandidateRow({
+        id: "910001",
+        score: 98,
+        popularity: 900000,
+        createdAt: new Date(nowMs - 10 * 60 * 1000).toISOString(),
+        updatedAt: new Date(nowMs - 5 * 60 * 1000).toISOString(),
+        publishedEpisodeCount: 0,
+        firstEpisodePublishedAt: null,
+        latestEpisodePublishedAt: null,
+        ep1Sources: [],
+        epSources: [],
+      }, nowMs),
+      // Recém-cadastrado hoje cujo único episódio publicado foi há 90 dias -> não deve ganhar novidade pelo createdAt
+      makeCandidateRow({
+        id: "910002",
+        createdAt: new Date(nowMs - 10 * 60 * 1000).toISOString(),
+        updatedAt: new Date(nowMs - 5 * 60 * 1000).toISOString(),
+        firstEpisodePublishedAt: new Date(nowMs - 90 * DAY_MS).toISOString(),
+        latestEpisodePublishedAt: new Date(nowMs - 90 * DAY_MS).toISOString(),
+      }, nowMs),
+    ];
+
+    const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), new Map(), nowMs);
+    assert.equal(scored.some((c) => c.anime.id === "910001"), false);
+    const oldEpCandidate = scored.find((c) => c.anime.id === "910002");
+    assert.ok(oldEpCandidate);
+    assert.equal(oldEpCandidate.noveltyScore, 0);
+    assert.equal(oldEpCandidate.newEpisodeScore, 0);
+  });
+
+  it("includes calendar and weekly recurrence candidates without confusing them with published episodes and avoids padding empty slots", () => {
+    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
+    const rows: HeroCatalogAnimeCandidateRow[] = [
+      // 1) Anime publicado com episódio 3 (sem ep 1)
+      makeCandidateRow({
+        id: "5081",
+        title: "Bakemonogatari",
+        titleRomaji: "Bakemonogatari",
+        publishedEpisodeCount: 1,
+        ep1Sources: [],
+        epSources: [{ number: 3, seasonNumber: 1, videoUrl: "https://cdn.example.com/bake-ep3.mp4" }],
+      }, nowMs),
+      // 2) Anime somente no calendário de hoje (catalog_airing_schedule), sem episódio publicado
+      makeCandidateRow({
+        id: "920001",
+        publishedEpisodeCount: 0,
+        firstEpisodePublishedAt: null,
+        latestEpisodePublishedAt: null,
+        ep1Sources: [],
+        epSources: [],
+        hasTodayAiringSchedule: true,
+        hasWeekAiringSchedule: true,
+      }, nowMs),
+      // 3) Anime somente em recorrência semanal ativa (catalog_weekly_recurrence), sem episódio publicado
+      makeCandidateRow({
+        id: "local-rec-1",
+        anilistId: null,
+        malId: null,
+        kitsuId: null,
+        publishedEpisodeCount: 0,
+        firstEpisodePublishedAt: null,
+        latestEpisodePublishedAt: null,
+        ep1Sources: [],
+        epSources: [],
+        hasTodayWeeklyRecurrence: true,
+        hasActiveWeeklyRecurrence: true,
+      }, nowMs),
+      // 4) Anime cadastrado sem qualquer sinal -> deve ficar fora (não preencher slots)
+      makeCandidateRow({
+        id: "920002",
+        publishedEpisodeCount: 0,
+        ep1Sources: [],
+        epSources: [],
+      }, nowMs),
+    ];
+
+    assert.ok(
+      computeCalendarScore({
+        hasTodaySchedule: true,
+        hasWeekSchedule: true,
+        hasTodayRecurrence: false,
+        hasActiveRecurrence: false,
+        hasPublishedEpisode: false,
+        score: 80,
+      }) > 0,
+    );
+
+    const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), new Map(), nowMs);
+    const pool = buildHeroBannerPool(scored, nowMs);
+    const slides = selectHeroSlidesForWindow(pool, nowMs, MAX_HERO_SLIDES);
+
+    // Exatamente 3 candidatos válidos (não força preenchimento para 8 com anime sem sinal)
+    assert.equal(slides.length, 3);
+    const byId = new Map(slides.map((s) => [s.id, s]));
+
+    assert.equal(byId.get("5081")?.hasEpisode, true);
+    assert.equal(byId.get("5081")?.firstAvailableEpisodeNumber, 3);
+
+    assert.equal(byId.get("920001")?.hasEpisode, false);
+    assert.equal(byId.get("local-rec-1")?.hasEpisode, false);
+    assert.equal(byId.has("920002"), false);
+  });
+
+  it("keeps single valid candidate stable across windows without fabricating rotation, and rotates when >= 2 candidates exist", async () => {
+    const t0 = Date.UTC(2026, 4, 15, 12, 0, 0);
+
+    // Caso 1: apenas 1 candidato válido no catálogo (e vários cadastros sem sinal)
+    const singleValidRows: HeroCatalogAnimeCandidateRow[] = [
+      makeCandidateRow({ id: "5081", title: "Bakemonogatari", titleRomaji: "Bakemonogatari" }, t0),
+      makeCandidateRow({ id: "930001", publishedEpisodeCount: 0, ep1Sources: [] }, t0),
+      makeCandidateRow({ id: "930002", publishedEpisodeCount: 0, ep1Sources: [] }, t0),
+    ];
+
+    const singleItems1 = await getHomeHeroItemsWithDeps(
+      {
+        getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
+        setRedisPool: async () => "unavailable",
+        scheduleWrite: () => {},
+        queryCatalog: async () => singleValidRows,
+        queryBadges: async () => emptyBadgesLookup(),
+        queryAudience: async () => new Map(),
+      },
+      t0,
+    );
+    const singleItems2 = await getHomeHeroItemsWithDeps(
+      {
+        getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
+        setRedisPool: async () => "unavailable",
+        scheduleWrite: () => {},
+        queryCatalog: async () => singleValidRows,
+        queryBadges: async () => emptyBadgesLookup(),
+        queryAudience: async () => new Map(),
+      },
+      t0 + 15 * 60 * 1000,
+    );
+
+    assert.deepEqual(
+      singleItems1.map((x) => x.id),
+      ["5081"],
+    );
+    assert.deepEqual(
+      singleItems2.map((x) => x.id),
+      ["5081"],
+    );
+
+    // Caso 2: 2 candidatos válidos -> ambos ficam disponíveis para rotação do Hero
+    resetHomeHeroTestState();
+    const twoValidRows: HeroCatalogAnimeCandidateRow[] = [
+      makeCandidateRow({ id: "5081", title: "Bakemonogatari", titleRomaji: "Bakemonogatari" }, t0),
+      makeCandidateRow({
+        id: "local-cal-2",
+        anilistId: null,
+        publishedEpisodeCount: 0,
+        ep1Sources: [],
+        hasTodayAiringSchedule: true,
+      }, t0),
+    ];
+
+    const twoItems = await getHomeHeroItemsWithDeps(
+      {
+        getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
+        setRedisPool: async () => "unavailable",
+        scheduleWrite: () => {},
+        queryCatalog: async () => twoValidRows,
+        queryBadges: async () => emptyBadgesLookup(),
+        queryAudience: async () => new Map(),
+      },
+      t0,
+    );
+    assert.equal(twoItems.length, 2);
+  });
+
+  it("prevents pickHeroItems fallback from collapsing to 1 item when multiple valid candidates exist", () => {
+    const makeSlim = (id: string, overrides?: Partial<SlimAnime>): SlimAnime => ({
+      id,
+      titles: { romaji: `Anime ${id}`, english: "", native: "" },
+      cover: `https://cdn.example.com/c-${id}.jpg`,
+      banner: `https://cdn.example.com/b-${id}.jpg`,
+      synopsis: "",
+      score: 80,
+      genres: ["Action"],
+      format: "TV",
+      status: "RELEASING",
+      episodesCount: 12,
+      season: "SPRING",
+      year: 2026,
+      trailerId: null,
+      source: "local",
+      hasEpisode: false,
+      ...overrides,
+    });
+
+    // Antes colapsava para [firstWithBanner] (1 item) quando ninguém tinha hasEpisode === true
+    const noEpisodeResult = pickHeroItems(
+      [makeSlim("1"), makeSlim("2")],
+      [makeSlim("3")],
+      [makeSlim("4", { todayEpisode: { number: 2, airingAt: 1700000000 } })],
+    );
+    assert.equal(noEpisodeResult.length, 4);
+    assert.equal(noEpisodeResult[0].id, "4");
+
+    // Quando apenas 1 tem hasEpisode === true e há candidatos válidos de calendário/catálogo
+    const oneEpisodeWithOthers = pickHeroItems(
+      [makeSlim("5081", { hasEpisode: true }), makeSlim("20")],
+      [makeSlim("30")],
+      [makeSlim("40", { todayEpisode: { number: 1, airingAt: 1700000000 } })],
+    );
+    assert.equal(oneEpisodeWithOthers.length, 4);
+    assert.equal(oneEpisodeWithOthers[0].id, "5081");
+
+    // Quando genuinamente só existe 1 candidato válido, permanece estável em 1
+    const trulyOne = pickHeroItems([makeSlim("5081", { hasEpisode: true })], [], []);
+    assert.deepEqual(
+      trulyOne.map((i) => i.id),
+      ["5081"],
+    );
   });
 });

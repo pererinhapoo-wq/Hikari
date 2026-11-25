@@ -3689,6 +3689,7 @@ export type HeroBannerBucket =
   | "novidade"
   | "episodio_novo"
   | "engajamento"
+  | "calendario"
   | "preenchimento";
 
 export interface HeroBannerPoolItem {

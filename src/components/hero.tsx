@@ -527,6 +527,12 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
           : "T1";
 
   const hasEpisodeAvailable = anime.hasEpisode !== false;
+  const watchEpParam =
+    typeof anime.firstAvailableEpisodeNumber === "number" &&
+    Number.isFinite(anime.firstAvailableEpisodeNumber) &&
+    anime.firstAvailableEpisodeNumber >= 1
+      ? `ep-${Math.floor(anime.firstAvailableEpisodeNumber)}`
+      : "ep-1";
   const episodesValue = !hasEpisodeAvailable
     ? "0 Episódios"
     : anime.episodesCount != null
@@ -720,22 +726,22 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
           {hasEpisodeAvailable && (
             <Link
               to="/watch/$id/$ep"
-              params={{ id: anime.id, ep: "ep-1" }}
+              params={{ id: anime.id, ep: watchEpParam }}
               preload={false}
               onFocus={() =>
-                triggerRoutePreload(`watch:${anime.id}`, () =>
+                triggerRoutePreload(`watch:${anime.id}:${watchEpParam}`, () =>
                   router.preloadRoute({
                     to: "/watch/$id/$ep",
-                    params: { id: anime.id, ep: "ep-1" },
+                    params: { id: anime.id, ep: watchEpParam },
                   }),
                 )
               }
               onPointerDown={(e) => {
                 if (e.button !== 0) return;
-                triggerRoutePreload(`watch:${anime.id}`, () =>
+                triggerRoutePreload(`watch:${anime.id}:${watchEpParam}`, () =>
                   router.preloadRoute({
                     to: "/watch/$id/$ep",
-                    params: { id: anime.id, ep: "ep-1" },
+                    params: { id: anime.id, ep: watchEpParam },
                   }),
                 );
               }}

@@ -35,53 +35,12 @@ import {
 import { getHomePublicEpisodes } from "@/lib/home-episodes.functions";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { SectionReveal } from "@/components/section-reveal";
+import { pickHeroItems } from "@/lib/home-hero-fallback";
 import {
   buildCleanCanonical,
   buildHomeJsonLd,
   DEFAULT_OG_IMAGE,
 } from "@/lib/seo";
-
-function pickHeroItems(
-  trending: SlimAnime[],
-  popular: SlimAnime[],
-  fallbackCatalog: SlimAnime[] = [],
-): SlimAnime[] {
-  const seen = new Set<string>();
-  const catalog: SlimAnime[] = [];
-  for (const item of [...trending, ...popular, ...fallbackCatalog]) {
-    if (!item || seen.has(item.id)) continue;
-    seen.add(item.id);
-    catalog.push(item);
-  }
-
-  const withEpisodeMerged = catalog.filter(
-    (item) =>
-      item.hasEpisode === true &&
-      Boolean(item.banner?.trim() || item.cover?.trim()),
-  );
-
-  if (withEpisodeMerged.length > 0) {
-    const withDistinctBanner = withEpisodeMerged.filter((a) => {
-      const banner = a.banner?.trim();
-      const cover = a.cover?.trim();
-      return Boolean(banner && cover && banner !== cover);
-    });
-    const withoutDistinctBanner = withEpisodeMerged.filter((a) => {
-      const banner = a.banner?.trim();
-      const cover = a.cover?.trim();
-      return !(banner && cover && banner !== cover);
-    });
-    return [...withDistinctBanner, ...withoutDistinctBanner].slice(0, 8);
-  }
-
-  const firstWithBanner = catalog.find((item) => Boolean(item.banner?.trim()));
-  if (firstWithBanner) {
-    return [firstWithBanner];
-  }
-
-  const firstWithCover = catalog.find((item) => Boolean(item.cover?.trim()));
-  return firstWithCover ? [firstWithCover] : [];
-}
 
 export const Route = createFileRoute("/")({
   staleTime: 1000 * 60 * 5,
@@ -116,7 +75,10 @@ export const Route = createFileRoute("/")({
         : pickHeroItems(
             loaderData?.trending ?? [],
             loaderData?.popular ?? [],
-            loaderData?.season ?? [],
+            [
+              ...(loaderData?.season ?? []),
+              ...(loaderData?.todaySchedule ?? []),
+            ],
           );
     const featured = heroCandidates[0] ?? null;
     if (!featured) {
@@ -424,7 +386,26 @@ function Home() {
   const dynamicHeroItems = useMemo(() => {
     const items = Array.isArray(data.heroItems) ? data.heroItems : [];
     if (items.length === 0) return [];
-    const base = locals.length > 0 ? overlayList(items, locals, { includeExtras: false }) : items;
+    const base =
+      locals.length > 0
+        ? overlayList(items, locals, {
+            includeExtras: false,
+            mapMatched: (mappedItem, remoteItem) => ({
+              ...mappedItem,
+              ...(mappedItem.id.startsWith("local-") &&
+              !remoteItem.id.startsWith("local-")
+                ? { id: remoteItem.id }
+                : {}),
+              ...(remoteItem.firstAvailableEpisodeNumber !== undefined
+                ? {
+                    firstAvailableEpisodeNumber:
+                      mappedItem.firstAvailableEpisodeNumber ??
+                      remoteItem.firstAvailableEpisodeNumber,
+                  }
+                : {}),
+            }),
+          })
+        : items;
     return base.slice(0, 8);
   }, [data.heroItems, locals]);
 
@@ -432,8 +413,11 @@ function Home() {
     () =>
       dynamicHeroItems.length > 0
         ? dynamicHeroItems
-        : pickHeroItems(rawTrending, rawPopular, rawSeason),
-    [dynamicHeroItems, rawTrending, rawPopular, rawSeason],
+        : pickHeroItems(rawTrending, rawPopular, [
+            ...rawSeason,
+            ...rawTodaySchedule,
+          ]),
+    [dynamicHeroItems, rawTrending, rawPopular, rawSeason, rawTodaySchedule],
   );
   const featured = featuredItems[0];
 

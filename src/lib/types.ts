@@ -77,6 +77,7 @@ export type SlimAnime = {
   resolvedFromAliasId?: string;
   resolvedAliasIds?: string[];
   hasEpisode?: boolean;
+  firstAvailableEpisodeNumber?: number;
   recentBadges?: AnimeRecentBadges;
 };
 

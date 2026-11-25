@@ -11,6 +11,7 @@ import {
 } from "@/lib/calendar-timezone";
 import {
   type CalendarRedisInvalidationClient,
+  type RedisEvalClient,
   getRedisCalendarSchedule,
   getRedisCalendarToday,
   invalidateRedisCalendar,
@@ -860,7 +861,13 @@ async function invalidateCalendarAndTodayCaches(
   await invalidateRedisCalendar(redisOverride).catch(() => {});
   try {
     const { invalidateServerCatalogCachesAsync } = await import("@/lib/api");
-    await invalidateServerCatalogCachesAsync(undefined, undefined, null);
+    const evalRedisOverride =
+      redisOverride === undefined
+        ? undefined
+        : redisOverride && typeof (redisOverride as { eval?: unknown }).eval === "function"
+          ? (redisOverride as unknown as RedisEvalClient)
+          : null;
+    await invalidateServerCatalogCachesAsync(undefined, undefined, evalRedisOverride);
   } catch {
     // Fail-open caso a camada de api não esteja inicializada no contexto de teste isolado
   }
