@@ -9,8 +9,10 @@ import { buildHikariPlayerEpisodeUrl } from "@/lib/hikari-player";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { hasEpisodePlayableSource } from "@/lib/published-episodes";
 import {
+  HERO_BANNER_PAYLOAD_VERSION,
   getRedisHeroBannerPoolWithFence,
   invalidateRedisHeroBannerPool,
+  resolveHeroEnvironmentName,
   scheduleRedisBackgroundWrite,
   setRedisHeroBannerPool,
   type HeroBannerBucket,
@@ -86,7 +88,6 @@ export interface HeroAudienceRawRow {
   progUsers14d: number;
   playbackUsers7d: number;
   playbackUsers14d: number;
-  manualUsers14d: number;
 }
 
 export interface HeroAudienceMetrics {
@@ -94,7 +95,6 @@ export interface HeroAudienceMetrics {
   progUsers14d: number;
   playbackUsers7d: number;
   playbackUsers14d: number;
-  manualUsers14d: number;
 }
 
 export interface ScoredHeroCandidate {
@@ -284,7 +284,6 @@ export function reconcileAudienceMetricsForRow(
     progUsers14d: 0,
     playbackUsers7d: 0,
     playbackUsers14d: 0,
-    manualUsers14d: 0,
   };
 
   for (const key of keys) {
@@ -294,7 +293,6 @@ export function reconcileAudienceMetricsForRow(
     agg.progUsers14d += m.progUsers14d;
     agg.playbackUsers7d += m.playbackUsers7d;
     agg.playbackUsers14d += m.playbackUsers14d;
-    agg.manualUsers14d += m.manualUsers14d;
   }
 
   return agg;
@@ -362,8 +360,7 @@ export function computeEngagementScore(metrics: HeroAudienceMetrics): number {
     metrics.progUsers7d * 3.0 +
     Math.max(0, metrics.progUsers14d - metrics.progUsers7d) * 1.4 +
     metrics.playbackUsers7d * 3.5 +
-    Math.max(0, metrics.playbackUsers14d - metrics.playbackUsers7d) * 1.6 +
-    metrics.manualUsers14d * 0.65;
+    Math.max(0, metrics.playbackUsers14d - metrics.playbackUsers7d) * 1.6;
 
   if (weighted <= 0) return 0;
   return Math.round(Math.log1p(weighted) * 32 * 100) / 100;
@@ -676,7 +673,8 @@ export function buildHeroBannerPool(
   }
 
   return {
-    v: 1,
+    v: HERO_BANNER_PAYLOAD_VERSION,
+    env: resolveHeroEnvironmentName(),
     generatedAt: nowMs,
     items: poolItems,
   };
@@ -861,6 +859,7 @@ async function queryCatalogCandidatesFromNeon(): Promise<HeroCatalogAnimeCandida
        SELECT DISTINCT w."animeId"
        FROM "user_watched_episode" w
        WHERE w."watchedAt" >= NOW() - INTERVAL '14 days'
+         AND w."origin" = 'playback'
      )
      SELECT
        a."id",
@@ -973,11 +972,11 @@ async function queryAudienceMetricsFromNeon(): Promise<Map<string, HeroAudienceM
        watched AS (
          SELECT
            w."animeId",
-           COUNT(DISTINCT w."userId") FILTER (WHERE w."origin" = 'playback' AND w."watchedAt" >= NOW() - INTERVAL '7 days')::int AS "playbackUsers7d",
-           COUNT(DISTINCT w."userId") FILTER (WHERE w."origin" = 'playback')::int AS "playbackUsers14d",
-           COUNT(DISTINCT w."userId") FILTER (WHERE w."origin" = 'manual')::int AS "manualUsers14d"
+           COUNT(DISTINCT w."userId") FILTER (WHERE w."watchedAt" >= NOW() - INTERVAL '7 days')::int AS "playbackUsers7d",
+           COUNT(DISTINCT w."userId")::int AS "playbackUsers14d"
          FROM "user_watched_episode" w
          WHERE w."watchedAt" >= NOW() - INTERVAL '14 days'
+           AND w."origin" = 'playback'
          GROUP BY w."animeId"
        )
        SELECT
@@ -985,8 +984,7 @@ async function queryAudienceMetricsFromNeon(): Promise<Map<string, HeroAudienceM
          COALESCE(prog."progUsers7d", 0)::int AS "progUsers7d",
          COALESCE(prog."progUsers14d", 0)::int AS "progUsers14d",
          COALESCE(watched."playbackUsers7d", 0)::int AS "playbackUsers7d",
-         COALESCE(watched."playbackUsers14d", 0)::int AS "playbackUsers14d",
-         COALESCE(watched."manualUsers14d", 0)::int AS "manualUsers14d"
+         COALESCE(watched."playbackUsers14d", 0)::int AS "playbackUsers14d"
        FROM prog
        FULL OUTER JOIN watched ON watched."animeId" = prog."animeId";`,
     );
@@ -999,7 +997,6 @@ async function queryAudienceMetricsFromNeon(): Promise<Map<string, HeroAudienceM
         progUsers14d: Number(row.progUsers14d) || 0,
         playbackUsers7d: Number(row.playbackUsers7d) || 0,
         playbackUsers14d: Number(row.playbackUsers14d) || 0,
-        manualUsers14d: Number(row.manualUsers14d) || 0,
       });
     }
   } catch (err) {
@@ -1037,13 +1034,33 @@ const defaultHomeHeroDeps: HomeHeroDeps = {
   queryAudience: queryAudienceMetricsFromNeon,
 };
 
+function isCurrentHeroPoolPayload(
+  pool: HeroBannerPoolPayload | null | undefined,
+  currentEnv: string,
+): pool is HeroBannerPoolPayload {
+  return Boolean(
+    pool &&
+      pool.v === HERO_BANNER_PAYLOAD_VERSION &&
+      typeof pool.env === "string" &&
+      pool.env === currentEnv &&
+      Array.isArray(pool.items) &&
+      pool.items.length > 0,
+  );
+}
+
 export async function getHomeHeroPoolWithDeps(
   deps: HomeHeroDeps = defaultHomeHeroDeps,
   nowMs = Date.now(),
 ): Promise<HeroBannerPoolPayload | null> {
-  // 1. Cache quente em memória RAM
-  if (ramHeroPool && nowMs - ramHeroPool.timestamp < HERO_RAM_CACHE_TTL_MS) {
-    return ramHeroPool.payload;
+  const currentEnv = resolveHeroEnvironmentName();
+
+  // 1. Cache quente em memória RAM (somente se versão e ambiente coincidirem)
+  if (ramHeroPool) {
+    if (!isCurrentHeroPoolPayload(ramHeroPool.payload, currentEnv)) {
+      ramHeroPool = null;
+    } else if (nowMs - ramHeroPool.timestamp < HERO_RAM_CACHE_TTL_MS) {
+      return ramHeroPool.payload;
+    }
   }
 
   // 2. Coalescing de requisições concorrentes (singleflight)
@@ -1058,7 +1075,10 @@ export async function getHomeHeroPoolWithDeps(
     try {
       // 3. Consulta Upstash Redis antes de ir ao Neon
       const redisRead = await deps.getRedisPool();
-      if (redisRead.status === "hit" && redisRead.payload && redisRead.payload.items.length > 0) {
+      if (
+        redisRead.status === "hit" &&
+        isCurrentHeroPoolPayload(redisRead.payload, currentEnv)
+      ) {
         staleHeroPool = redisRead.payload;
         if (requestEpoch === heroPoolEpoch) {
           ramHeroPool = { payload: redisRead.payload, timestamp: Date.now() };
@@ -1093,11 +1113,19 @@ export async function getHomeHeroPoolWithDeps(
       );
 
       if (scored.length === 0) {
+        if (!isCurrentHeroPoolPayload(staleHeroPool, currentEnv)) {
+          staleHeroPool = null;
+          return null;
+        }
         return staleHeroPool;
       }
 
       const pool = buildHeroBannerPool(scored, nowMs);
       if (pool.items.length === 0) {
+        if (!isCurrentHeroPoolPayload(staleHeroPool, currentEnv)) {
+          staleHeroPool = null;
+          return null;
+        }
         return staleHeroPool;
       }
 
@@ -1113,6 +1141,10 @@ export async function getHomeHeroPoolWithDeps(
         "[home-hero] Falha segura ao montar pool dinâmico do Hero (usando reserva stale se disponível):",
         err instanceof Error ? err.message : err,
       );
+      if (!isCurrentHeroPoolPayload(staleHeroPool, currentEnv)) {
+        staleHeroPool = null;
+        return null;
+      }
       return staleHeroPool;
     } finally {
       if (heroPoolInFlight === flightRef) {

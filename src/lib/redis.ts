@@ -3684,6 +3684,7 @@ export function notifyJikanEpisodesRamInvalidation(ids: string[]): void {
 export const HERO_BANNER_REDIS_KEY = "hikari:home:hero-banner:v2";
 export const HERO_BANNER_GEN_KEY = "hikari:home:hero-banner:gen:v2";
 export const HERO_BANNER_REDIS_TTL_SEC = 1200; // 20 minutos
+export const HERO_BANNER_PAYLOAD_VERSION = 2 as const;
 
 export function resolveHeroEnvironmentName(): string {
   const venv = typeof process !== "undefined" ? process.env.VERCEL_ENV?.trim().toLowerCase() : undefined;
@@ -3699,12 +3700,12 @@ export function resolveHeroEnvironmentName(): string {
 
 export function getHeroRedisKey(envName?: string): string {
   const env = envName || resolveHeroEnvironmentName();
-  return `hikari:${env}:home:hero-banner:v3`;
+  return `hikari:${env}:home:hero-banner:v4`;
 }
 
 export function getHeroGenKey(envName?: string): string {
   const env = envName || resolveHeroEnvironmentName();
-  return `hikari:${env}:home:hero-banner:gen:v3`;
+  return `hikari:${env}:home:hero-banner:gen:v4`;
 }
 
 export type HeroBannerBucket =
@@ -3724,10 +3725,10 @@ export interface HeroBannerPoolItem {
 }
 
 export interface HeroBannerPoolPayload {
-  v: 1;
+  v: typeof HERO_BANNER_PAYLOAD_VERSION;
+  env?: string;
   generatedAt: number;
   items: HeroBannerPoolItem[];
-  env?: string;
 }
 
 export interface RedisHeroBannerPoolReadResult {
@@ -3739,11 +3740,16 @@ export interface RedisHeroBannerPoolReadResult {
 function isValidHeroBannerPoolPayload(raw: unknown, currentEnv?: string): raw is HeroBannerPoolPayload {
   if (!raw || typeof raw !== "object") return false;
   const candidate = raw as Partial<HeroBannerPoolPayload>;
-  if (currentEnv && candidate.env && candidate.env !== currentEnv) {
+  if (candidate.v !== HERO_BANNER_PAYLOAD_VERSION) {
+    return false;
+  }
+  if (typeof candidate.env !== "string" || candidate.env.trim().length === 0) {
+    return false;
+  }
+  if (currentEnv && candidate.env !== currentEnv) {
     return false;
   }
   return (
-    candidate.v === 1 &&
     typeof candidate.generatedAt === "number" &&
     Number.isFinite(candidate.generatedAt) &&
     Array.isArray(candidate.items) &&
@@ -3802,7 +3808,7 @@ export async function getRedisHeroBannerPoolWithFence(
           return { status: "hit", payload: parsed.data, fence: globalGen };
         }
       } catch {
-        // Payload inválido no Redis: trata como miss para recalcular com segurança
+        // Payload inválido, legado ou de outro ambiente no Redis: trata como miss para recalcular com segurança
       }
     }
 
@@ -3826,6 +3832,9 @@ export async function setRedisHeroBannerPool(
     return "unavailable";
   }
   const currentEnv = resolveHeroEnvironmentName();
+  if (payload.env && payload.env !== currentEnv) {
+    return "skipped";
+  }
   const stampedPayload: HeroBannerPoolPayload = {
     ...payload,
     env: currentEnv,
