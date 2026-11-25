@@ -46,6 +46,7 @@ export interface Sql {
  */
 const globalRef = globalThis as typeof globalThis & {
   __pgSqlPromise__?: Promise<Sql>;
+  __pgPool__?: import("pg").Pool;
   __pgliteInstance__?: Promise<import("@electric-sql/pglite").PGlite>;
   __pgliteMigrateChain__?: Promise<void>;
 };
@@ -105,12 +106,14 @@ function createNeonSql(): Promise<Sql> {
         err?.message || err,
       );
     });
+    globalRef.__pgPool__ = pool;
     return toSql(async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];
     });
   })().catch((err) => {
     globalRef.__pgSqlPromise__ = undefined;
+    globalRef.__pgPool__ = undefined;
     throw err;
   });
   return globalRef.__pgSqlPromise__;
@@ -294,6 +297,53 @@ export async function getPglite(): Promise<import("@electric-sql/pglite").PGlite
   const pg = await globalRef.__pgliteInstance__;
   if (!pg) throw new Error("PGLite instance failed to initialize");
   return pg;
+}
+
+/**
+ * Execute `fn` inside a database transaction (`BEGIN` / `COMMIT` / `ROLLBACK`).
+ * Uses a single checked-out `PoolClient` on Neon (`pg`) and `pg.transaction`
+ * on PGLite so every query inside `fn` runs on the same connection.
+ */
+export async function withTransaction<T>(fn: (tx: Sql) => Promise<T>): Promise<T> {
+  if (typeof window !== "undefined") {
+    throw new Error("@/lib/db is server-only — call withTransaction() on the server.");
+  }
+  if (dbSource === "neon") {
+    await getSql();
+    const pool = globalRef.__pgPool__;
+    if (!pool) {
+      throw new Error("Neon pool failed to initialize before withTransaction()");
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const txSql = toSql(async <R>(text: string, params: unknown[]) => {
+        const res = await client.query(text, params);
+        return res.rows as R[];
+      });
+      const result = await fn(txSql);
+      await client.query("COMMIT");
+      return result;
+    } catch (err) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // Ignore rollback failure when the underlying connection already errored
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  const pg = await getPglite();
+  return pg.transaction(async (tx) => {
+    const txSql = toSql(async <R>(text: string, params: unknown[]) => {
+      const res = await tx.query<R>(text, params);
+      return res.rows;
+    });
+    return fn(txSql);
+  });
 }
 
 /**

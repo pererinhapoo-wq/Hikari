@@ -3,7 +3,7 @@ import { z } from "zod";
 import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolation.server";
 import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
-import { getSql } from "@/lib/db";
+import { withTransaction } from "@/lib/db";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 import { invalidateServerCatalogCachesAsync } from "@/lib/api";
@@ -12,6 +12,18 @@ import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
 import { parseAnitube22PlayerUrl } from "@/lib/anitube22";
 import { SOURCE_SYNC_CONCURRENCY, runWithConcurrency } from "@/lib/concurrency";
 import { resolveEpisodeBadgesPatch } from "@/lib/episode-writer";
+import {
+  discoverMatchingOrphanIdsFromUserTables,
+  findMatchingTombstoneAliases,
+  getAllAliasIdsForCanonical,
+  inferIsDubbedFromTitles,
+  normalizeIdentityTitle,
+  parseEpisodeHistoryArray,
+  mergeEpisodeHistory,
+  reconcileAnimeIdentityReferences,
+  reconcileEpisodeIdentityReferences,
+  type EpisodeHistoryEntry,
+} from "@/lib/anime-identity.server";
 
 function sanitizeVideoUrl(url?: string | null): string | null {
   return sanitizePlayableVideoUrl(url);
@@ -103,7 +115,6 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
           }
 
           const animes = parsed.data.animes;
-          const sql = await getSql();
 
           let animeProcessedCount = 0;
           let seasonProcessedCount = 0;
@@ -115,10 +126,9 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
             slots: Array<{ url: string | null; priority: number }>;
           }> = [];
 
-          // 3. Execução transacional para integridade completa do lote
-          await sql.query("BEGIN;");
-
+          // 3. Execução transacional dedicada para integridade completa do lote
           try {
+            await withTransaction(async (tx) => {
             for (const anime of animes) {
               const animeTitle =
                 anime.titleRomaji?.trim() ||
@@ -135,14 +145,51 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   ? anime.banner.trim()
                   : null;
 
-              // 3.1 Upsert do anime em catalog_anime
-              await sql.query(
+              const isDubbed = Boolean(
+                inferIsDubbedFromTitles({
+                  title: animeTitle,
+                  titleRomaji: anime.titleRomaji,
+                  titleEnglish: anime.titleEnglish,
+                  titleNative: anime.titleNative,
+                }),
+              );
+              const matchingTombstones = await findMatchingTombstoneAliases(tx, {
+                id: anime.id,
+                title: animeTitle,
+                titleRomaji: anime.titleRomaji,
+                titleEnglish: anime.titleEnglish,
+                titleNative: anime.titleNative,
+                format: anime.format,
+                year: anime.year,
+                isDubbed,
+              });
+              const legacyOrphans = await discoverMatchingOrphanIdsFromUserTables(tx, {
+                canonicalId: anime.id,
+                title: animeTitle,
+                titleRomaji: anime.titleRomaji,
+                titleEnglish: anime.titleEnglish,
+                titleNative: anime.titleNative,
+                format: anime.format,
+                year: anime.year,
+                isDubbed,
+              });
+              let mergedHistory: EpisodeHistoryEntry[] = [];
+              for (const t of matchingTombstones) {
+                mergedHistory = mergeEpisodeHistory(
+                  mergedHistory,
+                  parseEpisodeHistoryArray(t.episode_history),
+                );
+              }
+              const normTitle = normalizeIdentityTitle(animeTitle);
+
+              // 3.1 Upsert do anime em catalog_anime (limpando archived_at)
+              await tx.query(
                 `INSERT INTO "catalog_anime" (
                    "id", "title", "titleEnglish", "titleNative",
                    "cover", "banner", "synopsis",
                    "format", "status", "episodesCount", "season",
                    "year", "genres", "trailerId",
-                   "hidden", "score",
+                   "hidden", "score", "title_norm", "archived_at", "episode_history",
                    "createdAt", "updatedAt"
                  )
                  VALUES (
@@ -150,7 +197,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                    $5, $6, $7,
                    $8, $9, $10, $11,
                    $12, $13, $14,
-                   $15, $16,
+                   $15, $16, $17, NULL, $18::jsonb,
                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                  )
                  ON CONFLICT ("id") DO UPDATE
@@ -173,6 +220,8 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                    "trailerId" = COALESCE(EXCLUDED."trailerId", "catalog_anime"."trailerId"),
                    "hidden" = EXCLUDED."hidden",
                    "score" = EXCLUDED."score",
+                   "title_norm" = COALESCE(NULLIF(EXCLUDED."title_norm", ''), "catalog_anime"."title_norm"),
+                   "archived_at" = NULL,
                    "updatedAt" = CURRENT_TIMESTAMP;`,
                 [
                   anime.id,
@@ -191,8 +240,54 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   anime.trailerId?.trim() || null,
                   anime.hidden ?? false,
                   anime.score ?? null,
+                  normTitle || null,
+                  JSON.stringify(mergedHistory),
                 ],
               );
+
+              await tx.query(
+                `DELETE FROM "catalog_anime_id_alias" WHERE "old_id" = $1;`,
+                [anime.id],
+              );
+              const oldIds = Array.from(
+                new Set([
+                  ...matchingTombstones.map((t) => t.old_id),
+                  ...legacyOrphans,
+                  ...(await getAllAliasIdsForCanonical(tx, anime.id)),
+                ]),
+              ).filter((x) => x !== anime.id);
+
+              for (const oldId of oldIds) {
+                await tx.query(
+                  `INSERT INTO "catalog_anime_id_alias" (
+                     "old_id", "current_id", "title_norm", "format", "year",
+                     "is_dubbed", "episode_history", "archived_at", "updated_at"
+                   )
+                   VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NULL, CURRENT_TIMESTAMP)
+                   ON CONFLICT ("old_id") DO UPDATE
+                   SET "current_id" = EXCLUDED."current_id",
+                       "archived_at" = NULL,
+                       "updated_at" = CURRENT_TIMESTAMP;`,
+                  [
+                    oldId,
+                    anime.id,
+                    normTitle || null,
+                    anime.format ?? null,
+                    anime.year ?? null,
+                    isDubbed,
+                    JSON.stringify(mergedHistory),
+                  ],
+                );
+                affectedAnimeIds.add(oldId);
+              }
+              if (oldIds.length > 0) {
+                await reconcileAnimeIdentityReferences(tx, {
+                  canonicalId: anime.id,
+                  oldIds,
+                  episodeHistory: mergedHistory,
+                });
+              }
+
               animeProcessedCount++;
               affectedAnimeIds.add(anime.id);
 
@@ -203,7 +298,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   season.position !== undefined && season.position !== null
                     ? season.position
                     : season.number - 1;
-                await sql.query(
+                await tx.query(
                   `INSERT INTO "catalog_season" ("animeId", "number", "title", "position", "createdAt")
                    VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
                    ON CONFLICT ("animeId", "number") DO UPDATE
@@ -225,7 +320,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
 
                   // Validação das duas regras de unicidade dos episódios
                   // Regra 1: ID não pode pertencer a outro anime
-                  const existingById = await sql.query<{ id: string; animeId: string }>(
+                  const existingById = await tx.query<{ id: string; animeId: string }>(
                     `SELECT "id", "animeId" FROM "catalog_episode" WHERE "id" = $1 LIMIT 1;`,
                     [ep.id],
                   );
@@ -237,7 +332,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   }
 
                   // Regra 2: O slot (animeId, seasonNumber, number) não pode estar ocupado por outro ID
-                  const existingBySlot = await sql.query<{ id: string }>(
+                  const existingBySlot = await tx.query<{ id: string }>(
                     `SELECT "id" FROM "catalog_episode"
                      WHERE "animeId" = $1 AND "seasonNumber" = $2 AND "number" = $3 AND "id" != $4 LIMIT 1;`,
                     [anime.id, season.number, ep.number, ep.id],
@@ -265,7 +360,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                     recentBadges: ep.recentBadges,
                   });
 
-                  await sql.query(
+                  await tx.query(
                     `INSERT INTO "catalog_episode" (
                        "id", "animeId", "seasonNumber", "number",
                        "title", "thumbnail", "duration", "synopsis",
@@ -359,14 +454,18 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                       slots: candidateSlots,
                     });
                   }
+                  await reconcileEpisodeIdentityReferences(tx, {
+                    animeId: anime.id,
+                    episodeId: ep.id,
+                    seasonNumber: season.number,
+                    number: ep.number,
+                  });
                   episodeProcessedCount++;
                 }
               }
             }
-
-            await sql.query("COMMIT;");
+            });
           } catch (txErr) {
-            await sql.query("ROLLBACK;");
             const msg = txErr instanceof Error ? txErr.message : "Erro na transação de importação.";
             return Response.json(
               {

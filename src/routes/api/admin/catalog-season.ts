@@ -5,6 +5,10 @@ import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
+import {
+  findCanonicalCatalogAnime,
+  getAllAliasIdsForCanonical,
+} from "@/lib/anime-identity.server";
 
 async function resolveSeasonInvalidationAliases(
   sql: Awaited<ReturnType<typeof getSql>>,
@@ -12,24 +16,15 @@ async function resolveSeasonInvalidationAliases(
 ): Promise<string[]> {
   const aliases = new Set<string>([animeId]);
   try {
-    const numId = /^\d+$/.test(animeId) ? parseInt(animeId, 10) : null;
-    const rows = await sql.query<{
-      id: string;
-      anilistId: number | null;
-      malId: number | null;
-      kitsuId: number | null;
-    }>(
-      `SELECT "id", "anilistId", "malId", "kitsuId" FROM "catalog_anime"
-       WHERE "id" = $1
-          OR ($2::int IS NOT NULL AND ("anilistId" = $2 OR "malId" = $2 OR "kitsuId" = $2))
-       LIMIT 1;`,
-      [animeId, numId],
-    );
-    const match = rows[0];
-    if (match?.id) aliases.add(match.id);
-    if (match?.anilistId) aliases.add(String(match.anilistId));
-    if (match?.malId) aliases.add(`mal-${match.malId}`);
-    if (match?.kitsuId) aliases.add(`kitsu-${match.kitsuId}`);
+    const lookup = await findCanonicalCatalogAnime(sql, { id: animeId });
+    if (lookup.canonicalId) {
+      aliases.add(lookup.canonicalId);
+      const allAliases = await getAllAliasIdsForCanonical(sql, lookup.canonicalId);
+      for (const a of allAliases) aliases.add(a);
+    }
+    if (lookup.row?.anilistId) aliases.add(String(lookup.row.anilistId));
+    if (lookup.row?.malId) aliases.add(`mal-${lookup.row.malId}`);
+    if (lookup.row?.kitsuId) aliases.add(`kitsu-${lookup.row.kitsuId}`);
   } catch {
     // ignore
   }
@@ -71,6 +66,8 @@ export const Route = createFileRoute("/api/admin/catalog-season")({
 
           const { animeId, seasonNumber, title, position } = parsed.data;
           const sql = await getSql();
+          const lookup = await findCanonicalCatalogAnime(sql, { id: animeId });
+          const targetAnimeId = lookup.canonicalId ?? animeId;
 
           const seasonTitle = title?.trim() || `Temporada ${seasonNumber}`;
           const seasonPos = position ?? seasonNumber - 1;
@@ -82,16 +79,16 @@ export const Route = createFileRoute("/api/admin/catalog-season")({
              SET
                "title" = COALESCE(EXCLUDED."title", "catalog_season"."title"),
                "position" = EXCLUDED."position";`,
-            [animeId, seasonNumber, seasonTitle, seasonPos],
+            [targetAnimeId, seasonNumber, seasonTitle, seasonPos],
           );
 
-          const invalidationAliases = await resolveSeasonInvalidationAliases(sql, animeId);
-          await invalidateCatalogEpisodesCacheAsync(...invalidationAliases);
+          const invalidationAliases = await resolveSeasonInvalidationAliases(sql, targetAnimeId);
+          await invalidateCatalogEpisodesCacheAsync(animeId, ...invalidationAliases);
           invalidateHomePublicEpisodesCache();
 
           return Response.json({
             ok: true,
-            animeId,
+            animeId: targetAnimeId,
             seasonNumber,
             adminId,
           });
@@ -148,13 +145,15 @@ export const Route = createFileRoute("/api/admin/catalog-season")({
           }
 
           const sql = await getSql();
+          const lookup = await findCanonicalCatalogAnime(sql, { id: animeId });
+          const targetAnimeId = lookup.canonicalId ?? animeId;
 
           // 1. Deletar a linha correspondente em catalog_season
           const seasonResult = await sql.query<{ number: number }>(
             `DELETE FROM "catalog_season"
              WHERE "animeId" = $1 AND "number" = $2
              RETURNING "number";`,
-            [animeId, seasonNumber],
+            [targetAnimeId, seasonNumber],
           );
 
           // 2. Deletar os episódios vinculados a esta temporada em catalog_episode
@@ -162,18 +161,18 @@ export const Route = createFileRoute("/api/admin/catalog-season")({
             `DELETE FROM "catalog_episode"
              WHERE "animeId" = $1 AND "seasonNumber" = $2
              RETURNING "id";`,
-            [animeId, seasonNumber],
+            [targetAnimeId, seasonNumber],
           );
 
-          const invalidationAliases = await resolveSeasonInvalidationAliases(sql, animeId);
-          await invalidateCatalogEpisodesCacheAsync(...invalidationAliases);
+          const invalidationAliases = await resolveSeasonInvalidationAliases(sql, targetAnimeId);
+          await invalidateCatalogEpisodesCacheAsync(animeId, ...invalidationAliases);
           if (seasonResult.length > 0 || episodeResult.length > 0) {
             invalidateHomePublicEpisodesCache();
           }
 
           return Response.json({
             ok: true,
-            animeId,
+            animeId: targetAnimeId,
             seasonNumber,
             found: seasonResult.length > 0,
             deletedEpisodesCount: episodeResult.length,

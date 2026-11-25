@@ -37,6 +37,10 @@ export const addFavoriteSchema = z.object({
       year: z.number().nullable().optional(),
       episodesCount: z.number().nullable().optional(),
       status: z.string().nullable().optional(),
+      anilistId: z.number().int().nullable().optional(),
+      malId: z.number().int().nullable().optional(),
+      kitsuId: z.number().int().nullable().optional(),
+      serverCatalogId: z.string().nullable().optional(),
     })
     .catchall(z.union([z.string(), z.number(), z.boolean(), z.null()]))
     .optional()

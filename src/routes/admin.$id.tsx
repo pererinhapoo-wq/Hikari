@@ -1357,38 +1357,39 @@ function AdminEditor() {
     const currentForm = formRef.current;
     if (!currentForm) return;
 
-    const currentSyncState = animeSyncStateRef.current;
-    const isServerBacked =
-      !currentForm.id.startsWith("local-") &&
-      (currentSyncState === "synced" || !!currentForm.syncedAt);
+    try {
+      const token = getBearerToken();
+      const res = await fetch(
+        `/api/admin/catalog-anime?id=${encodeURIComponent(currentForm.id)}`,
+        {
+          method: "DELETE",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          credentials: "include",
+        },
+      );
 
-    if (isServerBacked) {
-      try {
-        const token = getBearerToken();
-        const res = await fetch(
-          `/api/admin/catalog-anime?id=${encodeURIComponent(currentForm.id)}`,
-          {
-            method: "DELETE",
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-            credentials: "include",
-          },
-        );
-
-        if (!res.ok) {
-          let errMsg = res.statusText;
-          try {
-            const json = await res.json();
-            errMsg = json.error || errMsg;
-          } catch {
-            errMsg = res.statusText || errMsg;
-          }
-          toast.error(
-            `Falha ao excluir anime no servidor (${res.status}): ${errMsg}. O anime foi preservado localmente.`,
-          );
-          return;
+      if (!res.ok) {
+        let errMsg = res.statusText;
+        try {
+          const json = await res.json();
+          errMsg = json.error || errMsg;
+        } catch {
+          errMsg = res.statusText || errMsg;
         }
-      } catch (err) {
-        console.warn("[admin] Erro de rede ao deletar anime no servidor:", err);
+        toast.error(
+          `Falha ao excluir anime no servidor (${res.status}): ${errMsg}. O anime foi preservado localmente.`,
+        );
+        return;
+      }
+    } catch (err) {
+      const currentSyncState = animeSyncStateRef.current;
+      const isSyncedOnServer =
+        !currentForm.id.startsWith("local-") ||
+        currentSyncState === "synced" ||
+        Boolean(currentForm.syncedAt) ||
+        Boolean(currentForm.serverCatalogId);
+      console.warn("[admin] Erro de rede ao deletar anime no servidor:", err);
+      if (isSyncedOnServer) {
         toast.error(
           "Servidor indisponível. O anime foi preservado localmente para evitar divergência.",
         );
@@ -1409,11 +1410,7 @@ function AdminEditor() {
     }
 
     removeAnime(currentForm.id);
-    toast.success(
-      isServerBacked
-        ? "Anime excluído com sucesso do servidor e do dispositivo."
-        : "Anime local excluído.",
-    );
+    toast.success("Anime excluído com sucesso do servidor e do dispositivo.");
     void navigate({ to: "/admin" });
   }, [removeAnime, navigate]);
 

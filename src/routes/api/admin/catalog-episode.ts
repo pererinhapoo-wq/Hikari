@@ -27,6 +27,11 @@ import {
   resolveOpeningTimestampsPatch,
 } from "@/lib/episode-writer";
 import { normalizeAnimeRecentBadges, type AnimeRecentBadges } from "@/lib/types";
+import {
+  findCanonicalCatalogAnime,
+  getAllAliasIdsForCanonical,
+  reconcileEpisodeIdentityReferences,
+} from "@/lib/anime-identity.server";
 
 const episodeDeleteSchema = z.object({
   id: z.string().trim().min(1, "id é obrigatório"),
@@ -76,30 +81,19 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
 
           const sql = await getSql();
 
-          // Reconciliação canônica do animeId:
-          // Se data.animeId for um alias (ex.: anilistId numérico) ou ID local, verifica se já existe
-          // registro correspondente em "catalog_anime" e utiliza seu "id" canônico.
-          let canonicalAnimeId = data.animeId;
-          const numId = /^\d+$/.test(data.animeId) ? parseInt(data.animeId, 10) : null;
-          const animeMatch = await sql.query<{
-            id: string;
-            anilistId: number | null;
-            malId: number | null;
-            kitsuId: number | null;
-          }>(
-            `SELECT "id", "anilistId", "malId", "kitsuId" FROM "catalog_anime"
-             WHERE "id" = $1
-                OR ($2::int IS NOT NULL AND ("anilistId" = $2 OR "malId" = $2 OR "kitsuId" = $2))
-             LIMIT 1;`,
-            [data.animeId, numId],
+          // Reconciliação canônica do animeId (ativos + tabela de aliases):
+          const identityLookup = await findCanonicalCatalogAnime(sql, {
+            id: data.animeId,
+            title: data.animeTitle,
+          });
+          const matchedAnime = identityLookup.row;
+          const canonicalAnimeId = identityLookup.canonicalId || data.animeId;
+          const knownAliases = await getAllAliasIdsForCanonical(sql, canonicalAnimeId);
+          const candidateAnimeIds = Array.from(
+            new Set([data.animeId, canonicalAnimeId, ...knownAliases]),
           );
-          const matchedAnime = animeMatch[0] || null;
-          if (matchedAnime?.id) {
-            canonicalAnimeId = matchedAnime.id;
-          }
           const cacheAliasIds = [
-            data.animeId,
-            canonicalAnimeId,
+            ...candidateAnimeIds,
             matchedAnime?.anilistId ? String(matchedAnime.anilistId) : undefined,
             matchedAnime?.malId ? `mal-${matchedAnime.malId}` : undefined,
             matchedAnime?.kitsuId ? `kitsu-${matchedAnime.kitsuId}` : undefined,
@@ -280,12 +274,18 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             ? hikariPlayerValidation.value
             : existingRow?.hikariPlayerEpisodeId ?? null;
 
-          // 8. Garantir que o anime e a temporada existam no catálogo
+          // 8. Garantir que o anime e a temporada existam no catálogo (reativando se estava arquivado)
           const fallbackAnimeTitle = data.animeTitle?.trim() || canonicalAnimeId;
           await sql.query(
-            `INSERT INTO "catalog_anime" ("id", "title", "createdAt", "updatedAt")
-             VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-             ON CONFLICT ("id") DO NOTHING;`,
+            `INSERT INTO "catalog_anime" ("id", "title", "archived_at", "createdAt", "updatedAt")
+             VALUES ($1, $2, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             ON CONFLICT ("id") DO UPDATE
+             SET "archived_at" = NULL,
+                 "hidden" = CASE
+                   WHEN "catalog_anime"."archived_at" IS NOT NULL THEN false
+                   ELSE "catalog_anime"."hidden"
+                 END,
+                 "updatedAt" = CURRENT_TIMESTAMP;`,
             [canonicalAnimeId, fallbackAnimeTitle],
           );
 
@@ -505,27 +505,38 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             }
           }
 
+          // Reconciliar referências históricas de episódio (ex.: watched/progress/comments apontando para episodeId antigo do mesmo slot)
+          await reconcileEpisodeIdentityReferences(sql, {
+            animeId: canonicalAnimeId,
+            episodeId: effectiveId,
+            seasonNumber: data.seasonNumber,
+            number: data.number,
+          });
+
           // 9. Notificações para seguidores do anime quando o episódio for publicado pela primeira vez
           if (isFirstTimePublished) {
             try {
-              // Busca os usuários únicos que acompanham o anime, excluindo o administrador que publicou
+              // Busca os usuários únicos que acompanham o anime (por ID canônico ou aliases), excluindo o administrador que publicou
               const followers = await sql.query<{ userId: string }>(
                 `SELECT DISTINCT u."userId"
                  FROM (
                    SELECT "userId" FROM "user_favorite"
-                   WHERE "animeId" = $1 AND "targetType" = 'anime'
+                   WHERE "animeId" = ANY($1) AND "targetType" = 'anime'
                    UNION
                    SELECT l."userId"
                    FROM "user_custom_list_item" i
                    JOIN "user_custom_list" l ON l."id" = i."listId"
-                   WHERE i."animeId" = $1
+                   WHERE i."animeId" = ANY($1)
                    UNION
                    SELECT "userId" FROM "user_watched_episode"
-                   WHERE "animeId" = $1
+                   WHERE "animeId" = ANY($1)
+                   UNION
+                   SELECT "userId" FROM "user_anime_tracking"
+                   WHERE "animeId" = ANY($1)
                  ) u
                  WHERE u."userId" != $2
                  LIMIT 2000;`,
-                [data.animeId, adminId],
+                [candidateAnimeIds, adminId],
               );
 
               if (followers.length > 0) {
@@ -553,7 +564,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                       adminId,
                       "episode",
                       notifMessage,
-                      data.animeId,
+                      canonicalAnimeId,
                       effectiveId,
                       dedupKey,
                     );
@@ -665,26 +676,16 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           await deleteEpisodeSourcesForEpisode(episodeId);
           const targetAnimeId = animeId || deleted?.animeId;
           if (targetAnimeId) {
-            const deleteNumId = /^\d+$/.test(targetAnimeId)
-              ? parseInt(targetAnimeId, 10)
-              : null;
-            const deleteAnimeMatch = await sql.query<{
-              id: string;
-              anilistId: number | null;
-              malId: number | null;
-              kitsuId: number | null;
-            }>(
-              `SELECT "id", "anilistId", "malId", "kitsuId" FROM "catalog_anime"
-               WHERE "id" = $1
-                  OR ($2::int IS NOT NULL AND ("anilistId" = $2 OR "malId" = $2 OR "kitsuId" = $2))
-               LIMIT 1;`,
-              [targetAnimeId, deleteNumId],
-            );
-            const matchedDelAnime = deleteAnimeMatch[0] || null;
+            const lookup = await findCanonicalCatalogAnime(sql, { id: targetAnimeId });
+            const matchedDelAnime = lookup.row;
+            const extraAliases = lookup.canonicalId
+              ? await getAllAliasIdsForCanonical(sql, lookup.canonicalId)
+              : [];
             await invalidateCatalogEpisodesCacheAsync(
               targetAnimeId,
               deleted?.animeId,
               matchedDelAnime?.id,
+              ...extraAliases,
               matchedDelAnime?.anilistId ? String(matchedDelAnime.anilistId) : undefined,
               matchedDelAnime?.malId ? `mal-${matchedDelAnime.malId}` : undefined,
               matchedDelAnime?.kitsuId ? `kitsu-${matchedDelAnime.kitsuId}` : undefined,

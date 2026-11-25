@@ -74,6 +74,8 @@ export type SlimAnime = {
   staff?: AnimeStaff[];
   catalogUpdatedAt?: number;
   serverCatalogId?: string;
+  resolvedFromAliasId?: string;
+  resolvedAliasIds?: string[];
   hasEpisode?: boolean;
   recentBadges?: AnimeRecentBadges;
 };

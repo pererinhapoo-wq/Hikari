@@ -79,9 +79,9 @@ export async function queryAdminImagesFromDb(
     avatars_count: number;
   }>(`
     SELECT
-      (SELECT COUNT(*)::int FROM "catalog_anime" WHERE "cover" IS NOT NULL AND "cover" != '') AS covers_count,
-      (SELECT COUNT(*)::int FROM "catalog_anime" WHERE "banner" IS NOT NULL AND "banner" != '') AS banners_count,
-      (SELECT COUNT(*)::int FROM "catalog_episode" WHERE "thumbnail" IS NOT NULL AND "thumbnail" != '') AS thumbnails_count,
+      (SELECT COUNT(*)::int FROM "catalog_anime" WHERE "archived_at" IS NULL AND "cover" IS NOT NULL AND "cover" != '') AS covers_count,
+      (SELECT COUNT(*)::int FROM "catalog_anime" WHERE "archived_at" IS NULL AND "banner" IS NOT NULL AND "banner" != '') AS banners_count,
+      (SELECT COUNT(*)::int FROM "catalog_episode" e INNER JOIN "catalog_anime" a ON a."id" = e."animeId" WHERE a."archived_at" IS NULL AND e."thumbnail" IS NOT NULL AND e."thumbnail" != '') AS thumbnails_count,
       (SELECT COUNT(*)::int FROM "user" u LEFT JOIN "profile" p ON p."userId" = u."id"
        WHERE (p."avatarUrl" IS NOT NULL AND p."avatarUrl" != '') OR (u."image" IS NOT NULL AND u."image" != '')) AS avatars_count;
   `);
@@ -114,7 +114,7 @@ export async function queryAdminImagesFromDb(
         "format" AS "subTitle",
         "updatedAt" AS "updatedAt"
       FROM "catalog_anime"
-      WHERE "cover" IS NOT NULL AND "cover" != ''
+      WHERE "archived_at" IS NULL AND "cover" IS NOT NULL AND "cover" != ''
     `);
   }
 
@@ -129,7 +129,7 @@ export async function queryAdminImagesFromDb(
         "format" AS "subTitle",
         "updatedAt" AS "updatedAt"
       FROM "catalog_anime"
-      WHERE "banner" IS NOT NULL AND "banner" != ''
+      WHERE "archived_at" IS NULL AND "banner" IS NOT NULL AND "banner" != ''
     `);
   }
 
@@ -144,8 +144,8 @@ export async function queryAdminImagesFromDb(
         ('T' || e."seasonNumber" || 'E' || e."number" || ' - ' || COALESCE(e."title", '')) AS "subTitle",
         e."updatedAt" AS "updatedAt"
       FROM "catalog_episode" e
-      LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
-      WHERE e."thumbnail" IS NOT NULL AND e."thumbnail" != ''
+      INNER JOIN "catalog_anime" a ON a."id" = e."animeId"
+      WHERE a."archived_at" IS NULL AND e."thumbnail" IS NOT NULL AND e."thumbnail" != ''
     `);
   }
 

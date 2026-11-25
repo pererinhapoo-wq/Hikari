@@ -17,6 +17,10 @@ export const animeSnapshotSchema = z
     episodesCount: z.number().int().optional().nullable(),
     status: z.string().trim().optional().nullable(),
     score: z.number().optional().nullable(),
+    anilistId: z.number().int().optional().nullable(),
+    malId: z.number().int().optional().nullable(),
+    kitsuId: z.number().int().optional().nullable(),
+    serverCatalogId: z.string().trim().optional().nullable(),
   })
   .catchall(z.union([z.string(), z.number(), z.boolean(), z.null()]))
   .optional()
