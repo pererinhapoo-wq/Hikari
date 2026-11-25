@@ -1,4 +1,5 @@
 import { displayTitle, type LocalAnime } from "@/lib/types";
+import { hasEpisodePlayableSource } from "@/lib/published-episodes";
 
 export type CatalogSortOption =
   | "updated-desc"
@@ -105,14 +106,7 @@ export function buildAdminCatalogIndex(animes: LocalAnime[]): AdminCatalogIndex 
       animeEpisodesCount += episodes.length;
 
       for (const ep of episodes) {
-        const hasPlayableSource = Boolean(
-          ep.videoUrl ||
-            ep.videoUrl2 ||
-            ep.videoUrl3 ||
-            ep.videoUrl4 ||
-            ep.videoUrl5,
-        );
-        if (ep.published === true && hasPlayableSource) {
+        if (ep.published === true && hasEpisodePlayableSource(ep)) {
           animePublishedEpisodesCount++;
         }
       }

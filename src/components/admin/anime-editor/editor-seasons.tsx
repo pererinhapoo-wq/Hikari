@@ -205,10 +205,17 @@ function getPublishSourceError(ep: Episode): string {
   ]
     .map((u) => u?.trim() ?? "")
     .filter(Boolean);
-  if (rawUrls.length === 0) {
-    return "Adicione pelo menos uma URL de vídeo válida (Player 1 a Player 5) antes de publicar este episódio.";
+  const hikariValidation = validateHikariPlayerEpisodeId(ep.hikariPlayerEpisodeId);
+  if (!hikariValidation.valid && rawUrls.length === 0) {
+    return (
+      hikariValidation.error ||
+      "Informe um ID válido do Hikari Player ou adicione pelo menos uma URL de vídeo válida (Player 1 a Player 5) antes de publicar este episódio."
+    );
   }
-  return "Nenhuma fonte de reprodução válida encontrada. Use uma URL HTTP/HTTPS direta de vídeo (MP4, HLS ou R2); links externos como YouTube ou Crunchyroll não permitem publicação.";
+  if (rawUrls.length === 0) {
+    return "Adicione pelo menos uma URL de vídeo válida (Player 1 a Player 5) ou informe um ID válido do Hikari Player antes de publicar este episódio.";
+  }
+  return "Nenhuma fonte de reprodução válida encontrada. Use uma URL HTTP/HTTPS direta de vídeo (MP4, HLS ou R2) ou um ID válido do Hikari Player; links externos como YouTube ou Crunchyroll não permitem publicação.";
 }
 
 function getSlotValidationError(rawVal: string): string | null {
@@ -1203,6 +1210,17 @@ const EpisodeCard = memo(function EpisodeCard({
     onPatchEpisode(seasonId, ep.id, { [key]: value });
   };
 
+  const handleHikariPlayerIdChange = (value: string) => {
+    const updatedEp = { ...ep, hikariPlayerEpisodeId: value };
+    const stillValid = hasEpisodePlayableSource(updatedEp);
+    if (stillValid) {
+      onClearPublishError(ep.id);
+    } else if (ep.published === true) {
+      onSetPublishError(ep.id, getPublishSourceError(updatedEp));
+    }
+    onPatchEpisode(seasonId, ep.id, { hikariPlayerEpisodeId: value });
+  };
+
   const normalizeDurableSourceInput = (key: VideoSlotKey, raw: string): string => {
     const trimmed = raw.trim();
     if (!trimmed) return "";
@@ -1335,7 +1353,7 @@ const EpisodeCard = memo(function EpisodeCard({
           ) : isMarkedPublished && !hasValidSource ? (
             <span
               className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/12 px-2 py-0.5 text-[11px] font-medium text-rose-300"
-              title="Fonte de vídeo válida obrigatória para publicar"
+              title="URL de vídeo válida (Player 1 a Player 5) ou ID válido do Hikari Player obrigatório para publicar"
             >
               <AlertCircle className="size-3" />
               Fonte inválida
@@ -1624,17 +1642,11 @@ const EpisodeCard = memo(function EpisodeCard({
               <Input
                 id={`ep-hikari-player-${ep.id}`}
                 value={rawHikariPlayerId}
-                onChange={(e) =>
-                  onPatchEpisode(seasonId, ep.id, {
-                    hikariPlayerEpisodeId: e.target.value,
-                  })
-                }
+                onChange={(e) => handleHikariPlayerIdChange(e.target.value)}
                 onBlur={(e) => {
                   const trimmed = e.target.value.trim();
                   if (trimmed !== e.target.value) {
-                    onPatchEpisode(seasonId, ep.id, {
-                      hikariPlayerEpisodeId: trimmed,
-                    });
+                    handleHikariPlayerIdChange(trimmed);
                   }
                 }}
                 placeholder="Ex: abc123 (informe apenas o ID no Hikari Player, sem URL)"
@@ -1648,11 +1660,7 @@ const EpisodeCard = memo(function EpisodeCard({
               {Boolean(rawHikariPlayerId) && (
                 <button
                   type="button"
-                  onClick={() =>
-                    onPatchEpisode(seasonId, ep.id, {
-                      hikariPlayerEpisodeId: "",
-                    })
-                  }
+                  onClick={() => handleHikariPlayerIdChange("")}
                   aria-label={`Remover associação do Hikari Player no Episódio ${ep.number}`}
                   title="Remover associação com o Hikari Player"
                   className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-[var(--color-subtle)] hover:bg-white/[0.08] hover:text-rose-400"

@@ -621,21 +621,29 @@ export const Route = createFileRoute("/api/admin/backup")({
                     importedSeasons++;
 
                     for (const ep of season.episodes || []) {
-                      const hasHikariPlayerField = ep.hikariPlayerEpisodeId !== undefined;
-                      const hikariPlayerValidation = validateHikariPlayerEpisodeId(
-                        ep.hikariPlayerEpisodeId,
-                      );
-                      if (hasHikariPlayerField && !hikariPlayerValidation.valid) {
-                        throw new Error(
-                          `Episódio ${ep.number} (${targetAnimeId}): ${hikariPlayerValidation.error}`,
-                        );
-                      }
                       const v1 = sanitizePlayableVideoUrl(ep.videoUrl);
                       const v2 = sanitizePlayableVideoUrl(ep.videoUrl2);
                       const v3 = sanitizePlayableVideoUrl(ep.videoUrl3);
                       const v4 = sanitizePlayableVideoUrl(ep.videoUrl4);
                       const v5 = sanitizePlayableVideoUrl(ep.videoUrl5);
-                      const hasPlayableSource = Boolean(v1 || v2 || v3 || v4 || v5);
+                      const hasValidUrlSource = Boolean(v1 || v2 || v3 || v4 || v5);
+                      const hasHikariPlayerField = ep.hikariPlayerEpisodeId !== undefined;
+                      const hikariPlayerValidation = validateHikariPlayerEpisodeId(
+                        ep.hikariPlayerEpisodeId,
+                      );
+                      if (
+                        hasHikariPlayerField &&
+                        !hikariPlayerValidation.valid &&
+                        !hasValidUrlSource
+                      ) {
+                        throw new Error(
+                          `Episódio ${ep.number} (${targetAnimeId}): ${hikariPlayerValidation.error}`,
+                        );
+                      }
+                      const hasValidHikariId = Boolean(
+                        hikariPlayerValidation.valid && hikariPlayerValidation.value,
+                      );
+                      const hasPlayableSource = hasValidUrlSource || hasValidHikariId;
                       const published = ep.published === true && hasPlayableSource;
                       const epTitle = ep.title?.trim() || `Episódio ${ep.number}`;
                       const badgesPatch = resolveEpisodeBadgesPatch({

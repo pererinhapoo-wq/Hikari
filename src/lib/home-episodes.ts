@@ -21,6 +21,7 @@ export interface HomeEpisodeRow {
   videoUrl3: null;
   videoUrl4: null;
   videoUrl5: null;
+  hikariPlayerEpisodeId?: string | null;
   published: boolean;
   publishedAt: string | null;
   createdAt: string;
@@ -95,6 +96,7 @@ async function queryHomePublicEpisodesFromDb(
          NULL AS "videoUrl3",
          NULL AS "videoUrl4",
          NULL AS "videoUrl5",
+         e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
          e."published",
          e."publishedAt",
          e."createdAt",

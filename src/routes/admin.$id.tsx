@@ -1440,13 +1440,20 @@ function AdminEditor() {
     }
 
     // Validação pré-salvamento: episódio marcado como Publicado exige ao menos 1 fonte válida
-    // e hikariPlayerEpisodeId (quando preenchido) deve ser apenas o ID, nunca uma URL completa
+    // (URL válida de Player 1 a Player 5 ou ID válido do Hikari Player)
     for (const season of next.seasons) {
       for (const ep of season.episodes) {
+        const hasValidUrlSource = [
+          ep.videoUrl,
+          ep.videoUrl2,
+          ep.videoUrl3,
+          ep.videoUrl4,
+          ep.videoUrl5,
+        ].some(isPersistablePlayableVideoUrl);
         const hikariPlayerValidation = validateHikariPlayerEpisodeId(
           ep.hikariPlayerEpisodeId,
         );
-        if (!hikariPlayerValidation.valid) {
+        if (!hikariPlayerValidation.valid && !hasValidUrlSource) {
           toast.error(
             `Não foi possível salvar: Episódio ${ep.number} (Temporada ${season.number}) — ${hikariPlayerValidation.error}`,
           );
@@ -1454,7 +1461,7 @@ function AdminEditor() {
         }
         if (ep.published === true && !hasEpisodePlayableSource(ep)) {
           toast.error(
-            `Não foi possível salvar: o Episódio ${ep.number} (Temporada ${season.number}) está marcado como Publicado sem nenhuma fonte de reprodução válida (Player 1 a Player 5).`,
+            `Não foi possível salvar: o Episódio ${ep.number} (Temporada ${season.number}) está marcado como Publicado sem nenhuma fonte de reprodução válida (Player 1 a Player 5 ou ID válido do Hikari Player).`,
           );
           return;
         }
@@ -1471,12 +1478,18 @@ function AdminEditor() {
       banner: stripCatalogImageVersion(next.banner),
       seasons: next.seasons.map((season) => ({
         ...season,
-        episodes: season.episodes.map((ep) => ({
-          ...ep,
-          thumbnail: ep.thumbnail?.trim() || undefined,
-          hikariPlayerEpisodeId:
-            normalizeHikariPlayerEpisodeId(ep.hikariPlayerEpisodeId) ?? undefined,
-        })),
+        episodes: season.episodes.map((ep) => {
+          const hikariValidation = validateHikariPlayerEpisodeId(
+            ep.hikariPlayerEpisodeId,
+          );
+          return {
+            ...ep,
+            thumbnail: ep.thumbnail?.trim() || undefined,
+            hikariPlayerEpisodeId: hikariValidation.valid
+              ? hikariValidation.value ?? undefined
+              : undefined,
+          };
+        }),
       })),
     };
 

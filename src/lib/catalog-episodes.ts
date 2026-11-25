@@ -29,7 +29,10 @@ import {
   isHikariPlayableUrl,
   sanitizePlayableVideoUrl,
 } from "@/lib/published-episodes";
-import { normalizeHikariPlayerEpisodeId } from "@/lib/hikari-player";
+import {
+  buildHikariPlayerEpisodeUrl,
+  normalizeHikariPlayerEpisodeId,
+} from "@/lib/hikari-player";
 import { resolveAnimeCandidateIdsFromDb } from "@/lib/anime-identity";
 
 export const getCatalogEpisodesSchema = z.object({
@@ -787,18 +790,29 @@ const URL_HOST_SQL_PATTERN = `(?:${IPV6_HOST_SQL_PATTERN}|${IPV4_ADDR_SQL}|[a-z0
  *   ou caracteres Unicode/punycode atípicos no host) não são reproduzíveis com 100% de fidelidade em
  *   regex SQL pura; por isso, a função paginada também valida as linhas retornadas via `isHikariPlayableUrl` em JS.
  */
-const PLAYABLE_EPISODE_SQL_CONDITION = `EXISTS (
-  SELECT 1
-  FROM unnest(ARRAY[e."videoUrl", e."videoUrl2", e."videoUrl3", e."videoUrl4", e."videoUrl5"]) AS u
-  WHERE u IS NOT NULL
-    AND BTRIM(u, E' \\t\\r\\n') <> ''
-    AND BTRIM(u, E' \\t\\r\\n') <> '#'
-    AND BTRIM(u, E' \\t\\r\\n') ~* '^https?://(?:[^/@#\\s]+@)?${URL_HOST_SQL_PATTERN}(?::[0-9]{1,5})?(?:[/?#].*)?$'
-    AND (
-      SUBSTRING(BTRIM(u, E' \\t\\r\\n') FROM '(?i)^https?://(?:[^/@#\\s]+@)?${URL_HOST_SQL_PATTERN}:([0-9]{1,5})(?:[/?#]|$)') IS NULL
-      OR SUBSTRING(BTRIM(u, E' \\t\\r\\n') FROM '(?i)^https?://(?:[^/@#\\s]+@)?${URL_HOST_SQL_PATTERN}:([0-9]{1,5})(?:[/?#]|$)')::integer <= 65535
-    )
-    AND LOWER(SUBSTRING(BTRIM(u, E' \\t\\r\\n') FROM '(?i)^https?://(?:[^/@#\\s]+@)?(${URL_HOST_SQL_PATTERN})')) !~ '${BLOCKED_STREAMING_HOSTS_SQL_PATTERN}'
+const PLAYABLE_EPISODE_SQL_CONDITION = `(
+  EXISTS (
+    SELECT 1
+    FROM unnest(ARRAY[e."videoUrl", e."videoUrl2", e."videoUrl3", e."videoUrl4", e."videoUrl5"]) AS u
+    WHERE u IS NOT NULL
+      AND BTRIM(u, E' \\t\\r\\n') <> ''
+      AND BTRIM(u, E' \\t\\r\\n') <> '#'
+      AND BTRIM(u, E' \\t\\r\\n') ~* '^https?://(?:[^/@#\\s]+@)?${URL_HOST_SQL_PATTERN}(?::[0-9]{1,5})?(?:[/?#].*)?$'
+      AND (
+        SUBSTRING(BTRIM(u, E' \\t\\r\\n') FROM '(?i)^https?://(?:[^/@#\\s]+@)?${URL_HOST_SQL_PATTERN}:([0-9]{1,5})(?:[/?#]|$)') IS NULL
+        OR SUBSTRING(BTRIM(u, E' \\t\\r\\n') FROM '(?i)^https?://(?:[^/@#\\s]+@)?${URL_HOST_SQL_PATTERN}:([0-9]{1,5})(?:[/?#]|$)')::integer <= 65535
+      )
+      AND LOWER(SUBSTRING(BTRIM(u, E' \\t\\r\\n') FROM '(?i)^https?://(?:[^/@#\\s]+@)?(${URL_HOST_SQL_PATTERN})')) !~ '${BLOCKED_STREAMING_HOSTS_SQL_PATTERN}'
+  )
+  OR (
+    e."hikari_player_episode_id" IS NOT NULL
+    AND BTRIM(e."hikari_player_episode_id", E' \\t\\r\\n') <> ''
+    AND CHAR_LENGTH(BTRIM(e."hikari_player_episode_id", E' \\t\\r\\n')) <= 128
+    AND BTRIM(e."hikari_player_episode_id", E' \\t\\r\\n') ~ '^[A-Za-z0-9._-]+$'
+    AND BTRIM(e."hikari_player_episode_id", E' \\t\\r\\n') NOT IN ('.', '..')
+    AND BTRIM(e."hikari_player_episode_id", E' \\t\\r\\n') NOT LIKE '%..%'
+    AND LOWER(BTRIM(e."hikari_player_episode_id", E' \\t\\r\\n')) !~ '(?:hikari-player|\\.(?:vercel\\.app|com|net|org|io|dev|app|tv|br|me|co|xyz)(?:$|[:/?#]))'
+  )
 )`;
 
 export interface ParsedEpisodeSearchQuery {
@@ -907,14 +921,18 @@ function hasAnyPlayableSlot(row: {
   videoUrl3?: string | null;
   videoUrl4?: string | null;
   videoUrl5?: string | null;
+  hikariPlayerEpisodeId?: string | null;
 }): boolean {
-  return [
-    row.videoUrl,
-    row.videoUrl2,
-    row.videoUrl3,
-    row.videoUrl4,
-    row.videoUrl5,
-  ].some((url) => isHikariPlayableUrl(url));
+  return (
+    [
+      row.videoUrl,
+      row.videoUrl2,
+      row.videoUrl3,
+      row.videoUrl4,
+      row.videoUrl5,
+    ].some((url) => isHikariPlayableUrl(url)) ||
+    buildHikariPlayerEpisodeUrl(row.hikariPlayerEpisodeId) !== null
+  );
 }
 
 /**

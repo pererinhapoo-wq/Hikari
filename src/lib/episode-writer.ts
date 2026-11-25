@@ -7,8 +7,14 @@ import {
 import { getBearerToken } from "@/lib/auth/client";
 import { addTombstone, clearTombstone } from "@/lib/catalog-storage";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
-import { normalizeHikariPlayerEpisodeId } from "@/lib/hikari-player";
-import { hasEpisodePlayableSource } from "@/lib/published-episodes";
+import {
+  normalizeHikariPlayerEpisodeId,
+  validateHikariPlayerEpisodeId,
+} from "@/lib/hikari-player";
+import {
+  hasEpisodePlayableSource,
+  isPersistablePlayableVideoUrl,
+} from "@/lib/published-episodes";
 import { useHikariStore } from "@/lib/store";
 import { toast } from "sonner";
 
@@ -808,6 +814,16 @@ export async function persistEpisode(
     episodeNumber: episode.number,
   });
 
+  const hasValidUrlSource = [
+    episode.videoUrl,
+    episode.videoUrl2,
+    episode.videoUrl3,
+    episode.videoUrl4,
+    episode.videoUrl5,
+  ].some(isPersistablePlayableVideoUrl);
+  const hikariPlayerValidation = validateHikariPlayerEpisodeId(
+    episode.hikariPlayerEpisodeId,
+  );
   const hasPlayableSource = hasEpisodePlayableSource(episode);
 
   // Não publicar automaticamente episódios sem aprovação explícita do administrador.
@@ -817,8 +833,10 @@ export async function persistEpisode(
       confirmed: false,
       queued: false,
       status: "conflict",
-      error:
-        "Um episódio só pode ser publicado quando possuir pelo menos uma fonte válida de reprodução.",
+      error: !hikariPlayerValidation.valid
+        ? hikariPlayerValidation.error ||
+          "ID do episódio no Hikari Player inválido."
+        : "Um episódio só pode ser publicado quando possuir pelo menos uma fonte válida de reprodução (URL de vídeo de Player 1 a Player 5 ou ID válido do Hikari Player).",
     };
   }
 
@@ -838,7 +856,11 @@ export async function persistEpisode(
     videoUrl3: episode.videoUrl3 || null,
     videoUrl4: episode.videoUrl4 || null,
     videoUrl5: episode.videoUrl5 || null,
-    hikariPlayerEpisodeId: normalizeHikariPlayerEpisodeId(episode.hikariPlayerEpisodeId),
+    hikariPlayerEpisodeId: hikariPlayerValidation.valid
+      ? hikariPlayerValidation.value
+      : hasValidUrlSource
+        ? null
+        : normalizeHikariPlayerEpisodeId(episode.hikariPlayerEpisodeId),
     ...(episode.openingStartSeconds !== undefined
       ? { openingStartSeconds: episode.openingStartSeconds }
       : {}),

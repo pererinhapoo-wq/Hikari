@@ -73,12 +73,6 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           const hikariPlayerValidation = validateHikariPlayerEpisodeId(
             data.hikariPlayerEpisodeId,
           );
-          if (hasHikariPlayerField && !hikariPlayerValidation.valid) {
-            return Response.json(
-              { error: hikariPlayerValidation.error || "ID do Hikari Player inválido." },
-              { status: 400 },
-            );
-          }
 
           const sql = await getSql();
 
@@ -238,14 +232,37 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           const v4 = resolveSource(data.videoUrl4, existingRow?.videoUrl4);
           const v5 = resolveSource(data.videoUrl5, existingRow?.videoUrl5);
 
-          const hasPlayableSource = Boolean(v1 || v2 || v3 || v4 || v5);
+          const hasValidUrlSource = Boolean(v1 || v2 || v3 || v4 || v5);
 
-          // Validação de publicação: publicado exige pelo menos 1 fonte de reprodução válida
+          if (
+            hasHikariPlayerField &&
+            !hikariPlayerValidation.valid &&
+            !hasValidUrlSource
+          ) {
+            return Response.json(
+              { error: hikariPlayerValidation.error || "ID do Hikari Player inválido." },
+              { status: 400 },
+            );
+          }
+
+          const hikariPlayerEpisodeId = hasHikariPlayerField
+            ? hikariPlayerValidation.valid
+              ? hikariPlayerValidation.value
+              : null
+            : existingRow?.hikariPlayerEpisodeId ?? null;
+
+          const hasValidHikariId = Boolean(
+            hikariPlayerEpisodeId &&
+              validateHikariPlayerEpisodeId(hikariPlayerEpisodeId).valid,
+          );
+          const hasPlayableSource = hasValidUrlSource || hasValidHikariId;
+
+          // Validação de publicação: publicado exige ao menos 1 URL válida (Player 1-5) ou ID válido do Hikari Player
           if (data.published === true && !hasPlayableSource) {
             return Response.json(
               {
                 error:
-                  "Um episódio só pode ser publicado quando possuir pelo menos uma fonte válida de reprodução.",
+                  "Um episódio só pode ser publicado quando possuir pelo menos uma fonte válida de reprodução (URL de vídeo de Player 1 a Player 5 ou ID válido do Hikari Player).",
               },
               { status: 400 },
             );
@@ -271,10 +288,6 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             (data.synopsis && data.synopsis.trim()) ||
             existingRow?.synopsis ||
             null;
-
-          const hikariPlayerEpisodeId = hasHikariPlayerField
-            ? hikariPlayerValidation.value
-            : existingRow?.hikariPlayerEpisodeId ?? null;
 
           // 8. Garantir que o anime e a temporada existam no catálogo (reativando se estava arquivado)
           const fallbackAnimeTitle = data.animeTitle?.trim() || canonicalAnimeId;

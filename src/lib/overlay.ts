@@ -21,7 +21,10 @@ import {
   isHikariPlayableUrl,
   sanitizeEpisodeThumbnailUrl,
 } from "@/lib/published-episodes";
-import { normalizeHikariPlayerEpisodeId } from "@/lib/hikari-player";
+import {
+  buildHikariPlayerEpisodeUrl,
+  normalizeHikariPlayerEpisodeId,
+} from "@/lib/hikari-player";
 
 export function overlayList(
   remote: SlimAnime[],
@@ -240,7 +243,11 @@ export function sanitizeRemoteEpisodeForAdmin(rep: Episode): Episode {
   const v3 = isHikariPlayableUrl(rep.videoUrl3) ? rep.videoUrl3?.trim() : undefined;
   const v4 = isHikariPlayableUrl(rep.videoUrl4) ? rep.videoUrl4?.trim() : undefined;
   const v5 = isHikariPlayableUrl(rep.videoUrl5) ? rep.videoUrl5?.trim() : undefined;
-  const hasPlayable = Boolean(v1 || v2 || v3 || v4 || v5);
+  const normalizedHikariId =
+    normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ?? undefined;
+  const hasPlayable =
+    Boolean(v1 || v2 || v3 || v4 || v5) ||
+    buildHikariPlayerEpisodeUrl(normalizedHikariId) !== null;
 
   return {
     id: rep.id,
@@ -255,8 +262,7 @@ export function sanitizeRemoteEpisodeForAdmin(rep: Episode): Episode {
     videoUrl3: v3,
     videoUrl4: v4,
     videoUrl5: v5,
-    hikariPlayerEpisodeId:
-      normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ?? undefined,
+    hikariPlayerEpisodeId: normalizedHikariId,
     ...(rep.openingStartSeconds !== undefined
       ? { openingStartSeconds: rep.openingStartSeconds }
       : {}),

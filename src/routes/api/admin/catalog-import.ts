@@ -350,7 +350,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   const v3 = sanitizeVideoUrl(ep.videoUrl3);
                   const v4 = sanitizeVideoUrl(ep.videoUrl4);
                   const v5 = sanitizeVideoUrl(ep.videoUrl5);
-                  const hasPlayableSource = Boolean(v1 || v2 || v3 || v4 || v5);
+                  const hasValidUrlSource = Boolean(v1 || v2 || v3 || v4 || v5);
 
                   // Validação das duas regras de unicidade dos episódios
                   // Regra 1: ID não pode pertencer a outro anime
@@ -382,11 +382,19 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   const hikariPlayerValidation = validateHikariPlayerEpisodeId(
                     ep.hikariPlayerEpisodeId,
                   );
-                  if (hasHikariPlayerField && !hikariPlayerValidation.valid) {
+                  if (
+                    hasHikariPlayerField &&
+                    !hikariPlayerValidation.valid &&
+                    !hasValidUrlSource
+                  ) {
                     throw new Error(
                       `Episódio ${ep.number} (${targetAnimeId}): ${hikariPlayerValidation.error}`,
                     );
                   }
+                  const hasValidHikariId = Boolean(
+                    hikariPlayerValidation.valid && hikariPlayerValidation.value,
+                  );
+                  const hasPlayableSource = hasValidUrlSource || hasValidHikariId;
 
                   const published = ep.published === true && hasPlayableSource;
                   const epTitle = ep.title?.trim() || `Episódio ${ep.number}`;

@@ -515,6 +515,7 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
       videoUrl3: string | null;
       videoUrl4: string | null;
       videoUrl5: string | null;
+      hikariPlayerEpisodeId: string | null;
       published: boolean;
       publishedAt: string | null;
       badgeLancamento: boolean;
@@ -524,7 +525,9 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
       `SELECT
          "id", "seasonNumber", "number", "title", "thumbnail",
          "duration", "synopsis", "videoUrl", "videoUrl2",
-         "videoUrl3", "videoUrl4", "videoUrl5", "published", "publishedAt",
+         "videoUrl3", "videoUrl4", "videoUrl5",
+         "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+         "published", "publishedAt",
          COALESCE("badge_lancamento", false) AS "badgeLancamento",
          COALESCE("badge_novo", false) AS "badgeNovo",
          COALESCE("badge_final", false) AS "badgeFinal"
@@ -567,6 +570,7 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
         videoUrl3: ep.videoUrl3 || undefined,
         videoUrl4: ep.videoUrl4 || undefined,
         videoUrl5: ep.videoUrl5 || undefined,
+        hikariPlayerEpisodeId: ep.hikariPlayerEpisodeId?.trim() || undefined,
         published: ep.published,
         recentBadges: normalizeAnimeRecentBadges({
           lancamento: ep.badgeLancamento,

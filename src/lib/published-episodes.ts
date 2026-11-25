@@ -19,6 +19,10 @@ import {
   stripTimeQueryParam,
 } from "@/lib/anitube22";
 import { parseEpisodePublicationTimestamp } from "@/lib/relative-published-time";
+import {
+  buildHikariPlayerEpisodeUrl,
+  normalizeHikariPlayerEpisodeId,
+} from "@/lib/hikari-player";
 
 export type PublishedEpisodeBadge = "LANÇAMENTO" | "NOVO" | "FINAL" | null;
 
@@ -37,6 +41,7 @@ export type PublishedEpisode = {
   thumbnail?: string;
   duration?: string;
   videoUrl?: string;
+  hikariPlayerEpisodeId?: string;
   publishedAt: number;
   published?: boolean;
   publishedTimestamp?: number | null;
@@ -415,21 +420,22 @@ export function selectEpisodeForWatch(
     return null;
   }
 
+  const hasWatchSource = (e: Episode): boolean =>
+    resolveEpisodePlayerSources(e).length > 0 ||
+    buildHikariPlayerEpisodeUrl(e.hikariPlayerEpisodeId) !== null;
+
   const byId = epParam
     ? episodes.filter((e) => e.id === epParam || String(e.id) === String(epParam))
     : [];
   if (byId.length > 0) {
-    return byId.find((e) => resolveEpisodePlayerSources(e).length > 0) ?? byId[0];
+    return byId.find(hasWatchSource) ?? byId[0];
   }
 
   const byNumber = episodes.filter(
     (e) => e.number === targetEpNum || String(e.number) === String(targetEpNum),
   );
   if (byNumber.length > 0) {
-    return (
-      byNumber.find((e) => resolveEpisodePlayerSources(e).length > 0) ??
-      byNumber[0]
-    );
+    return byNumber.find(hasWatchSource) ?? byNumber[0];
   }
 
   return null;
@@ -472,7 +478,7 @@ export function isPersistablePlayableVideoUrl(url?: string | null): boolean {
 
 /**
  * Verifica se o episódio possui ao menos uma fonte de reprodução válida e persistível
- * entre Player 1 e Player 5.
+ * entre Player 1 a Player 5 ou um ID válido do Hikari Player.
  */
 export function hasEpisodePlayableSource(ep: {
   videoUrl?: string | null;
@@ -480,14 +486,18 @@ export function hasEpisodePlayableSource(ep: {
   videoUrl3?: string | null;
   videoUrl4?: string | null;
   videoUrl5?: string | null;
+  hikariPlayerEpisodeId?: string | null;
 }): boolean {
-  return [
-    ep.videoUrl,
-    ep.videoUrl2,
-    ep.videoUrl3,
-    ep.videoUrl4,
-    ep.videoUrl5,
-  ].some(isPersistablePlayableVideoUrl);
+  return (
+    [
+      ep.videoUrl,
+      ep.videoUrl2,
+      ep.videoUrl3,
+      ep.videoUrl4,
+      ep.videoUrl5,
+    ].some(isPersistablePlayableVideoUrl) ||
+    buildHikariPlayerEpisodeUrl(ep.hikariPlayerEpisodeId) !== null
+  );
 }
 
 export interface VideoThumbnailCandidate {
@@ -699,6 +709,7 @@ export function isEpisodePublished(ep: {
   videoUrl3?: string;
   videoUrl4?: string;
   videoUrl5?: string;
+  hikariPlayerEpisodeId?: string | null;
   published?: boolean;
 }): boolean {
   if (!ep || !ep.id || typeof ep.number !== "number") {
@@ -718,8 +729,10 @@ export function isEpisodePublished(ep: {
     ep.videoUrl5,
   ];
 
-  // Deve haver pelo menos uma fonte de vídeo real configurada pelo administrador
-  const hasPlayableVideo = sources.some(isHikariPlayableUrl);
+  // Deve haver pelo menos uma fonte de vídeo real (Player 1-5) ou ID válido do Hikari Player
+  const hasPlayableVideo =
+    sources.some(isHikariPlayableUrl) ||
+    buildHikariPlayerEpisodeUrl(ep.hikariPlayerEpisodeId) !== null;
 
   if (!hasPlayableVideo) {
     return false;
@@ -812,7 +825,8 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
       ep: LocalAnime["seasons"][number]["episodes"][number];
       seasonNumber: number;
       episodeNumber: number;
-      validVideo: string;
+      validVideo?: string;
+      validHikariId?: string;
       resolvedThumb?: string;
     }[] = [];
     const seenSlots = new Set<string>();
@@ -828,8 +842,13 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
           ep.videoUrl4,
           ep.videoUrl5,
         ].find(isHikariPlayableUrl);
+        const validHikariId = normalizeHikariPlayerEpisodeId(
+          ep.hikariPlayerEpisodeId,
+        );
+        const hasValidHikariSource =
+          buildHikariPlayerEpisodeUrl(validHikariId) !== null;
 
-        if (!validVideo) continue;
+        if (!validVideo && !hasValidHikariSource) continue;
 
         const sNum = season.number || 1;
         const slotKey = `${sNum}:${ep.number}`;
@@ -844,6 +863,8 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
           seasonNumber: sNum,
           episodeNumber: ep.number,
           validVideo,
+          validHikariId:
+            hasValidHikariSource && validHikariId ? validHikariId : undefined,
           resolvedThumb,
         });
       }
@@ -880,6 +901,9 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
         thumbnail: item.resolvedThumb,
         duration: item.ep.duration?.trim() || undefined,
         videoUrl: item.validVideo,
+        ...(item.validHikariId
+          ? { hikariPlayerEpisodeId: item.validHikariId }
+          : {}),
         publishedAt,
         published: item.ep.published === true,
         publishedTimestamp: parseEpisodePublicationTimestamp(
@@ -987,6 +1011,11 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
           ep.videoUrl4,
           ep.videoUrl5,
         ].find(isHikariPlayableUrl);
+        const validHikariId = normalizeHikariPlayerEpisodeId(
+          ep.hikariPlayerEpisodeId,
+        );
+        const hasValidHikariSource =
+          buildHikariPlayerEpisodeUrl(validHikariId) !== null;
 
         // O peso de ordenação prioriza a atualização do anime + temporada + número
         const epTime = baseTime + season.number * 1000 + ep.number;
@@ -1011,7 +1040,10 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
           episodeTitle: ep.title || `Episódio ${ep.number}`,
           thumbnail: resolvedThumb,
           duration: ep.duration ? ep.duration.trim() : undefined,
-          videoUrl: validVideo || ep.videoUrl,
+          videoUrl: validVideo || undefined,
+          ...(hasValidHikariSource && validHikariId
+            ? { hikariPlayerEpisodeId: validHikariId }
+            : {}),
           publishedAt: epTime,
           published: ep.published === true,
           publishedTimestamp: parseEpisodePublicationTimestamp(
@@ -1141,8 +1173,13 @@ export function resolvePublicEpisodes(
       row.videoUrl4,
       row.videoUrl5,
     ].find(isHikariPlayableUrl);
+    const validHikariId = normalizeHikariPlayerEpisodeId(
+      row.hikariPlayerEpisodeId,
+    );
+    const hasValidHikariSource =
+      buildHikariPlayerEpisodeUrl(validHikariId) !== null;
 
-    if (!validVideo) continue; // Descarta se não houver stream reproduzível
+    if (!validVideo && !hasValidHikariSource) continue; // Descarta se não houver stream reproduzível nem ID válido do Hikari Player
 
     const localAnime = safeLocals.find(
       (a) =>
@@ -1192,8 +1229,8 @@ export function resolvePublicEpisodes(
     const animeBanner =
       row.animeBanner?.trim() || localAnime?.banner?.trim() || animeCover;
 
-    const cloudinaryThumb = getCloudinaryThumbnail(validVideo);
-    const youtubeThumb = getYouTubeThumbnail(validVideo);
+    const cloudinaryThumb = validVideo ? getCloudinaryThumbnail(validVideo) : null;
+    const youtubeThumb = validVideo ? getYouTubeThumbnail(validVideo) : null;
     const pendingThumb = pendingUpsert?.payload?.thumbnail;
     const hasPendingThumbOverride =
       pendingUpsert?.payload !== undefined &&
@@ -1270,7 +1307,10 @@ export function resolvePublicEpisodes(
       episodeTitle,
       thumbnail: resolvedThumb,
       duration,
-      videoUrl: validVideo,
+      videoUrl: validVideo ?? undefined,
+      ...(hasValidHikariSource && validHikariId
+        ? { hikariPlayerEpisodeId: validHikariId }
+        : {}),
       publishedAt,
       published: row.published === true,
       publishedTimestamp: realPublishedMs,
@@ -1347,8 +1387,13 @@ export function resolvePublicEpisodes(
           ep.videoUrl4,
           ep.videoUrl5,
         ].find(isHikariPlayableUrl);
+        const validHikariId = normalizeHikariPlayerEpisodeId(
+          ep.hikariPlayerEpisodeId,
+        );
+        const hasValidHikariSource =
+          buildHikariPlayerEpisodeUrl(validHikariId) !== null;
 
-        if (!validVideo) continue;
+        if (!validVideo && !hasValidHikariSource) continue;
 
         const resolvedThumb = resolveEpisodeThumbnailUrl(ep);
 
@@ -1374,6 +1419,9 @@ export function resolvePublicEpisodes(
           thumbnail: resolvedThumb,
           duration: ep.duration?.trim() || undefined,
           videoUrl: validVideo,
+          ...(hasValidHikariSource && validHikariId
+            ? { hikariPlayerEpisodeId: validHikariId }
+            : {}),
           publishedAt: epTime,
           published: ep.published === true,
           publishedTimestamp: parseEpisodePublicationTimestamp(
