@@ -660,7 +660,7 @@ export const Route = createFileRoute("/anime/$id")({
   },
 
   pendingComponent: () => (
-    <div className="space-y-4 pt-4">
+    <div className="min-h-[calc(100dvh-5rem)] space-y-4 pt-4">
       <div className="-mx-4 h-56 animate-pulse bg-elevated sm:-mx-6 sm:h-72" />
 
       <div className="h-8 w-2/3 animate-pulse rounded bg-elevated" />

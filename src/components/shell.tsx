@@ -160,7 +160,7 @@ const ShellMain = memo(function ShellMain({
   return (
     <main
       className={cn(
-        "mx-auto w-full max-w-6xl px-4 pb-5 sm:px-6 sm:pb-8",
+        "mx-auto w-full max-w-6xl px-4 pb-5 sm:px-6 sm:pb-8 flex-1 min-h-[calc(100dvh-5rem)]",
         isBannerPage && "-mt-16 sm:-mt-[78px] md:-mt-[84px] lg:-mt-[90px]",
       )}
     >
@@ -671,10 +671,12 @@ const VisitorDropdownMenu = memo(function VisitorDropdownMenu({
 });
 
 export function Shell() {
-  const pathname =
+  const { pathname, resolvedPathname } =
     useRouterState({
-      select: (s) =>
-        (s.resolvedLocation ?? s.location).pathname,
+      select: (s) => ({
+        pathname: s.location.pathname,
+        resolvedPathname: s.resolvedLocation?.pathname ?? s.location.pathname,
+      }),
     });
 
   const currentSeasonInfo = currentAnimeSeason();
@@ -844,7 +846,7 @@ export function Shell() {
   const isBannerPage =
     pathname === "/" || pathname.startsWith("/anime/");
 
-  const isHomePage = pathname === "/";
+  const isHomePage = pathname === "/" && resolvedPathname === "/";
 
   /* =========================================================
      NOTIFICAÇÕES
@@ -1628,7 +1630,7 @@ export function Shell() {
   }
 
   return (
-    <div className="min-h-dvh bg-bg text-fg">
+    <div className="flex min-h-dvh flex-col bg-bg text-fg">
       <GlobalNoticeBanner />
 
       {/* =========================================================
