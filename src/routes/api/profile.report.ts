@@ -48,13 +48,16 @@ export const Route = createFileRoute("/api/profile/report")({
           let resolvedTargetUserId = targetUserId;
 
           if (!resolvedTargetUserId && targetNick) {
-            const userRes = await sql.query(
-              `select "id" from "user" where lower("nick") = lower($1) limit 1`,
-              [targetNick.replace(/^@+/, "")],
-            );
-            const rows = Array.isArray(userRes) ? userRes : (userRes as any)?.rows ?? [];
-            if (rows.length > 0) {
-              resolvedTargetUserId = rows[0].id;
+            const cleanNick = targetNick.replace(/^@+/, "").trim();
+            if (cleanNick) {
+              const userRes = await sql.query<{ id: string }>(
+                `select "userId" as "id" from "profile" where lower("nick") = lower($1) limit 1`,
+                [cleanNick],
+              );
+              const rows = Array.isArray(userRes) ? userRes : (userRes as any)?.rows ?? [];
+              if (rows.length > 0 && rows[0]?.id) {
+                resolvedTargetUserId = rows[0].id;
+              }
             }
           }
 
@@ -109,13 +112,15 @@ export const Route = createFileRoute("/api/profile/report")({
           if (existingRows.length > 0) {
             return Response.json({
               success: true,
+              alreadyPending: true,
+              reportId: existingRows[0].id,
               message: "Denúncia já enviada anteriormente e pendente de análise.",
             });
           }
 
           const reportId = `pr-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-          await sql.query(
+          const insertedRes = await sql.query<{ id: string; status: string }>(
             `
               insert into "profile_report" (
                 "id",
@@ -128,12 +133,22 @@ export const Route = createFileRoute("/api/profile/report")({
                 "updatedAt"
               )
               values ($1, $2, $3, $4, $5, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+              returning "id", "status"
             `,
             [reportId, apiUser.id, resolvedTargetUserId, reason, description || null],
           );
 
+          const insertedRows = Array.isArray(insertedRes)
+            ? insertedRes
+            : (insertedRes as any)?.rows ?? [];
+          if (insertedRows.length === 0 || !insertedRows[0]?.id) {
+            throw new Error("Não foi possível confirmar a gravação da denúncia no banco.");
+          }
+
           return Response.json({
             success: true,
+            reportId: insertedRows[0].id,
+            status: insertedRows[0].status || "pending",
             message: "Denúncia enviada com sucesso. Nossa equipe analisará em breve.",
           });
         } catch (error) {

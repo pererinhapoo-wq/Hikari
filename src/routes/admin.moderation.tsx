@@ -144,15 +144,19 @@ function AdminModeration() {
   // Denúncias de Perfil
   const [profileReports, setProfileReports] = useState<any[]>([]);
   const [loadingProfileReports, setLoadingProfileReports] = useState(false);
+  const [profileReportsError, setProfileReportsError] = useState<string | null>(null);
   const [profileReportStatusFilter, setProfileReportStatusFilter] = useState<string>("pending");
   const [profileReportPage, setProfileReportPage] = useState(1);
   const [profileReportTotal, setProfileReportTotal] = useState(0);
+  const [profileReportTotalPages, setProfileReportTotalPages] = useState(1);
+  const [pendingProfileReportsCount, setPendingProfileReportsCount] = useState(0);
   const [selectedProfileReport, setSelectedProfileReport] = useState<any | null>(null);
   const [profileReportNotes, setProfileReportNotes] = useState("");
   const [updatingProfileReport, setUpdatingProfileReport] = useState(false);
 
   const loadProfileReports = useCallback(async () => {
     setLoadingProfileReports(true);
+    setProfileReportsError(null);
     try {
       const token = getBearerToken();
       const params = new URLSearchParams({
@@ -160,6 +164,8 @@ function AdminModeration() {
         page: String(profileReportPage),
       });
       const res = await fetch(`/api/admin/profile-reports?${params.toString()}`, {
+        method: "GET",
+        credentials: "include",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const data = await res.json().catch(() => null);
@@ -167,13 +173,44 @@ function AdminModeration() {
         throw new Error(data?.error || "Falha ao carregar denúncias de perfil.");
       }
       setProfileReports(Array.isArray(data?.reports) ? data.reports : []);
-      setProfileReportTotal(data?.pagination?.total || 0);
+      setProfileReportTotal(Number(data?.pagination?.total || 0));
+      setProfileReportTotalPages(Math.max(1, Number(data?.pagination?.totalPages || 1)));
+      if (typeof data?.pendingCount === "number") {
+        setPendingProfileReportsCount(data.pendingCount);
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao carregar denúncias de perfil.");
+      const msg = err instanceof Error ? err.message : "Erro ao carregar denúncias de perfil.";
+      setProfileReportsError(msg);
+      toast.error(msg);
     } finally {
       setLoadingProfileReports(false);
     }
   }, [profileReportStatusFilter, profileReportPage]);
+
+  // Carrega contagem inicial de denúncias de perfil pendentes ao abrir a Central de Moderação
+  useEffect(() => {
+    let cancelled = false;
+    const loadInitialPendingCount = async () => {
+      try {
+        const token = getBearerToken();
+        const res = await fetch("/api/admin/profile-reports?status=pending&page=1", {
+          method: "GET",
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = await res.json().catch(() => null);
+        if (!cancelled && res.ok && typeof data?.pendingCount === "number") {
+          setPendingProfileReportsCount(data.pendingCount);
+        }
+      } catch {
+        // Silencioso na pré-carga do contador; erros detalhados aparecem ao abrir a aba
+      }
+    };
+    void loadInitialPendingCount();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (activeTab === "profile_reports") {
@@ -188,6 +225,7 @@ function AdminModeration() {
       const token = getBearerToken();
       const res = await fetch("/api/admin/profile-reports", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -204,7 +242,7 @@ function AdminModeration() {
       }
       toast.success("Denúncia atualizada com sucesso!");
       setSelectedProfileReport(null);
-      void loadProfileReports();
+      await loadProfileReports();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao atualizar denúncia.");
     } finally {
@@ -405,6 +443,10 @@ function AdminModeration() {
       void loadBans();
       return;
     }
+    if (activeTab === "profile_reports") {
+      void loadProfileReports();
+      return;
+    }
     bansDirtyRef.current = true;
     void loadComments();
   };
@@ -544,7 +586,7 @@ function AdminModeration() {
     }
   };
 
-  const isRefreshing = loadingComments || loadingBans;
+  const isRefreshing = loadingComments || loadingBans || loadingProfileReports;
   const displayedActiveBansCount = hasLoadedBans
     ? activeBans.length
     : summary.activeBansCount;
@@ -652,8 +694,8 @@ function AdminModeration() {
                 id: "profile_reports" as const,
                 label: "Denúncias de Perfil",
                 icon: ShieldAlert,
-                badge: profileReportTotal,
-                alert: profileReportTotal > 0,
+                badge: pendingProfileReportsCount,
+                alert: pendingProfileReportsCount > 0,
               },
               {
                 id: "bans" as const,
@@ -918,6 +960,23 @@ function AdminModeration() {
 
           {loadingProfileReports ? (
             <StudioLoadingState message="Consultando denúncias de perfil no PostgreSQL..." />
+          ) : profileReportsError ? (
+            <StudioEmptyState
+              icon={<AlertTriangle className="size-6 text-rose-400" />}
+              title="Erro ao carregar denúncias de perfil"
+              description={profileReportsError}
+              action={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void loadProfileReports()}
+                  className="h-9 border-white/[0.08] bg-[#161226] text-xs text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
+                >
+                  Tentar novamente
+                </Button>
+              }
+            />
           ) : profileReports.length === 0 ? (
             <StudioEmptyState
               icon={<Check className="size-6 text-emerald-400" />}
@@ -925,101 +984,148 @@ function AdminModeration() {
               description="Não há registros de denúncias para o filtro selecionado."
             />
           ) : (
-            <div className="space-y-3">
-              {profileReports.map((report) => (
-                <div
-                  key={report.id}
-                  className="flex flex-col gap-4 rounded-xl border border-white/[0.08] bg-[#12101e] p-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-md border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-xs font-semibold text-purple-300">
-                        {report.reasonLabel}
-                      </span>
-                      <span
-                        className={cn(
-                          "rounded-md px-2 py-0.5 text-[11px] font-bold uppercase",
-                          report.status === "pending"
-                            ? "bg-amber-500/20 text-amber-300"
-                            : report.status === "reviewing"
-                              ? "bg-sky-500/20 text-sky-300"
-                              : report.status === "resolved"
-                                ? "bg-emerald-500/20 text-emerald-300"
-                                : "bg-zinc-500/20 text-zinc-300",
-                        )}
-                      >
-                        {report.status === "pending"
-                          ? "Pendente"
-                          : report.status === "reviewing"
-                            ? "Em Análise"
-                            : report.status === "resolved"
-                              ? "Resolvida"
-                              : "Rejeitada"}
-                      </span>
-                      <span className="studio-tabular text-[11px] text-zinc-400">
-                        {new Date(report.createdAt).toLocaleString("pt-BR")}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-3 pt-1">
-                      {report.reportedUser.image ? (
-                        <img
-                          src={report.reportedUser.image}
-                          alt=""
-                          className="size-9 rounded-full object-cover ring-1 ring-purple-500/30"
-                        />
-                      ) : (
-                        <div className="flex size-9 items-center justify-center rounded-full bg-purple-900/40 text-xs font-bold text-purple-300">
-                          {(report.reportedUser.name || "U").charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-zinc-100">
-                            {report.reportedUser.name}
-                          </span>
-                          <span className="studio-mono text-xs text-purple-300">
-                            @{report.reportedUser.nick}
-                          </span>
-                        </div>
-                        <Link
-                          to="/profile/$nick"
-                          params={{ nick: report.reportedUser.nick }}
-                          className="inline-flex items-center gap-1 text-xs text-[#c084fc] hover:underline"
+            <>
+              <div className="space-y-3">
+                {profileReports.map((report) => (
+                  <div
+                    key={report.id}
+                    className="flex flex-col gap-4 rounded-xl border border-white/[0.08] bg-[#12101e] p-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-md border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-xs font-semibold text-purple-300">
+                          {report.reasonLabel}
+                        </span>
+                        <span
+                          className={cn(
+                            "rounded-md px-2 py-0.5 text-[11px] font-bold uppercase",
+                            report.status === "pending"
+                              ? "bg-amber-500/20 text-amber-300"
+                              : report.status === "reviewing"
+                                ? "bg-sky-500/20 text-sky-300"
+                                : report.status === "resolved"
+                                  ? "bg-emerald-500/20 text-emerald-300"
+                                  : "bg-zinc-500/20 text-zinc-300",
+                          )}
                         >
-                          <span>Ver perfil denunciado</span>
-                          <ExternalLink className="size-3" />
-                        </Link>
+                          {report.status === "pending"
+                            ? "Pendente"
+                            : report.status === "reviewing"
+                              ? "Em Análise"
+                              : report.status === "resolved"
+                                ? "Resolvida"
+                                : "Rejeitada"}
+                        </span>
+                        <span className="studio-tabular text-[11px] text-zinc-400">
+                          {new Date(report.createdAt).toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3 pt-1">
+                        {report.reportedUser.image ? (
+                          <img
+                            src={report.reportedUser.image}
+                            alt=""
+                            className="size-9 rounded-full object-cover ring-1 ring-purple-500/30"
+                          />
+                        ) : (
+                          <div className="flex size-9 items-center justify-center rounded-full bg-purple-900/40 text-xs font-bold text-purple-300">
+                            {(report.reportedUser.name || "U").charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-zinc-100">
+                              {report.reportedUser.name}
+                            </span>
+                            <span className="studio-mono text-xs text-purple-300">
+                              @{report.reportedUser.nick}
+                            </span>
+                          </div>
+                          <Link
+                            to="/profile/$nick"
+                            params={{ nick: report.reportedUser.nick }}
+                            className="inline-flex items-center gap-1 text-xs text-[#c084fc] hover:underline"
+                          >
+                            <span>Ver perfil denunciado</span>
+                            <ExternalLink className="size-3" />
+                          </Link>
+                        </div>
+                      </div>
+
+                      {report.description && (
+                        <p className="rounded-lg bg-[#161226] p-2.5 text-xs text-zinc-300">
+                          <strong className="text-zinc-100">Descrição:</strong> {report.description}
+                        </p>
+                      )}
+
+                      {report.adminNotes && (
+                        <p className="rounded-lg border border-white/[0.06] bg-[#161226]/70 p-2.5 text-xs text-zinc-300">
+                          <strong className="text-zinc-100">Notas da equipe:</strong> {report.adminNotes}
+                        </p>
+                      )}
+
+                      <div className="text-[11px] text-zinc-500">
+                        Denunciante: {report.reporterUser?.name || report.reporterUserId} (Sigilo preservado)
                       </div>
                     </div>
 
-                    {report.description && (
-                      <p className="rounded-lg bg-[#161226] p-2.5 text-xs text-zinc-300">
-                        <strong className="text-zinc-100">Descrição:</strong> {report.description}
-                      </p>
-                    )}
-
-                    <div className="text-[11px] text-zinc-500">
-                      Denunciante: {report.reporterUser?.name || report.reporterUserId} (Sigilo preservado)
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedProfileReport(report);
+                          setProfileReportNotes(report.adminNotes || "");
+                        }}
+                        className="h-9 gap-1.5 border border-purple-500/30 bg-purple-500/20 px-3 text-xs font-semibold text-purple-200 hover:bg-purple-500/30"
+                      >
+                        Gerenciar Denúncia
+                      </Button>
                     </div>
                   </div>
+                ))}
+              </div>
 
-                  <div className="flex items-center gap-2">
+              {profileReportTotalPages > 1 && (
+                <div className="studio-panel flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 text-xs text-zinc-400">
+                  <span className="studio-tabular">
+                    Mostrando <strong className="text-zinc-100">{profileReports.length}</strong>{" "}
+                    de <strong className="text-zinc-100">{profileReportTotal}</strong>{" "}
+                    denúncias
+                  </span>
+                  <div className="flex items-center gap-1.5">
                     <Button
                       type="button"
+                      variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setSelectedProfileReport(report);
-                        setProfileReportNotes(report.adminNotes || "");
-                      }}
-                      className="h-9 gap-1.5 border border-purple-500/30 bg-purple-500/20 px-3 text-xs font-semibold text-purple-200 hover:bg-purple-500/30"
+                      disabled={profileReportPage <= 1 || loadingProfileReports}
+                      onClick={() => setProfileReportPage((p) => Math.max(1, p - 1))}
+                      className="size-8 border-white/[0.08] bg-[#161226] p-0 text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
+                      aria-label="Página anterior"
                     >
-                      Gerenciar Denúncia
+                      <ChevronLeft className="size-4" />
+                    </Button>
+                    <span className="studio-mono px-2 text-xs font-semibold text-zinc-200">
+                      {profileReportPage} / {profileReportTotalPages}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={profileReportPage >= profileReportTotalPages || loadingProfileReports}
+                      onClick={() =>
+                        setProfileReportPage((p) => Math.min(profileReportTotalPages, p + 1))
+                      }
+                      className="size-8 border-white/[0.08] bg-[#161226] p-0 text-zinc-200 hover:border-purple-500/40 hover:bg-[#1f1a36] hover:text-white"
+                      aria-label="Próxima página"
+                    >
+                      <ChevronRight className="size-4" />
                     </Button>
                   </div>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       )}

@@ -19,6 +19,14 @@ const PROFILE_REPORT_REASON_LABELS: Record<string, string> = {
   other: "Outro",
 };
 
+const ALLOWED_STATUS_FILTERS = new Set([
+  "all",
+  "pending",
+  "reviewing",
+  "resolved",
+  "rejected",
+]);
+
 export const Route = createFileRoute("/api/admin/profile-reports")({
   server: {
     handlers: {
@@ -30,26 +38,51 @@ export const Route = createFileRoute("/api/admin/profile-reports")({
 
           const sql = await getSql();
           const url = new URL(request.url);
-          const statusFilter = url.searchParams.get("status") || "pending";
-          const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+          const rawStatus = (url.searchParams.get("status") || "pending")
+            .trim()
+            .toLowerCase();
+          const statusFilter = ALLOWED_STATUS_FILTERS.has(rawStatus)
+            ? rawStatus
+            : "pending";
+          const page = Math.max(
+            1,
+            parseInt(url.searchParams.get("page") || "1", 10) || 1,
+          );
           const limit = 15;
           const offset = (page - 1) * limit;
 
           let whereClause = "";
-          const queryParams: any[] = [];
+          const filterParams: unknown[] = [];
 
           if (statusFilter !== "all") {
             whereClause = `where pr."status" = $1`;
-            queryParams.push(statusFilter);
+            filterParams.push(statusFilter);
           }
 
-          const countRes = await sql.query(
-            `select count(*)::int as count from "profile_report" pr ${whereClause}`,
-            queryParams,
-          );
-          const countRows = Array.isArray(countRes) ? countRes : (countRes as any)?.rows ?? [];
-          const total = countRows[0]?.count ?? 0;
+          const [countRes, pendingRes] = await Promise.all([
+            sql.query<{ count: number | string }>(
+              `select count(*)::int as count from "profile_report" pr ${whereClause}`,
+              filterParams,
+            ),
+            sql.query<{ count: number | string }>(
+              `select count(*)::int as count from "profile_report" where "status" = 'pending'`,
+            ),
+          ]);
+
+          const countRows = Array.isArray(countRes)
+            ? countRes
+            : (countRes as any)?.rows ?? [];
+          const pendingRows = Array.isArray(pendingRes)
+            ? pendingRes
+            : (pendingRes as any)?.rows ?? [];
+
+          const total = Number(countRows[0]?.count ?? 0);
+          const pendingCount = Number(pendingRows[0]?.count ?? 0);
           const totalPages = Math.max(1, Math.ceil(total / limit));
+
+          const listParams = [...filterParams, limit, offset];
+          const limitIdx = filterParams.length + 1;
+          const offsetIdx = filterParams.length + 2;
 
           const listQuery = `
             select
@@ -64,27 +97,46 @@ export const Route = createFileRoute("/api/admin/profile-reports")({
               pr."createdAt",
               pr."updatedAt",
 
-              ru."name" as "reportedName",
-              ru."nick" as "reportedNick",
+              coalesce(
+                nullif(trim(rp."displayName"), ''),
+                nullif(trim(ru."name"), ''),
+                nullif(trim(rp."nick"), ''),
+                'Usuário'
+              ) as "reportedName",
+              coalesce(
+                nullif(trim(rp."nick"), ''),
+                ru."id",
+                pr."reportedUserId"
+              ) as "reportedNick",
               ru."email" as "reportedEmail",
-              ru."image" as "reportedImage",
+              coalesce(
+                nullif(trim(rp."avatarUrl"), ''),
+                nullif(trim(ru."image"), '')
+              ) as "reportedImage",
 
-              rep."name" as "reporterName",
-              rep."nick" as "reporterNick",
+              coalesce(
+                nullif(trim(repp."displayName"), ''),
+                nullif(trim(rep."name"), ''),
+                nullif(trim(repp."nick"), ''),
+                'Denunciante'
+              ) as "reporterName",
+              nullif(trim(repp."nick"), '') as "reporterNick",
               rep."email" as "reporterEmail"
 
             from "profile_report" pr
-            inner join "user" ru on ru."id" = pr."reportedUserId"
+            left join "user" ru on ru."id" = pr."reportedUserId"
+            left join "profile" rp on rp."userId" = pr."reportedUserId"
             left join "user" rep on rep."id" = pr."reporterUserId"
+            left join "profile" repp on repp."userId" = pr."reporterUserId"
             ${whereClause}
-            order.by pr."createdAt" desc
-            limit ${limit} offset ${offset}
+            order by pr."createdAt" desc, pr."id" desc
+            limit $${limitIdx} offset $${offsetIdx}
           `;
 
-          // Note: order.by typo check -> order by
-          const cleanQuery = listQuery.replace("order.by", "order by");
-          const result = await sql.query(cleanQuery, queryParams);
-          const rows = Array.isArray(result) ? result : (result as any)?.rows ?? [];
+          const result = await sql.query(listQuery, listParams);
+          const rows = Array.isArray(result)
+            ? result
+            : (result as any)?.rows ?? [];
 
           const reports = rows.map((row: any) => ({
             id: row.id,
@@ -101,32 +153,43 @@ export const Route = createFileRoute("/api/admin/profile-reports")({
             reportedUser: {
               id: row.reportedUserId,
               name: row.reportedName || "Usuário",
-              nick: row.reportedNick || "membro",
-              email: row.reportedEmail,
-              image: row.reportedImage,
+              nick: row.reportedNick || row.reportedUserId,
+              email: row.reportedEmail ?? null,
+              image: row.reportedImage ?? null,
             },
             reporterUser: {
               id: row.reporterUserId,
               name: row.reporterName || "Denunciante",
-              nick: row.reporterNick,
-              email: row.reporterEmail,
+              nick: row.reporterNick ?? null,
+              email: row.reporterEmail ?? null,
             },
           }));
 
-          return Response.json({
-            reports,
-            pagination: {
-              total,
-              totalPages,
-              page,
-              limit,
+          return Response.json(
+            {
+              reports,
+              pendingCount,
+              pagination: {
+                total,
+                totalPages,
+                page,
+                limit,
+              },
             },
-          });
+            {
+              headers: {
+                "Cache-Control": "private, no-cache, no-store, must-revalidate",
+              },
+            },
+          );
         } catch (error) {
           if (error instanceof CrossSiteRequestError) {
             return Response.json({ error: error.message }, { status: error.status });
           }
-          console.error("[api/admin/profile-reports] Erro ao listar denúncias de perfil:", error);
+          console.error(
+            "[api/admin/profile-reports] Erro ao listar denúncias de perfil:",
+            error,
+          );
           return Response.json(
             { error: "Não foi possível carregar as denúncias de perfil." },
             { status: 500 },
@@ -154,12 +217,18 @@ export const Route = createFileRoute("/api/admin/profile-reports")({
             return Response.json({ error: "JSON inválido." }, { status: 400 });
           }
 
-          const reportId = typeof body?.reportId === "string" ? body.reportId.trim() : "";
-          const status = typeof body?.status === "string" ? body.status.trim().toLowerCase() : "";
-          const adminNotes = typeof body?.adminNotes === "string" ? body.adminNotes.trim() : null;
+          const reportId =
+            typeof body?.reportId === "string" ? body.reportId.trim() : "";
+          const status =
+            typeof body?.status === "string" ? body.status.trim().toLowerCase() : "";
+          const adminNotes =
+            typeof body?.adminNotes === "string" ? body.adminNotes.trim() : null;
 
           if (!reportId) {
-            return Response.json({ error: "reportId é obrigatório." }, { status: 400 });
+            return Response.json(
+              { error: "reportId é obrigatório." },
+              { status: 400 },
+            );
           }
 
           if (!["pending", "reviewing", "resolved", "rejected"].includes(status)) {
@@ -168,16 +237,7 @@ export const Route = createFileRoute("/api/admin/profile-reports")({
 
           const sql = await getSql();
 
-          const checkRes = await sql.query(
-            `select "id" from "profile_report" where "id" = $1 limit 1`,
-            [reportId],
-          );
-          const checkRows = Array.isArray(checkRes) ? checkRes : (checkRes as any)?.rows ?? [];
-          if (checkRows.length === 0) {
-            return Response.json({ error: "Denúncia não encontrada." }, { status: 404 });
-          }
-
-          await sql.query(
+          const updatedRes = await sql.query<{ id: string; status: string }>(
             `
               update "profile_report"
               set
@@ -186,19 +246,34 @@ export const Route = createFileRoute("/api/admin/profile-reports")({
                 "resolvedBy" = $3,
                 "updatedAt" = CURRENT_TIMESTAMP
               where "id" = $4
+              returning "id", "status"
             `,
             [status, adminNotes, adminSession.id, reportId],
           );
 
+          const updatedRows = Array.isArray(updatedRes)
+            ? updatedRes
+            : (updatedRes as any)?.rows ?? [];
+          if (updatedRows.length === 0) {
+            return Response.json(
+              { error: "Denúncia não encontrada." },
+              { status: 404 },
+            );
+          }
+
           return Response.json({
             success: true,
-            status,
+            reportId: updatedRows[0].id,
+            status: updatedRows[0].status,
           });
         } catch (error) {
           if (error instanceof CrossSiteRequestError) {
             return Response.json({ error: error.message }, { status: error.status });
           }
-          console.error("[api/admin/profile-reports] Erro ao atualizar denúncia:", error);
+          console.error(
+            "[api/admin/profile-reports] Erro ao atualizar denúncia:",
+            error,
+          );
           return Response.json(
             { error: "Não foi possível atualizar a denúncia." },
             { status: 500 },
