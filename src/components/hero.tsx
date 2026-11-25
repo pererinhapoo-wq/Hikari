@@ -1252,7 +1252,9 @@ export function Hero({
         state.hasMoved = true;
 
         try {
-          e.currentTarget.setPointerCapture(e.pointerId);
+          if (e.pointerType !== "touch" && typeof e.currentTarget.setPointerCapture === "function") {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }
         } catch {
           // ignore
         }
