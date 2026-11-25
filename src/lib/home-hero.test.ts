@@ -20,6 +20,8 @@ import {
   getRedisHeroBannerPoolWithFence,
   HERO_BANNER_GEN_KEY,
   HERO_BANNER_REDIS_KEY,
+  getHeroRedisKey,
+  getHeroGenKey,
   invalidateRedisHeroBannerPool,
   setRedisHeroBannerPool,
   type HeroBannerPoolPayload,
@@ -477,7 +479,7 @@ describe("home-hero dynamic selection, scoring, rotation & caching", () => {
     assert.equal(firstWindowSlides.length, 8);
     assert.equal(catalogQueries, 1);
     assert.equal(audienceQueries, 1);
-    assert.ok(mockRedis.store.has(HERO_BANNER_REDIS_KEY));
+    assert.ok(mockRedis.store.has(getHeroRedisKey("development")));
 
     // 2. Mesma janela -> RAM hit (0 DB, 0 audience, determinístico == SSR/hydration)
     const sameWindowRam = await getHomeHeroItemsWithDeps(deps, t0 + 20_000);
@@ -517,7 +519,7 @@ describe("home-hero dynamic selection, scoring, rotation & caching", () => {
 
     // Simula invalidação administrativa concorrente antes da escrita terminar
     await invalidateRedisHeroBannerPool(mockRedis);
-    assert.equal(mockRedis.store.get(HERO_BANNER_GEN_KEY), "1");
+    assert.equal(mockRedis.store.get(getHeroGenKey("development")), "1");
 
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
     const payload: HeroBannerPoolPayload = {
@@ -554,14 +556,14 @@ describe("home-hero dynamic selection, scoring, rotation & caching", () => {
 
     const writeRes = await setRedisHeroBannerPool(payload, staleFence, mockRedis);
     assert.equal(writeRes, "fenced");
-    assert.equal(mockRedis.store.has(HERO_BANNER_REDIS_KEY), false);
+    assert.equal(mockRedis.store.has(getHeroRedisKey("development")), false);
 
     // Nova leitura obtém fence atualizado ("1") e consegue gravar
     const read2 = await getRedisHeroBannerPoolWithFence(mockRedis);
     assert.equal(read2.fence, "1");
     const writeRes2 = await setRedisHeroBannerPool(payload, read2.fence, mockRedis);
     assert.equal(writeRes2, "inserted");
-    assert.equal(mockRedis.store.has(HERO_BANNER_REDIS_KEY), true);
+    assert.equal(mockRedis.store.has(getHeroRedisKey("development")), true);
   });
 
   it("weights real playback higher than manual marks and reconciles audience by canonical and external IDs", () => {
@@ -622,13 +624,13 @@ describe("home-hero dynamic selection, scoring, rotation & caching", () => {
   it("invalidates hero banner key and bumps generation through invalidateServerCatalogCachesAsync", async () => {
     const { invalidateServerCatalogCachesAsync } = await import("@/lib/api");
     const mockRedis = new MockHeroRedis();
-    mockRedis.store.set(HERO_BANNER_REDIS_KEY, JSON.stringify({ v: 1 }));
-    mockRedis.store.set(HERO_BANNER_GEN_KEY, "3");
+    mockRedis.store.set(getHeroRedisKey("development"), JSON.stringify({ v: 1 }));
+    mockRedis.store.set(getHeroGenKey("development"), "3");
 
     await invalidateServerCatalogCachesAsync("176301", { anilistId: 176301 }, mockRedis);
 
-    assert.equal(mockRedis.store.has(HERO_BANNER_REDIS_KEY), false);
-    assert.equal(mockRedis.store.get(HERO_BANNER_GEN_KEY), "4");
+    assert.equal(mockRedis.store.has(getHeroRedisKey("development")), false);
+    assert.equal(mockRedis.store.get(getHeroGenKey("development")), "4");
   });
 
   it("excludes newly registered anime without real signals and ignores createdAt alone for novelty", () => {

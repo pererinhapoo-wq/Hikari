@@ -3685,6 +3685,28 @@ export const HERO_BANNER_REDIS_KEY = "hikari:home:hero-banner:v2";
 export const HERO_BANNER_GEN_KEY = "hikari:home:hero-banner:gen:v2";
 export const HERO_BANNER_REDIS_TTL_SEC = 1200; // 20 minutos
 
+export function resolveHeroEnvironmentName(): string {
+  const venv = typeof process !== "undefined" ? process.env.VERCEL_ENV?.trim().toLowerCase() : undefined;
+  if (venv === "production" || venv === "preview" || venv === "development") {
+    return venv;
+  }
+  const nodeEnv = typeof process !== "undefined" ? process.env.NODE_ENV?.trim().toLowerCase() : undefined;
+  if (nodeEnv === "production") {
+    return "production";
+  }
+  return "development";
+}
+
+export function getHeroRedisKey(envName?: string): string {
+  const env = envName || resolveHeroEnvironmentName();
+  return `hikari:${env}:home:hero-banner:v3`;
+}
+
+export function getHeroGenKey(envName?: string): string {
+  const env = envName || resolveHeroEnvironmentName();
+  return `hikari:${env}:home:hero-banner:gen:v3`;
+}
+
 export type HeroBannerBucket =
   | "novidade"
   | "episodio_novo"
@@ -3705,6 +3727,7 @@ export interface HeroBannerPoolPayload {
   v: 1;
   generatedAt: number;
   items: HeroBannerPoolItem[];
+  env?: string;
 }
 
 export interface RedisHeroBannerPoolReadResult {
@@ -3713,9 +3736,12 @@ export interface RedisHeroBannerPoolReadResult {
   fence: string | null;
 }
 
-function isValidHeroBannerPoolPayload(raw: unknown): raw is HeroBannerPoolPayload {
+function isValidHeroBannerPoolPayload(raw: unknown, currentEnv?: string): raw is HeroBannerPoolPayload {
   if (!raw || typeof raw !== "object") return false;
   const candidate = raw as Partial<HeroBannerPoolPayload>;
+  if (currentEnv && candidate.env && candidate.env !== currentEnv) {
+    return false;
+  }
   return (
     candidate.v === 1 &&
     typeof candidate.generatedAt === "number" &&
@@ -3740,11 +3766,15 @@ export async function getRedisHeroBannerPoolWithFence(
     return { status: "unavailable", payload: null, fence: null };
   }
 
+  const currentEnv = resolveHeroEnvironmentName();
+  const redisKey = getHeroRedisKey(currentEnv);
+  const genKey = getHeroGenKey(currentEnv);
+
   try {
     const res = await withRedisTimeout(
       client.eval<never[], unknown[]>(
         GET_ENVELOPE_OR_FENCE_SCRIPT,
-        [HERO_BANNER_REDIS_KEY, HERO_BANNER_GEN_KEY],
+        [redisKey, genKey],
         [],
       ),
       "getRedisHeroBannerPoolWithFence",
@@ -3767,7 +3797,7 @@ export async function getRedisHeroBannerPoolWithFence(
           parsed &&
           parsed.v === 1 &&
           parsed.globalGen === globalGen &&
-          isValidHeroBannerPoolPayload(parsed.data)
+          isValidHeroBannerPoolPayload(parsed.data, currentEnv)
         ) {
           return { status: "hit", payload: parsed.data, fence: globalGen };
         }
@@ -3795,7 +3825,12 @@ export async function setRedisHeroBannerPool(
   if (!client) {
     return "unavailable";
   }
-  if (!isValidHeroBannerPoolPayload(payload)) {
+  const currentEnv = resolveHeroEnvironmentName();
+  const stampedPayload: HeroBannerPoolPayload = {
+    ...payload,
+    env: currentEnv,
+  };
+  if (!isValidHeroBannerPoolPayload(stampedPayload, currentEnv)) {
     return "skipped";
   }
   if (fence === null) {
@@ -3807,15 +3842,18 @@ export async function setRedisHeroBannerPool(
     v: 1,
     globalGen: activeGen,
     idGens: {},
-    data: payload,
+    data: stampedPayload,
   };
+
+  const redisKey = getHeroRedisKey(currentEnv);
+  const genKey = getHeroGenKey(currentEnv);
 
   try {
     const raw = JSON.stringify(envelope);
     const res = await withRedisTimeout(
       client.eval<string[], unknown[]>(
         SET_ENVELOPE_WITH_FENCE_SCRIPT,
-        [HERO_BANNER_REDIS_KEY, HERO_BANNER_GEN_KEY],
+        [redisKey, genKey],
         [raw, String(HERO_BANNER_REDIS_TTL_SEC), activeGen],
       ),
       "setRedisHeroBannerPool",
@@ -3839,11 +3877,15 @@ export async function invalidateRedisHeroBannerPool(
   const client = resolveScopedRedisClient(redisOverride);
   if (!client) return;
 
+  const currentEnv = resolveHeroEnvironmentName();
+  const redisKey = getHeroRedisKey(currentEnv);
+  const genKey = getHeroGenKey(currentEnv);
+
   try {
     await withRedisTimeout(
       client.eval<[string], number>(
         INVALIDATE_IDS_SCRIPT,
-        [HERO_BANNER_GEN_KEY, HERO_BANNER_REDIS_KEY],
+        [genKey, redisKey],
         ["1"],
       ),
       "invalidateRedisHeroBannerPool",
