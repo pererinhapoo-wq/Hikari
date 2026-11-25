@@ -1,4 +1,10 @@
 import type { Sql } from "@/lib/db";
+import {
+  findCanonicalCatalogAnime,
+  inferIsDubbedFromTitles,
+  resolveAnimeCandidateIdsFromDb,
+  resolveCatalogMetadataMap,
+} from "@/lib/anime-identity.server";
 import type {
   AnimeSnapshot,
   TrackingStatus,
@@ -299,22 +305,7 @@ export async function lookupCatalogRowForTracking(
       ? snapshot.serverCatalogId.trim()
       : null;
 
-  // 1. Busca direta por ID exato na catalog_anime
-  const directRows = await sql.query<TrackingCatalogRow>(
-    `SELECT "id", "title", "anilistId", "malId", "kitsuId",
-            "titleRomaji", "titleEnglish", "titleNative",
-            "cover", "banner", "format", "year", "episodesCount", "status"
-     FROM "catalog_anime"
-     WHERE "id" = $1 OR ($2::text IS NOT NULL AND "id" = $2)
-     ORDER BY CASE WHEN "id" = $1 THEN 0 ELSE 1 END ASC
-     LIMIT 1`,
-    [cleanId, snapshotServerId],
-  );
-  if (directRows[0]) {
-    return directRows[0];
-  }
-
-  // 1.5. Busca por snapshot gravado no user_anime_tracking caso o ID direto tenha sido excluído e readicionado com novo ID
+  // Busca fallback de snapshot gravado no user_anime_tracking caso não tenha vindo do cliente
   let fallbackSnapshot = snapshot;
   if (!fallbackSnapshot) {
     try {
@@ -330,52 +321,53 @@ export async function lookupCatalogRowForTracking(
     }
   }
 
-  // 2. Busca por IDs externos somente quando a obra solicitada não for dublada separada
-  const reqTitles = [
-    fallbackSnapshot?.title,
-    fallbackSnapshot?.titleRomaji,
-    fallbackSnapshot?.titleEnglish,
-    fallbackSnapshot?.titleNative,
-  ]
-    .filter((v): v is string => typeof v === "string")
-    .join(" ");
-  const requestedIsDubbed = isDubbedString(reqTitles);
-  if (requestedIsDubbed) {
-    return null;
-  }
-
   const parsed = parseIdsFromAnimeId(cleanId);
   const anilistId = toPositiveInt(fallbackSnapshot?.anilistId) ?? parsed.anilistId;
   const malId = toPositiveInt(fallbackSnapshot?.malId) ?? parsed.malId;
   const kitsuId = toPositiveInt(fallbackSnapshot?.kitsuId) ?? parsed.kitsuId;
+  const isDubbed = inferIsDubbedFromTitles({
+    title: fallbackSnapshot?.title,
+    titleRomaji: fallbackSnapshot?.titleRomaji,
+    titleEnglish: fallbackSnapshot?.titleEnglish,
+    titleNative: fallbackSnapshot?.titleNative,
+  });
 
-  if (!anilistId && !malId && !kitsuId) {
+  const resolved = await findCanonicalCatalogAnime(sql, {
+    id: cleanId,
+    serverCatalogId: snapshotServerId,
+    anilistId,
+    malId,
+    kitsuId,
+    title: fallbackSnapshot?.title ?? null,
+    titleRomaji: fallbackSnapshot?.titleRomaji ?? null,
+    titleEnglish: fallbackSnapshot?.titleEnglish ?? null,
+    titleNative: fallbackSnapshot?.titleNative ?? null,
+    format: fallbackSnapshot?.format ?? null,
+    year: toPositiveInt(fallbackSnapshot?.year),
+    isDubbed,
+  });
+
+  if (!resolved.row) {
     return null;
   }
 
-  const extRows = await sql.query<TrackingCatalogRow>(
-    `SELECT "id", "title", "anilistId", "malId", "kitsuId",
-            "titleRomaji", "titleEnglish", "titleNative",
-            "cover", "banner", "format", "year", "episodesCount", "status"
-     FROM "catalog_anime"
-     WHERE "hidden" = false
-       AND (
-         ($1::int IS NOT NULL AND "anilistId" = $1)
-         OR ($2::int IS NOT NULL AND "malId" = $2)
-         OR ($3::int IS NOT NULL AND "kitsuId" = $3)
-       )
-     ORDER BY "updatedAt" DESC`,
-    [anilistId, malId, kitsuId],
-  );
-
-  for (const row of extRows) {
-    const rowTitleText = `${row.title ?? ""} ${row.titleRomaji ?? ""} ${row.titleEnglish ?? ""} ${row.titleNative ?? ""}`;
-    if (!isDubbedString(rowTitleText)) {
-      return row;
-    }
-  }
-
-  return null;
+  const row = resolved.row;
+  return {
+    id: row.id,
+    title: row.title,
+    anilistId: row.anilistId,
+    malId: row.malId,
+    kitsuId: row.kitsuId,
+    titleRomaji: row.titleRomaji,
+    titleEnglish: row.titleEnglish,
+    titleNative: row.titleNative,
+    cover: row.cover,
+    banner: row.banner,
+    format: row.format,
+    year: row.year,
+    episodesCount: row.episodesCount,
+    status: row.status,
+  };
 }
 
 export function buildMergedTrackingSnapshot(
@@ -446,7 +438,7 @@ async function fetchJoinedTrackingRowsForUser(
   sql: Sql,
   userId: string,
 ): Promise<JoinedUserTrackingRow[]> {
-  return sql.query<JoinedUserTrackingRow>(
+  const rows = await sql.query<JoinedUserTrackingRow>(
     `SELECT
        uat."userId",
        uat."animeId",
@@ -473,11 +465,44 @@ async function fetchJoinedTrackingRowsForUser(
        ca."episodesCount" AS "catalogEpisodesCount",
        ca."status" AS "catalogStatus"
      FROM "user_anime_tracking" uat
-     LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+     LEFT JOIN "catalog_anime" ca
+       ON ca."id" = uat."animeId"
+      AND ca."archived_at" IS NULL
      WHERE uat."userId" = $1
      ORDER BY uat."updatedAt" DESC;`,
     [userId],
   );
+
+  const unresolvedIds = rows
+    .filter((r) => !r.catalogId)
+    .map((r) => r.animeId);
+  if (unresolvedIds.length === 0) {
+    return rows;
+  }
+
+  const resolvedMap = await resolveCatalogMetadataMap(sql, unresolvedIds);
+  return rows.map((row) => {
+    if (row.catalogId) return row;
+    const meta = resolvedMap.get(row.animeId);
+    if (!meta || !meta.isActive) return row;
+    return {
+      ...row,
+      catalogId: meta.canonicalId,
+      catalogTitle: meta.title,
+      catalogAnilistId: meta.anilistId,
+      catalogMalId: meta.malId,
+      catalogKitsuId: meta.kitsuId,
+      catalogTitleRomaji: meta.titleRomaji,
+      catalogTitleEnglish: meta.titleEnglish,
+      catalogTitleNative: meta.titleNative,
+      catalogCover: meta.cover,
+      catalogBanner: meta.banner,
+      catalogFormat: meta.format,
+      catalogYear: meta.year,
+      catalogEpisodesCount: meta.episodesCount,
+      catalogStatus: meta.status,
+    };
+  });
 }
 
 function chooseWinnerRow(
@@ -720,16 +745,22 @@ export async function resolveAndConsolidateTrackingTarget(
   candidateIds: string[];
 }> {
   const cleanId = requestedAnimeId.trim();
-  const catalogRow = await lookupCatalogRowForTracking(sql, cleanId, inputSnapshot);
+  const [catalogRow, dbAliasResolution, userRows] = await Promise.all([
+    lookupCatalogRowForTracking(sql, cleanId, inputSnapshot),
+    resolveAnimeCandidateIdsFromDb(sql, cleanId),
+    fetchJoinedTrackingRowsForUser(sql, userId),
+  ]);
   const targetIdentity = buildIdentityFromParts({
     animeId: cleanId,
     catalog: catalogRow,
     snapshot: inputSnapshot,
   });
 
-  const userRows = await fetchJoinedTrackingRowsForUser(sql, userId);
-  const matchingRows = userRows.filter((row) =>
-    areIdentitiesSameAnime(targetIdentity, buildIdentityFromJoinedRow(row)),
+  const aliasIdSet = new Set(dbAliasResolution.candidateIds);
+  const matchingRows = userRows.filter(
+    (row) =>
+      aliasIdSet.has(row.animeId) ||
+      areIdentitiesSameAnime(targetIdentity, buildIdentityFromJoinedRow(row)),
   );
 
   const candidateIds = Array.from(
@@ -737,6 +768,8 @@ export async function resolveAndConsolidateTrackingTarget(
       [
         cleanId,
         catalogRow?.id,
+        dbAliasResolution.canonicalId,
+        ...dbAliasResolution.candidateIds,
         ...matchingRows.map((r) => r.animeId),
       ].filter((id): id is string => Boolean(id && id.trim())),
     ),

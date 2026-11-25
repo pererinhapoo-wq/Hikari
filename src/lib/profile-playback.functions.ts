@@ -17,6 +17,11 @@ import {
 } from "@/types/profile-playback";
 import type { AnimeSnapshot } from "@/types/profile-tracking";
 import { resolveAndConsolidateTrackingTarget } from "@/lib/tracking-canonical";
+import {
+  resolveAnimeCandidateIdsFromDb,
+  resolveCatalogMetadataMap,
+  resolveEquivalentEpisodeIdsFromDb,
+} from "@/lib/anime-identity.server";
 
 /**
  * Executa o início de sessão de reprodução para um usuário autenticado.
@@ -39,6 +44,13 @@ export async function executeStartEpisodeSession(
   const targetAnimeId = resolved.canonicalAnimeId;
   const cleanSnapshot = resolved.mergedSnapshot;
 
+  const epResolved = await resolveEquivalentEpisodeIdsFromDb(
+    sql,
+    resolved.candidateIds,
+    episodeId,
+  );
+  const targetEpisodeId = epResolved.canonicalEpisodeId || episodeId;
+
   const newPlaybackSessionId = crypto.randomUUID();
   const durationParam = duration && duration > 0 ? Math.round(duration) : null;
 
@@ -57,6 +69,58 @@ export async function executeStartEpisodeSession(
     RETURNING "userId", "animeId";`,
     [userId, targetAnimeId, JSON.stringify(cleanSnapshot)],
   );
+
+  // 1b. Se houver progresso salvo sob episodeId histórico equivalente, consolida antes do upsert
+  const altEpIds = epResolved.candidateEpisodeIds.filter(
+    (id) => id !== targetEpisodeId,
+  );
+  if (altEpIds.length > 0) {
+    const legacyProgRows = await sql.query<{
+      episodeId: string;
+      currentTime: number;
+      duration: number | null;
+      accumulatedTime: number;
+      accumulatedRemainderMs: number;
+      autoCompleteSuppressed: boolean;
+    }>(
+      `SELECT "episodeId", "currentTime", "duration", "accumulatedTime",
+              "accumulatedRemainderMs", "autoCompleteSuppressed"
+       FROM "user_episode_progress"
+       WHERE "userId" = $1
+         AND "animeId" = $2
+         AND "episodeId" = ANY($3::text[])
+       ORDER BY "updatedAt" DESC
+       LIMIT 1`,
+      [userId, targetAnimeId, altEpIds],
+    );
+    const legacyProg = legacyProgRows[0];
+    if (legacyProg) {
+      await sql.query(
+        `INSERT INTO "user_episode_progress" (
+          "userId", "animeId", "episodeId", "episodeNumber",
+          "currentTime", "duration", "accumulatedTime",
+          "accumulatedRemainderMs", "autoCompleteSuppressed", "updatedAt"
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
+        ON CONFLICT ("userId", "animeId", "episodeId") DO UPDATE SET
+          "currentTime" = GREATEST("user_episode_progress"."currentTime", EXCLUDED."currentTime"),
+          "duration" = COALESCE(EXCLUDED."duration", "user_episode_progress"."duration"),
+          "accumulatedTime" = GREATEST("user_episode_progress"."accumulatedTime", EXCLUDED."accumulatedTime"),
+          "autoCompleteSuppressed" = ("user_episode_progress"."autoCompleteSuppressed" OR EXCLUDED."autoCompleteSuppressed")`,
+        [
+          userId,
+          targetAnimeId,
+          targetEpisodeId,
+          episodeNumber,
+          Number(legacyProg.currentTime) || 0,
+          legacyProg.duration !== null ? Number(legacyProg.duration) : durationParam,
+          Number(legacyProg.accumulatedTime) || 0,
+          Number(legacyProg.accumulatedRemainderMs) || 0,
+          Boolean(legacyProg.autoCompleteSuppressed),
+        ],
+      );
+    }
+  }
 
   // 2. Ordem estrita de bloqueios:
   // 1. user_anime_tracking (FOR UPDATE)
@@ -100,7 +164,7 @@ export async function executeStartEpisodeSession(
   }>(atomicSessionQuery, [
     userId,
     targetAnimeId,
-    episodeId,
+    targetEpisodeId,
     episodeNumber,
     durationParam,
     newPlaybackSessionId,
@@ -171,7 +235,43 @@ export async function executeHeartbeatEpisodeProgress(
 
   const sql = await getSql();
 
-  const targetAnimeId = animeId;
+  const resolvedTarget = await resolveAndConsolidateTrackingTarget(
+    sql,
+    userId,
+    animeId,
+  );
+  const resolvedEpisode = await resolveEquivalentEpisodeIdsFromDb(
+    sql,
+    resolvedTarget.candidateIds,
+    episodeId,
+  );
+
+  let targetAnimeId = resolvedTarget.canonicalAnimeId;
+  let targetEpisodeId = resolvedEpisode.canonicalEpisodeId || episodeId;
+
+  // Se o anime/episódio foi reconciliado ou iniciado sob ID candidato/sessão ativa, localizar a linha da sessão
+  const sessionMatches = await sql.query<{
+    animeId: string;
+    episodeId: string;
+  }>(
+    `SELECT "animeId", "episodeId"
+     FROM "user_episode_progress"
+     WHERE "userId" = $1
+       AND "playbackSessionId" = $2
+       AND "animeId" = ANY($3::text[])
+       AND "episodeId" = ANY($4::text[])
+     LIMIT 1`,
+    [
+      userId,
+      playbackSessionId,
+      resolvedTarget.candidateIds,
+      resolvedEpisode.candidateEpisodeIds,
+    ],
+  );
+  if (sessionMatches[0]) {
+    targetAnimeId = sessionMatches[0].animeId;
+    targetEpisodeId = sessionMatches[0].episodeId;
+  }
 
   const roundCurrentTime = Math.max(0, Math.round(currentTime));
   const roundedDuration = duration && duration > 0 ? Math.round(duration) : null;
@@ -249,7 +349,7 @@ export async function executeHeartbeatEpisodeProgress(
     rows = await sql.query<HeartbeatRow>(fastActiveHeartbeatQuery, [
       userId,
       targetAnimeId,
-      episodeId,
+      targetEpisodeId,
       playbackSessionId,
       roundCurrentTime,
       roundDuration,
@@ -305,7 +405,7 @@ export async function executeHeartbeatEpisodeProgress(
     rows = await sql.query<HeartbeatRow>(fastStaticHeartbeatQuery, [
       userId,
       targetAnimeId,
-      episodeId,
+      targetEpisodeId,
       playbackSessionId,
       roundCurrentTime,
       roundDuration,
@@ -472,7 +572,7 @@ export async function executeHeartbeatEpisodeProgress(
     rows = await sql.query<HeartbeatRow>(atomicHeartbeatQuery, [
       userId,
       targetAnimeId,
-      episodeId,
+      targetEpisodeId,
       playbackSessionId,
       roundCurrentTime,
       roundDuration,
@@ -522,6 +622,11 @@ export async function executeGetEpisodeProgress(
 
   const sql = await getSql();
   const resolved = await resolveAndConsolidateTrackingTarget(sql, userId, animeId);
+  const epResolved = await resolveEquivalentEpisodeIdsFromDb(
+    sql,
+    resolved.candidateIds,
+    episodeId,
+  );
 
   const query = `
     SELECT
@@ -540,8 +645,10 @@ export async function executeGetEpisodeProgress(
     FROM "user_episode_progress" uep
     LEFT JOIN "user_watched_episode" uwe
       ON uwe."userId" = uep."userId" AND uwe."animeId" = uep."animeId" AND uwe."episodeId" = uep."episodeId"
-    WHERE uep."userId" = $1 AND uep."animeId" = ANY($2::text[]) AND uep."episodeId" = $3
-    ORDER BY uep."updatedAt" DESC
+    WHERE uep."userId" = $1
+      AND uep."animeId" = ANY($2::text[])
+      AND uep."episodeId" = ANY($3::text[])
+    ORDER BY CASE WHEN uep."episodeId" = $4 THEN 0 ELSE 1 END ASC, uep."updatedAt" DESC
     LIMIT 1;
   `;
 
@@ -558,7 +665,12 @@ export async function executeGetEpisodeProgress(
     playbackSessionId: string | null;
     updatedAt: string;
     isWatched: boolean;
-  }>(query, [userId, resolved.candidateIds, episodeId]);
+  }>(query, [
+    userId,
+    resolved.candidateIds,
+    epResolved.candidateEpisodeIds,
+    epResolved.canonicalEpisodeId || episodeId,
+  ]);
 
   const row = rows[0];
   if (!row) {
@@ -604,19 +716,30 @@ export async function executeClearEpisodeProgress(
 
   const sql = await getSql();
   const resolved = await resolveAndConsolidateTrackingTarget(sql, userId, animeId);
+  const epResolved = await resolveEquivalentEpisodeIdsFromDb(
+    sql,
+    resolved.candidateIds,
+    episodeId,
+  );
 
   const query = `
     DELETE FROM "user_episode_progress"
-    WHERE "userId" = $1 AND "animeId" = ANY($2::text[]) AND "episodeId" = $3
+    WHERE "userId" = $1
+      AND "animeId" = ANY($2::text[])
+      AND "episodeId" = ANY($3::text[])
     RETURNING "episodeId";
   `;
 
-  const rows = await sql.query<{ episodeId: string }>(query, [userId, resolved.candidateIds, episodeId]);
+  const rows = await sql.query<{ episodeId: string }>(query, [
+    userId,
+    resolved.candidateIds,
+    epResolved.candidateEpisodeIds,
+  ]);
 
   return {
     success: true,
     cleared: rows.length > 0,
-    episodeId,
+    episodeId: epResolved.canonicalEpisodeId || episodeId,
   };
 }
 
@@ -651,13 +774,20 @@ export const getUserWatchedEpisodesCatalog = createServerFn({
         [context.userId],
       );
 
+      const metaMap = await resolveCatalogMetadataMap(
+        sql,
+        rows.map((r) => r.animeId),
+      );
+
       const map: Record<string, string[]> = {};
       for (const r of rows) {
-        if (!map[r.animeId]) {
-          map[r.animeId] = [];
+        const meta = metaMap.get(r.animeId);
+        const key = meta?.isActive ? meta.canonicalId : r.animeId;
+        if (!map[key]) {
+          map[key] = [];
         }
-        if (!map[r.animeId].includes(r.episodeId)) {
-          map[r.animeId].push(r.episodeId);
+        if (!map[key].includes(r.episodeId)) {
+          map[key].push(r.episodeId);
         }
       }
       return map;
@@ -689,9 +819,16 @@ export const getAnimeWatchedEpisodes = createServerFn({
   .handler(async ({ context, data }): Promise<string[]> => {
     try {
       const sql = await getSql();
-      const resolved = await resolveAndConsolidateTrackingTarget(sql, context.userId, data.animeId);
+      const [resolved, aliasResolution] = await Promise.all([
+        resolveAndConsolidateTrackingTarget(sql, context.userId, data.animeId),
+        resolveAnimeCandidateIdsFromDb(sql, data.animeId),
+      ]);
       const allIds = Array.from(
-        new Set([...resolved.candidateIds, ...(data.candidateIds ?? [])]),
+        new Set([
+          ...resolved.candidateIds,
+          ...aliasResolution.candidateIds,
+          ...(data.candidateIds ?? []),
+        ]),
       );
       const rows = await sql.query<{ episodeId: string }>(
         `SELECT DISTINCT "episodeId"

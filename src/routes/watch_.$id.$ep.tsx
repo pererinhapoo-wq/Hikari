@@ -1,4 +1,4 @@
-import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useNavigate, useRouter } from "@tanstack/react-router";
 import {
   ChevronLeft,
   ChevronRight,
@@ -278,6 +278,7 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
 
 function WatchPage() {
   const router = useRouter();
+  const navigate = useNavigate();
   const { id, ep } = Route.useParams();
   const targetEpNum = parseEpisodeNumber(ep);
 
@@ -286,6 +287,30 @@ function WatchPage() {
   } = Route.useSearch();
 
   const { remote, catalogEpisodes } = Route.useLoaderData();
+
+  useEffect(() => {
+    if (
+      remote?.id &&
+      remote.id !== id &&
+      (remote.resolvedFromAliasId === id ||
+        Boolean(remote.resolvedAliasIds?.includes(id)))
+    ) {
+      void navigate({
+        to: "/watch/$id/$ep",
+        params: { id: remote.id, ep },
+        search: commentQuery ? { comment: commentQuery } : undefined,
+        replace: true,
+      });
+    }
+  }, [
+    remote?.id,
+    remote?.resolvedFromAliasId,
+    remote?.resolvedAliasIds,
+    id,
+    ep,
+    commentQuery,
+    navigate,
+  ]);
 
   const locals = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);

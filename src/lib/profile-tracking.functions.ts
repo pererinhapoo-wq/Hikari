@@ -31,6 +31,14 @@ import {
   lookupCatalogRowForTracking,
   resolveAndConsolidateTrackingTarget,
 } from "@/lib/tracking-canonical";
+import {
+  extractIdentityFromSnapshot,
+  inferIsDubbedFromTitles,
+  isTitleFallbackCompatible,
+  resolveAnimeCandidateIdsFromDb,
+  resolveCatalogMetadataMap,
+  resolveEquivalentEpisodeIdsFromDb,
+} from "@/lib/anime-identity.server";
 
 /**
  * 1. upsertAnimeTracking — Criar ou atualizar acompanhamento de anime.
@@ -283,7 +291,7 @@ export async function executeGetMyAnimeTracking(
       ca."episodesCount" AS "catalogEpisodesCount",
       ca."status" AS "catalogStatus"
     FROM "user_anime_tracking" uat
-    LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+    LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId" AND ca."archived_at" IS NULL
     WHERE uat."userId" = $1
       AND ($2::text IS NULL OR uat."status" = $2)
       AND ($3::text[] IS NULL OR uat."animeId" = ANY($3::text[]))
@@ -313,9 +321,47 @@ export async function executeGetMyAnimeTracking(
     catalogStatus: string | null;
   }>(query, [userId, statusFilter, animeIdsFilter]);
 
+  return mapTrackingRowsWithCatalogResolution(sql, rows);
+}
+
+interface RawJoinedTrackingItemRow {
+  userId: string;
+  animeId: string;
+  status: TrackingStatus;
+  score: string | number | null;
+  episodesWatched: number;
+  animeSnapshot: unknown;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  catalogTitle: string | null;
+  catalogTitleRomaji: string | null;
+  catalogTitleEnglish: string | null;
+  catalogTitleNative: string | null;
+  catalogCover: string | null;
+  catalogBanner: string | null;
+  catalogFormat: string | null;
+  catalogYear: number | null;
+  catalogEpisodesCount: number | null;
+  catalogStatus: string | null;
+}
+
+async function mapTrackingRowsWithCatalogResolution(
+  sql: Sql,
+  rows: RawJoinedTrackingItemRow[],
+): Promise<UserAnimeTrackingItem[]> {
+  const missingIds = rows.filter((r) => !r.catalogTitle).map((r) => r.animeId);
+  const resolvedMetaMap =
+    missingIds.length > 0 ? await resolveCatalogMetadataMap(sql, missingIds) : new Map();
+
   return rows.map((row) => {
     let snapshotObj: AnimeSnapshot | null = null;
-    if (row.animeSnapshot && typeof row.animeSnapshot === "object" && !Array.isArray(row.animeSnapshot)) {
+    if (
+      row.animeSnapshot &&
+      typeof row.animeSnapshot === "object" &&
+      !Array.isArray(row.animeSnapshot)
+    ) {
       snapshotObj = row.animeSnapshot as AnimeSnapshot;
     } else if (typeof row.animeSnapshot === "string") {
       try {
@@ -325,51 +371,70 @@ export async function executeGetMyAnimeTracking(
       }
     }
 
+    const resolvedMeta = !row.catalogTitle ? resolvedMetaMap.get(row.animeId) : undefined;
+
     const title =
       row.catalogTitle ||
+      resolvedMeta?.title ||
       (typeof snapshotObj?.title === "string" ? snapshotObj.title : null) ||
       "Sem título";
 
     const cover =
       row.catalogCover ||
+      resolvedMeta?.cover ||
       (typeof snapshotObj?.cover === "string" ? snapshotObj.cover : null);
 
     const banner =
       row.catalogBanner ||
+      resolvedMeta?.banner ||
       (typeof snapshotObj?.banner === "string" ? snapshotObj.banner : null);
 
     const format =
       row.catalogFormat ||
+      resolvedMeta?.format ||
       (typeof snapshotObj?.format === "string" ? snapshotObj.format : null);
 
     const year =
       row.catalogYear !== null && row.catalogYear !== undefined
         ? Number(row.catalogYear)
-        : typeof snapshotObj?.year === "number"
-          ? snapshotObj.year
-          : null;
+        : resolvedMeta?.year !== null && resolvedMeta?.year !== undefined
+          ? Number(resolvedMeta.year)
+          : typeof snapshotObj?.year === "number"
+            ? snapshotObj.year
+            : null;
 
     const episodesCount =
       row.catalogEpisodesCount !== null && row.catalogEpisodesCount !== undefined
         ? Number(row.catalogEpisodesCount)
-        : typeof snapshotObj?.episodesCount === "number"
-          ? snapshotObj.episodesCount
-          : null;
+        : resolvedMeta?.episodesCount !== null && resolvedMeta?.episodesCount !== undefined
+          ? Number(resolvedMeta.episodesCount)
+          : typeof snapshotObj?.episodesCount === "number"
+            ? snapshotObj.episodesCount
+            : null;
 
     const animeStatus =
       row.catalogStatus ||
+      resolvedMeta?.status ||
       (typeof snapshotObj?.status === "string" ? snapshotObj.status : null);
 
     return {
       userId: row.userId,
-      animeId: row.animeId,
+      animeId: resolvedMeta?.isActive ? resolvedMeta.canonicalId : row.animeId,
       status: row.status,
-      score: row.score !== null && row.score !== undefined ? Number(row.score) : null,
+      score:
+        row.score !== null &&
+        row.score !== undefined &&
+        String(row.score).trim() !== ""
+          ? Number(row.score)
+          : null,
       episodesWatched: Number(row.episodesWatched) || 0,
       title,
-      titleRomaji: row.catalogTitleRomaji || snapshotObj?.titleRomaji || null,
-      titleEnglish: row.catalogTitleEnglish || snapshotObj?.titleEnglish || null,
-      titleNative: row.catalogTitleNative || snapshotObj?.titleNative || null,
+      titleRomaji:
+        row.catalogTitleRomaji || resolvedMeta?.titleRomaji || snapshotObj?.titleRomaji || null,
+      titleEnglish:
+        row.catalogTitleEnglish || resolvedMeta?.titleEnglish || snapshotObj?.titleEnglish || null,
+      titleNative:
+        row.catalogTitleNative || resolvedMeta?.titleNative || snapshotObj?.titleNative || null,
       cover,
       banner,
       format,
@@ -444,6 +509,10 @@ export async function executeGetPublicAnimeTracking(
   const animeIdFilter = options?.animeId ? options.animeId.trim() : null;
   const isMinimal = Boolean(options?.minimal);
 
+  const animeIdsFilter = animeIdFilter
+    ? (await resolveAnimeCandidateIdsFromDb(sql, animeIdFilter)).candidateIds
+    : null;
+
   if (isMinimal) {
     const rows = await sql.query<{
       userId: string;
@@ -469,9 +538,9 @@ export async function executeGetPublicAnimeTracking(
        FROM "user_anime_tracking" uat
        WHERE uat."userId" = $1
          AND ($2::text IS NULL OR uat."status" = $2)
-         AND ($3::text IS NULL OR uat."animeId" = $3)
+         AND ($3::text[] IS NULL OR uat."animeId" = ANY($3::text[]))
        ORDER BY uat."updatedAt" DESC;`,
-      [cleanTargetUserId, statusFilter, animeIdFilter],
+      [cleanTargetUserId, statusFilter, animeIdsFilter],
     );
 
     return rows.map((row) => ({
@@ -526,115 +595,20 @@ export async function executeGetPublicAnimeTracking(
       ca."episodesCount" AS "catalogEpisodesCount",
       ca."status" AS "catalogStatus"
     FROM "user_anime_tracking" uat
-    LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+    LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId" AND ca."archived_at" IS NULL
     WHERE uat."userId" = $1
       AND ($2::text IS NULL OR uat."status" = $2)
-      AND ($3::text IS NULL OR uat."animeId" = $3)
+      AND ($3::text[] IS NULL OR uat."animeId" = ANY($3::text[]))
     ORDER BY uat."updatedAt" DESC;
   `;
 
-  const rows = await sql.query<{
-    userId: string;
-    animeId: string;
-    status: TrackingStatus;
-    score: string | number | null;
-    episodesWatched: number;
-    animeSnapshot: unknown;
-    startedAt: string | null;
-    completedAt: string | null;
-    createdAt: string;
-    updatedAt: string;
-    catalogTitle: string | null;
-    catalogTitleRomaji: string | null;
-    catalogTitleEnglish: string | null;
-    catalogTitleNative: string | null;
-    catalogCover: string | null;
-    catalogBanner: string | null;
-    catalogFormat: string | null;
-    catalogYear: number | null;
-    catalogEpisodesCount: number | null;
-    catalogStatus: string | null;
-  }>(query, [cleanTargetUserId, statusFilter, animeIdFilter]);
+  const rows = await sql.query<RawJoinedTrackingItemRow>(query, [
+    cleanTargetUserId,
+    statusFilter,
+    animeIdsFilter,
+  ]);
 
-  const items = rows.map((row) => {
-    let snapshotObj: AnimeSnapshot | null = null;
-    if (
-      row.animeSnapshot &&
-      typeof row.animeSnapshot === "object" &&
-      !Array.isArray(row.animeSnapshot)
-    ) {
-      snapshotObj = row.animeSnapshot as AnimeSnapshot;
-    } else if (typeof row.animeSnapshot === "string") {
-      try {
-        snapshotObj = JSON.parse(row.animeSnapshot) as AnimeSnapshot;
-      } catch {
-        snapshotObj = null;
-      }
-    }
-
-    const title =
-      row.catalogTitle ||
-      (typeof snapshotObj?.title === "string" ? snapshotObj.title : null) ||
-      "Sem título";
-
-    const cover =
-      row.catalogCover ||
-      (typeof snapshotObj?.cover === "string" ? snapshotObj.cover : null);
-
-    const banner =
-      row.catalogBanner ||
-      (typeof snapshotObj?.banner === "string" ? snapshotObj.banner : null);
-
-    const format =
-      row.catalogFormat ||
-      (typeof snapshotObj?.format === "string" ? snapshotObj.format : null);
-
-    const year =
-      row.catalogYear !== null && row.catalogYear !== undefined
-        ? Number(row.catalogYear)
-        : typeof snapshotObj?.year === "number"
-          ? snapshotObj.year
-          : null;
-
-    const episodesCount =
-      row.catalogEpisodesCount !== null && row.catalogEpisodesCount !== undefined
-        ? Number(row.catalogEpisodesCount)
-        : typeof snapshotObj?.episodesCount === "number"
-          ? snapshotObj.episodesCount
-          : null;
-
-    const animeStatus =
-      row.catalogStatus ||
-      (typeof snapshotObj?.status === "string" ? snapshotObj.status : null);
-
-    return {
-      userId: row.userId,
-      animeId: row.animeId,
-      status: row.status,
-      score:
-        row.score !== null &&
-        row.score !== undefined &&
-        String(row.score).trim() !== ""
-          ? Number(row.score)
-          : null,
-      episodesWatched: Number(row.episodesWatched) || 0,
-      title,
-      titleRomaji: row.catalogTitleRomaji || snapshotObj?.titleRomaji || null,
-      titleEnglish: row.catalogTitleEnglish || snapshotObj?.titleEnglish || null,
-      titleNative: row.catalogTitleNative || snapshotObj?.titleNative || null,
-      cover,
-      banner,
-      format,
-      year,
-      episodesCount,
-      animeStatus,
-      startedAt: row.startedAt ? String(row.startedAt) : null,
-      completedAt: row.completedAt ? String(row.completedAt) : null,
-      createdAt: String(row.createdAt),
-      updatedAt: String(row.updatedAt),
-      animeSnapshot: snapshotObj,
-    };
-  });
+  const items = await mapTrackingRowsWithCatalogResolution(sql, rows);
 
   return animeIdFilter ? items : dedupePublicTrackingItems(items);
 }
@@ -860,106 +834,21 @@ export const getMyAnimeTrackingPaginated = createServerFn({
         ca."episodesCount" AS "catalogEpisodesCount",
         ca."status" AS "catalogStatus"
       FROM "user_anime_tracking" uat
-      LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+      LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId" AND ca."archived_at" IS NULL
       WHERE uat."userId" = $1
         AND ($2::text IS NULL OR uat."status" = $2)
       ORDER BY uat."updatedAt" DESC
       LIMIT $3 OFFSET $4;
     `;
 
-    const rows = await sql.query<{
-      userId: string;
-      animeId: string;
-      status: TrackingStatus;
-      score: string | number | null;
-      episodesWatched: number;
-      animeSnapshot: unknown;
-      startedAt: string | null;
-      completedAt: string | null;
-      createdAt: string;
-      updatedAt: string;
-      catalogTitle: string | null;
-      catalogTitleRomaji: string | null;
-      catalogTitleEnglish: string | null;
-      catalogTitleNative: string | null;
-      catalogCover: string | null;
-      catalogBanner: string | null;
-      catalogFormat: string | null;
-      catalogYear: number | null;
-      catalogEpisodesCount: number | null;
-      catalogStatus: string | null;
-    }>(itemsQuery, [userId, statusFilter, limit, offset]);
+    const rows = await sql.query<RawJoinedTrackingItemRow>(itemsQuery, [
+      userId,
+      statusFilter,
+      limit,
+      offset,
+    ]);
 
-    const items: UserAnimeTrackingItem[] = rows.map((row) => {
-      let snapshotObj: AnimeSnapshot | null = null;
-      if (row.animeSnapshot && typeof row.animeSnapshot === "object" && !Array.isArray(row.animeSnapshot)) {
-        snapshotObj = row.animeSnapshot as AnimeSnapshot;
-      } else if (typeof row.animeSnapshot === "string") {
-        try {
-          snapshotObj = JSON.parse(row.animeSnapshot) as AnimeSnapshot;
-        } catch {
-          snapshotObj = null;
-        }
-      }
-
-      const title =
-        row.catalogTitle ||
-        (typeof snapshotObj?.title === "string" ? snapshotObj.title : null) ||
-        "Sem título";
-
-      const cover =
-        row.catalogCover ||
-        (typeof snapshotObj?.cover === "string" ? snapshotObj.cover : null);
-
-      const banner =
-        row.catalogBanner ||
-        (typeof snapshotObj?.banner === "string" ? snapshotObj.banner : null);
-
-      const format =
-        row.catalogFormat ||
-        (typeof snapshotObj?.format === "string" ? snapshotObj.format : null);
-
-      const year =
-        row.catalogYear !== null && row.catalogYear !== undefined
-          ? Number(row.catalogYear)
-          : typeof snapshotObj?.year === "number"
-            ? snapshotObj.year
-            : null;
-
-      const episodesCount =
-        row.catalogEpisodesCount !== null && row.catalogEpisodesCount !== undefined
-          ? Number(row.catalogEpisodesCount)
-          : typeof snapshotObj?.episodesCount === "number"
-            ? snapshotObj.episodesCount
-            : null;
-
-      const animeStatus =
-        row.catalogStatus ||
-        (typeof snapshotObj?.status === "string" ? snapshotObj.status : null);
-
-      return {
-        userId: row.userId,
-        animeId: row.animeId,
-        status: row.status,
-        score: row.score !== null && row.score !== undefined ? Number(row.score) : null,
-        episodesWatched: Number(row.episodesWatched) || 0,
-        title,
-        titleRomaji: row.catalogTitleRomaji || snapshotObj?.titleRomaji || null,
-        titleEnglish: row.catalogTitleEnglish || snapshotObj?.titleEnglish || null,
-        titleNative: row.catalogTitleNative || snapshotObj?.titleNative || null,
-        cover,
-        banner,
-        format,
-        year,
-        episodesCount,
-        animeStatus,
-        startedAt: row.startedAt ? String(row.startedAt) : null,
-        completedAt: row.completedAt ? String(row.completedAt) : null,
-        createdAt: String(row.createdAt),
-        updatedAt: String(row.updatedAt),
-        animeSnapshot: snapshotObj,
-      };
-    });
+    const items: UserAnimeTrackingItem[] = await mapTrackingRowsWithCatalogResolution(sql, rows);
 
     const hasMore = offset + items.length < currentTotal;
 
@@ -1068,115 +957,21 @@ export async function executeGetPublicAnimeTrackingPaginated(
       ca."episodesCount" AS "catalogEpisodesCount",
       ca."status" AS "catalogStatus"
     FROM "user_anime_tracking" uat
-    LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+    LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId" AND ca."archived_at" IS NULL
     WHERE uat."userId" = $1
       AND ($2::text IS NULL OR uat."status" = $2)
     ORDER BY uat."updatedAt" DESC
     LIMIT $3 OFFSET $4;
   `;
 
-  const rows = await sql.query<{
-    userId: string;
-    animeId: string;
-    status: TrackingStatus;
-    score: string | number | null;
-    episodesWatched: number;
-    animeSnapshot: unknown;
-    startedAt: string | null;
-    completedAt: string | null;
-    createdAt: string;
-    updatedAt: string;
-    catalogTitle: string | null;
-    catalogTitleRomaji: string | null;
-    catalogTitleEnglish: string | null;
-    catalogTitleNative: string | null;
-    catalogCover: string | null;
-    catalogBanner: string | null;
-    catalogFormat: string | null;
-    catalogYear: number | null;
-    catalogEpisodesCount: number | null;
-    catalogStatus: string | null;
-  }>(itemsQuery, [cleanTargetUserId, statusFilter, limit, offset]);
+  const rows = await sql.query<RawJoinedTrackingItemRow>(itemsQuery, [
+    cleanTargetUserId,
+    statusFilter,
+    limit,
+    offset,
+  ]);
 
-  const items: UserAnimeTrackingItem[] = rows.map((row) => {
-    let snapshotObj: AnimeSnapshot | null = null;
-    if (
-      row.animeSnapshot &&
-      typeof row.animeSnapshot === "object" &&
-      !Array.isArray(row.animeSnapshot)
-    ) {
-      snapshotObj = row.animeSnapshot as AnimeSnapshot;
-    } else if (typeof row.animeSnapshot === "string") {
-      try {
-        snapshotObj = JSON.parse(row.animeSnapshot) as AnimeSnapshot;
-      } catch {
-        snapshotObj = null;
-      }
-    }
-
-    const title =
-      row.catalogTitle ||
-      (typeof snapshotObj?.title === "string" ? snapshotObj.title : null) ||
-      "Sem título";
-
-    const cover =
-      row.catalogCover ||
-      (typeof snapshotObj?.cover === "string" ? snapshotObj.cover : null);
-
-    const banner =
-      row.catalogBanner ||
-      (typeof snapshotObj?.banner === "string" ? snapshotObj.banner : null);
-
-    const format =
-      row.catalogFormat ||
-      (typeof snapshotObj?.format === "string" ? snapshotObj.format : null);
-
-    const year =
-      row.catalogYear !== null && row.catalogYear !== undefined
-        ? Number(row.catalogYear)
-        : typeof snapshotObj?.year === "number"
-          ? snapshotObj.year
-          : null;
-
-    const episodesCount =
-      row.catalogEpisodesCount !== null && row.catalogEpisodesCount !== undefined
-        ? Number(row.catalogEpisodesCount)
-        : typeof snapshotObj?.episodesCount === "number"
-          ? snapshotObj.episodesCount
-          : null;
-
-    const animeStatus =
-      row.catalogStatus ||
-      (typeof snapshotObj?.status === "string" ? snapshotObj.status : null);
-
-    return {
-      userId: row.userId,
-      animeId: row.animeId,
-      status: row.status,
-      score:
-        row.score !== null &&
-        row.score !== undefined &&
-        String(row.score).trim() !== ""
-          ? Number(row.score)
-          : null,
-      episodesWatched: Number(row.episodesWatched) || 0,
-      title,
-      titleRomaji: row.catalogTitleRomaji || snapshotObj?.titleRomaji || null,
-      titleEnglish: row.catalogTitleEnglish || snapshotObj?.titleEnglish || null,
-      titleNative: row.catalogTitleNative || snapshotObj?.titleNative || null,
-      cover,
-      banner,
-      format,
-      year,
-      episodesCount,
-      animeStatus,
-      startedAt: row.startedAt ? String(row.startedAt) : null,
-      completedAt: row.completedAt ? String(row.completedAt) : null,
-      createdAt: String(row.createdAt),
-      updatedAt: String(row.updatedAt),
-      animeSnapshot: snapshotObj,
-    };
-  });
+  const items: UserAnimeTrackingItem[] = await mapTrackingRowsWithCatalogResolution(sql, rows);
 
   const dedupedItems = dedupePublicTrackingItems(items);
   const hasMore = offset + items.length < currentTotal;
@@ -1245,105 +1040,14 @@ export const getAnimeTrackingByStatus = createServerFn({
         ca."episodesCount" AS "catalogEpisodesCount",
         ca."status" AS "catalogStatus"
       FROM "user_anime_tracking" uat
-      LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+      LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId" AND ca."archived_at" IS NULL
       WHERE uat."userId" = $1
         AND uat."status" = $2
       ORDER BY uat."updatedAt" DESC;
     `;
 
-    const rows = await sql.query<{
-      userId: string;
-      animeId: string;
-      status: TrackingStatus;
-      score: string | number | null;
-      episodesWatched: number;
-      animeSnapshot: unknown;
-      startedAt: string | null;
-      completedAt: string | null;
-      createdAt: string;
-      updatedAt: string;
-      catalogTitle: string | null;
-      catalogTitleRomaji: string | null;
-      catalogTitleEnglish: string | null;
-      catalogTitleNative: string | null;
-      catalogCover: string | null;
-      catalogBanner: string | null;
-      catalogFormat: string | null;
-      catalogYear: number | null;
-      catalogEpisodesCount: number | null;
-      catalogStatus: string | null;
-    }>(query, [userId, status]);
-
-    return rows.map((row) => {
-      let snapshotObj: AnimeSnapshot | null = null;
-      if (row.animeSnapshot && typeof row.animeSnapshot === "object" && !Array.isArray(row.animeSnapshot)) {
-        snapshotObj = row.animeSnapshot as AnimeSnapshot;
-      } else if (typeof row.animeSnapshot === "string") {
-        try {
-          snapshotObj = JSON.parse(row.animeSnapshot) as AnimeSnapshot;
-        } catch {
-          snapshotObj = null;
-        }
-      }
-
-      const title =
-        row.catalogTitle ||
-        (typeof snapshotObj?.title === "string" ? snapshotObj.title : null) ||
-        "Sem título";
-
-      const cover =
-        row.catalogCover ||
-        (typeof snapshotObj?.cover === "string" ? snapshotObj.cover : null);
-
-      const banner =
-        row.catalogBanner ||
-        (typeof snapshotObj?.banner === "string" ? snapshotObj.banner : null);
-
-      const format =
-        row.catalogFormat ||
-        (typeof snapshotObj?.format === "string" ? snapshotObj.format : null);
-
-      const year =
-        row.catalogYear !== null && row.catalogYear !== undefined
-          ? Number(row.catalogYear)
-          : typeof snapshotObj?.year === "number"
-            ? snapshotObj.year
-            : null;
-
-      const episodesCount =
-        row.catalogEpisodesCount !== null && row.catalogEpisodesCount !== undefined
-          ? Number(row.catalogEpisodesCount)
-          : typeof snapshotObj?.episodesCount === "number"
-            ? snapshotObj.episodesCount
-            : null;
-
-      const animeStatus =
-        row.catalogStatus ||
-        (typeof snapshotObj?.status === "string" ? snapshotObj.status : null);
-
-      return {
-        userId: row.userId,
-        animeId: row.animeId,
-        status: row.status,
-        score: row.score !== null && row.score !== undefined ? Number(row.score) : null,
-        episodesWatched: Number(row.episodesWatched) || 0,
-        title,
-        titleRomaji: row.catalogTitleRomaji || snapshotObj?.titleRomaji || null,
-        titleEnglish: row.catalogTitleEnglish || snapshotObj?.titleEnglish || null,
-        titleNative: row.catalogTitleNative || snapshotObj?.titleNative || null,
-        cover,
-        banner,
-        format,
-        year,
-        episodesCount,
-        animeStatus,
-        startedAt: row.startedAt ? String(row.startedAt) : null,
-        completedAt: row.completedAt ? String(row.completedAt) : null,
-        createdAt: String(row.createdAt),
-        updatedAt: String(row.updatedAt),
-        animeSnapshot: snapshotObj,
-      };
-    });
+    const rows = await sql.query<RawJoinedTrackingItemRow>(query, [userId, status]);
+    return mapTrackingRowsWithCatalogResolution(sql, rows);
   });
 
 /**
@@ -1395,15 +1099,18 @@ export const getMyWatchedEpisodes = createServerFn({
     const offset = (page - 1) * limit;
 
     const sql = await getSql();
+    const candidateAnimeIds = animeId
+      ? (await resolveAnimeCandidateIdsFromDb(sql, animeId)).candidateIds
+      : null;
 
     const countQuery = `
       SELECT count(*)::int AS total
       FROM "user_watched_episode"
       WHERE "userId" = $1
-        AND ($2::text IS NULL OR "animeId" = $2);
+        AND ($2::text[] IS NULL OR "animeId" = ANY($2::text[]));
     `;
 
-    const countRows = await sql.query<{ total: number }>(countQuery, [userId, animeId]);
+    const countRows = await sql.query<{ total: number }>(countQuery, [userId, candidateAnimeIds]);
     const total = Number(countRows[0]?.total) || 0;
     const totalPages = Math.ceil(total / limit) || 1;
 
@@ -1415,13 +1122,15 @@ export const getMyWatchedEpisodes = createServerFn({
         uwe."episodeNumber",
         uwe."origin",
         uwe."watchedAt",
-        COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Sem título') AS "animeTitle",
-        COALESCE(ca."cover", (uat."animeSnapshot"->>'cover')) AS "animeCover"
+        ca."title" AS "catalogTitle",
+        ca."cover" AS "catalogCover",
+        (uat."animeSnapshot"->>'title') AS "snapTitle",
+        (uat."animeSnapshot"->>'cover') AS "snapCover"
       FROM "user_watched_episode" uwe
-      LEFT JOIN "catalog_anime" ca ON ca."id" = uwe."animeId"
+      LEFT JOIN "catalog_anime" ca ON ca."id" = uwe."animeId" AND ca."archived_at" IS NULL
       LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uwe."userId" AND uat."animeId" = uwe."animeId"
       WHERE uwe."userId" = $1
-        AND ($2::text IS NULL OR uwe."animeId" = $2)
+        AND ($2::text[] IS NULL OR uwe."animeId" = ANY($2::text[]))
       ORDER BY uwe."watchedAt" DESC
       LIMIT $3 OFFSET $4;
     `;
@@ -1433,20 +1142,29 @@ export const getMyWatchedEpisodes = createServerFn({
       episodeNumber: number;
       origin: "playback" | "manual";
       watchedAt: string;
-      animeTitle: string;
-      animeCover: string | null;
-    }>(itemsQuery, [userId, animeId, limit, offset]);
+      catalogTitle: string | null;
+      catalogCover: string | null;
+      snapTitle: string | null;
+      snapCover: string | null;
+    }>(itemsQuery, [userId, candidateAnimeIds, limit, offset]);
 
-    const items: WatchedEpisodeItem[] = rows.map((r) => ({
-      userId: r.userId,
-      animeId: r.animeId,
-      episodeId: r.episodeId,
-      episodeNumber: Number(r.episodeNumber),
-      origin: r.origin,
-      watchedAt: String(r.watchedAt),
-      animeTitle: r.animeTitle,
-      animeCover: r.animeCover ?? null,
-    }));
+    const missingMetaIds = rows.filter((r) => !r.catalogTitle).map((r) => r.animeId);
+    const metaMap =
+      missingMetaIds.length > 0 ? await resolveCatalogMetadataMap(sql, missingMetaIds) : new Map();
+
+    const items: WatchedEpisodeItem[] = rows.map((r) => {
+      const resolvedMeta = !r.catalogTitle ? metaMap.get(r.animeId) : undefined;
+      return {
+        userId: r.userId,
+        animeId: resolvedMeta?.isActive ? resolvedMeta.canonicalId : r.animeId,
+        episodeId: r.episodeId,
+        episodeNumber: Number(r.episodeNumber),
+        origin: r.origin,
+        watchedAt: String(r.watchedAt),
+        animeTitle: r.catalogTitle || resolvedMeta?.title || r.snapTitle || "Sem título",
+        animeCover: r.catalogCover || resolvedMeta?.cover || r.snapCover || null,
+      };
+    });
 
     return {
       items,
@@ -1482,14 +1200,21 @@ export const getPublicWatchedEpisodes = createServerFn({
     const limit = data?.limit ?? 15;
     const offset = (page - 1) * limit;
 
+    const candidateAnimeIds = animeId
+      ? (await resolveAnimeCandidateIdsFromDb(sql, animeId)).candidateIds
+      : null;
+
     const countQuery = `
       SELECT count(*)::int AS total
       FROM "user_watched_episode"
       WHERE "userId" = $1
-        AND ($2::text IS NULL OR "animeId" = $2);
+        AND ($2::text[] IS NULL OR "animeId" = ANY($2::text[]));
     `;
 
-    const countRows = await sql.query<{ total: number }>(countQuery, [targetUserId, animeId]);
+    const countRows = await sql.query<{ total: number }>(countQuery, [
+      targetUserId,
+      candidateAnimeIds,
+    ]);
     const total = Number(countRows[0]?.total) || 0;
     const totalPages = Math.ceil(total / limit) || 1;
 
@@ -1501,13 +1226,15 @@ export const getPublicWatchedEpisodes = createServerFn({
         uwe."episodeNumber",
         uwe."origin",
         uwe."watchedAt",
-        COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Sem título') AS "animeTitle",
-        COALESCE(ca."cover", (uat."animeSnapshot"->>'cover')) AS "animeCover"
+        ca."title" AS "catalogTitle",
+        ca."cover" AS "catalogCover",
+        (uat."animeSnapshot"->>'title') AS "snapTitle",
+        (uat."animeSnapshot"->>'cover') AS "snapCover"
       FROM "user_watched_episode" uwe
-      LEFT JOIN "catalog_anime" ca ON ca."id" = uwe."animeId"
+      LEFT JOIN "catalog_anime" ca ON ca."id" = uwe."animeId" AND ca."archived_at" IS NULL
       LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uwe."userId" AND uat."animeId" = uwe."animeId"
       WHERE uwe."userId" = $1
-        AND ($2::text IS NULL OR uwe."animeId" = $2)
+        AND ($2::text[] IS NULL OR uwe."animeId" = ANY($2::text[]))
       ORDER BY uwe."watchedAt" DESC
       LIMIT $3 OFFSET $4;
     `;
@@ -1519,20 +1246,29 @@ export const getPublicWatchedEpisodes = createServerFn({
       episodeNumber: number;
       origin: "playback" | "manual";
       watchedAt: string;
-      animeTitle: string;
-      animeCover: string | null;
-    }>(itemsQuery, [targetUserId, animeId, limit, offset]);
+      catalogTitle: string | null;
+      catalogCover: string | null;
+      snapTitle: string | null;
+      snapCover: string | null;
+    }>(itemsQuery, [targetUserId, candidateAnimeIds, limit, offset]);
 
-    const items: WatchedEpisodeItem[] = rows.map((r) => ({
-      userId: r.userId,
-      animeId: r.animeId,
-      episodeId: r.episodeId,
-      episodeNumber: Number(r.episodeNumber),
-      origin: r.origin,
-      watchedAt: String(r.watchedAt),
-      animeTitle: r.animeTitle,
-      animeCover: r.animeCover ?? null,
-    }));
+    const missingMetaIds = rows.filter((r) => !r.catalogTitle).map((r) => r.animeId);
+    const metaMap =
+      missingMetaIds.length > 0 ? await resolveCatalogMetadataMap(sql, missingMetaIds) : new Map();
+
+    const items: WatchedEpisodeItem[] = rows.map((r) => {
+      const resolvedMeta = !r.catalogTitle ? metaMap.get(r.animeId) : undefined;
+      return {
+        userId: r.userId,
+        animeId: resolvedMeta?.isActive ? resolvedMeta.canonicalId : r.animeId,
+        episodeId: r.episodeId,
+        episodeNumber: Number(r.episodeNumber),
+        origin: r.origin,
+        watchedAt: String(r.watchedAt),
+        animeTitle: r.catalogTitle || resolvedMeta?.title || r.snapTitle || "Sem título",
+        animeCover: r.catalogCover || resolvedMeta?.cover || r.snapCover || null,
+      };
+    });
 
     return {
       items,
@@ -1581,6 +1317,11 @@ export const markEpisodeWatched = createServerFn({
       );
       const targetAnimeId = resolved.canonicalAnimeId;
       const cleanSnapshot = resolved.mergedSnapshot;
+      const { canonicalEpisodeId, candidateEpisodeIds } =
+        await resolveEquivalentEpisodeIdsFromDb(sql, resolved.candidateIds, episodeId);
+      const effectiveEpisodeId = canonicalEpisodeId || episodeId;
+      const effectiveCandidateEpIds =
+        candidateEpisodeIds.length > 0 ? candidateEpisodeIds : [effectiveEpisodeId];
 
       // Garante atomicamente que a linha de acompanhamento exista
       await sql.query(
@@ -1613,7 +1354,7 @@ export const markEpisodeWatched = createServerFn({
         existing_ep AS (
           SELECT exists (
             SELECT 1 FROM "user_watched_episode"
-            WHERE "userId" = $1 AND "animeId" = $2 AND "episodeId" = $3
+            WHERE "userId" = $1 AND "animeId" = $2 AND "episodeId" = ANY($5::text[])
           ) AS "wasWatched"
         ),
         watched_insert AS (
@@ -1629,7 +1370,7 @@ export const markEpisodeWatched = createServerFn({
         ep_count AS (
           SELECT (count(*)::int + 1) AS total
           FROM "user_watched_episode"
-          WHERE "userId" = $1 AND "animeId" = $2 AND "episodeId" != $3
+          WHERE "userId" = $1 AND "animeId" = $2 AND NOT ("episodeId" = ANY($5::text[]))
         ),
         tracking_update AS (
           UPDATE "user_anime_tracking" uat
@@ -1665,7 +1406,13 @@ export const markEpisodeWatched = createServerFn({
         episodeId: string;
         episodeNumber: number;
         episodesWatched: number;
-      }>(atomicMarkQuery, [userId, targetAnimeId, episodeId, episodeNumber]);
+      }>(atomicMarkQuery, [
+        userId,
+        targetAnimeId,
+        effectiveEpisodeId,
+        episodeNumber,
+        effectiveCandidateEpIds,
+      ]);
 
       const res = results[0];
       if (!res) {
@@ -1711,6 +1458,13 @@ export const unmarkEpisodeWatched = createServerFn({
       const sql = await getSql();
       const resolved = await resolveAndConsolidateTrackingTarget(sql, userId, animeId);
       const targetAnimeId = resolved.canonicalAnimeId;
+      const { candidateEpisodeIds } = await resolveEquivalentEpisodeIdsFromDb(
+        sql,
+        resolved.candidateIds,
+        episodeId,
+      );
+      const effectiveCandidateEpIds =
+        candidateEpisodeIds.length > 0 ? candidateEpisodeIds : [episodeId];
 
       // Ordem rigorosa de bloqueios:
       // 1. user_anime_tracking FOR UPDATE
@@ -1728,13 +1482,13 @@ export const unmarkEpisodeWatched = createServerFn({
           USING tracking_lock tl
           WHERE uwe."userId" = tl."userId"
             AND uwe."animeId" = tl."animeId"
-            AND uwe."episodeId" = $3
+            AND uwe."episodeId" = ANY($3::text[])
           RETURNING uwe."episodeId"
         ),
         ep_count AS (
           SELECT count(*)::int AS total
           FROM "user_watched_episode"
-          WHERE "userId" = $1 AND "animeId" = $2 AND "episodeId" != $3
+          WHERE "userId" = $1 AND "animeId" = $2 AND NOT ("episodeId" = ANY($3::text[]))
         ),
         tracking_update AS (
           UPDATE "user_anime_tracking" uat
@@ -1764,7 +1518,7 @@ export const unmarkEpisodeWatched = createServerFn({
         animeId: string;
         deletedCount: number;
         episodesWatched: number;
-      }>(atomicUnmarkQuery, [userId, targetAnimeId, episodeId]);
+      }>(atomicUnmarkQuery, [userId, targetAnimeId, effectiveCandidateEpIds]);
 
       const res = results[0];
       if (!res || res.deletedCount === 0) {
@@ -1803,8 +1557,14 @@ export const fetchAnimeUserInitialState = createServerFn({
       .map((id) => (typeof id === "string" ? id.trim() : ""))
       .filter(Boolean);
 
+    let catalogRow: Awaited<ReturnType<typeof lookupCatalogRowForTracking>> = null;
     try {
-      const catalogRow = await lookupCatalogRowForTracking(sql, data.animeId);
+      const [dbResolution, resolvedCatalog] = await Promise.all([
+        resolveAnimeCandidateIdsFromDb(sql, data.animeId),
+        lookupCatalogRowForTracking(sql, data.animeId),
+      ]);
+      rawCandidateIds.push(...dbResolution.candidateIds);
+      catalogRow = resolvedCatalog;
       if (catalogRow) {
         rawCandidateIds.push(catalogRow.id);
         if (catalogRow.anilistId && catalogRow.anilistId > 0) {
@@ -1828,10 +1588,23 @@ export const fetchAnimeUserInitialState = createServerFn({
       return null;
     }
 
-    const titlesList = (data.titles ?? [])
+    const titlesList = [
+      catalogRow?.title,
+      catalogRow?.titleRomaji,
+      catalogRow?.titleEnglish,
+      catalogRow?.titleNative,
+      ...(data.titles ?? []),
+    ]
       .map((t) => (typeof t === "string" ? t.toLowerCase().trim() : ""))
       .filter(Boolean);
     const normalizedTitles = new Set(titlesList);
+    const targetIsDubbed = inferIsDubbedFromTitles({
+      title: catalogRow?.title ?? data.titles?.[0] ?? null,
+      titleRomaji: catalogRow?.titleRomaji ?? data.titles?.[1] ?? null,
+      titleEnglish: catalogRow?.titleEnglish ?? data.titles?.[2] ?? null,
+      titleNative: catalogRow?.titleNative ?? data.titles?.[3] ?? null,
+    });
+    const targetTitleNorms = Array.from(normalizedTitles);
 
     // Executa todas as 4 consultas independentes em paralelo para reduzir latência de round-trips
     const [trackingRows, favoriteRows, progressRows, watchedRows] = await Promise.all([
@@ -1841,6 +1614,7 @@ export const fetchAnimeUserInitialState = createServerFn({
         status: TrackingStatus;
         score: string | number | null;
         episodesWatched: number;
+        animeSnapshot: unknown;
         createdAt: string;
         updatedAt: string;
       }>(
@@ -1850,6 +1624,7 @@ export const fetchAnimeUserInitialState = createServerFn({
            uat."status",
            uat."score",
            uat."episodesWatched",
+           uat."animeSnapshot",
            uat."createdAt",
            uat."updatedAt"
          FROM "user_anime_tracking" uat
@@ -1858,8 +1633,7 @@ export const fetchAnimeUserInitialState = createServerFn({
              uat."animeId" = ANY($2::text[])
              OR ($3::text[] IS NOT NULL AND array_length($3::text[], 1) > 0 AND LOWER(TRIM(COALESCE(uat."animeSnapshot"->>'title', uat."animeSnapshot"->>'titleRomaji', uat."animeSnapshot"->>'titleEnglish', ''))) = ANY($3::text[]))
            )
-         ORDER BY uat."updatedAt" DESC
-         LIMIT 1;`,
+         ORDER BY uat."updatedAt" DESC;`,
         [userId, candidateIds, titlesList.length > 0 ? titlesList : null],
       ),
       sql.query<{
@@ -1868,15 +1642,27 @@ export const fetchAnimeUserInitialState = createServerFn({
         targetId: string;
         title: string | null;
         nativeTitle: string | null;
+        animeFormat: string | null;
+        animeYear: number | null;
+        animeAnilistId: number | null;
+        animeMalId: number | null;
+        animeKitsuId: number | null;
+        animeSnapshot: unknown;
       }>(
         `SELECT
            uf."id",
            uf."targetType",
            COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "targetId",
            COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name") AS "title",
-           COALESCE(ca."titleNative", cc."nativeName", cp."nativeName") AS "nativeTitle"
+           COALESCE(ca."titleNative", cc."nativeName", cp."nativeName") AS "nativeTitle",
+           ca."format" AS "animeFormat",
+           ca."year" AS "animeYear",
+           ca."anilistId" AS "animeAnilistId",
+           ca."malId" AS "animeMalId",
+           ca."kitsuId" AS "animeKitsuId",
+           uf."animeSnapshot"
          FROM "user_favorite" uf
-         LEFT JOIN "catalog_anime" ca ON uf."targetType" = 'anime' AND uf."animeId" = ca."id"
+         LEFT JOIN "catalog_anime" ca ON uf."targetType" = 'anime' AND uf."animeId" = ca."id" AND ca."archived_at" IS NULL
          LEFT JOIN "catalog_character" cc ON uf."targetType" = 'character' AND uf."characterId" = cc."id"
          LEFT JOIN "catalog_studio" cs ON uf."targetType" = 'studio' AND uf."studioId" = cs."id"
          LEFT JOIN "catalog_company" cco ON uf."targetType" = 'company' AND uf."companyId" = cco."id"
@@ -1912,14 +1698,68 @@ export const fetchAnimeUserInitialState = createServerFn({
     ]);
 
     const idsSet = new Set(candidateIds);
+    const trackingRow =
+      trackingRows.find((r) => idsSet.has(r.animeId)) ??
+      trackingRows.find((r) => {
+        const snap = extractIdentityFromSnapshot(r.animeSnapshot, r.animeId);
+        const snapDubbed = inferIsDubbedFromTitles(snap);
+        if (targetIsDubbed !== null && snapDubbed !== null && snapDubbed !== targetIsDubbed) {
+          return false;
+        }
+        return isTitleFallbackCompatible(
+          {
+            titleNorms: targetTitleNorms,
+            format: catalogRow?.format,
+            year: catalogRow?.year,
+            anilistId: catalogRow?.anilistId,
+            malId: catalogRow?.malId,
+            kitsuId: catalogRow?.kitsuId,
+          },
+          {
+            format: snap.format,
+            year: snap.year,
+            anilistId: snap.anilistId,
+            malId: snap.malId,
+            kitsuId: snap.kitsuId,
+          },
+        );
+      }) ??
+      null;
+
     const favMatch = favoriteRows.find((row) => {
       if (row.targetType !== "anime") return false;
       if (idsSet.has(row.targetId)) return true;
-      const t = (row.title || "").toLowerCase().trim();
-      const nt = (row.nativeTitle || "").toLowerCase().trim();
-      if (t && normalizedTitles.has(t)) return true;
-      if (nt && normalizedTitles.has(nt)) return true;
-      return false;
+      const snap = extractIdentityFromSnapshot(row.animeSnapshot, row.targetId);
+      const rowDubbed = inferIsDubbedFromTitles({
+        title: row.title ?? snap.title,
+        titleNative: row.nativeTitle ?? snap.titleNative,
+        titleRomaji: snap.titleRomaji,
+        titleEnglish: snap.titleEnglish,
+      });
+      if (targetIsDubbed !== null && rowDubbed !== null && rowDubbed !== targetIsDubbed) {
+        return false;
+      }
+      const t = (row.title || snap.title || "").toLowerCase().trim();
+      const nt = (row.nativeTitle || snap.titleNative || "").toLowerCase().trim();
+      const titleHit = Boolean((t && normalizedTitles.has(t)) || (nt && normalizedTitles.has(nt)));
+      if (!titleHit) return false;
+      return isTitleFallbackCompatible(
+        {
+          titleNorms: targetTitleNorms,
+          format: catalogRow?.format,
+          year: catalogRow?.year,
+          anilistId: catalogRow?.anilistId,
+          malId: catalogRow?.malId,
+          kitsuId: catalogRow?.kitsuId,
+        },
+        {
+          format: row.animeFormat ?? snap.format,
+          year: row.animeYear ?? snap.year,
+          anilistId: row.animeAnilistId ?? snap.anilistId,
+          malId: row.animeMalId ?? snap.malId,
+          kitsuId: row.animeKitsuId ?? snap.kitsuId,
+        },
+      );
     });
 
     const isFavorite = Boolean(favMatch);
@@ -1937,8 +1777,6 @@ export const fetchAnimeUserInitialState = createServerFn({
         number: watchedRows[0].episodeNumber,
       };
     }
-
-    const trackingRow = trackingRows[0] ?? null;
 
     return {
       userId,

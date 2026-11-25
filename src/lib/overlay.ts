@@ -725,8 +725,31 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
   const isDubbedTitle = (a: LocalAnime) =>
     /\b(dub|dublado|dublada)\b/i.test(`${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`);
 
-  // 1. Direct exact match by local ID takes priority (e.g. /anime/local-xxx)
-  let byId = locals.find((a) => a.id === id);
+  const isResolvedFromAlias = Boolean(
+    remote &&
+      (remote.resolvedFromAliasId === id ||
+        remote.resolvedAliasIds?.includes(id)),
+  );
+
+  // 1. Direct exact match by canonical remote ID (when resolved via alias) or local ID
+  let byId =
+    isResolvedFromAlias && remote
+      ? locals.find(
+          (a) =>
+            a.id === remote.id ||
+            (remote.serverCatalogId != null && a.id === remote.serverCatalogId),
+        )
+      : undefined;
+  if (!byId) {
+    byId = locals.find((a) => a.id === id);
+  }
+  if (!byId && remote && remote.id !== id) {
+    byId = locals.find(
+      (a) =>
+        a.id === remote.id ||
+        (remote.serverCatalogId != null && a.id === remote.serverCatalogId),
+    );
+  }
 
   // 2. If id is external (numeric, mal-*, kitsu-*), search matching local record preferring the original/subbed version
   if (!byId && !isNaN(numericId) && numericId > 0) {
@@ -766,7 +789,8 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       };
     }
 
-    const preserveExternalId = !isLocalRequestedId && !remote.id.startsWith("local-");
+    const preserveExternalId =
+      isResolvedFromAlias || (!isLocalRequestedId && !remote.id.startsWith("local-"));
     const resolvedId = preserveExternalId ? remote.id : local.id;
     const resolvedServerCatalogId =
       remote.serverCatalogId ||
@@ -802,6 +826,8 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       ...local,
       id: resolvedId,
       serverCatalogId: resolvedServerCatalogId,
+      resolvedFromAliasId: remote.resolvedFromAliasId,
+      resolvedAliasIds: remote.resolvedAliasIds,
       titles: local.titles,
       cover: preferRemoteKitsuCover ? remote.cover : local.cover || remote.cover,
       banner: preferRemoteKitsuBanner ? remote.banner : local.banner || remote.banner,

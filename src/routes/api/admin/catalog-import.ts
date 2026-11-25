@@ -19,9 +19,12 @@ import {
   inferIsDubbedFromTitles,
   normalizeIdentityTitle,
   parseEpisodeHistoryArray,
+  parsePositiveIntId,
   mergeEpisodeHistory,
   reconcileAnimeIdentityReferences,
   reconcileEpisodeIdentityReferences,
+  resolveReregistrationTargetId,
+  upsertAliasMapping,
   type EpisodeHistoryEntry,
 } from "@/lib/anime-identity.server";
 
@@ -153,8 +156,35 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   titleNative: anime.titleNative,
                 }),
               );
+              const inferredAnilistId = parsePositiveIntId(anime.id);
+              const inferredMalId = anime.id.startsWith("mal-")
+                ? parsePositiveIntId(anime.id.slice(4))
+                : null;
+              const inferredKitsuId = anime.id.startsWith("kitsu-")
+                ? parsePositiveIntId(anime.id.slice(6))
+                : null;
+
+              const reregResolution = await resolveReregistrationTargetId(tx, {
+                requestedId: anime.id,
+                id: anime.id,
+                anilistId: inferredAnilistId,
+                malId: inferredMalId,
+                kitsuId: inferredKitsuId,
+                title: animeTitle,
+                titleRomaji: anime.titleRomaji,
+                titleEnglish: anime.titleEnglish,
+                titleNative: anime.titleNative,
+                format: anime.format,
+                year: anime.year,
+                isDubbed,
+              });
+              const targetAnimeId = reregResolution.targetId || anime.id;
+
               const matchingTombstones = await findMatchingTombstoneAliases(tx, {
                 id: anime.id,
+                anilistId: inferredAnilistId,
+                malId: inferredMalId,
+                kitsuId: inferredKitsuId,
                 title: animeTitle,
                 titleRomaji: anime.titleRomaji,
                 titleEnglish: anime.titleEnglish,
@@ -164,7 +194,10 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                 isDubbed,
               });
               const legacyOrphans = await discoverMatchingOrphanIdsFromUserTables(tx, {
-                canonicalId: anime.id,
+                canonicalId: targetAnimeId,
+                anilistId: inferredAnilistId,
+                malId: inferredMalId,
+                kitsuId: inferredKitsuId,
                 title: animeTitle,
                 titleRomaji: anime.titleRomaji,
                 titleEnglish: anime.titleEnglish,
@@ -173,7 +206,9 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                 year: anime.year,
                 isDubbed,
               });
-              let mergedHistory: EpisodeHistoryEntry[] = [];
+              let mergedHistory: EpisodeHistoryEntry[] = [
+                ...reregResolution.mergedEpisodeHistory,
+              ];
               for (const t of matchingTombstones) {
                 mergedHistory = mergeEpisodeHistory(
                   mergedHistory,
@@ -222,9 +257,10 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                    "score" = EXCLUDED."score",
                    "title_norm" = COALESCE(NULLIF(EXCLUDED."title_norm", ''), "catalog_anime"."title_norm"),
                    "archived_at" = NULL,
+                   "episode_history" = EXCLUDED."episode_history",
                    "updatedAt" = CURRENT_TIMESTAMP;`,
                 [
-                  anime.id,
+                  targetAnimeId,
                   animeTitle,
                   anime.titleEnglish?.trim() || null,
                   anime.titleNative?.trim() || null,
@@ -247,49 +283,47 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
 
               await tx.query(
                 `DELETE FROM "catalog_anime_id_alias" WHERE "old_id" = $1;`,
-                [anime.id],
+                [targetAnimeId],
               );
               const oldIds = Array.from(
                 new Set([
+                  ...(anime.id !== targetAnimeId ? [anime.id] : []),
+                  ...reregResolution.sourceOldIds,
                   ...matchingTombstones.map((t) => t.old_id),
                   ...legacyOrphans,
-                  ...(await getAllAliasIdsForCanonical(tx, anime.id)),
+                  ...(await getAllAliasIdsForCanonical(tx, targetAnimeId)),
                 ]),
-              ).filter((x) => x !== anime.id);
+              ).filter((x) => x !== targetAnimeId);
 
               for (const oldId of oldIds) {
-                await tx.query(
-                  `INSERT INTO "catalog_anime_id_alias" (
-                     "old_id", "current_id", "title_norm", "format", "year",
-                     "is_dubbed", "episode_history", "archived_at", "updated_at"
-                   )
-                   VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NULL, CURRENT_TIMESTAMP)
-                   ON CONFLICT ("old_id") DO UPDATE
-                   SET "current_id" = EXCLUDED."current_id",
-                       "archived_at" = NULL,
-                       "updated_at" = CURRENT_TIMESTAMP;`,
-                  [
-                    oldId,
-                    anime.id,
-                    normTitle || null,
-                    anime.format ?? null,
-                    anime.year ?? null,
-                    isDubbed,
-                    JSON.stringify(mergedHistory),
-                  ],
-                );
+                await upsertAliasMapping(tx, {
+                  oldId,
+                  currentId: targetAnimeId,
+                  anilistId: inferredAnilistId,
+                  malId: inferredMalId,
+                  kitsuId: inferredKitsuId,
+                  titleNorm: normTitle || null,
+                  format: anime.format ?? null,
+                  year: anime.year ?? null,
+                  isDubbed,
+                  episodeHistory: mergedHistory,
+                  archivedAt: null,
+                });
                 affectedAnimeIds.add(oldId);
               }
               if (oldIds.length > 0) {
                 await reconcileAnimeIdentityReferences(tx, {
-                  canonicalId: anime.id,
+                  canonicalId: targetAnimeId,
                   oldIds,
                   episodeHistory: mergedHistory,
                 });
               }
 
               animeProcessedCount++;
-              affectedAnimeIds.add(anime.id);
+              affectedAnimeIds.add(targetAnimeId);
+              if (anime.id !== targetAnimeId) {
+                affectedAnimeIds.add(anime.id);
+              }
 
               // 3.2 Upsert de cada temporada em catalog_season
               for (const season of anime.seasons) {
@@ -305,7 +339,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                    SET
                      "title" = COALESCE(EXCLUDED."title", "catalog_season"."title"),
                      "position" = EXCLUDED."position";`,
-                  [anime.id, season.number, sTitle, sPos],
+                  [targetAnimeId, season.number, sTitle, sPos],
                 );
                 seasonProcessedCount++;
 
@@ -325,7 +359,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                     [ep.id],
                   );
 
-                  if (existingById.length > 0 && existingById[0].animeId !== anime.id) {
+                  if (existingById.length > 0 && existingById[0].animeId !== targetAnimeId) {
                     throw new Error(
                       `Conflito: episódio "${ep.id}" já pertence a outro anime (${existingById[0].animeId}).`,
                     );
@@ -335,12 +369,12 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   const existingBySlot = await tx.query<{ id: string }>(
                     `SELECT "id" FROM "catalog_episode"
                      WHERE "animeId" = $1 AND "seasonNumber" = $2 AND "number" = $3 AND "id" != $4 LIMIT 1;`,
-                    [anime.id, season.number, ep.number, ep.id],
+                    [targetAnimeId, season.number, ep.number, ep.id],
                   );
 
                   if (existingBySlot.length > 0) {
                     throw new Error(
-                      `Conflito: episódio número ${ep.number} da temporada ${season.number} do anime "${anime.id}" já existe com outro ID ("${existingBySlot[0].id}").`,
+                      `Conflito: episódio número ${ep.number} da temporada ${season.number} do anime "${targetAnimeId}" já existe com outro ID ("${existingBySlot[0].id}").`,
                     );
                   }
 
@@ -350,7 +384,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   );
                   if (hasHikariPlayerField && !hikariPlayerValidation.valid) {
                     throw new Error(
-                      `Episódio ${ep.number} (${anime.id}): ${hikariPlayerValidation.error}`,
+                      `Episódio ${ep.number} (${targetAnimeId}): ${hikariPlayerValidation.error}`,
                     );
                   }
 
@@ -418,7 +452,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                        "updatedAt" = CURRENT_TIMESTAMP;`,
                     [
                       ep.id,
-                      anime.id,
+                      targetAnimeId,
                       season.number,
                       ep.number,
                       epTitle,
@@ -455,7 +489,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                     });
                   }
                   await reconcileEpisodeIdentityReferences(tx, {
-                    animeId: anime.id,
+                    animeId: targetAnimeId,
                     episodeId: ep.id,
                     seasonNumber: season.number,
                     number: ep.number,

@@ -665,14 +665,39 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
 
           const sql = await getSql();
 
-          const result = await sql.query<{ id: string; animeId: string }>(
+          const result = await sql.query<{
+            id: string;
+            animeId: string;
+            seasonNumber: number | null;
+            number: number;
+          }>(
             `DELETE FROM "catalog_episode"
              WHERE "id" = $1
-             RETURNING "id", "animeId";`,
+             RETURNING "id", "animeId", "seasonNumber", "number";`,
             [episodeId],
           );
 
           const deleted = result[0];
+          if (deleted?.animeId) {
+            try {
+              const histEntry = JSON.stringify([
+                {
+                  episodeId: deleted.id,
+                  seasonNumber: Number(deleted.seasonNumber ?? 1),
+                  number: Number(deleted.number),
+                },
+              ]);
+              await sql.query(
+                `UPDATE "catalog_anime"
+                 SET "episode_history" = COALESCE("episode_history", '[]'::jsonb) || $2::jsonb,
+                     "updatedAt" = CURRENT_TIMESTAMP
+                 WHERE "id" = $1;`,
+                [deleted.animeId, histEntry],
+              );
+            } catch {
+              // non-fatal episode history preservation
+            }
+          }
           await deleteEpisodeSourcesForEpisode(episodeId);
           const targetAnimeId = animeId || deleted?.animeId;
           if (targetAnimeId) {

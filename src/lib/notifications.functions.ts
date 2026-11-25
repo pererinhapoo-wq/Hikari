@@ -115,6 +115,7 @@ export interface RawNotificationRow {
 }
 
 import { FALLBACK_ANIMES } from "@/lib/fallback-catalog";
+import { resolveCatalogMetadataMap } from "@/lib/anime-identity.server";
 import { displayTitle } from "@/lib/types";
 
 const ANILIST_ENDPOINT = "https://graphql.anilist.co";
@@ -180,26 +181,67 @@ function inferSeasonNumber(params: {
 
 export async function resolveAnimeMetadataMap(
   animeIds: string[],
+  sqlOverride?: Sql | null,
 ): Promise<
   Map<
     string,
-    { title: string | null; cover: string | null; seasonNumber: number | null }
+    {
+      title: string | null;
+      cover: string | null;
+      seasonNumber: number | null;
+      canonicalId?: string | null;
+    }
   >
 > {
   const result = new Map<
     string,
-    { title: string | null; cover: string | null; seasonNumber: number | null }
+    {
+      title: string | null;
+      cover: string | null;
+      seasonNumber: number | null;
+      canonicalId?: string | null;
+    }
   >();
-  if (animeIds.length === 0) {
+  const cleanIds = Array.from(
+    new Set(animeIds.map((raw) => raw.trim()).filter(Boolean)),
+  );
+  if (cleanIds.length === 0) {
     return result;
+  }
+
+  // 1. Consulta prioritária no catálogo local do PostgreSQL (ativos + aliases + tombstones)
+  try {
+    const dbSql = sqlOverride !== undefined ? sqlOverride : await getSql();
+    if (dbSql) {
+      const dbMetaMap = await resolveCatalogMetadataMap(dbSql, cleanIds);
+      for (const reqId of cleanIds) {
+        const dbMeta = dbMetaMap.get(reqId);
+        if (!dbMeta) continue;
+        result.set(reqId, {
+          title: dbMeta.title || null,
+          cover: dbMeta.cover || null,
+          seasonNumber: inferSeasonNumber({
+            titles: [
+              dbMeta.titleEnglish,
+              dbMeta.titleRomaji,
+              dbMeta.titleNative,
+              dbMeta.title,
+            ],
+            format: dbMeta.format,
+          }),
+          canonicalId: dbMeta.isActive ? dbMeta.canonicalId : reqId,
+        });
+      }
+    }
+  } catch {
+    // Fail-open quando banco não está disponível (ex: testes unitários isolados)
   }
 
   const now = Date.now();
   const numericToFetch: number[] = [];
 
-  for (const rawId of animeIds) {
-    const id = rawId.trim();
-    if (!id) continue;
+  for (const id of cleanIds) {
+    if (result.has(id)) continue;
 
     const cached = animeMetaCache.get(id);
     if (cached && cached.expiresAt > now) {
@@ -825,12 +867,13 @@ export async function executeGetNotifications(
         .filter((id): id is string => Boolean(id)),
     ),
   );
-  const animeMetaMap = await resolveAnimeMetadataMap(distinctAnimeIds);
+  const animeMetaMap = await resolveAnimeMetadataMap(distinctAnimeIds, sql);
 
   const unbundledNotifications: NotificationItem[] = items.map((r: RawNotificationRow) => {
-    const animeId = r.animeId ? String(r.animeId) : null;
+    const rawAnimeId = r.animeId ? String(r.animeId) : null;
     const commentId = r.commentId ? String(r.commentId) : null;
-    const animeMeta = animeId ? animeMetaMap.get(animeId) : undefined;
+    const animeMeta = rawAnimeId ? animeMetaMap.get(rawAnimeId) : undefined;
+    const animeId = animeMeta?.canonicalId || rawAnimeId;
     const isFollowingActor = Boolean(r.actorId && followingActorIdSet.has(r.actorId));
     const hasPendingFollowRequestToActor = Boolean(
       r.actorId && pendingFollowRequestActorIdSet.has(r.actorId),

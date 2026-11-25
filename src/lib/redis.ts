@@ -403,6 +403,39 @@ export async function captureSearchGen(): Promise<string> {
   }
 }
 
+function unwrapSearchGenEnvelope(
+  cached: unknown,
+  curGen: string,
+): SlimAnime[] | null {
+  if (!cached) return null;
+
+  let parsed: unknown = cached;
+  if (typeof cached === "string") {
+    try {
+      parsed = JSON.parse(cached);
+    } catch {
+      return null;
+    }
+  }
+
+  if (Array.isArray(parsed)) {
+    return curGen === "0" ? (parsed as SlimAnime[]) : null;
+  }
+
+  if (parsed && typeof parsed === "object") {
+    const env = parsed as { v?: unknown; gen?: unknown; items?: unknown };
+    if (
+      env.v === 2 &&
+      String(env.gen ?? "0") === curGen &&
+      Array.isArray(env.items)
+    ) {
+      return env.items as SlimAnime[];
+    }
+  }
+
+  return null;
+}
+
 export async function getRedisCatalogSearch(
   query: string,
   limit: number,
@@ -413,14 +446,18 @@ export async function getRedisCatalogSearch(
 
   const key = buildSearchRedisKey(clean, limit);
   try {
-    const data = await withRedisTimeout(
-      redisClient.get<SlimAnime[]>(key),
+    const pipe = redisClient.pipeline();
+    pipe.get<string | number>(SEARCH_REDIS_GEN_KEY);
+    pipe.get<unknown>(key);
+    const results = await withRedisTimeout(
+      pipe.exec<[string | number | null, unknown]>(),
       "getRedisCatalogSearch",
     );
-    if (Array.isArray(data)) {
-      return data;
-    }
-    return null;
+    const curGen =
+      results?.[0] !== null && results?.[0] !== undefined
+        ? String(results[0])
+        : "0";
+    return unwrapSearchGenEnvelope(results?.[1], curGen);
   } catch (err) {
     console.warn("[redis] Aviso ao buscar pesquisa no Redis (fallback para DB):", err instanceof Error ? err.message : err);
     return null;
@@ -438,8 +475,10 @@ export async function setRedisCatalogSearch(
 
   const key = buildSearchRedisKey(clean, limit);
   try {
+    const curGen = await captureSearchGen();
+    const payload = JSON.stringify({ v: 2, gen: curGen, items });
     await withRedisTimeout(
-      redisClient.set(key, items, { ex: SEARCH_REDIS_TTL_SEC }),
+      redisClient.set(key, payload, { ex: SEARCH_REDIS_TTL_SEC }),
       "setRedisCatalogSearch",
     );
   } catch (err) {
@@ -458,7 +497,7 @@ export async function setRedisCatalogSearchWithGen(
   if (!clean || clean.length < 2 || clean.length > 100) return false;
 
   const key = buildSearchRedisKey(clean, limit);
-  const serialized = JSON.stringify(items);
+  const serialized = JSON.stringify({ v: 2, gen: observedGen, items });
   try {
     const res = await withRedisTimeout(
       redisClient.eval<string[], unknown[]>(
@@ -475,35 +514,13 @@ export async function setRedisCatalogSearchWithGen(
   }
 }
 
-export async function invalidateRedisCatalogSearch(query?: string): Promise<void> {
+export async function invalidateRedisCatalogSearch(_query?: string): Promise<void> {
   if (!redisClient || typeof window !== "undefined") return;
   try {
-    const clean = query ? normalizeCatalogSearchQuery(query) : "";
-    if (clean) {
-      // Invalidação específica de query: incrementa geração global e limpa padrão correspondente
-      await withRedisTimeout(
-        redisClient.eval<never[], unknown>(INCR_GLOBAL_GEN_SCRIPT, [SEARCH_REDIS_GEN_KEY], []),
-        "invalidateRedisCatalogSearch.incrGen",
-      );
-      // Opcional: del direto da chave específica se houver
-      const pattern = `${SEARCH_REDIS_KEY_PREFIX}${encodeURIComponent(clean)}:*`;
-      const keys = await withRedisTimeout(
-        redisClient.keys(pattern),
-        "invalidateRedisCatalogSearch.keys",
-      );
-      if (Array.isArray(keys) && keys.length > 0) {
-        await withRedisTimeout(
-          redisClient.del(...keys),
-          "invalidateRedisCatalogSearch.del",
-        );
-      }
-    } else {
-      // Invalidação global: incrementa geração atômica (invalidando todas as gravações pendentes antigas)
-      await withRedisTimeout(
-        redisClient.eval<never[], unknown>(INCR_GLOBAL_GEN_SCRIPT, [SEARCH_REDIS_GEN_KEY], []),
-        "invalidateRedisCatalogSearch.incrGen",
-      );
-    }
+    await withRedisTimeout(
+      redisClient.eval<never[], unknown>(INCR_GLOBAL_GEN_SCRIPT, [SEARCH_REDIS_GEN_KEY], []),
+      "invalidateRedisCatalogSearch.incrGen",
+    );
   } catch (err) {
     console.warn("[redis] Aviso ao invalidar pesquisa no Redis:", err instanceof Error ? err.message : err);
   }
@@ -555,10 +572,11 @@ export type RedisAnimeDetailUpdateResult = {
 // e altere ordem/precisão antes da comparação byte-a-byte no CAS ou converta gerações.
 const GET_DETAIL_OR_FENCE_SCRIPT = `
 local v = redis.call("GET", KEYS[1])
+local g = tostring(redis.call("GET", KEYS[2]) or "0")
 if v then
-  return {"hit", ":" .. v}
+  return {"hit", ":" .. v, ":" .. g}
 end
-local out = { "miss", ":" .. tostring(redis.call("GET", KEYS[2]) or "0") }
+local out = { "miss", ":" .. g }
 for i = 3, #KEYS do
   out[#out + 1] = ":" .. tostring(redis.call("GET", KEYS[i]) or "0")
 end
@@ -678,16 +696,47 @@ function buildFenceKeysAndArgs(
   return { keys, args };
 }
 
-function parseRawRedisAnime(raw: string): Anime | null {
+type ParsedRedisDetailEnvelope = {
+  globalGen: string;
+  anime: Anime;
+};
+
+function parseDetailEnvelope(raw: string): ParsedRedisDetailEnvelope | null {
   try {
-    const parsed = JSON.parse(raw) as Anime;
-    if (parsed && typeof parsed === "object" && typeof parsed.id === "string") {
-      return parsed;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    const obj = parsed as Record<string, unknown>;
+    if (obj.__v === 2 && obj.data && typeof obj.data === "object") {
+      const anime = obj.data as Anime;
+      if (typeof anime.id === "string") {
+        return {
+          globalGen: String(obj.globalGen ?? "0"),
+          anime,
+        };
+      }
+      return null;
+    }
+    const legacy = parsed as Anime;
+    if (typeof legacy.id === "string") {
+      return {
+        globalGen: "0",
+        anime: legacy,
+      };
     }
     return null;
   } catch {
     return null;
   }
+}
+
+function serializeDetailEnvelope(anime: Anime, globalGen: string): string {
+  return JSON.stringify({
+    __v: 2,
+    globalGen,
+    data: anime,
+  });
 }
 
 function isGenericEpisodeTitle(title: string | undefined, epNumber: number): boolean {
@@ -785,8 +834,10 @@ function mergeDetailPreservingEnrichments(incoming: Anime, existing: Anime): Ani
 
 export async function captureRedisAnimeDetailFence(
   ids: string[],
+  redisOverride?: RedisEvalClient | null,
 ): Promise<RedisAnimeDetailFence | null> {
-  if (!redisClient || typeof window !== "undefined") return null;
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) return null;
   const cleanIds = Array.from(
     new Set(ids.map((v) => v.trim()).filter(Boolean)),
   );
@@ -797,7 +848,7 @@ export async function captureRedisAnimeDetailFence(
 
   try {
     const res = await withRedisTimeout(
-      redisClient.eval<never[], unknown[]>(CAPTURE_FENCE_SCRIPT, keys, []),
+      client.eval<never[], unknown[]>(CAPTURE_FENCE_SCRIPT, keys, []),
       "captureRedisAnimeDetailFence",
     );
     if (!Array.isArray(res) || res.length !== keys.length) {
@@ -822,8 +873,10 @@ export async function captureRedisAnimeDetailFence(
 export async function getRedisAnimeDetailWithFence(
   id: string,
   aliasIds?: string[],
+  redisOverride?: RedisEvalClient | null,
 ): Promise<RedisAnimeDetailReadResult> {
-  if (!redisClient || typeof window !== "undefined") {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) {
     return { status: "unavailable", detail: null, fence: null };
   }
   const cleanId = id?.trim();
@@ -843,7 +896,7 @@ export async function getRedisAnimeDetailWithFence(
 
   try {
     const res = await withRedisTimeout(
-      redisClient.eval<never[], unknown[]>(
+      client.eval<never[], unknown[]>(
         GET_DETAIL_OR_FENCE_SCRIPT,
         keys,
         [],
@@ -857,11 +910,12 @@ export async function getRedisAnimeDetailWithFence(
 
     if (res[0] === "hit") {
       const raw = extractPrefixedRaw(res[1]);
-      const parsed = raw ? parseRawRedisAnime(raw) : null;
-      if (parsed) {
-        return { status: "hit", detail: parsed, fence: null };
+      const currentGlobalGen = extractGenToken(res[2]) ?? "0";
+      const parsedEnv = raw ? parseDetailEnvelope(raw) : null;
+      if (parsedEnv && parsedEnv.globalGen === currentGlobalGen) {
+        return { status: "hit", detail: parsedEnv.anime, fence: null };
       }
-      const fallbackFence = await captureRedisAnimeDetailFence(fenceIds);
+      const fallbackFence = await captureRedisAnimeDetailFence(fenceIds, redisOverride);
       if (!fallbackFence) {
         return { status: "failed", detail: null, fence: null };
       }
@@ -907,12 +961,23 @@ export async function getRedisAnimeDetail(id: string): Promise<Anime | null> {
   if (!cleanId) return null;
   const key = `${DETAIL_REDIS_KEY_PREFIX}${cleanId}`;
   try {
-    const data = await withRedisTimeout(
-      redisClient.get<Anime>(key),
+    const pipe = redisClient.pipeline();
+    pipe.get<string | number>(DETAIL_GLOBAL_GEN_KEY);
+    pipe.get<unknown>(key);
+    const results = await withRedisTimeout(
+      pipe.exec<[string | number | null, unknown]>(),
       "getRedisAnimeDetail",
     );
-    if (data && typeof data === "object" && typeof data.id === "string") {
-      return data;
+    const curGen =
+      results?.[0] !== null && results?.[0] !== undefined
+        ? String(results[0])
+        : "0";
+    const payload = results?.[1];
+    if (!payload) return null;
+    const raw = typeof payload === "string" ? payload : JSON.stringify(payload);
+    const env = parseDetailEnvelope(raw);
+    if (env && env.globalGen === curGen) {
+      return env.anime;
     }
     return null;
   } catch (err) {
@@ -925,8 +990,10 @@ export async function setRedisAnimeDetail(
   id: string,
   data: Anime,
   fence?: RedisAnimeDetailFence | null,
+  redisOverride?: RedisEvalClient | null,
 ): Promise<RedisAnimeDetailWriteStatus> {
-  if (!redisClient || typeof window !== "undefined") {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) {
     return "unavailable";
   }
   const cleanId = id?.trim();
@@ -947,11 +1014,12 @@ export async function setRedisAnimeDetail(
 
   const key = `${DETAIL_REDIS_KEY_PREFIX}${cleanId}`;
   const { keys: fenceKeys, args: fenceArgs } = buildFenceKeysAndArgs(fence);
+  const envelopeGlobalGen = fence?.globalGen ?? "0";
 
   try {
-    const initialRaw = JSON.stringify(data);
+    const initialRaw = serializeDetailEnvelope(data, envelopeGlobalGen);
     const initialRes = await withRedisTimeout(
-      redisClient.eval<string[], unknown[]>(
+      client.eval<string[], unknown[]>(
         SET_IF_MISSING_OR_READ_WITH_FENCE_SCRIPT,
         [key, ...fenceKeys],
         [initialRaw, String(DETAIL_REDIS_TTL_SEC), ...fenceArgs],
@@ -976,17 +1044,20 @@ export async function setRedisAnimeDetail(
     if (!expectedRaw) return "failed";
 
     for (let attempt = 0; attempt < DETAIL_CAS_MAX_ATTEMPTS; attempt++) {
-      const existing = parseRawRedisAnime(expectedRaw);
-      if (!existing) return "failed";
+      const existingEnv = parseDetailEnvelope(expectedRaw);
+      if (!existingEnv) return "failed";
 
-      const merged = mergeDetailPreservingEnrichments(data, existing);
+      const merged =
+        existingEnv.globalGen === envelopeGlobalGen
+          ? mergeDetailPreservingEnrichments(data, existingEnv.anime)
+          : data;
       if (!merged) return "unchanged";
 
-      const nextRaw = JSON.stringify(merged);
+      const nextRaw = serializeDetailEnvelope(merged, envelopeGlobalGen);
       if (nextRaw === expectedRaw) return "unchanged";
 
       const casRes = await withRedisTimeout(
-        redisClient.eval<string[], unknown[]>(
+        client.eval<string[], unknown[]>(
           CAS_UPDATE_WITH_FENCE_SCRIPT,
           [key, ...fenceKeys],
           [expectedRaw, nextRaw, ...fenceArgs],
@@ -1055,19 +1126,22 @@ export async function updateRedisAnimeDetailAtomic(
     }
 
     for (let attempt = 0; attempt < DETAIL_CAS_MAX_ATTEMPTS; attempt++) {
-      const currentObj = parseRawRedisAnime(expectedRaw);
-      if (!currentObj) {
+      const currentEnv = parseDetailEnvelope(expectedRaw);
+      if (!currentEnv) {
         return { status: "failed" };
       }
-
-      const nextObj = mergeDetail(currentObj);
-      if (!nextObj) {
-        return { status: "unchanged", detail: currentObj };
+      if (currentEnv.globalGen !== globalGen) {
+        return { status: "fenced" };
       }
 
-      const nextRaw = JSON.stringify(nextObj);
+      const nextObj = mergeDetail(currentEnv.anime);
+      if (!nextObj) {
+        return { status: "unchanged", detail: currentEnv.anime };
+      }
+
+      const nextRaw = serializeDetailEnvelope(nextObj, globalGen);
       if (nextRaw === expectedRaw) {
-        return { status: "unchanged", detail: currentObj };
+        return { status: "unchanged", detail: currentEnv.anime };
       }
 
       const casRes = await withRedisTimeout(
@@ -1122,39 +1196,17 @@ export async function invalidateRedisAnimeDetail(
     kitsuId?: number | null;
     extraIds?: Array<string | number | null | undefined>;
   },
+  redisOverride?: RedisEvalClient | null,
 ): Promise<void> {
-  if (!redisClient || typeof window !== "undefined") return;
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) return;
   try {
-    const targetIds = new Set<string>();
-    const cleanId = animeId?.trim();
-    if (cleanId) {
-      targetIds.add(cleanId);
-    }
-    if (typeof externalIds?.anilistId === "number" && externalIds.anilistId > 0) {
-      targetIds.add(String(externalIds.anilistId));
-    }
-    if (typeof externalIds?.malId === "number" && externalIds.malId > 0) {
-      targetIds.add(`mal-${externalIds.malId}`);
-    }
-    if (typeof externalIds?.kitsuId === "number" && externalIds.kitsuId > 0) {
-      targetIds.add(`kitsu-${externalIds.kitsuId}`);
-    }
-    if (Array.isArray(externalIds?.extraIds)) {
-      for (const extra of externalIds.extraIds) {
-        if (typeof extra === "string" && extra.trim()) {
-          targetIds.add(extra.trim());
-        } else if (typeof extra === "number" && Number.isFinite(extra) && extra > 0) {
-          targetIds.add(String(extra));
-        }
-      }
-    }
-
-    if (targetIds.size > 0) {
-      const idList = Array.from(targetIds);
+    const idList = collectCatalogInvalidationTargetIds(animeId, externalIds);
+    if (idList.length > 0) {
       const genKeys = idList.map((tid) => `${DETAIL_ID_GEN_PREFIX}${tid}`);
       const detailKeys = idList.map((tid) => `${DETAIL_REDIS_KEY_PREFIX}${tid}`);
       await withRedisTimeout(
-        redisClient.eval<[string], number>(
+        client.eval<[string], number>(
           INVALIDATE_IDS_SCRIPT,
           [...genKeys, ...detailKeys],
           [String(genKeys.length)],
@@ -1162,30 +1214,16 @@ export async function invalidateRedisAnimeDetail(
         "invalidateRedisAnimeDetail.ids",
       );
     } else {
-      // Incrementa primeiro a geração global atomicamente para fechar imediatamente
-      // o fence de buscas em andamento em todas as instâncias antes de remover as chaves.
+      // O(1): incrementa a geração global atomicamente, invalidando imediatamente todas
+      // as chaves anteriores sem usar KEYS/SCAN.
       await withRedisTimeout(
-        redisClient.eval<never[], string>(
+        client.eval<never[], string>(
           INCR_GLOBAL_GEN_SCRIPT,
           [DETAIL_GLOBAL_GEN_KEY],
           [],
         ),
         "invalidateRedisAnimeDetail.incrGlobalGen",
       );
-      const keys = await withRedisTimeout(
-        redisClient.keys(`${DETAIL_REDIS_KEY_PREFIX}*`),
-        "invalidateRedisAnimeDetail.keys",
-      );
-      if (Array.isArray(keys) && keys.length > 0) {
-        const CHUNK_SIZE = 200;
-        for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
-          const batch = keys.slice(i, i + CHUNK_SIZE);
-          await withRedisTimeout(
-            redisClient.del(...batch),
-            "invalidateRedisAnimeDetail.del",
-          );
-        }
-      }
     }
   } catch (err) {
     console.warn("[redis] Aviso ao invalidar detalhe do anime no Redis:", err instanceof Error ? err.message : err);
@@ -2986,41 +3024,8 @@ export async function setRedisCalendarToday<T = unknown>(dayKey: string, data: T
 
 export type CalendarRedisInvalidationClient = {
   incr: (key: string) => Promise<unknown>;
-  scan?: (
-    cursor: number | string,
-    opts?: { match?: string; count?: number },
-  ) => Promise<[number | string, string[]]>;
   del?: (...keys: string[]) => Promise<unknown>;
 };
-
-async function scanAndDeleteCalendarPattern(
-  client: CalendarRedisInvalidationClient,
-  pattern: string,
-): Promise<void> {
-  if (typeof client.scan !== "function" || typeof client.del !== "function") {
-    return;
-  }
-  let cursor: number | string = 0;
-  let iterations = 0;
-  do {
-    const result: [number | string, string[]] = await withRedisTimeout<
-      [number | string, string[]]
-    >(
-      client.scan(cursor, { match: pattern, count: 100 }),
-      `invalidateRedisCalendar.scan:${pattern}`,
-    );
-    const nextCursor: number | string | undefined = result?.[0];
-    const keys: string[] = Array.isArray(result?.[1]) ? result[1] : [];
-    if (keys.length > 0) {
-      await withRedisTimeout(
-        client.del(...keys),
-        `invalidateRedisCalendar.del:${pattern}`,
-      );
-    }
-    cursor = nextCursor ?? 0;
-    iterations += 1;
-  } while (String(cursor) !== "0" && iterations < 25);
-}
 
 export async function invalidateRedisCalendar(
   redisOverride?: CalendarRedisInvalidationClient | null,
@@ -3035,10 +3040,6 @@ export async function invalidateRedisCalendar(
       client.incr(CALENDAR_GEN_KEY),
       "invalidateRedisCalendar",
     );
-    await Promise.allSettled([
-      scanAndDeleteCalendarPattern(client, `${CALENDAR_TODAY_REDIS_KEY_PREFIX}*`),
-      scanAndDeleteCalendarPattern(client, `${CALENDAR_WEEK_REDIS_KEY_PREFIX}*`),
-    ]);
   } catch (err) {
     console.warn(
       "[redis] Falha ao invalidar cache do calendário:",
@@ -3058,7 +3059,7 @@ export async function invalidateRedisCalendar(
  *   - hikari:catalog:jikan-episodes:gen:id:v1:<id>
  * ============================================================================ */
 
-export type RedisEvalClient = Pick<Redis, "eval" | "del" | "keys">;
+export type RedisEvalClient = Pick<Redis, "eval" | "del">;
 
 export const CREDITS_REDIS_KEY_PREFIX = "hikari:catalog:credits:v1:";
 export const CREDITS_GLOBAL_GEN_KEY = "hikari:catalog:credits:gen:global:v1";
@@ -3460,19 +3461,6 @@ export async function invalidateRedisAnimeCredits(
         ),
         "invalidateRedisAnimeCredits.incrGlobalGen",
       );
-      const keys = await withRedisTimeout(
-        client.keys(`${CREDITS_REDIS_KEY_PREFIX}*`),
-        "invalidateRedisAnimeCredits.keys",
-      );
-      if (Array.isArray(keys) && keys.length > 0) {
-        const CHUNK_SIZE = 200;
-        for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
-          await withRedisTimeout(
-            client.del(...keys.slice(i, i + CHUNK_SIZE)),
-            "invalidateRedisAnimeCredits.del",
-          );
-        }
-      }
     }
   } catch (err) {
     console.warn(
@@ -3664,19 +3652,6 @@ export async function invalidateRedisAnimeJikanEpisodes(
         ),
         "invalidateRedisAnimeJikanEpisodes.incrGlobalGen",
       );
-      const keys = await withRedisTimeout(
-        client.keys(`${JIKAN_EPISODES_REDIS_KEY_PREFIX}*`),
-        "invalidateRedisAnimeJikanEpisodes.keys",
-      );
-      if (Array.isArray(keys) && keys.length > 0) {
-        const CHUNK_SIZE = 200;
-        for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
-          await withRedisTimeout(
-            client.del(...keys.slice(i, i + CHUNK_SIZE)),
-            "invalidateRedisAnimeJikanEpisodes.del",
-          );
-        }
-      }
     }
   } catch (err) {
     console.warn(

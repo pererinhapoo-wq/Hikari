@@ -148,6 +148,34 @@ export const Route = createFileRoute("/api/admin/catalog-season")({
           const lookup = await findCanonicalCatalogAnime(sql, { id: animeId });
           const targetAnimeId = lookup.canonicalId ?? animeId;
 
+          const seasonEpRows = await sql.query<{
+            id: string;
+            seasonNumber: number | null;
+            number: number;
+          }>(
+            `SELECT "id", "seasonNumber", "number"
+             FROM "catalog_episode"
+             WHERE "animeId" = $1 AND "seasonNumber" = $2;`,
+            [targetAnimeId, seasonNumber],
+          );
+
+          if (seasonEpRows.length > 0) {
+            const histJson = JSON.stringify(
+              seasonEpRows.map((ep) => ({
+                episodeId: ep.id,
+                seasonNumber: Number(ep.seasonNumber ?? seasonNumber),
+                number: Number(ep.number),
+              })),
+            );
+            await sql.query(
+              `UPDATE "catalog_anime"
+               SET "episode_history" = COALESCE("episode_history", '[]'::jsonb) || $2::jsonb,
+                   "updatedAt" = CURRENT_TIMESTAMP
+               WHERE "id" = $1;`,
+              [targetAnimeId, histJson],
+            );
+          }
+
           // 1. Deletar a linha correspondente em catalog_season
           const seasonResult = await sql.query<{ number: number }>(
             `DELETE FROM "catalog_season"
@@ -163,6 +191,14 @@ export const Route = createFileRoute("/api/admin/catalog-season")({
              RETURNING "id";`,
             [targetAnimeId, seasonNumber],
           );
+
+          const deletedEpIds = episodeResult.map((e) => e.id);
+          if (deletedEpIds.length > 0) {
+            await sql.query(
+              `DELETE FROM "episode_sources" WHERE "episode_id" = ANY($1);`,
+              [deletedEpIds],
+            );
+          }
 
           const invalidationAliases = await resolveSeasonInvalidationAliases(sql, targetAnimeId);
           await invalidateCatalogEpisodesCacheAsync(animeId, ...invalidationAliases);

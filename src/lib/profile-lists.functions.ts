@@ -2,6 +2,13 @@ import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import {
+  extractIdentityFromSnapshot,
+  findCanonicalCatalogAnime,
+  inferIsDubbedFromTitles,
+  resolveAnimeCandidateIdsFromDb,
+  resolveCatalogMetadataMap,
+} from "@/lib/anime-identity.server";
+import {
   createProfileListSchema,
   updateProfileListSchema,
   deleteProfileListSchema,
@@ -58,6 +65,7 @@ export const optionalAuthMiddleware = createMiddleware({ type: "function" })
  */
 function buildAnimeSnapshot(
   catalogRow: {
+    id?: string;
     title: string;
     titleRomaji: string | null;
     titleEnglish: string | null;
@@ -68,9 +76,36 @@ function buildAnimeSnapshot(
     year: number | null;
     episodesCount: number | null;
     status: string | null;
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
   } | null,
   inputSnapshot?: AnimeSnapshot | null,
 ): AnimeSnapshot {
+  const anilistId =
+    catalogRow?.anilistId !== undefined && catalogRow?.anilistId !== null
+      ? Number(catalogRow.anilistId)
+      : inputSnapshot?.anilistId !== undefined && inputSnapshot?.anilistId !== null
+        ? Number(inputSnapshot.anilistId)
+        : null;
+  const malId =
+    catalogRow?.malId !== undefined && catalogRow?.malId !== null
+      ? Number(catalogRow.malId)
+      : inputSnapshot?.malId !== undefined && inputSnapshot?.malId !== null
+        ? Number(inputSnapshot.malId)
+        : null;
+  const kitsuId =
+    catalogRow?.kitsuId !== undefined && catalogRow?.kitsuId !== null
+      ? Number(catalogRow.kitsuId)
+      : inputSnapshot?.kitsuId !== undefined && inputSnapshot?.kitsuId !== null
+        ? Number(inputSnapshot.kitsuId)
+        : null;
+  const serverCatalogId =
+    (typeof catalogRow?.id === "string" && catalogRow.id.trim()) ||
+    (typeof inputSnapshot?.serverCatalogId === "string" &&
+      inputSnapshot.serverCatalogId.trim()) ||
+    null;
+
   return {
     title: catalogRow?.title ?? inputSnapshot?.title?.trim() ?? "Sem título",
     titleRomaji:
@@ -101,6 +136,10 @@ function buildAnimeSnapshot(
       inputSnapshot?.score !== undefined && inputSnapshot?.score !== null
         ? Number(inputSnapshot.score)
         : null,
+    anilistId,
+    malId,
+    kitsuId,
+    serverCatalogId,
   };
 }
 
@@ -304,11 +343,19 @@ export const getMyProfileLists = createServerFn({
         (
           SELECT json_agg(sub.cover)
           FROM (
-            SELECT COALESCE(ca."cover", (sub_item."animeSnapshot"->>'cover')) AS cover
+            SELECT COALESCE(ca."cover", ca_alias."cover", (sub_item."animeSnapshot"->>'cover')) AS cover
             FROM "user_custom_list_item" sub_item
-            LEFT JOIN "catalog_anime" ca ON ca."id" = sub_item."animeId"
+            LEFT JOIN "catalog_anime" ca
+              ON ca."id" = sub_item."animeId"
+             AND ca."archived_at" IS NULL
+            LEFT JOIN "catalog_anime_id_alias" cal
+              ON ca."id" IS NULL
+             AND cal."old_id" = sub_item."animeId"
+            LEFT JOIN "catalog_anime" ca_alias
+              ON ca_alias."id" = cal."current_id"
+             AND ca_alias."archived_at" IS NULL
             WHERE sub_item."listId" = ucl."id"
-              AND COALESCE(ca."cover", (sub_item."animeSnapshot"->>'cover')) IS NOT NULL
+              AND COALESCE(ca."cover", ca_alias."cover", (sub_item."animeSnapshot"->>'cover')) IS NOT NULL
             ORDER BY sub_item."position" ASC
             LIMIT 4
           ) sub
@@ -400,11 +447,19 @@ export const getPublicProfileLists = createServerFn({
         (
           SELECT json_agg(sub.cover)
           FROM (
-            SELECT COALESCE(ca."cover", (sub_item."animeSnapshot"->>'cover')) AS cover
+            SELECT COALESCE(ca."cover", ca_alias."cover", (sub_item."animeSnapshot"->>'cover')) AS cover
             FROM "user_custom_list_item" sub_item
-            LEFT JOIN "catalog_anime" ca ON ca."id" = sub_item."animeId"
+            LEFT JOIN "catalog_anime" ca
+              ON ca."id" = sub_item."animeId"
+             AND ca."archived_at" IS NULL
+            LEFT JOIN "catalog_anime_id_alias" cal
+              ON ca."id" IS NULL
+             AND cal."old_id" = sub_item."animeId"
+            LEFT JOIN "catalog_anime" ca_alias
+              ON ca_alias."id" = cal."current_id"
+             AND ca_alias."archived_at" IS NULL
             WHERE sub_item."listId" = ucl."id"
-              AND COALESCE(ca."cover", (sub_item."animeSnapshot"->>'cover')) IS NOT NULL
+              AND COALESCE(ca."cover", ca_alias."cover", (sub_item."animeSnapshot"->>'cover')) IS NOT NULL
             ORDER BY sub_item."position" ASC
             LIMIT 4
           ) sub
@@ -542,7 +597,7 @@ export const getProfileListDetails = createServerFn({
         ca."episodesCount" AS "catalogEpisodesCount",
         ca."status" AS "catalogStatus"
       FROM "user_custom_list_item" ucli
-      LEFT JOIN "catalog_anime" ca ON ca."id" = ucli."animeId"
+      LEFT JOIN "catalog_anime" ca ON ca."id" = ucli."animeId" AND ca."archived_at" IS NULL
       WHERE ucli."listId" = $1
       ORDER BY ucli."position" ASC, ucli."addedAt" ASC;
     `;
@@ -565,6 +620,14 @@ export const getProfileListDetails = createServerFn({
       catalogStatus: string | null;
     }>(itemsQuery, [listId]);
 
+    const missingMetadataIds = itemRows
+      .filter((r) => !r.catalogTitle)
+      .map((r) => r.animeId);
+    const resolvedMetaMap =
+      missingMetadataIds.length > 0
+        ? await resolveCatalogMetadataMap(sql, missingMetadataIds)
+        : new Map();
+
     const items: ProfileListItem[] = itemRows.map((row) => {
       let snapshotObj: AnimeSnapshot | null = null;
       if (
@@ -581,40 +644,54 @@ export const getProfileListDetails = createServerFn({
         }
       }
 
+      const resolvedMeta = !row.catalogTitle
+        ? resolvedMetaMap.get(row.animeId)
+        : undefined;
+
       const title =
         row.catalogTitle ||
+        resolvedMeta?.title ||
         (typeof snapshotObj?.title === "string" ? snapshotObj.title : null) ||
         "Sem título";
 
       const cover =
         row.catalogCover ||
+        resolvedMeta?.cover ||
         (typeof snapshotObj?.cover === "string" ? snapshotObj.cover : null);
 
       const banner =
         row.catalogBanner ||
+        resolvedMeta?.banner ||
         (typeof snapshotObj?.banner === "string" ? snapshotObj.banner : null);
 
       const format =
         row.catalogFormat ||
+        resolvedMeta?.format ||
         (typeof snapshotObj?.format === "string" ? snapshotObj.format : null);
 
       const year =
         row.catalogYear !== null && row.catalogYear !== undefined
           ? Number(row.catalogYear)
-          : typeof snapshotObj?.year === "number"
-            ? snapshotObj.year
-            : null;
+          : resolvedMeta?.year !== null && resolvedMeta?.year !== undefined
+            ? Number(resolvedMeta.year)
+            : typeof snapshotObj?.year === "number"
+              ? snapshotObj.year
+              : null;
 
       const episodesCount =
         row.catalogEpisodesCount !== null &&
         row.catalogEpisodesCount !== undefined
           ? Number(row.catalogEpisodesCount)
-          : typeof snapshotObj?.episodesCount === "number"
-            ? snapshotObj.episodesCount
-            : null;
+          : resolvedMeta?.episodesCount !== null &&
+              resolvedMeta?.episodesCount !== undefined
+            ? Number(resolvedMeta.episodesCount)
+            : typeof snapshotObj?.episodesCount === "number"
+              ? snapshotObj.episodesCount
+              : null;
 
       const status =
         row.catalogStatus ||
+        resolvedMeta?.status ||
         (typeof snapshotObj?.status === "string" ? snapshotObj.status : null);
 
       const score =
@@ -632,16 +709,19 @@ export const getProfileListDetails = createServerFn({
         title,
         titleRomaji:
           row.catalogTitleRomaji ||
+          resolvedMeta?.titleRomaji ||
           (typeof snapshotObj?.titleRomaji === "string"
             ? snapshotObj.titleRomaji
             : null),
         titleEnglish:
           row.catalogTitleEnglish ||
+          resolvedMeta?.titleEnglish ||
           (typeof snapshotObj?.titleEnglish === "string"
             ? snapshotObj.titleEnglish
             : null),
         titleNative:
           row.catalogTitleNative ||
+          resolvedMeta?.titleNative ||
           (typeof snapshotObj?.titleNative === "string"
             ? snapshotObj.titleNative
             : null),
@@ -704,18 +784,44 @@ export const addAnimeToProfileList = createServerFn({
       throw new Error("Você não tem permissão para modificar esta lista.");
     }
 
-    // 2. Validação rápida de duplicata
+    // 2. Resolve ID canônico ativo via alias/identificadores externos/título inequívoco
+    const snapIdentity = extractIdentityFromSnapshot(animeSnapshot, animeId);
+    const canonicalLookup = await findCanonicalCatalogAnime(sql, {
+      id: animeId,
+      serverCatalogId: snapIdentity.serverCatalogId,
+      anilistId: snapIdentity.anilistId,
+      malId: snapIdentity.malId,
+      kitsuId: snapIdentity.kitsuId,
+      title: animeSnapshot?.title ?? null,
+      titleRomaji: animeSnapshot?.titleRomaji ?? null,
+      titleEnglish: animeSnapshot?.titleEnglish ?? null,
+      titleNative: animeSnapshot?.titleNative ?? null,
+      format: animeSnapshot?.format ?? null,
+      year: animeSnapshot?.year ?? null,
+      isDubbed: inferIsDubbedFromTitles(snapIdentity),
+    });
+    const canonicalAnimeId = canonicalLookup.canonicalId || animeId;
+    const candidateRes = await resolveAnimeCandidateIdsFromDb(
+      sql,
+      canonicalAnimeId,
+    );
+    const duplicateCandidateIds = Array.from(
+      new Set([animeId, canonicalAnimeId, ...candidateRes.candidateIds]),
+    );
+
+    // 3. Validação rápida de duplicata em todos os IDs candidatos
     const duplicateCheck = await sql.query<{ animeId: string }>(
-      `SELECT "animeId" FROM "user_custom_list_item" WHERE "listId" = $1 AND "animeId" = $2 LIMIT 1`,
-      [listId, animeId],
+      `SELECT "animeId" FROM "user_custom_list_item" WHERE "listId" = $1 AND "animeId" = ANY($2::text[]) LIMIT 1`,
+      [listId, duplicateCandidateIds],
     );
 
     if (duplicateCheck.length > 0) {
       throw new Error("Este anime já está nesta lista.");
     }
 
-    // 3. Consulta catálogo oficial (se existir) para complementar snapshot
+    // 4. Consulta catálogo oficial ativo para complementar snapshot
     const catalogRows = await sql.query<{
+      id: string;
       title: string;
       titleRomaji: string | null;
       titleEnglish: string | null;
@@ -726,16 +832,21 @@ export const addAnimeToProfileList = createServerFn({
       year: number | null;
       episodesCount: number | null;
       status: string | null;
+      anilistId: number | null;
+      malId: number | null;
+      kitsuId: number | null;
     }>(
-      `SELECT "title", "titleRomaji", "titleEnglish", "titleNative", "cover", "banner", "format", "year", "episodesCount", "status"
-       FROM "catalog_anime" WHERE "id" = $1 LIMIT 1`,
-      [animeId],
+      `SELECT "id", "title", "titleRomaji", "titleEnglish", "titleNative", "cover", "banner", "format", "year", "episodesCount", "status", "anilistId", "malId", "kitsuId"
+       FROM "catalog_anime"
+       WHERE "id" = $1 AND "archived_at" IS NULL
+       LIMIT 1`,
+      [canonicalAnimeId],
     );
 
     const catalogRow = catalogRows[0] ?? null;
     const cleanSnapshot = buildAnimeSnapshot(catalogRow, animeSnapshot);
 
-    // 4. Inserção atômica com bloqueio da lista e cálculo da próxima posição
+    // 5. Inserção atômica com bloqueio da lista e cálculo da próxima posição
     const insertQuery = `
       WITH list_lock AS (
         SELECT "id" FROM "user_custom_list"
@@ -766,7 +877,7 @@ export const addAnimeToProfileList = createServerFn({
       }>(insertQuery, [
         listId,
         userId,
-        animeId,
+        canonicalAnimeId,
         JSON.stringify(cleanSnapshot),
       ]);
 
@@ -852,6 +963,10 @@ export const removeAnimeFromProfileList = createServerFn({
       const { listId, animeId } = data;
 
       const sql = await getSql();
+      const resolvedCandidates = await resolveAnimeCandidateIdsFromDb(sql, animeId);
+      const candidateAnimeIds = Array.from(
+        new Set([animeId, ...resolvedCandidates.candidateIds]),
+      );
 
       const deleteQuery = `
       WITH list_lock AS (
@@ -862,14 +977,14 @@ export const removeAnimeFromProfileList = createServerFn({
       DELETE FROM "user_custom_list_item" ucli
       USING list_lock ll
       WHERE ucli."listId" = ll."id"
-        AND ucli."animeId" = $3
+        AND ucli."animeId" = ANY($3::text[])
       RETURNING ucli."animeId", ucli."position";
     `;
 
       const deletedRows = await sql.query<{
         animeId: string;
         position: number;
-      }>(deleteQuery, [listId, userId, animeId]);
+      }>(deleteQuery, [listId, userId, candidateAnimeIds]);
 
       if (deletedRows.length === 0) {
         const listCheck = await sql.query<{ id: string; userId: string }>(
@@ -895,7 +1010,7 @@ export const removeAnimeFromProfileList = createServerFn({
       return {
         success: true,
         listId,
-        removedAnimeId: animeId,
+        removedAnimeId: deletedRows[0].animeId || animeId,
       };
     },
   );

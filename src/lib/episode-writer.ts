@@ -1143,3 +1143,15 @@ export function dismissOutboxOperation(operationId: string): void {
   const filtered = ops.filter((o) => o.id !== operationId);
   writeOutbox(filtered);
 }
+
+/**
+ * Remove todas as operações pendentes do Outbox associadas a um anime específico.
+ */
+export function clearOutboxForAnime(animeId: string): void {
+  if (!animeId) return;
+  const ops = readOutbox();
+  const filtered = ops.filter((o) => o.animeId !== animeId);
+  if (filtered.length !== ops.length) {
+    writeOutbox(filtered);
+  }
+}

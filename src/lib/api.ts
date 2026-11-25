@@ -698,7 +698,7 @@ export async function invalidateServerCatalogCachesAsync(
   const canIncrCalendarRedis =
     !redisOverride || typeof (redisOverride as { incr?: unknown }).incr === "function";
   await Promise.allSettled([
-    invalidateRedisAnimeDetail(animeId, externalIds),
+    invalidateRedisAnimeDetail(animeId, externalIds, redisOverride),
     invalidateRedisAnimeCredits(animeId, externalIds, redisOverride),
     invalidateRedisAnimeJikanEpisodes(animeId, externalIds, redisOverride),
     ...(canIncrCalendarRedis ? [invalidateRedisCalendar()] : []),

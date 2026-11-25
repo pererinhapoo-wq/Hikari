@@ -20,6 +20,7 @@ import {
   type AnimeTrackingStatsSummary,
   createEmptyTrackingStatsSummary,
 } from "@/types/profile-tracking";
+import { resolveCatalogMetadataMap } from "@/lib/anime-identity.server";
 
 export type SectionPrivacyLevel = "public" | "followers" | "private";
 export type AccountType = "public" | "private";
@@ -1393,6 +1394,7 @@ export async function executeGetComments(
       c."userId",
       COALESCE(u."name", 'Usuário') AS "userName",
       u."image" AS "userImage",
+      ca."title" AS "catalogTitle",
       COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime indisponível') AS "animeTitle",
       COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "animeCover",
       (
@@ -1412,7 +1414,7 @@ export async function executeGetComments(
       END AS "liked"
     FROM "comment" c
     LEFT JOIN "user" u ON u."id" = c."userId"
-    LEFT JOIN "catalog_anime" ca ON ca."id" = c."animeId"
+    LEFT JOIN "catalog_anime" ca ON ca."id" = c."animeId" AND ca."archived_at" IS NULL
     LEFT JOIN "user_anime_tracking" uat ON uat."userId" = c."userId" AND uat."animeId" = c."animeId"
     WHERE c."userId" = $1
     ORDER BY c."createdAt" DESC, c."id" DESC
@@ -1437,6 +1439,7 @@ export async function executeGetComments(
       userId: string;
       userName: string;
       userImage: string | null;
+      catalogTitle: string | null;
       animeTitle: string;
       animeCover: string | null;
       likes: number;
@@ -1444,12 +1447,34 @@ export async function executeGetComments(
     }>(selectQuery, [targetUserId, viewerUserId, safeLimit, offset]),
   ]);
 
+  const missingCommentAnimeIds = rows
+    .filter((r) => !r.catalogTitle)
+    .map((r) => r.animeId);
+  const commentMetaMap =
+    missingCommentAnimeIds.length > 0
+      ? await resolveCatalogMetadataMap(sql, missingCommentAnimeIds)
+      : new Map();
+
   const total = Number(countRows[0]?.total || 0);
   const totalPages = Math.ceil(total / safeLimit) || 1;
 
   const items: MyProfileComment[] = rows.map((comment) => {
-    let animeTitle = comment.animeTitle || "Anime indisponível";
-    let animeCover = comment.animeCover || null;
+    const { catalogTitle: _catalogTitle, ...restComment } = comment;
+    const resolvedMeta = !comment.catalogTitle
+      ? commentMetaMap.get(comment.animeId)
+      : undefined;
+
+    let animeTitle =
+      comment.catalogTitle ||
+      resolvedMeta?.title ||
+      (comment.animeTitle && comment.animeTitle !== "Anime indisponível"
+        ? comment.animeTitle
+        : "") ||
+      "Anime indisponível";
+    let animeCover = comment.animeCover || resolvedMeta?.cover || null;
+    if (resolvedMeta?.cover && !comment.catalogTitle) {
+      animeCover = resolvedMeta.cover;
+    }
 
     if (animeTitle === "Anime indisponível" || !animeTitle) {
       const fallback = FALLBACK_ANIMES.find((a) => a.id === comment.animeId);
@@ -1464,7 +1489,8 @@ export async function executeGetComments(
     }
 
     return {
-      ...comment,
+      ...restComment,
+      animeId: resolvedMeta?.isActive ? resolvedMeta.canonicalId : comment.animeId,
       createdAt:
         comment.createdAt instanceof Date
           ? comment.createdAt.toISOString()
@@ -1614,7 +1640,7 @@ export async function executeGetUserActivities(
             'status', uat."status"
           )::text AS "metadata"
         FROM "user_watched_episode" uwe
-        LEFT JOIN "catalog_anime" ca ON ca."id" = uwe."animeId"
+        LEFT JOIN "catalog_anime" ca ON ca."id" = uwe."animeId" AND ca."archived_at" IS NULL
         LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uwe."userId" AND uat."animeId" = uwe."animeId"
         WHERE uwe."userId" = $1
           AND (
@@ -1682,7 +1708,7 @@ export async function executeGetUserActivities(
             'episodesWatched', uat."episodesWatched"
           )::text AS "metadata"
         FROM "user_anime_tracking" uat
-        LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+        LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId" AND ca."archived_at" IS NULL
         WHERE uat."userId" = $1
           AND (
             $8::timestamptz IS NULL
@@ -1710,14 +1736,14 @@ export async function executeGetUserActivities(
             ELSE 'Adicionou aos favoritos'
           END AS "description",
           COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "resourceId",
-          COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name", 'Favorito') AS "resourceTitle",
-          COALESCE(ca."cover", cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl", NULL) AS "resourceCover",
+          COALESCE(ca."title", (uf."animeSnapshot"->>'title'), cc."name", cs."name", cco."name", cp."name", 'Favorito') AS "resourceTitle",
+          COALESCE(ca."cover", (uf."animeSnapshot"->>'cover'), cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl", NULL) AS "resourceCover",
           uf."targetType" AS "resourceType",
           json_build_object(
             'targetType', uf."targetType"
           )::text AS "metadata"
         FROM "user_favorite" uf
-        LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
+        LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId" AND ca."archived_at" IS NULL
         LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
         LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
         LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
@@ -1782,7 +1808,7 @@ export async function executeGetUserActivities(
           )::text AS "metadata"
         FROM "user_custom_list_item" ucli
         INNER JOIN "user_custom_list" ucl ON ucl."id" = ucli."listId"
-        LEFT JOIN "catalog_anime" ca ON ca."id" = ucli."animeId"
+        LEFT JOIN "catalog_anime" ca ON ca."id" = ucli."animeId" AND ca."archived_at" IS NULL
         WHERE ucl."userId" = $1
           AND ($3::boolean = true)
           AND ($2::boolean = true OR ucl."isPublic" = true)
@@ -1902,6 +1928,14 @@ export async function executeGetUserActivities(
     nextCursor = `${lastDate}_${lastRow.id}`;
   }
 
+  const animeActivityIds = rows
+    .filter((r) => r.resourceType === "anime" && r.resourceId)
+    .map((r) => r.resourceId);
+  const activityMetaMap =
+    animeActivityIds.length > 0
+      ? await resolveCatalogMetadataMap(sql, animeActivityIds)
+      : new Map();
+
   const items: UserActivityItem[] = rows.map((r) => {
     let parsedMetadata = undefined;
     if (r.metadata) {
@@ -1913,11 +1947,32 @@ export async function executeGetUserActivities(
       }
     }
 
+    const resolvedMeta =
+      r.resourceType === "anime" ? activityMetaMap.get(r.resourceId) : undefined;
+
     let resourceTitle = r.resourceTitle || "Item";
     let resourceCover = r.resourceCover || null;
+    let resourceId = r.resourceId;
 
-    if (r.resourceType === "anime" && (!resourceTitle || resourceTitle === "Anime")) {
-      const fallback = FALLBACK_ANIMES.find((a) => a.id === r.resourceId);
+    if (r.resourceType === "anime") {
+      if (resolvedMeta?.isActive) {
+        resourceId = resolvedMeta.canonicalId;
+        resourceTitle = resolvedMeta.title || resourceTitle;
+        resourceCover = resolvedMeta.cover || resourceCover;
+      } else if (
+        resolvedMeta &&
+        (!resourceTitle || resourceTitle === "Anime" || resourceTitle === "Favorito")
+      ) {
+        resourceTitle = resolvedMeta.title || resourceTitle;
+        resourceCover = resolvedMeta.cover || resourceCover;
+      }
+    }
+
+    if (
+      r.resourceType === "anime" &&
+      (!resourceTitle || resourceTitle === "Anime" || resourceTitle === "Favorito")
+    ) {
+      const fallback = FALLBACK_ANIMES.find((a) => a.id === resourceId || a.id === r.resourceId);
       if (fallback) {
         resourceTitle =
           fallback.titles?.romaji ||
@@ -1936,7 +1991,7 @@ export async function executeGetUserActivities(
           ? r.createdAt.toISOString()
           : String(r.createdAt),
       description: r.description,
-      resourceId: r.resourceId,
+      resourceId,
       resourceTitle,
       resourceCover,
       resourceType: r.resourceType,

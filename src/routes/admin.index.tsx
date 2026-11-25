@@ -60,6 +60,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  clearOutboxForAnime,
   dismissOutboxOperation,
   flushOutbox,
   hasPendingWrites,
@@ -2030,9 +2031,10 @@ function AdminIndex() {
                       );
                     }
 
+                    clearOutboxForAnime(pendingDelete);
                     removeAnime(pendingDelete);
                     toast.success(
-                      "Anime excluído com sucesso do servidor e do dispositivo.",
+                      "Anime arquivado/excluído com preservação de histórico de usuários.",
                     );
                     invalidateAdminDashboardCache();
                     void checkSystem(true);

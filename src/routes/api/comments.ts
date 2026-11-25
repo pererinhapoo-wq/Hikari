@@ -8,6 +8,10 @@ import {
   buildBannedCommentResponse,
   getActiveUserBan,
 } from "@/lib/moderation-bans.server";
+import {
+  resolveAnimeCandidateIdsFromDb,
+  resolveEquivalentEpisodeIdsFromDb,
+} from "@/lib/anime-identity.server";
 
 export const Route = createFileRoute("/api/comments")({
   server: {
@@ -159,19 +163,43 @@ export const Route = createFileRoute("/api/comments")({
             ? await getActiveUserBan(sql, currentUserId).catch(() => null)
             : null;
 
+          const resolvedIdentity = await resolveAnimeCandidateIdsFromDb(
+            sql,
+            animeId,
+          );
+          const candidateAnimeIds =
+            resolvedIdentity.candidateIds.length > 0
+              ? resolvedIdentity.candidateIds
+              : [animeId];
+          const candidateAnimeIdSet = new Set(candidateAnimeIds);
+
+          const resolvedEpisode = episodeId
+            ? await resolveEquivalentEpisodeIdsFromDb(
+                sql,
+                candidateAnimeIds,
+                episodeId,
+              )
+            : null;
+          const candidateEpisodeIds = resolvedEpisode
+            ? resolvedEpisode.candidateEpisodeIds
+            : null;
+          const candidateEpisodeIdSet = candidateEpisodeIds
+            ? new Set(candidateEpisodeIds)
+            : null;
+
           // 1. Contagens totais (todos os comentários vs comentários principais)
-          const countParams: unknown[] = [animeId];
+          const countParams: unknown[] = [candidateAnimeIds];
           let countSql = `
             select
               count(*)::int as "totalCount",
               count(*) filter (where c."parentId" is null)::int as "totalRoots",
               to_char(CURRENT_TIMESTAMP at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "serverTime"
             from "comment" c
-            where c."animeId" = $1
+            where c."animeId" = any($1::text[])
           `;
-          if (episodeId) {
-            countSql += ' and c."episodeId" = $2';
-            countParams.push(episodeId);
+          if (candidateEpisodeIds && candidateEpisodeIds.length > 0) {
+            countSql += ' and c."episodeId" = any($2::text[])';
+            countParams.push(candidateEpisodeIds);
           }
           const countRows: any[] = (await sql.query(countSql, countParams)) as any[];
           const totalCount = Number(countRows[0]?.totalCount) || 0;
@@ -220,8 +248,9 @@ export const Route = createFileRoute("/api/comments")({
             }
             if (
               rootCandidate &&
-              String(rootCandidate.animeId) === animeId &&
-              (!episodeId || String(rootCandidate.episodeId) === episodeId)
+              candidateAnimeIdSet.has(String(rootCandidate.animeId)) &&
+              (!candidateEpisodeIdSet ||
+                candidateEpisodeIdSet.has(String(rootCandidate.episodeId)))
             ) {
               targetFound = true;
               resolvedTargetRootId = String(rootCandidate.id);
@@ -231,14 +260,14 @@ export const Route = createFileRoute("/api/comments")({
           }
 
           // 3. Seleção dos comentários principais (parentId IS NULL) aplicando o cursor
-          const rootParams: unknown[] = [animeId];
+          const rootParams: unknown[] = [candidateAnimeIds];
           let paramIndex = 2;
           let episodeFilterC = "";
           let episodeFilterR = "";
-          if (episodeId) {
-            episodeFilterC = `and c."episodeId" = $${paramIndex}`;
-            episodeFilterR = `and r."episodeId" = $${paramIndex}`;
-            rootParams.push(episodeId);
+          if (candidateEpisodeIds && candidateEpisodeIds.length > 0) {
+            episodeFilterC = `and c."episodeId" = any($${paramIndex}::text[])`;
+            episodeFilterR = `and r."episodeId" = any($${paramIndex}::text[])`;
+            rootParams.push(candidateEpisodeIds);
             paramIndex++;
           }
 
@@ -255,7 +284,7 @@ export const Route = createFileRoute("/api/comments")({
                   count(*) filter (where cl."type" = 'dislike')::int as "dislikes"
                 from "comment_like" cl
                 inner join "comment" c on c."id" = cl."commentId"
-                where c."animeId" = $1 ${episodeFilterC} and c."parentId" is null
+                where c."animeId" = any($1::text[]) ${episodeFilterC} and c."parentId" is null
                 group by cl."commentId"
               ),
               reply_counts_root as (
@@ -263,7 +292,7 @@ export const Route = createFileRoute("/api/comments")({
                   r."parentId" as "rootId",
                   count(*)::int as "repliesCount"
                 from "comment" r
-                where r."animeId" = $1 ${episodeFilterR} and r."parentId" is not null
+                where r."animeId" = any($1::text[]) ${episodeFilterR} and r."parentId" is not null
                 group by r."parentId"
               )
               select
@@ -274,7 +303,7 @@ export const Route = createFileRoute("/api/comments")({
               from "comment" c
               left join like_counts_root lc on lc."commentId" = c."id"
               left join reply_counts_root rc on rc."rootId" = c."id"
-              where c."animeId" = $1
+              where c."animeId" = any($1::text[])
                 ${episodeFilterC}
                 and c."parentId" is null
               order by "highlightScore" desc, c."createdAt" desc, c."id" desc
@@ -300,7 +329,7 @@ export const Route = createFileRoute("/api/comments")({
                 to_char(c."createdAt" at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "createdAtIso",
                 c."createdAt"
               from "comment" c
-              where c."animeId" = $1
+              where c."animeId" = any($1::text[])
                 ${episodeFilterC}
                 and c."parentId" is null
                 ${cursorClause}
@@ -656,6 +685,29 @@ export const Route = createFileRoute("/api/comments")({
             );
           }
 
+          const resolvedPostAnime = await resolveAnimeCandidateIdsFromDb(
+            sql,
+            animeId,
+          );
+          const targetAnimeId = resolvedPostAnime.canonicalId || animeId;
+          const postAnimeCandidates =
+            resolvedPostAnime.candidateIds.length > 0
+              ? resolvedPostAnime.candidateIds
+              : [animeId];
+          const postAnimeIdSet = new Set(postAnimeCandidates);
+
+          const resolvedPostEp =
+            episodeId === "anime"
+              ? { canonicalEpisodeId: "anime", candidateEpisodeIds: ["anime"] }
+              : await resolveEquivalentEpisodeIdsFromDb(
+                  sql,
+                  postAnimeCandidates,
+                  episodeId,
+                );
+          const targetEpisodeId =
+            resolvedPostEp.canonicalEpisodeId || episodeId;
+          const postEpIdSet = new Set(resolvedPostEp.candidateEpisodeIds);
+
           // Validação do comentário pai se for uma resposta
           let parentAuthorId: string | null = null;
           if (parentId) {
@@ -682,8 +734,8 @@ export const Route = createFileRoute("/api/comments")({
 
             const parent = parentRows[0];
             if (
-              String(parent.animeId) !== animeId ||
-              String(parent.episodeId) !== episodeId
+              !postAnimeIdSet.has(String(parent.animeId)) ||
+              !postEpIdSet.has(String(parent.episodeId))
             ) {
               return Response.json(
                 {
@@ -743,8 +795,8 @@ export const Route = createFileRoute("/api/comments")({
             [
               commentId,
               apiUser.id,
-              animeId,
-              episodeId,
+              targetAnimeId,
+              targetEpisodeId,
               rawContent,
               imageUrl,
               parentId,
@@ -753,8 +805,8 @@ export const Route = createFileRoute("/api/comments")({
           );
 
           await setTypingStatus(sql, {
-            animeId,
-            episodeId,
+            animeId: targetAnimeId,
+            episodeId: targetEpisodeId,
             userId: apiUser.id,
             active: false,
           }).catch(() => {});
@@ -788,8 +840,8 @@ export const Route = createFileRoute("/api/comments")({
                 type: "comment_reply",
                 message: replyMessage,
                 commentId,
-                animeId,
-                episodeId,
+                animeId: targetAnimeId,
+                episodeId: targetEpisodeId,
               });
             } catch (notifError) {
               console.error(
@@ -860,8 +912,8 @@ export const Route = createFileRoute("/api/comments")({
                       apiUser.id,
                       commentMessage,
                       commentId,
-                      animeId,
-                      episodeId,
+                      targetAnimeId,
+                      targetEpisodeId,
                       dedupKey,
                     );
                     paramIndex += 8;
@@ -901,8 +953,8 @@ export const Route = createFileRoute("/api/comments")({
 
           const createdComment = {
             id: commentId,
-            animeId,
-            episodeId,
+            animeId: targetAnimeId,
+            episodeId: targetEpisodeId,
             content: rawContent,
             imageUrl,
             parentId,

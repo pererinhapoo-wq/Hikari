@@ -40,11 +40,13 @@ export type CatalogAnimeIdAliasRow = {
   is_dubbed: boolean;
   episode_history: unknown;
   archived_at: string | null;
+  created_at?: string | null;
   updated_at: string | null;
 };
 
 export type IdentityMatchInput = {
   id?: string | null;
+  serverCatalogId?: string | null;
   anilistId?: number | null;
   malId?: number | null;
   kitsuId?: number | null;
@@ -201,6 +203,66 @@ export function areYearsCompatible(
   return Math.abs(ya - yb) <= 1;
 }
 
+/**
+ * Stricter fallback compatibility check when matching ONLY by normalized title
+ * (without matching AniList/MAL/Kitsu external IDs).
+ * - Never matches if known formats or years conflict.
+ * - Never matches if known external IDs on both sides explicitly conflict.
+ * - If either side lacks BOTH format and year, requires a non-trivial normalized
+ *   title (>= 6 chars) so short/ambiguous titles never auto-associate blindly.
+ */
+export function isTitleFallbackCompatible(
+  a: {
+    titleNorms: string[];
+    format?: string | null;
+    year?: number | null;
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
+  },
+  b: {
+    format?: string | null;
+    year?: number | null;
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
+  },
+): boolean {
+  if (!areFormatsCompatible(a.format, b.format)) return false;
+  if (!areYearsCompatible(a.year, b.year)) return false;
+
+  const aAnilist = parsePositiveIntId(a.anilistId);
+  const bAnilist = parsePositiveIntId(b.anilistId);
+  if (aAnilist !== null && bAnilist !== null && aAnilist !== bAnilist) return false;
+
+  const aMal = parsePositiveIntId(a.malId);
+  const bMal = parsePositiveIntId(b.malId);
+  if (aMal !== null && bMal !== null && aMal !== bMal) return false;
+
+  const aKitsu = parsePositiveIntId(a.kitsuId);
+  const bKitsu = parsePositiveIntId(b.kitsuId);
+  if (aKitsu !== null && bKitsu !== null && aKitsu !== bKitsu) return false;
+
+  const hasAFormat = Boolean(normalizeCatalogFormat(a.format));
+  const hasBFormat = Boolean(normalizeCatalogFormat(b.format));
+  const hasAYear = parseNullableYear(a.year) !== null;
+  const hasBYear = parseNullableYear(b.year) !== null;
+
+  const formatVerified = hasAFormat && hasBFormat;
+  const yearVerified = hasAYear && hasBYear;
+
+  if (formatVerified && yearVerified) {
+    return true;
+  }
+  if (formatVerified || yearVerified) {
+    // One attribute verified and the other doesn't conflict — safe for >= 4 char titles
+    return a.titleNorms.some((t) => t.length >= 4);
+  }
+
+  // Neither format nor year could be cross-checked on both sides: require distinctive title
+  return a.titleNorms.some((t) => t.length >= 6);
+}
+
 export function collectNormalizedTitles(input: {
   title?: string | null;
   titleRomaji?: string | null;
@@ -322,6 +384,7 @@ export function extractIdentityFromSnapshot(
 
   return {
     id: serverCatalogId ?? fallbackId ?? undefined,
+    serverCatalogId,
     anilistId,
     malId,
     kitsuId,
@@ -400,15 +463,15 @@ export async function resolveAliasChainTarget(
       };
     }
 
-    const aliasRows = await sql<CatalogAnimeIdAliasRow>`
+    const aliasRows: CatalogAnimeIdAliasRow[] = await sql<CatalogAnimeIdAliasRow>`
       SELECT "old_id", "current_id", "anilist_id", "mal_id", "kitsu_id",
              "title_norm", "format", "year", "is_dubbed", "episode_history",
-             "archived_at", "updated_at"
+             "archived_at", "created_at", "updated_at"
       FROM "catalog_anime_id_alias"
       WHERE "old_id" = ${cursor}
       LIMIT 1
     `;
-    const aliasRow = aliasRows[0];
+    const aliasRow: CatalogAnimeIdAliasRow | undefined = aliasRows[0];
     if (!aliasRow) {
       break;
     }
@@ -430,6 +493,134 @@ export async function resolveAliasChainTarget(
     aliasRecords,
     isCircular,
   };
+}
+
+/**
+ * Checks in application code (prior to DB trigger) whether writing
+ * `oldId -> currentId` in `catalog_anime_id_alias` would introduce a cycle.
+ */
+export async function wouldCreateAliasCycle(
+  sql: Sql,
+  oldId: string,
+  currentId: string | null,
+): Promise<boolean> {
+  const cleanOld = oldId.trim();
+  const cleanCurrent = currentId ? currentId.trim() : null;
+  if (!cleanOld || !cleanCurrent) return false;
+  if (cleanOld === cleanCurrent) return true;
+
+  let cursor: string | null = cleanCurrent;
+  const visited = new Set<string>([cleanOld]);
+
+  for (let hop = 0; hop < MAX_ALIAS_HOPS && cursor; hop += 1) {
+    if (visited.has(cursor)) {
+      return true;
+    }
+    visited.add(cursor);
+
+    const rows: Array<{ current_id: string | null }> = await sql<{ current_id: string | null }>`
+      SELECT "current_id"
+      FROM "catalog_anime_id_alias"
+      WHERE "old_id" = ${cursor}
+      LIMIT 1
+    `;
+    const next: string | null = rows[0]?.current_id?.trim() ?? null;
+    if (!next) break;
+    if (next === cleanOld || visited.has(next)) {
+      return true;
+    }
+    cursor = next;
+  }
+
+  return false;
+}
+
+/**
+ * Safely writes or updates an alias entry `oldId -> currentId` (or tombstone if `currentId === null`),
+ * preventing self-links and multi-hop cycles, and flattening any pre-existing aliases that pointed to `oldId`.
+ */
+export async function upsertAliasMapping(
+  sql: Sql,
+  params: {
+    oldId: string;
+    currentId: string | null;
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
+    titleNorm?: string | null;
+    format?: string | null;
+    year?: number | null;
+    isDubbed: boolean;
+    episodeHistory?: EpisodeHistoryEntry[];
+    archivedAt?: string | null;
+  },
+): Promise<{ written: boolean; cycleRejected: boolean }> {
+  const cleanOld = params.oldId.trim();
+  const cleanCurrent = params.currentId ? params.currentId.trim() : null;
+  if (!cleanOld) {
+    return { written: false, cycleRejected: false };
+  }
+  if (cleanCurrent && cleanCurrent === cleanOld) {
+    return { written: false, cycleRejected: true };
+  }
+  if (cleanCurrent && (await wouldCreateAliasCycle(sql, cleanOld, cleanCurrent))) {
+    return { written: false, cycleRejected: true };
+  }
+
+  const historyJson = JSON.stringify(params.episodeHistory ?? []);
+  await sql`
+    INSERT INTO "catalog_anime_id_alias" (
+      "old_id", "current_id", "anilist_id", "mal_id", "kitsu_id",
+      "title_norm", "format", "year", "is_dubbed", "episode_history",
+      "archived_at", "created_at", "updated_at"
+    )
+    VALUES (
+      ${cleanOld},
+      ${cleanCurrent},
+      ${params.anilistId ?? null},
+      ${params.malId ?? null},
+      ${params.kitsuId ?? null},
+      ${params.titleNorm ?? null},
+      ${params.format ?? null},
+      ${params.year ?? null},
+      ${Boolean(params.isDubbed)},
+      ${historyJson}::jsonb,
+      ${params.archivedAt ?? null}::timestamptz,
+      CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP
+    )
+    ON CONFLICT ("old_id") DO UPDATE SET
+      "current_id" = EXCLUDED."current_id",
+      "anilist_id" = COALESCE(EXCLUDED."anilist_id", "catalog_anime_id_alias"."anilist_id"),
+      "mal_id" = COALESCE(EXCLUDED."mal_id", "catalog_anime_id_alias"."mal_id"),
+      "kitsu_id" = COALESCE(EXCLUDED."kitsu_id", "catalog_anime_id_alias"."kitsu_id"),
+      "title_norm" = COALESCE(EXCLUDED."title_norm", "catalog_anime_id_alias"."title_norm"),
+      "format" = COALESCE(EXCLUDED."format", "catalog_anime_id_alias"."format"),
+      "year" = COALESCE(EXCLUDED."year", "catalog_anime_id_alias"."year"),
+      "is_dubbed" = EXCLUDED."is_dubbed",
+      "episode_history" = CASE
+        WHEN jsonb_array_length(EXCLUDED."episode_history") > 0 THEN EXCLUDED."episode_history"
+        ELSE "catalog_anime_id_alias"."episode_history"
+      END,
+      "archived_at" = CASE
+        WHEN EXCLUDED."current_id" IS NULL THEN COALESCE(EXCLUDED."archived_at", CURRENT_TIMESTAMP)
+        ELSE NULL
+      END,
+      "updated_at" = CURRENT_TIMESTAMP
+  `;
+
+  if (cleanCurrent) {
+    // Flatten existing aliases that previously pointed to cleanOld -> cleanCurrent directly
+    await sql`
+      UPDATE "catalog_anime_id_alias"
+      SET "current_id" = ${cleanCurrent},
+          "updated_at" = CURRENT_TIMESTAMP
+      WHERE "current_id" = ${cleanOld}
+        AND "old_id" <> ${cleanCurrent}
+    `;
+  }
+
+  return { written: true, cycleRejected: false };
 }
 
 /**
@@ -482,6 +673,9 @@ async function matchActiveCatalogByTitleAndAttributes(
     format?: string | null;
     year?: number | null;
     isDubbed: boolean | null;
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
   },
 ): Promise<{
   match: CatalogAnimeIdentityRow | null;
@@ -531,12 +725,6 @@ async function matchActiveCatalogByTitleAndAttributes(
     if (params.isDubbed !== null && rowDubbed !== params.isDubbed) {
       continue;
     }
-    if (!areFormatsCompatible(params.format, row.format)) {
-      continue;
-    }
-    if (!areYearsCompatible(params.year, row.year)) {
-      continue;
-    }
 
     const rowNormTitles = collectNormalizedTitles({
       title: row.title,
@@ -545,13 +733,39 @@ async function matchActiveCatalogByTitleAndAttributes(
       titleNative: row.titleNative,
     });
     const extraAliases = aliasTextByAnimeId.get(row.id) ?? [];
-    const hasTitleMatch =
-      rowNormTitles.some((t) => titleSet.has(t)) ||
-      extraAliases.some((t) => titleSet.has(t));
-
-    if (hasTitleMatch) {
-      candidates.push(row);
+    const matchedNorms = Array.from(
+      new Set([
+        ...rowNormTitles.filter((t) => titleSet.has(t)),
+        ...extraAliases.filter((t) => titleSet.has(t)),
+      ]),
+    );
+    if (matchedNorms.length === 0) {
+      continue;
     }
+
+    if (
+      !isTitleFallbackCompatible(
+        {
+          titleNorms: matchedNorms,
+          format: params.format,
+          year: params.year,
+          anilistId: params.anilistId,
+          malId: params.malId,
+          kitsuId: params.kitsuId,
+        },
+        {
+          format: row.format,
+          year: row.year,
+          anilistId: row.anilistId,
+          malId: row.malId,
+          kitsuId: row.kitsuId,
+        },
+      )
+    ) {
+      continue;
+    }
+
+    candidates.push(row);
   }
 
   if (candidates.length === 1) {
@@ -565,7 +779,7 @@ async function matchActiveCatalogByTitleAndAttributes(
 
 /**
  * Finds archived tombstones in `catalog_anime_id_alias` (`current_id IS NULL`)
- * matching external IDs or compatible title+format+year+isDubbed.
+ * matching external IDs or unambiguous compatible title+format+year+isDubbed.
  */
 export async function findMatchingTombstoneAliases(
   sql: Sql,
@@ -580,12 +794,14 @@ export async function findMatchingTombstoneAliases(
   const tombstones = await sql<CatalogAnimeIdAliasRow>`
     SELECT "old_id", "current_id", "anilist_id", "mal_id", "kitsu_id",
            "title_norm", "format", "year", "is_dubbed", "episode_history",
-           "archived_at", "updated_at"
+           "archived_at", "created_at", "updated_at"
     FROM "catalog_anime_id_alias"
     WHERE "current_id" IS NULL
+    ORDER BY COALESCE("archived_at", "updated_at") DESC
   `;
 
-  const matched: CatalogAnimeIdAliasRow[] = [];
+  const extMatched: CatalogAnimeIdAliasRow[] = [];
+  const titleMatched: CatalogAnimeIdAliasRow[] = [];
   const normSet = new Set(normTitles);
 
   for (const row of tombstones) {
@@ -599,7 +815,7 @@ export async function findMatchingTombstoneAliases(
       (kitsuId !== null && row.kitsu_id === kitsuId);
 
     if (extMatch) {
-      matched.push(row);
+      extMatched.push(row);
       continue;
     }
 
@@ -607,14 +823,47 @@ export async function findMatchingTombstoneAliases(
     if (
       rowNorm &&
       normSet.has(rowNorm) &&
-      areFormatsCompatible(input.format, row.format) &&
-      areYearsCompatible(input.year, row.year)
+      isTitleFallbackCompatible(
+        {
+          titleNorms: [rowNorm],
+          format: input.format,
+          year: input.year,
+          anilistId,
+          malId,
+          kitsuId,
+        },
+        {
+          format: row.format,
+          year: row.year,
+          anilistId: row.anilist_id,
+          malId: row.mal_id,
+          kitsuId: row.kitsu_id,
+        },
+      )
     ) {
-      matched.push(row);
+      titleMatched.push(row);
     }
   }
 
-  return matched;
+  if (extMatched.length > 0) {
+    return extMatched;
+  }
+
+  // Only return title-matched tombstones if they don't represent multiple conflicting identities
+  if (titleMatched.length > 1) {
+    const distinctExternalKeys = new Set(
+      titleMatched
+        .map((r) =>
+          [r.anilist_id ?? "", r.mal_id ?? "", r.kitsu_id ?? "", normalizeCatalogFormat(r.format), r.year ?? ""].join("|"),
+        )
+        .filter((k) => k !== "||||"),
+    );
+    if (distinctExternalKeys.size > 1) {
+      return [];
+    }
+  }
+
+  return titleMatched;
 }
 
 /**
@@ -633,7 +882,18 @@ export async function findCanonicalCatalogAnime(
   let lastAliasMetadata: IdentityMatchInput | null = null;
   let visitedChainIds: string[] = [];
 
-  if (rawId) {
+  const candidateLookupIds = Array.from(
+    new Set(
+      [
+        rawId,
+        typeof input.serverCatalogId === "string"
+          ? input.serverCatalogId.trim()
+          : "",
+      ].filter(Boolean),
+    ),
+  );
+
+  for (const lookupId of candidateLookupIds) {
     // 1. Direct active match
     const directRows = await sql<CatalogAnimeIdentityRow>`
       SELECT "id", "title", "anilistId", "malId", "kitsuId",
@@ -641,7 +901,7 @@ export async function findCanonicalCatalogAnime(
              "cover", "banner", "synopsis", "format", "status",
              "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
       FROM "catalog_anime"
-      WHERE "id" = ${rawId}
+      WHERE "id" = ${lookupId}
         AND "archived_at" IS NULL
       LIMIT 1
     `;
@@ -650,7 +910,9 @@ export async function findCanonicalCatalogAnime(
       return {
         canonicalId: directRows[0].id,
         row: directRows[0],
-        matchedBy: "id",
+        matchedBy: lookupId === rawId ? "id" : "alias",
+        resolvedFromAliasId:
+          rawId && rawId !== directRows[0].id ? rawId : undefined,
         aliasIds,
         ambiguous: false,
         archivedMatchIds: [],
@@ -658,15 +920,17 @@ export async function findCanonicalCatalogAnime(
     }
 
     // 2. Alias chain lookup
-    const chain = await resolveAliasChainTarget(sql, rawId);
-    visitedChainIds = chain.visitedIds;
+    const chain = await resolveAliasChainTarget(sql, lookupId);
+    if (visitedChainIds.length === 0) {
+      visitedChainIds = chain.visitedIds;
+    }
     if (chain.canonicalRow && chain.canonicalId) {
       const aliasIds = await getAllAliasIdsForCanonical(sql, chain.canonicalId);
       return {
         canonicalId: chain.canonicalId,
         row: chain.canonicalRow,
         matchedBy: "alias",
-        resolvedFromAliasId: rawId,
+        resolvedFromAliasId: rawId || lookupId,
         aliasIds: Array.from(new Set([...aliasIds, ...chain.visitedIds])).filter(
           (x) => x !== chain.canonicalId,
         ),
@@ -674,6 +938,11 @@ export async function findCanonicalCatalogAnime(
         archivedMatchIds: [],
       };
     }
+  }
+
+  if (rawId) {
+    const chain = await resolveAliasChainTarget(sql, rawId);
+    visitedChainIds = chain.visitedIds;
 
     // Check if an archived tombstone row exists for rawId (to recover metadata for re-resolution)
     if (chain.aliasRecords.length > 0) {
@@ -832,6 +1101,9 @@ export async function findCanonicalCatalogAnime(
       format: effectiveFormat,
       year: effectiveYear,
       isDubbed: effectiveDubbed,
+      anilistId: effectiveAnilistId,
+      malId: effectiveMalId,
+      kitsuId: effectiveKitsuId,
     });
     if (titleMatch.ambiguous) {
       return {
@@ -1020,16 +1292,289 @@ export async function discoverMatchingOrphanIdsFromUserTables(
     }
 
     const snapTitles = collectNormalizedTitles(snap);
+    const matchedNorms = snapTitles.filter((t) => normTitles.has(t));
     if (
-      snapTitles.some((t) => normTitles.has(t)) &&
-      areFormatsCompatible(target.format, snap.format) &&
-      areYearsCompatible(target.year, snap.year)
+      matchedNorms.length > 0 &&
+      isTitleFallbackCompatible(
+        {
+          titleNorms: matchedNorms,
+          format: target.format,
+          year: target.year,
+          anilistId,
+          malId,
+          kitsuId,
+        },
+        {
+          format: snap.format,
+          year: snap.year,
+          anilistId: snap.anilistId,
+          malId: snap.malId,
+          kitsuId: snap.kitsuId,
+        },
+      )
     ) {
       matchedIds.add(candidateId);
     }
   }
 
   return Array.from(matchedIds);
+}
+
+export type ReregistrationTargetResolution = {
+  targetId: string;
+  reusedOriginalId: boolean;
+  matchedBy: "active_id" | "active_alias" | "active_external" | "active_title" | "archived_reuse" | "tombstone_reuse" | "new";
+  sourceOldIds: string[];
+  mergedEpisodeHistory: EpisodeHistoryEntry[];
+};
+
+/**
+ * Resolves the canonical internal ID to use when an admin creates, saves, or imports an anime.
+ * Order of precedence:
+ * 1. Existing active `catalog_anime` (exact ID, alias chain, external ID with same sub/dub version, or unambiguous title+format+year+isDubbed).
+ * 2. Archived `catalog_anime` (`archived_at IS NOT NULL`) matching ID, external ID, or unambiguous title+format+year+isDubbed — reuses original ID when safe & compatible!
+ * 3. Historical tombstone in `catalog_anime_id_alias` (`current_id IS NULL`) — reuses original ID when safe & not held by another active anime.
+ * 4. Otherwise keeps `requestedId`.
+ */
+export async function resolveReregistrationTargetId(
+  sql: Sql,
+  input: IdentityMatchInput & { requestedId: string },
+): Promise<ReregistrationTargetResolution> {
+  const requestedId = input.requestedId.trim();
+  const isDubbed = Boolean(inferIsDubbedFromTitles(input));
+  const anilistId = parsePositiveIntId(input.anilistId);
+  const malId = parsePositiveIntId(input.malId);
+  const kitsuId = parsePositiveIntId(input.kitsuId);
+  const normTitles = collectNormalizedTitles(input);
+
+  // 1. Check exact active ID match
+  if (requestedId) {
+    const activeExact = await sql<CatalogAnimeIdentityRow>`
+      SELECT "id", "title", "anilistId", "malId", "kitsuId",
+             "titleRomaji", "titleEnglish", "titleNative",
+             "cover", "banner", "synopsis", "format", "status",
+             "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+      FROM "catalog_anime"
+      WHERE "id" = ${requestedId}
+        AND "archived_at" IS NULL
+      LIMIT 1
+    `;
+    if (activeExact[0]) {
+      const prevHist = parseEpisodeHistoryArray(activeExact[0].episode_history);
+      return {
+        targetId: activeExact[0].id,
+        reusedOriginalId: false,
+        matchedBy: "active_id",
+        sourceOldIds: [],
+        mergedEpisodeHistory: prevHist,
+      };
+    }
+  }
+
+  // 2. Check active alias/external/title resolution via findCanonicalCatalogAnime
+  const activeCanonical = await findCanonicalCatalogAnime(sql, {
+    ...input,
+    id: requestedId,
+    isDubbed,
+  });
+  if (activeCanonical.canonicalId && activeCanonical.row) {
+    const matchedBy =
+      activeCanonical.matchedBy === "alias"
+        ? "active_alias"
+        : activeCanonical.matchedBy === "external_id"
+          ? "active_external"
+          : "active_title";
+    const sourceOldIds = Array.from(
+      new Set([
+        ...(requestedId && requestedId !== activeCanonical.canonicalId ? [requestedId] : []),
+        ...activeCanonical.aliasIds,
+      ]),
+    );
+    return {
+      targetId: activeCanonical.canonicalId,
+      reusedOriginalId: activeCanonical.canonicalId !== requestedId,
+      matchedBy,
+      sourceOldIds,
+      mergedEpisodeHistory: parseEpisodeHistoryArray(activeCanonical.row.episode_history),
+    };
+  }
+
+  // 3. No active match: look for archived catalog_anime rows with matching is_dubbed
+  const archivedRows = await sql<CatalogAnimeIdentityRow>`
+    SELECT "id", "title", "anilistId", "malId", "kitsuId",
+           "titleRomaji", "titleEnglish", "titleNative",
+           "cover", "banner", "synopsis", "format", "status",
+           "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+    FROM "catalog_anime"
+    WHERE "archived_at" IS NOT NULL
+    ORDER BY "archived_at" DESC
+  `;
+
+  const compatibleArchivedByExt: CatalogAnimeIdentityRow[] = [];
+  const compatibleArchivedByTitle: CatalogAnimeIdentityRow[] = [];
+
+  for (const row of archivedRows) {
+    if (rowIsDubbed(row) !== isDubbed) continue;
+
+    if (requestedId && row.id === requestedId) {
+      // Exact archived ID match — verify it isn't a totally different anime
+      const conflictingExt =
+        (anilistId !== null && row.anilistId !== null && row.anilistId !== anilistId) ||
+        (malId !== null && row.malId !== null && row.malId !== malId) ||
+        (kitsuId !== null && row.kitsuId !== null && row.kitsuId !== kitsuId);
+      if (!conflictingExt) {
+        return {
+          targetId: row.id,
+          reusedOriginalId: true,
+          matchedBy: "archived_reuse",
+          sourceOldIds: [],
+          mergedEpisodeHistory: parseEpisodeHistoryArray(row.episode_history),
+        };
+      }
+    }
+
+    const extMatch =
+      (anilistId !== null && row.anilistId === anilistId) ||
+      (malId !== null && row.malId === malId) ||
+      (kitsuId !== null && row.kitsuId === kitsuId);
+
+    if (extMatch) {
+      compatibleArchivedByExt.push(row);
+      continue;
+    }
+
+    if (normTitles.length > 0) {
+      const rowNorms = collectNormalizedTitles(row);
+      const normSet = new Set(normTitles);
+      const matchedNorms = rowNorms.filter((t) => normSet.has(t));
+      if (
+        matchedNorms.length > 0 &&
+        isTitleFallbackCompatible(
+          {
+            titleNorms: matchedNorms,
+            format: input.format,
+            year: input.year,
+            anilistId,
+            malId,
+            kitsuId,
+          },
+          {
+            format: row.format,
+            year: row.year,
+            anilistId: row.anilistId,
+            malId: row.malId,
+            kitsuId: row.kitsuId,
+          },
+        )
+      ) {
+        compatibleArchivedByTitle.push(row);
+      }
+    }
+  }
+
+  // Pick candidate from archived catalog_anime
+  let archivedCandidates =
+    compatibleArchivedByExt.length > 0
+      ? compatibleArchivedByExt
+      : compatibleArchivedByTitle;
+
+  // Ambiguity check on title-only archived candidates: if >1 distinct identities, abort auto-reuse
+  if (compatibleArchivedByExt.length === 0 && compatibleArchivedByTitle.length > 1) {
+    const distinctKeys = new Set(
+      compatibleArchivedByTitle.map((r) =>
+        [r.anilistId ?? "", r.malId ?? "", r.kitsuId ?? "", normalizeCatalogFormat(r.format), r.year ?? ""].join("|"),
+      ),
+    );
+    if (distinctKeys.size > 1) {
+      archivedCandidates = [];
+    }
+  }
+
+  const tombstones = await findMatchingTombstoneAliases(sql, {
+    ...input,
+    isDubbed,
+  });
+
+  if (archivedCandidates.length > 0) {
+    // Prefer exact requestedId if present among candidates, else most recently archived
+    const chosen =
+      archivedCandidates.find((r) => r.id === requestedId) ??
+      archivedCandidates[0];
+    let mergedHistory = parseEpisodeHistoryArray(chosen.episode_history);
+    const sourceOldIds = new Set<string>();
+    for (const c of archivedCandidates) {
+      mergedHistory = mergeEpisodeHistory(
+        mergedHistory,
+        parseEpisodeHistoryArray(c.episode_history),
+      );
+      if (c.id !== chosen.id) sourceOldIds.add(c.id);
+    }
+    for (const t of tombstones) {
+      mergedHistory = mergeEpisodeHistory(
+        mergedHistory,
+        parseEpisodeHistoryArray(t.episode_history),
+      );
+      if (t.old_id !== chosen.id) sourceOldIds.add(t.old_id);
+    }
+    if (requestedId && requestedId !== chosen.id) {
+      sourceOldIds.add(requestedId);
+    }
+    return {
+      targetId: chosen.id,
+      reusedOriginalId: true,
+      matchedBy: "archived_reuse",
+      sourceOldIds: Array.from(sourceOldIds),
+      mergedEpisodeHistory: mergedHistory,
+    };
+  }
+
+  // 4. Fallback: check tombstone aliases from pre-soft-archive deletes
+  if (tombstones.length > 0) {
+    let reusableTombstoneId: string | null = null;
+    for (const t of tombstones) {
+      const existingActive = await sql<{ id: string }>`
+        SELECT "id" FROM "catalog_anime"
+        WHERE "id" = ${t.old_id} AND "archived_at" IS NULL
+        LIMIT 1
+      `;
+      if (!existingActive[0]) {
+        reusableTombstoneId = t.old_id;
+        break;
+      }
+    }
+
+    const chosenId = reusableTombstoneId || requestedId;
+    let mergedHistory: EpisodeHistoryEntry[] = [];
+    const sourceOldIds = new Set<string>();
+    for (const t of tombstones) {
+      mergedHistory = mergeEpisodeHistory(
+        mergedHistory,
+        parseEpisodeHistoryArray(t.episode_history),
+      );
+      if (t.old_id !== chosenId) sourceOldIds.add(t.old_id);
+    }
+    if (requestedId && requestedId !== chosenId) {
+      sourceOldIds.add(requestedId);
+    }
+
+    if (chosenId) {
+      return {
+        targetId: chosenId,
+        reusedOriginalId: Boolean(reusableTombstoneId),
+        matchedBy: "tombstone_reuse",
+        sourceOldIds: Array.from(sourceOldIds),
+        mergedEpisodeHistory: mergedHistory,
+      };
+    }
+  }
+
+  return {
+    targetId: requestedId,
+    reusedOriginalId: false,
+    matchedBy: "new",
+    sourceOldIds: [],
+    mergedEpisodeHistory: [],
+  };
 }
 
 /**
@@ -1131,10 +1676,22 @@ export async function reconcileAnimeIdentityReferences(
       .map((r) => r.completedAt)
       .filter((d): d is string => Boolean(d))
       .sort();
+    const STATUS_RANK: Record<string, number> = {
+      completed: 5,
+      watching: 4,
+      on_hold: 3,
+      dropped: 2,
+      planning: 1,
+    };
     const mergedStatus =
-      freshest.status ||
-      group.find((r) => r.status === "completed")?.status ||
-      "planning";
+      group
+        .slice()
+        .sort((a, b) => {
+          const rankDiff =
+            (STATUS_RANK[b.status] ?? 0) - (STATUS_RANK[a.status] ?? 0);
+          if (rankDiff !== 0) return rankDiff;
+          return toEpochMs(b.updatedAt) - toEpochMs(a.updatedAt);
+        })[0]?.status || "planning";
     const mergedSnapObj =
       params.canonicalSnapshot ??
       (group.find((r) => r.animeSnapshot && typeof r.animeSnapshot === "object")
@@ -1314,26 +1871,18 @@ export async function reconcileAnimeIdentityReferences(
   `;
 
   const bySeasonNum = new Map<string, string>();
-  const byNumberOnly = new Map<number, string | null>();
   for (const ep of currentEpisodes) {
     const s = Number(ep.seasonNumber ?? 1);
     const n = Number(ep.number);
     bySeasonNum.set(`${s}:${n}`, ep.id);
-    if (byNumberOnly.has(n)) {
-      byNumberOnly.set(n, null); // ambiguous across multiple seasons
-    } else {
-      byNumberOnly.set(n, ep.id);
-    }
   }
 
-  const mapEpisodeId = (oldEpId: string, epNumber: number): string => {
+  const mapEpisodeId = (oldEpId: string): string => {
     const meta = oldEpMeta.get(oldEpId);
     if (meta) {
       const exact = bySeasonNum.get(`${meta.seasonNumber}:${meta.number}`);
       if (exact) return exact;
     }
-    const fallbackByNum = byNumberOnly.get(Number(epNumber));
-    if (fallbackByNum) return fallbackByNum;
     return oldEpId;
   };
 
@@ -1368,7 +1917,7 @@ export async function reconcileAnimeIdentityReferences(
     const groupedProgress = new Map<string, ProgressAgg>();
 
     for (const row of progressRows) {
-      const mappedEpId = mapEpisodeId(row.episodeId, row.episodeNumber);
+      const mappedEpId = mapEpisodeId(row.episodeId);
       const key = `${row.userId}::${mappedEpId}`;
       const needsRewrite =
         row.animeId !== canonicalId || mappedEpId !== row.episodeId;
@@ -1507,7 +2056,7 @@ export async function reconcileAnimeIdentityReferences(
     const groupedWatched = new Map<string, WatchedAgg>();
 
     for (const row of watchedRows) {
-      const mappedEpId = mapEpisodeId(row.episodeId, row.episodeNumber);
+      const mappedEpId = mapEpisodeId(row.episodeId);
       const key = `${row.userId}::${mappedEpId}`;
       const needsRewrite =
         row.animeId !== canonicalId || mappedEpId !== row.episodeId;
@@ -1641,6 +2190,16 @@ export async function reconcileAnimeIdentityReferences(
     `;
     migratedNotifications += 1;
   }
+
+  // 8. Reconcile unauthenticated/lightweight `progress` table rows when episode IDs changed
+  const progressEpPairs: Array<{ oldEpId: string; newEpId: string }> = [];
+  for (const [oldEpId, meta] of oldEpMeta.entries()) {
+    const mappedEp = bySeasonNum.get(`${meta.seasonNumber}:${meta.number}`);
+    if (mappedEp && mappedEp !== oldEpId) {
+      progressEpPairs.push({ oldEpId, newEpId: mappedEp });
+    }
+  }
+  await remapSimpleProgressEpisodeIds(sql, progressEpPairs);
 
   return {
     migratedTrackingUsers,
@@ -1877,5 +2436,488 @@ export async function reconcileEpisodeIdentityReferences(
       AND "episodeId" = ANY(${matchingOldEpisodeIds})
   `;
 
+  await remapSimpleProgressEpisodeIds(
+    sql,
+    matchingOldEpisodeIds.map((oldEpId) => ({ oldEpId, newEpId: episodeId })),
+  );
+
   return { remappedOldEpisodeIds: matchingOldEpisodeIds };
+}
+
+async function remapSimpleProgressEpisodeIds(
+  sql: Sql,
+  pairs: Array<{ oldEpId: string; newEpId: string }>,
+): Promise<void> {
+  const validPairs = pairs.filter(
+    (p) => p.oldEpId && p.newEpId && p.oldEpId !== p.newEpId,
+  );
+  if (validPairs.length === 0) return;
+
+  for (const { oldEpId, newEpId } of validPairs) {
+    const existing = await sql<{
+      user_key: string;
+      episode_id: string;
+      position: number;
+      duration: number;
+      updated_at: string;
+    }>`
+      SELECT "user_key", "episode_id", "position", "duration", "updated_at"::text
+      FROM "progress"
+      WHERE "episode_id" IN (${oldEpId}, ${newEpId})
+      ORDER BY "updated_at" DESC
+    `;
+
+    if (existing.length === 0) continue;
+
+    const byUser = new Map<string, typeof existing>();
+    for (const r of existing) {
+      const list = byUser.get(r.user_key) ?? [];
+      list.push(r);
+      byUser.set(r.user_key, list);
+    }
+
+    for (const [userKey, group] of byUser.entries()) {
+      if (!group.some((r) => r.episode_id === oldEpId)) continue;
+      const mergedDuration = Math.max(
+        0,
+        ...group.map((r) => Math.trunc(Number(r.duration ?? 0))),
+      );
+      let mergedPosition = Math.max(
+        0,
+        ...group.map((r) => Math.trunc(Number(r.position ?? 0))),
+      );
+      if (mergedDuration > 0) {
+        mergedPosition = Math.min(mergedPosition, mergedDuration);
+      }
+      const freshest = group[0];
+
+      await sql`
+        DELETE FROM "progress"
+        WHERE "user_key" = ${userKey}
+          AND "episode_id" IN (${oldEpId}, ${newEpId})
+      `;
+
+      await sql`
+        INSERT INTO "progress" ("user_key", "episode_id", "position", "duration", "updated_at")
+        VALUES (
+          ${userKey},
+          ${newEpId},
+          ${mergedPosition},
+          ${mergedDuration},
+          ${freshest.updated_at}::timestamptz
+        )
+        ON CONFLICT ("user_key", "episode_id") DO UPDATE SET
+          "position" = GREATEST("progress"."position", EXCLUDED."position"),
+          "duration" = GREATEST("progress"."duration", EXCLUDED."duration"),
+          "updated_at" = GREATEST("progress"."updated_at", EXCLUDED."updated_at")
+      `;
+    }
+  }
+}
+
+export type ResolvedCatalogMetadata = {
+  requestedId: string;
+  canonicalId: string;
+  isActive: boolean;
+  title: string;
+  titleRomaji: string | null;
+  titleEnglish: string | null;
+  titleNative: string | null;
+  cover: string | null;
+  banner: string | null;
+  format: string | null;
+  status: string | null;
+  episodesCount: number | null;
+  year: number | null;
+  anilistId: number | null;
+  malId: number | null;
+  kitsuId: number | null;
+};
+
+/**
+ * Batch-resolves catalog metadata for a list of `animeId`s (which may include
+ * old/deleted IDs, alias chains, archived IDs, or external prefix IDs).
+ * Prioritizes active `catalog_anime` rows (both direct & via `catalog_anime_id_alias`),
+ * and only falls back to archived/tombstone metadata with `isActive: false` when
+ * no active target exists.
+ */
+export async function resolveCatalogMetadataMap(
+  sql: Sql,
+  rawIds: Array<string | null | undefined>,
+): Promise<Map<string, ResolvedCatalogMetadata>> {
+  const uniqueIds = Array.from(
+    new Set(
+      rawIds
+        .map((x) => (typeof x === "string" ? x.trim() : ""))
+        .filter(Boolean),
+    ),
+  );
+  const result = new Map<string, ResolvedCatalogMetadata>();
+  if (uniqueIds.length === 0) return result;
+
+  // 1. Direct lookup on catalog_anime (both active & archived)
+  const directRows = await sql<CatalogAnimeIdentityRow>`
+    SELECT "id", "title", "anilistId", "malId", "kitsuId",
+           "titleRomaji", "titleEnglish", "titleNative",
+           "cover", "banner", "synopsis", "format", "status",
+           "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+    FROM "catalog_anime"
+    WHERE "id" = ANY(${uniqueIds})
+  `;
+
+  const rowById = new Map<string, CatalogAnimeIdentityRow>();
+  for (const r of directRows) {
+    rowById.set(r.id, r);
+  }
+
+  // 2. Follow alias chains for any requested ID missing or archived
+  const unresolvedForAlias = uniqueIds.filter((id) => {
+    const row = rowById.get(id);
+    return !row || row.archived_at !== null;
+  });
+
+  const aliasChainTargetById = new Map<string, string>();
+  const tombstoneById = new Map<string, CatalogAnimeIdAliasRow>();
+
+  if (unresolvedForAlias.length > 0) {
+    let frontier = [...unresolvedForAlias];
+    const visited = new Set<string>(frontier);
+    const edges = new Map<string, CatalogAnimeIdAliasRow>();
+
+    for (let depth = 0; depth < 16 && frontier.length > 0; depth += 1) {
+      const aliasRows = await sql<CatalogAnimeIdAliasRow>`
+        SELECT "old_id", "current_id", "anilist_id", "mal_id", "kitsu_id",
+               "title_norm", "format", "year", "is_dubbed", "episode_history",
+               "archived_at", "created_at", "updated_at"
+        FROM "catalog_anime_id_alias"
+        WHERE "old_id" = ANY(${frontier})
+      `;
+      const nextFrontier: string[] = [];
+      for (const a of aliasRows) {
+        edges.set(a.old_id, a);
+        if (a.current_id && !visited.has(a.current_id)) {
+          visited.add(a.current_id);
+          nextFrontier.push(a.current_id);
+        }
+      }
+      frontier = nextFrontier;
+    }
+
+    const terminalCandidateIds = new Set<string>();
+    for (const startId of unresolvedForAlias) {
+      let cur: string | null = startId;
+      const seen = new Set<string>();
+      let lastRow: CatalogAnimeIdAliasRow | undefined;
+      while (cur && !seen.has(cur)) {
+        seen.add(cur);
+        const edge = edges.get(cur);
+        if (!edge) break;
+        lastRow = edge;
+        if (!edge.current_id) {
+          cur = null;
+          break;
+        }
+        cur = edge.current_id;
+      }
+      if (cur && cur !== startId) {
+        aliasChainTargetById.set(startId, cur);
+        terminalCandidateIds.add(cur);
+      }
+      if (lastRow) {
+        tombstoneById.set(startId, lastRow);
+      }
+    }
+
+    const missingTerminalIds = Array.from(terminalCandidateIds).filter(
+      (id) => !rowById.has(id),
+    );
+    if (missingTerminalIds.length > 0) {
+      const termRows = await sql<CatalogAnimeIdentityRow>`
+        SELECT "id", "title", "anilistId", "malId", "kitsuId",
+               "titleRomaji", "titleEnglish", "titleNative",
+               "cover", "banner", "synopsis", "format", "status",
+               "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+        FROM "catalog_anime"
+        WHERE "id" = ANY(${missingTerminalIds})
+      `;
+      for (const r of termRows) {
+        rowById.set(r.id, r);
+      }
+    }
+  }
+
+  // 3. External prefix fallback for IDs still without an active catalog row
+  const stillMissingActive = uniqueIds.filter((id) => {
+    const direct = rowById.get(id);
+    if (direct && direct.archived_at === null) return false;
+    const aliasedId = aliasChainTargetById.get(id);
+    const aliasedRow = aliasedId ? rowById.get(aliasedId) : undefined;
+    return !aliasedRow || aliasedRow.archived_at !== null;
+  });
+
+  const extMatchByRequestedId = new Map<string, CatalogAnimeIdentityRow>();
+  if (stillMissingActive.length > 0) {
+    const anilistLookups: number[] = [];
+    const malLookups: number[] = [];
+    const kitsuLookups: number[] = [];
+    const parsedByReq = new Map<
+      string,
+      { anilistId: number | null; malId: number | null; kitsuId: number | null; isDubbedHint: boolean | null }
+    >();
+
+    for (const id of stillMissingActive) {
+      const parsed = extractIdentityFromSnapshot(null, id);
+      const direct = rowById.get(id);
+      const tomb = tombstoneById.get(id);
+      const aId = parsed.anilistId ?? direct?.anilistId ?? tomb?.anilist_id ?? null;
+      const mId = parsed.malId ?? direct?.malId ?? tomb?.mal_id ?? null;
+      const kId = parsed.kitsuId ?? direct?.kitsuId ?? tomb?.kitsu_id ?? null;
+      const dubbedHint = direct
+        ? rowIsDubbed(direct)
+        : tomb
+          ? tomb.is_dubbed
+          : null;
+      parsedByReq.set(id, { anilistId: aId, malId: mId, kitsuId: kId, isDubbedHint: dubbedHint });
+      if (aId) anilistLookups.push(aId);
+      if (mId) malLookups.push(mId);
+      if (kId) kitsuLookups.push(kId);
+    }
+
+    if (anilistLookups.length > 0 || malLookups.length > 0 || kitsuLookups.length > 0) {
+      const extCandidates = await sql<CatalogAnimeIdentityRow>`
+        SELECT "id", "title", "anilistId", "malId", "kitsuId",
+               "titleRomaji", "titleEnglish", "titleNative",
+               "cover", "banner", "synopsis", "format", "status",
+               "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+        FROM "catalog_anime"
+        WHERE "archived_at" IS NULL
+          AND (
+            (${anilistLookups.length > 0}::boolean AND "anilistId" = ANY(${anilistLookups}))
+            OR (${malLookups.length > 0}::boolean AND "malId" = ANY(${malLookups}))
+            OR (${kitsuLookups.length > 0}::boolean AND "kitsuId" = ANY(${kitsuLookups}))
+          )
+      `;
+
+      for (const reqId of stillMissingActive) {
+        const ref = parsedByReq.get(reqId);
+        if (!ref) continue;
+        const matching = extCandidates.filter((c) => {
+          const idMatches =
+            (ref.anilistId !== null && c.anilistId === ref.anilistId) ||
+            (ref.malId !== null && c.malId === ref.malId) ||
+            (ref.kitsuId !== null && c.kitsuId === ref.kitsuId);
+          if (!idMatches) return false;
+          if (ref.isDubbedHint !== null) {
+            return rowIsDubbed(c) === ref.isDubbedHint;
+          }
+          return true;
+        });
+        if (matching.length === 1) {
+          extMatchByRequestedId.set(reqId, matching[0]);
+        } else if (matching.length > 1 && ref.isDubbedHint === null) {
+          const nonDub = matching.filter((m) => !rowIsDubbed(m));
+          if (nonDub.length === 1) {
+            extMatchByRequestedId.set(reqId, nonDub[0]);
+          }
+        }
+      }
+    }
+  }
+
+  for (const reqId of uniqueIds) {
+    const direct = rowById.get(reqId);
+    if (direct && direct.archived_at === null) {
+      result.set(reqId, {
+        requestedId: reqId,
+        canonicalId: direct.id,
+        isActive: true,
+        title: direct.title,
+        titleRomaji: direct.titleRomaji,
+        titleEnglish: direct.titleEnglish,
+        titleNative: direct.titleNative,
+        cover: direct.cover,
+        banner: direct.banner,
+        format: direct.format,
+        status: direct.status,
+        episodesCount: direct.episodesCount,
+        year: direct.year,
+        anilistId: direct.anilistId,
+        malId: direct.malId,
+        kitsuId: direct.kitsuId,
+      });
+      continue;
+    }
+
+    const aliasedId = aliasChainTargetById.get(reqId);
+    const aliasedRow = aliasedId ? rowById.get(aliasedId) : undefined;
+    if (aliasedRow && aliasedRow.archived_at === null) {
+      result.set(reqId, {
+        requestedId: reqId,
+        canonicalId: aliasedRow.id,
+        isActive: true,
+        title: aliasedRow.title,
+        titleRomaji: aliasedRow.titleRomaji,
+        titleEnglish: aliasedRow.titleEnglish,
+        titleNative: aliasedRow.titleNative,
+        cover: aliasedRow.cover,
+        banner: aliasedRow.banner,
+        format: aliasedRow.format,
+        status: aliasedRow.status,
+        episodesCount: aliasedRow.episodesCount,
+        year: aliasedRow.year,
+        anilistId: aliasedRow.anilistId,
+        malId: aliasedRow.malId,
+        kitsuId: aliasedRow.kitsuId,
+      });
+      continue;
+    }
+
+    const extMatch = extMatchByRequestedId.get(reqId);
+    if (extMatch && extMatch.archived_at === null) {
+      result.set(reqId, {
+        requestedId: reqId,
+        canonicalId: extMatch.id,
+        isActive: true,
+        title: extMatch.title,
+        titleRomaji: extMatch.titleRomaji,
+        titleEnglish: extMatch.titleEnglish,
+        titleNative: extMatch.titleNative,
+        cover: extMatch.cover,
+        banner: extMatch.banner,
+        format: extMatch.format,
+        status: extMatch.status,
+        episodesCount: extMatch.episodesCount,
+        year: extMatch.year,
+        anilistId: extMatch.anilistId,
+        malId: extMatch.malId,
+        kitsuId: extMatch.kitsuId,
+      });
+      continue;
+    }
+
+    // Fallback to archived catalog_anime row if no active catalog entry exists
+    const archivedOrTerm = aliasedRow ?? direct;
+    if (archivedOrTerm) {
+      result.set(reqId, {
+        requestedId: reqId,
+        canonicalId: archivedOrTerm.id,
+        isActive: false,
+        title: archivedOrTerm.title,
+        titleRomaji: archivedOrTerm.titleRomaji,
+        titleEnglish: archivedOrTerm.titleEnglish,
+        titleNative: archivedOrTerm.titleNative,
+        cover: archivedOrTerm.cover,
+        banner: archivedOrTerm.banner,
+        format: archivedOrTerm.format,
+        status: archivedOrTerm.status,
+        episodesCount: archivedOrTerm.episodesCount,
+        year: archivedOrTerm.year,
+        anilistId: archivedOrTerm.anilistId,
+        malId: archivedOrTerm.malId,
+        kitsuId: archivedOrTerm.kitsuId,
+      });
+      continue;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Resolves all equivalent `episodeId`s (active + historical `episode_history`)
+ * for a given `(candidateAnimeIds, episodeId)` by matching `(seasonNumber, number)`.
+ */
+export async function resolveEquivalentEpisodeIdsFromDb(
+  sql: Sql,
+  candidateAnimeIds: string[],
+  episodeId: string,
+): Promise<{ canonicalEpisodeId: string; candidateEpisodeIds: string[] }> {
+  const cleanEpId = episodeId.trim();
+  const cleanAnimeIds = Array.from(
+    new Set(candidateAnimeIds.map((x) => x.trim()).filter(Boolean)),
+  );
+  if (!cleanEpId) {
+    return { canonicalEpisodeId: "", candidateEpisodeIds: [] };
+  }
+  if (cleanAnimeIds.length === 0) {
+    return { canonicalEpisodeId: cleanEpId, candidateEpisodeIds: [cleanEpId] };
+  }
+
+  const [activeEpisodes, animeHistRows, aliasHistRows] = await Promise.all([
+    sql<{ id: string; animeId: string; seasonNumber: number | null; number: number }>`
+      SELECT "id", "animeId", "seasonNumber", "number"
+      FROM "catalog_episode"
+      WHERE "animeId" = ANY(${cleanAnimeIds})
+    `,
+    sql<{ episode_history: unknown }>`
+      SELECT "episode_history"
+      FROM "catalog_anime"
+      WHERE "id" = ANY(${cleanAnimeIds})
+    `,
+    sql<{ episode_history: unknown }>`
+      SELECT "episode_history"
+      FROM "catalog_anime_id_alias"
+      WHERE "old_id" = ANY(${cleanAnimeIds})
+         OR "current_id" = ANY(${cleanAnimeIds})
+    `,
+  ]);
+
+  let targetKey: { seasonNumber: number; number: number } | null = null;
+  const activeMatch = activeEpisodes.find((ep) => ep.id === cleanEpId);
+  if (activeMatch) {
+    targetKey = {
+      seasonNumber: Math.trunc(Number(activeMatch.seasonNumber ?? 1)),
+      number: Math.trunc(Number(activeMatch.number)),
+    };
+  }
+
+  let combinedHistory: EpisodeHistoryEntry[] = [];
+  for (const row of [...animeHistRows, ...aliasHistRows]) {
+    combinedHistory = mergeEpisodeHistory(
+      combinedHistory,
+      parseEpisodeHistoryArray(row.episode_history),
+    );
+  }
+
+  if (!targetKey) {
+    const histMatch = combinedHistory.find((entry) => entry.episodeId === cleanEpId);
+    if (histMatch) {
+      targetKey = {
+        seasonNumber: histMatch.seasonNumber,
+        number: histMatch.number,
+      };
+    }
+  }
+
+  if (!targetKey) {
+    return { canonicalEpisodeId: cleanEpId, candidateEpisodeIds: [cleanEpId] };
+  }
+
+  const equivalentIds = new Set<string>([cleanEpId]);
+  let canonicalEpId: string | null = null;
+
+  for (const ep of activeEpisodes) {
+    const s = Math.trunc(Number(ep.seasonNumber ?? 1));
+    const n = Math.trunc(Number(ep.number));
+    if (s === targetKey.seasonNumber && n === targetKey.number) {
+      equivalentIds.add(ep.id);
+      if (!canonicalEpId || ep.animeId === cleanAnimeIds[0]) {
+        canonicalEpId = ep.id;
+      }
+    }
+  }
+
+  for (const entry of combinedHistory) {
+    if (
+      entry.seasonNumber === targetKey.seasonNumber &&
+      entry.number === targetKey.number
+    ) {
+      equivalentIds.add(entry.episodeId);
+    }
+  }
+
+  return {
+    canonicalEpisodeId: canonicalEpId || cleanEpId,
+    candidateEpisodeIds: Array.from(equivalentIds),
+  };
 }

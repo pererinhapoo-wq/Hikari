@@ -407,6 +407,8 @@ export const Route = createFileRoute("/anime/$id")({
           params.id,
           remote?.id,
           remote?.serverCatalogId,
+          remote?.resolvedFromAliasId,
+          ...(remote?.resolvedAliasIds ?? []),
           remote?.anilistId != null ? String(remote.anilistId) : null,
           remote?.malId != null ? `mal-${remote.malId}` : null,
           remote?.malId != null ? String(remote.malId) : null,
@@ -830,6 +832,12 @@ function matchesRouteAnimeIdentifier(
   if (rawRemote.serverCatalogId && rawRemote.serverCatalogId === routeId) {
     return true;
   }
+  if (rawRemote.resolvedFromAliasId && rawRemote.resolvedFromAliasId === routeId) {
+    return true;
+  }
+  if (rawRemote.resolvedAliasIds && rawRemote.resolvedAliasIds.includes(routeId)) {
+    return true;
+  }
   if (rawRemote.anilistId != null && String(rawRemote.anilistId) === routeId) {
     return true;
   }
@@ -961,6 +969,24 @@ function AnimePageContent({
     [baseAnime, locals],
   );
 
+  const canonicalNavigate = useNavigate();
+
+  useEffect(() => {
+    if (
+      remote?.id &&
+      remote.id !== id &&
+      (remote.resolvedFromAliasId === id ||
+        Boolean(remote.resolvedAliasIds?.includes(id)))
+    ) {
+      void canonicalNavigate({
+        to: "/anime/$id",
+        params: { id: remote.id },
+        search: (prev) => prev,
+        replace: true,
+      });
+    }
+  }, [remote?.id, remote?.resolvedFromAliasId, remote?.resolvedAliasIds, id, canonicalNavigate]);
+
   const candidateAnimeIds = useMemo(() => {
     const raw = [
       baseAnime?.id,
@@ -970,6 +996,12 @@ function AnimePageContent({
       remote?.serverCatalogId,
       rawRemote?.serverCatalogId,
       baseAnime?.serverCatalogId,
+      remote?.resolvedFromAliasId,
+      ...(remote?.resolvedAliasIds ?? []),
+      rawRemote?.resolvedFromAliasId,
+      ...(rawRemote?.resolvedAliasIds ?? []),
+      baseAnime?.resolvedFromAliasId,
+      ...(baseAnime?.resolvedAliasIds ?? []),
       matchedLocalForIds?.id,
       baseAnime?.anilistId != null ? String(baseAnime.anilistId) : null,
       remote?.anilistId != null ? String(remote.anilistId) : null,
@@ -998,6 +1030,12 @@ function AnimePageContent({
     remote?.serverCatalogId,
     rawRemote?.serverCatalogId,
     baseAnime?.serverCatalogId,
+    remote?.resolvedFromAliasId,
+    remote?.resolvedAliasIds,
+    rawRemote?.resolvedFromAliasId,
+    rawRemote?.resolvedAliasIds,
+    baseAnime?.resolvedFromAliasId,
+    baseAnime?.resolvedAliasIds,
     matchedLocalForIds?.id,
     baseAnime?.anilistId,
     remote?.anilistId,

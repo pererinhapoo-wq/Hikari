@@ -4,6 +4,13 @@ import { getSql, type Sql } from "@/lib/db";
 import type { EvaluatedPrivacy } from "@/lib/profile.functions";
 import { getStudioLogo } from "@/lib/studio-logos";
 import {
+  extractIdentityFromSnapshot,
+  findCanonicalCatalogAnime,
+  inferIsDubbedFromTitles,
+  resolveAnimeCandidateIdsFromDb,
+  resolveCatalogMetadataMap,
+} from "@/lib/anime-identity.server";
+import {
   addFavoriteSchema,
   removeFavoriteSchema,
   reorderFavoritesSchema,
@@ -13,6 +20,90 @@ import {
   type ProfileFavoritesGrouped,
   type ProfileFavoritesResponse,
 } from "@/types/favorite";
+
+function parseJsonSnapshot(raw: unknown): Record<string, unknown> | null {
+  if (!raw) return null;
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function buildFavoriteAnimeSnapshot(
+  catalogRow: {
+    id?: string;
+    title?: string | null;
+    titleRomaji?: string | null;
+    titleEnglish?: string | null;
+    titleNative?: string | null;
+    cover?: string | null;
+    banner?: string | null;
+    synopsis?: string | null;
+    format?: string | null;
+    year?: number | null;
+    episodesCount?: number | null;
+    status?: string | null;
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
+  } | null,
+  inputSnapshot?: Record<string, unknown> | null,
+  fallbackId?: string,
+): Record<string, unknown> | null {
+  const snap = inputSnapshot ?? null;
+  const extracted = extractIdentityFromSnapshot(snap, fallbackId);
+  const title =
+    (catalogRow?.title && catalogRow.title.trim()) ||
+    (typeof snap?.title === "string" && snap.title.trim()) ||
+    null;
+  if (!catalogRow && !snap && !title) return null;
+  return {
+    title: title ?? fallbackId ?? "Sem título",
+    titleRomaji:
+      (catalogRow?.titleRomaji && catalogRow.titleRomaji.trim()) ||
+      extracted.titleRomaji ||
+      null,
+    titleEnglish:
+      (catalogRow?.titleEnglish && catalogRow.titleEnglish.trim()) ||
+      extracted.titleEnglish ||
+      null,
+    titleNative:
+      (catalogRow?.titleNative && catalogRow.titleNative.trim()) ||
+      extracted.titleNative ||
+      null,
+    cover:
+      catalogRow?.cover ??
+      (typeof snap?.cover === "string" ? snap.cover.trim() || null : null),
+    banner:
+      catalogRow?.banner ??
+      (typeof snap?.banner === "string" ? snap.banner.trim() || null : null),
+    synopsis:
+      catalogRow?.synopsis ??
+      (typeof snap?.synopsis === "string" ? snap.synopsis.trim() || null : null),
+    format: catalogRow?.format ?? extracted.format ?? null,
+    year: catalogRow?.year ?? extracted.year ?? null,
+    episodesCount:
+      catalogRow?.episodesCount ??
+      (typeof snap?.episodesCount === "number" ? snap.episodesCount : null),
+    status:
+      catalogRow?.status ??
+      (typeof snap?.status === "string" ? snap.status.trim() || null : null),
+    anilistId: catalogRow?.anilistId ?? extracted.anilistId ?? null,
+    malId: catalogRow?.malId ?? extracted.malId ?? null,
+    kitsuId: catalogRow?.kitsuId ?? extracted.kitsuId ?? null,
+    serverCatalogId: catalogRow?.id ?? extracted.serverCatalogId ?? fallbackId ?? null,
+  };
+}
 
 /**
  * Valida se a entidade existe na tabela de catálogo correspondente da Migration 0019.
@@ -61,40 +152,35 @@ async function assertCatalogEntityExists(
 
   switch (targetType) {
     case "anime": {
-      const titleToUse = snapshots?.anime?.title?.trim() || "";
-      const romajiToUse = snapshots?.anime?.titleRomaji?.trim() || "";
-      const englishToUse = snapshots?.anime?.titleEnglish?.trim() || "";
+      const snapIdent = extractIdentityFromSnapshot(snapshots?.anime, targetId);
+      const isDubbed = inferIsDubbedFromTitles(snapIdent);
+      const resolved = await findCanonicalCatalogAnime(sql, {
+        id: targetId,
+        serverCatalogId: snapIdent.serverCatalogId,
+        anilistId: snapIdent.anilistId,
+        malId: snapIdent.malId,
+        kitsuId: snapIdent.kitsuId,
+        title: snapshots?.anime?.title ?? null,
+        titleRomaji: snapshots?.anime?.titleRomaji ?? null,
+        titleEnglish: snapshots?.anime?.titleEnglish ?? null,
+        titleNative: snapshots?.anime?.titleNative ?? null,
+        format: snapshots?.anime?.format ?? null,
+        year: snapshots?.anime?.year ?? null,
+        isDubbed,
+      });
 
-      const kitsuMatch = targetId.match(/^kitsu-(\d+)$/i);
-      const parsedKitsuId = kitsuMatch ? parseInt(kitsuMatch[1], 10) : null;
-      const isNumeric = /^\d+$/.test(targetId);
-      const parsedNum = isNumeric ? parseInt(targetId, 10) : null;
+      if (resolved.canonicalId) {
+        canonicalId = resolved.canonicalId;
+        exists = true;
+        break;
+      }
 
-      let rows = await sql<{ id: string }>`
-        SELECT "id" FROM "catalog_anime"
-        WHERE "id" = ${targetId}
-          OR (${parsedKitsuId !== null} AND "kitsuId" = ${parsedKitsuId})
-          OR (${parsedNum !== null} AND ("anilistId" = ${parsedNum} OR "malId" = ${parsedNum}))
-          OR (${titleToUse.length > 0} AND (
-            LOWER("title") = LOWER(${titleToUse}) OR
-            LOWER(COALESCE("titleRomaji", '')) = LOWER(${titleToUse}) OR
-            LOWER(COALESCE("titleEnglish", '')) = LOWER(${titleToUse})
-          ))
-          OR (${romajiToUse.length > 0} AND (
-            LOWER("title") = LOWER(${romajiToUse}) OR
-            LOWER(COALESCE("titleRomaji", '')) = LOWER(${romajiToUse})
-          ))
-          OR (${englishToUse.length > 0} AND (
-            LOWER("title") = LOWER(${englishToUse}) OR
-            LOWER(COALESCE("titleEnglish", '')) = LOWER(${englishToUse})
-          ))
-        ORDER BY
-          CASE WHEN "id" = ${targetId} THEN 1 ELSE 2 END ASC,
-          "createdAt" ASC
-        LIMIT 1
+      // Garante apenas a existência da linha para integridade referencial caso ainda não exista no catálogo
+      const existingAny = await sql<{ id: string }>`
+        SELECT "id" FROM "catalog_anime" WHERE "id" = ${targetId} LIMIT 1
       `;
-      if (rows.length === 0) {
-        const finalTitle = titleToUse || targetId;
+      if (existingAny.length === 0) {
+        const finalTitle = snapshots?.anime?.title?.trim() || targetId;
         await sql.query(
           `INSERT INTO "catalog_anime" (
             "id", "title", "titleRomaji", "titleEnglish", "titleNative",
@@ -121,19 +207,14 @@ async function assertCatalogEntityExists(
             snapshots?.anime?.year ?? null,
             snapshots?.anime?.episodesCount ?? null,
             snapshots?.anime?.status ?? null,
-            parsedKitsuId,
-            parsedNum,
-            null,
+            snapIdent.kitsuId,
+            snapIdent.anilistId,
+            snapIdent.malId,
           ],
         );
-        rows = await sql<{ id: string }>`
-          SELECT "id" FROM "catalog_anime" WHERE "id" = ${targetId} LIMIT 1
-        `;
       }
-      if (rows.length > 0) {
-        canonicalId = rows[0].id;
-        exists = true;
-      }
+      canonicalId = targetId;
+      exists = true;
       break;
     }
     case "character": {
@@ -311,24 +392,61 @@ export const addProfileFavorite = createServerFn({
 
     const sql = await getSql();
 
-    // 2. Pré-validação de duplicata rápida e abrangente (por ID direto, ID canônico e correspondência de catálogo)
+    let candidateAnimeIds: string[] = [];
+    let animeSnapshotJson: string | null = null;
+    if (targetType === "anime") {
+      const [resFinal, resOrig, activeCatalogRows] = await Promise.all([
+        resolveAnimeCandidateIdsFromDb(sql, finalTargetId),
+        targetId !== finalTargetId
+          ? resolveAnimeCandidateIdsFromDb(sql, targetId)
+          : Promise.resolve({ canonicalId: null, candidateIds: [] as string[] }),
+        sql<{
+          id: string;
+          title: string;
+          titleRomaji: string | null;
+          titleEnglish: string | null;
+          titleNative: string | null;
+          cover: string | null;
+          banner: string | null;
+          synopsis: string | null;
+          format: string | null;
+          year: number | null;
+          episodesCount: number | null;
+          status: string | null;
+          anilistId: number | null;
+          malId: number | null;
+          kitsuId: number | null;
+        }>`
+          SELECT "id", "title", "titleRomaji", "titleEnglish", "titleNative",
+                 "cover", "banner", "synopsis", "format", "year", "episodesCount", "status",
+                 "anilistId", "malId", "kitsuId"
+          FROM "catalog_anime"
+          WHERE "id" = ${finalTargetId} AND "archived_at" IS NULL
+          LIMIT 1
+        `,
+      ]);
+      candidateAnimeIds = Array.from(
+        new Set([
+          finalTargetId,
+          targetId,
+          ...resFinal.candidateIds,
+          ...resOrig.candidateIds,
+        ]),
+      );
+      const snapObj = buildFavoriteAnimeSnapshot(
+        activeCatalogRows[0] ?? null,
+        (animeSnapshot as Record<string, unknown> | null) ?? null,
+        finalTargetId,
+      );
+      animeSnapshotJson = snapObj ? JSON.stringify(snapObj) : null;
+    }
+
+    // 2. Pré-validação de duplicata rápida e segura (com separação estrita sub/dub e alias)
     const duplicateCheck = await sql<{ id: string }>`
       SELECT uf."id" FROM "user_favorite" uf
       WHERE uf."userId" = ${userId}
         AND (
-          (${targetType} = 'anime' AND (
-            uf."animeId" = ${finalTargetId} OR
-            uf."animeId" = ${targetId} OR
-            uf."animeId" IN (
-              SELECT ca."id" FROM "catalog_anime" ca
-              WHERE ca."id" = ${finalTargetId}
-                OR (ca."anilistId" IS NOT NULL AND ca."anilistId" = (SELECT ca2."anilistId" FROM "catalog_anime" ca2 WHERE ca2."id" = ${finalTargetId}))
-                OR (ca."kitsuId" IS NOT NULL AND ca."kitsuId" = (SELECT ca2."kitsuId" FROM "catalog_anime" ca2 WHERE ca2."id" = ${finalTargetId}))
-                OR (LOWER(TRIM(ca."title")) = (SELECT LOWER(TRIM(ca3."title")) FROM "catalog_anime" ca3 WHERE ca3."id" = ${finalTargetId}))
-                OR (ca."titleRomaji" IS NOT NULL AND LOWER(TRIM(ca."titleRomaji")) = (SELECT LOWER(TRIM(ca4."titleRomaji")) FROM "catalog_anime" ca4 WHERE ca4."id" = ${finalTargetId}))
-                OR (ca."titleEnglish" IS NOT NULL AND LOWER(TRIM(ca."titleEnglish")) = (SELECT LOWER(TRIM(ca5."titleEnglish")) FROM "catalog_anime" ca5 WHERE ca5."id" = ${finalTargetId}))
-            )
-          )) OR
+          (${targetType} = 'anime' AND uf."animeId" = ANY(${candidateAnimeIds})) OR
           (${targetType} = 'character' AND (
             uf."characterId" = ${finalTargetId} OR
             uf."characterId" = ${targetId} OR
@@ -480,22 +598,16 @@ export const addProfileFavorite = createServerFn({
       INSERT INTO "user_favorite" (
         "id", "userId", "targetType",
         "animeId", "characterId", "studioId", "companyId", "personId",
-        "position"
+        "animeSnapshot", "position"
       )
-      SELECT $3, ul."id", $2, $4, $5, $6, $7, $8, np.pos
+      SELECT $3, ul."id", $2, $4, $5, $6, $7, $8, $9::jsonb, np.pos
       FROM user_lock ul
       CROSS JOIN next_pos np
       WHERE NOT EXISTS (
         SELECT 1 FROM "user_favorite" uf
         WHERE uf."userId" = $1
           AND (
-            ($2 = 'anime' AND (uf."animeId" = $4 OR uf."animeId" IN (
-              SELECT ca."id" FROM "catalog_anime" ca
-              WHERE ca."id" = $4
-                OR (ca."anilistId" IS NOT NULL AND ca."anilistId" = (SELECT ca2."anilistId" FROM "catalog_anime" ca2 WHERE ca2."id" = $4))
-                OR (ca."kitsuId" IS NOT NULL AND ca."kitsuId" = (SELECT ca2."kitsuId" FROM "catalog_anime" ca2 WHERE ca2."id" = $4))
-                OR (LOWER(TRIM(ca."title")) = (SELECT LOWER(TRIM(ca3."title")) FROM "catalog_anime" ca3 WHERE ca3."id" = $4))
-            ))) OR
+            ($2 = 'anime' AND uf."animeId" = ANY($10::text[])) OR
             ($2 = 'character' AND (uf."characterId" = $5 OR uf."characterId" IN (
               SELECT cc."id" FROM "catalog_character" cc
               WHERE cc."id" = $5 OR LOWER(TRIM(cc."name")) = (SELECT LOWER(TRIM(cc2."name")) FROM "catalog_character" cc2 WHERE cc2."id" = $5)
@@ -533,6 +645,8 @@ export const addProfileFavorite = createServerFn({
         studioId,
         companyId,
         personId,
+        animeSnapshotJson,
+        candidateAnimeIds,
       ]);
 
       const record = inserted[0];
@@ -578,6 +692,11 @@ export const removeProfileFavorite = createServerFn({
 
     const sql = await getSql();
 
+    const candidateAnimeIds =
+      targetType === "anime" && targetId
+        ? (await resolveAnimeCandidateIdsFromDb(sql, targetId)).candidateIds
+        : [];
+
     const deleteQuery = `
       WITH user_lock AS (
         SELECT "id" FROM "user" WHERE "id" = $1 FOR UPDATE
@@ -590,13 +709,8 @@ export const removeProfileFavorite = createServerFn({
           OR (
             $3::text IS NOT NULL AND $4::text IS NOT NULL AND uf."targetType" = $3 AND (
               ($3 = 'anime' AND (
-                uf."animeId" = $4 OR
-                uf."animeId" IN (
-                  SELECT ca."id" FROM "catalog_anime" ca
-                  WHERE LOWER(TRIM(ca."title")) = LOWER(TRIM($4))
-                     OR LOWER(TRIM(COALESCE(ca."titleRomaji", ''))) = LOWER(TRIM($4))
-                     OR LOWER(TRIM(COALESCE(ca."titleEnglish", ''))) = LOWER(TRIM($4))
-                )
+                uf."animeId" = $4
+                OR uf."animeId" = ANY($5::text[])
               )) OR
               ($3 = 'character' AND (uf."characterId" = $4 OR uf."characterId" IN (SELECT cc."id" FROM "catalog_character" cc WHERE cc."name" = $4))) OR
               ($3 = 'studio' AND (uf."studioId" = $4 OR uf."studioId" IN (SELECT cs."id" FROM "catalog_studio" cs WHERE cs."name" = $4))) OR
@@ -617,6 +731,7 @@ export const removeProfileFavorite = createServerFn({
       favoriteId ?? null,
       targetType ?? null,
       targetId ?? null,
+      candidateAnimeIds,
     ]);
 
     if (deletedRows.length === 0) {
@@ -658,18 +773,25 @@ export async function executeGetMyProfileFavorites(
       uf."targetType",
       uf."position",
       uf."createdAt",
+      uf."animeSnapshot",
       COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "targetId",
-      COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name", 'Sem título') AS "title",
-      COALESCE(ca."titleNative", cc."nativeName", cp."nativeName") AS "nativeTitle",
-      COALESCE(ca."cover", cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl") AS "image",
-      ca."banner" AS "banner",
-      COALESCE(ca."synopsis", cc."description", cs."description", cp."biography") AS "description",
+      COALESCE(ca."title", (uf."animeSnapshot"->>'title'), cc."name", cs."name", cco."name", cp."name", 'Sem título') AS "title",
+      COALESCE(ca."titleNative", (uf."animeSnapshot"->>'titleNative'), cc."nativeName", cp."nativeName") AS "nativeTitle",
+      COALESCE(ca."cover", (uf."animeSnapshot"->>'cover'), cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl") AS "image",
+      COALESCE(ca."banner", (uf."animeSnapshot"->>'banner')) AS "banner",
+      COALESCE(ca."synopsis", (uf."animeSnapshot"->>'synopsis'), cc."description", cs."description", cp."biography") AS "description",
       CASE
         WHEN uf."targetType" = 'anime' THEN
           CASE
-            WHEN ca."year" IS NOT NULL AND ca."format" IS NOT NULL THEN ca."format" || ' • ' || ca."year"
-            WHEN ca."year" IS NOT NULL THEN ca."year"::text
-            ELSE ca."format"
+            WHEN ca."id" IS NOT NULL THEN
+              CASE
+                WHEN ca."year" IS NOT NULL AND ca."format" IS NOT NULL THEN ca."format" || ' • ' || ca."year"
+                WHEN ca."year" IS NOT NULL THEN ca."year"::text
+                ELSE ca."format"
+              END
+            WHEN (uf."animeSnapshot"->>'year') IS NOT NULL AND (uf."animeSnapshot"->>'format') IS NOT NULL THEN
+              (uf."animeSnapshot"->>'format') || ' • ' || (uf."animeSnapshot"->>'year')
+            ELSE COALESCE((uf."animeSnapshot"->>'format'), (uf."animeSnapshot"->>'year'))
           END
         WHEN uf."targetType" = 'character' THEN
           COALESCE(
@@ -701,7 +823,7 @@ export async function executeGetMyProfileFavorites(
       END AS "subtitle",
       uat."score" AS "userScore"
     FROM "user_favorite" uf
-    LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
+    LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId" AND ca."archived_at" IS NULL
     LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
     LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
     LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
@@ -719,6 +841,7 @@ export async function executeGetMyProfileFavorites(
     targetType: FavoriteTargetType;
     position: number;
     createdAt: string;
+    animeSnapshot: unknown;
     targetId: string;
     title: string;
     nativeTitle: string | null;
@@ -729,33 +852,90 @@ export async function executeGetMyProfileFavorites(
     userScore: number | string | null;
   }>(query, [userId, targetTypeFilter, targetIdFilter]);
 
+  const animeTargetIds = rawRows
+    .filter((r) => r.targetType === "anime" && r.targetId)
+    .map((r) => r.targetId);
+  const resolvedMetaMap =
+    animeTargetIds.length > 0
+      ? await resolveCatalogMetadataMap(sql, animeTargetIds)
+      : new Map();
+
   const seenEntities = new Set<string>();
   const items: ProfileFavoriteItem[] = [];
 
   for (const row of rawRows) {
-    const entityKey = `${row.targetType}:${row.targetId}`;
-    const titleKey = `${row.targetType}:${(row.title || "").toLowerCase().trim()}`;
-    if (seenEntities.has(entityKey) || (row.title && row.title !== "Sem título" && seenEntities.has(titleKey))) {
+    const aliasMeta =
+      row.targetType === "anime" ? resolvedMetaMap.get(row.targetId) : undefined;
+    const activeAliasMeta = aliasMeta?.isActive ? aliasMeta : undefined;
+    const snap = parseJsonSnapshot(row.animeSnapshot);
+
+    const resolvedTargetId =
+      row.targetType === "anime" && activeAliasMeta
+        ? activeAliasMeta.canonicalId
+        : row.targetId;
+    const entityKey = `${row.targetType}:${resolvedTargetId}`;
+    const titleKey =
+      row.targetType === "anime"
+        ? null
+        : `${row.targetType}:${(row.title || "").toLowerCase().trim()}`;
+
+    if (
+      seenEntities.has(entityKey) ||
+      (titleKey && row.title && row.title !== "Sem título" && seenEntities.has(titleKey))
+    ) {
       continue;
     }
     seenEntities.add(entityKey);
-    if (row.title && row.title !== "Sem título") {
+    if (titleKey && row.title && row.title !== "Sem título") {
       seenEntities.add(titleKey);
     }
+
+    const title =
+      activeAliasMeta?.title ||
+      (row.title && row.title !== "Sem título" ? row.title : null) ||
+      (typeof snap?.title === "string" && snap.title.trim()) ||
+      aliasMeta?.title ||
+      "Sem título";
+    const nativeTitle =
+      activeAliasMeta?.titleNative ??
+      row.nativeTitle ??
+      (typeof snap?.titleNative === "string" ? snap.titleNative : null) ??
+      aliasMeta?.titleNative ??
+      null;
+    const image =
+      activeAliasMeta?.cover ||
+      row.image ||
+      (typeof snap?.cover === "string" ? snap.cover : null) ||
+      aliasMeta?.cover ||
+      (row.targetType === "studio" ? getStudioLogo(title) : null);
+    const banner =
+      activeAliasMeta?.banner ??
+      row.banner ??
+      (typeof snap?.banner === "string" ? snap.banner : null) ??
+      aliasMeta?.banner ??
+      null;
+    const subtitle =
+      row.targetType === "anime" && activeAliasMeta
+        ? activeAliasMeta.year != null && activeAliasMeta.format
+          ? `${activeAliasMeta.format} • ${activeAliasMeta.year}`
+          : activeAliasMeta.year != null
+            ? String(activeAliasMeta.year)
+            : activeAliasMeta.format
+        : row.subtitle ?? null;
 
     items.push({
       id: row.id,
       userId: row.userId,
       targetType: row.targetType,
-      targetId: row.targetId,
+      targetId: resolvedTargetId,
       position: Number(row.position),
       createdAt: row.createdAt,
-      title: row.title,
-      nativeTitle: row.nativeTitle ?? null,
-      image: row.image || (row.targetType === "studio" ? getStudioLogo(row.title) : null),
-      banner: row.banner ?? null,
+      title,
+      nativeTitle,
+      image,
+      banner,
       description: row.description ?? null,
-      subtitle: row.subtitle ?? null,
+      subtitle,
       userScore: row.userScore !== null && row.userScore !== undefined ? Number(row.userScore) : null,
     });
   }
@@ -822,18 +1002,25 @@ export async function executeGetPublicProfileFavorites(
       uf."targetType",
       uf."position",
       uf."createdAt",
+      uf."animeSnapshot",
       COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "targetId",
-      COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name", 'Sem título') AS "title",
-      COALESCE(ca."titleNative", cc."nativeName", cp."nativeName") AS "nativeTitle",
-      COALESCE(ca."cover", cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl") AS "image",
-      ca."banner" AS "banner",
-      COALESCE(ca."synopsis", cc."description", cs."description", cp."biography") AS "description",
+      COALESCE(ca."title", (uf."animeSnapshot"->>'title'), cc."name", cs."name", cco."name", cp."name", 'Sem título') AS "title",
+      COALESCE(ca."titleNative", (uf."animeSnapshot"->>'titleNative'), cc."nativeName", cp."nativeName") AS "nativeTitle",
+      COALESCE(ca."cover", (uf."animeSnapshot"->>'cover'), cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl") AS "image",
+      COALESCE(ca."banner", (uf."animeSnapshot"->>'banner')) AS "banner",
+      COALESCE(ca."synopsis", (uf."animeSnapshot"->>'synopsis'), cc."description", cs."description", cp."biography") AS "description",
       CASE
         WHEN uf."targetType" = 'anime' THEN
           CASE
-            WHEN ca."year" IS NOT NULL AND ca."format" IS NOT NULL THEN ca."format" || ' • ' || ca."year"
-            WHEN ca."year" IS NOT NULL THEN ca."year"::text
-            ELSE ca."format"
+            WHEN ca."id" IS NOT NULL THEN
+              CASE
+                WHEN ca."year" IS NOT NULL AND ca."format" IS NOT NULL THEN ca."format" || ' • ' || ca."year"
+                WHEN ca."year" IS NOT NULL THEN ca."year"::text
+                ELSE ca."format"
+              END
+            WHEN (uf."animeSnapshot"->>'year') IS NOT NULL AND (uf."animeSnapshot"->>'format') IS NOT NULL THEN
+              (uf."animeSnapshot"->>'format') || ' • ' || (uf."animeSnapshot"->>'year')
+            ELSE COALESCE((uf."animeSnapshot"->>'format'), (uf."animeSnapshot"->>'year'))
           END
         WHEN uf."targetType" = 'character' THEN
           COALESCE(
@@ -865,7 +1052,7 @@ export async function executeGetPublicProfileFavorites(
       END AS "subtitle",
       uat."score" AS "userScore"
     FROM "user_favorite" uf
-    LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
+    LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId" AND ca."archived_at" IS NULL
     LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
     LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
     LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
@@ -882,6 +1069,7 @@ export async function executeGetPublicProfileFavorites(
     targetType: FavoriteTargetType;
     position: number;
     createdAt: string;
+    animeSnapshot: unknown;
     targetId: string;
     title: string;
     nativeTitle: string | null;
@@ -892,33 +1080,90 @@ export async function executeGetPublicProfileFavorites(
     userScore: number | string | null;
   }>(query, [cleanTargetUserId, targetTypeFilter]);
 
+  const animeTargetIds = rawRows
+    .filter((r) => r.targetType === "anime" && r.targetId)
+    .map((r) => r.targetId);
+  const resolvedMetaMap =
+    animeTargetIds.length > 0
+      ? await resolveCatalogMetadataMap(sql, animeTargetIds)
+      : new Map();
+
   const seenEntities = new Set<string>();
   const items: ProfileFavoriteItem[] = [];
 
   for (const row of rawRows) {
-    const entityKey = `${row.targetType}:${row.targetId}`;
-    const titleKey = `${row.targetType}:${(row.title || "").toLowerCase().trim()}`;
-    if (seenEntities.has(entityKey) || (row.title && row.title !== "Sem título" && seenEntities.has(titleKey))) {
+    const aliasMeta =
+      row.targetType === "anime" ? resolvedMetaMap.get(row.targetId) : undefined;
+    const activeAliasMeta = aliasMeta?.isActive ? aliasMeta : undefined;
+    const snap = parseJsonSnapshot(row.animeSnapshot);
+
+    const resolvedTargetId =
+      row.targetType === "anime" && activeAliasMeta
+        ? activeAliasMeta.canonicalId
+        : row.targetId;
+    const entityKey = `${row.targetType}:${resolvedTargetId}`;
+    const titleKey =
+      row.targetType === "anime"
+        ? null
+        : `${row.targetType}:${(row.title || "").toLowerCase().trim()}`;
+
+    if (
+      seenEntities.has(entityKey) ||
+      (titleKey && row.title && row.title !== "Sem título" && seenEntities.has(titleKey))
+    ) {
       continue;
     }
     seenEntities.add(entityKey);
-    if (row.title && row.title !== "Sem título") {
+    if (titleKey && row.title && row.title !== "Sem título") {
       seenEntities.add(titleKey);
     }
+
+    const title =
+      activeAliasMeta?.title ||
+      (row.title && row.title !== "Sem título" ? row.title : null) ||
+      (typeof snap?.title === "string" && snap.title.trim()) ||
+      aliasMeta?.title ||
+      "Sem título";
+    const nativeTitle =
+      activeAliasMeta?.titleNative ??
+      row.nativeTitle ??
+      (typeof snap?.titleNative === "string" ? snap.titleNative : null) ??
+      aliasMeta?.titleNative ??
+      null;
+    const image =
+      activeAliasMeta?.cover ||
+      row.image ||
+      (typeof snap?.cover === "string" ? snap.cover : null) ||
+      aliasMeta?.cover ||
+      (row.targetType === "studio" ? getStudioLogo(title) : null);
+    const banner =
+      activeAliasMeta?.banner ??
+      row.banner ??
+      (typeof snap?.banner === "string" ? snap.banner : null) ??
+      aliasMeta?.banner ??
+      null;
+    const subtitle =
+      row.targetType === "anime" && activeAliasMeta
+        ? activeAliasMeta.year != null && activeAliasMeta.format
+          ? `${activeAliasMeta.format} • ${activeAliasMeta.year}`
+          : activeAliasMeta.year != null
+            ? String(activeAliasMeta.year)
+            : activeAliasMeta.format
+        : row.subtitle ?? null;
 
     items.push({
       id: row.id,
       userId: row.userId,
       targetType: row.targetType,
-      targetId: row.targetId,
+      targetId: resolvedTargetId,
       position: Number(row.position),
       createdAt: row.createdAt,
-      title: row.title,
-      nativeTitle: row.nativeTitle ?? null,
-      image: row.image || (row.targetType === "studio" ? getStudioLogo(row.title) : null),
-      banner: row.banner ?? null,
+      title,
+      nativeTitle,
+      image,
+      banner,
       description: row.description ?? null,
-      subtitle: row.subtitle ?? null,
+      subtitle,
       userScore: row.userScore !== null && row.userScore !== undefined ? Number(row.userScore) : null,
     });
   }

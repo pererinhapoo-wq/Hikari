@@ -631,7 +631,30 @@ export async function applyDbCatalogOverlayToDetail(
   }
 
   const index = await loadCatalogIndex();
-  const match = index ? findMatchingRow(index, detail, requestedId) : undefined;
+  let match = index ? findMatchingRow(index, detail, requestedId) : undefined;
+  let resolvedAliasIds: string[] = [];
+
+  if (!match && requestedId) {
+    try {
+      const sql = await getSql();
+      const candidateInfo = await resolveAnimeCandidateIdsFromDb(sql, requestedId);
+      resolvedAliasIds = candidateInfo.candidateIds.filter(
+        (cid) => cid !== candidateInfo.canonicalId,
+      );
+      if (candidateInfo.canonicalId) {
+        match = index?.byId.get(candidateInfo.canonicalId);
+      }
+    } catch {
+      // fail-open
+    }
+  } else if (match) {
+    try {
+      const sql = await getSql();
+      resolvedAliasIds = await getAllAliasIdsForCanonical(sql, match.id);
+    } catch {
+      // fail-open
+    }
+  }
 
   const mappedRecommendations = Array.isArray(detail.recommendations)
     ? sortByHasEpisodeFirst(
@@ -648,6 +671,8 @@ export async function applyDbCatalogOverlayToDetail(
     return {
       ...detail,
       hasEpisode: false,
+      resolvedAliasIds:
+        resolvedAliasIds.length > 0 ? resolvedAliasIds : detail.resolvedAliasIds,
       recommendations: mappedRecommendations,
     };
   }
@@ -662,7 +687,10 @@ export async function applyDbCatalogOverlayToDetail(
     ...detail,
     ...mergedSlim,
     serverCatalogId: match.id,
-    resolvedFromAliasId: requestedId && requestedId !== match.id ? requestedId : undefined,
+    resolvedFromAliasId:
+      requestedId && requestedId !== match.id ? requestedId : undefined,
+    resolvedAliasIds:
+      resolvedAliasIds.length > 0 ? resolvedAliasIds : detail.resolvedAliasIds,
     recommendations: mappedRecommendations,
     resolvedMobileBanner: bannerWasCustomized
       ? {

@@ -49,6 +49,7 @@ import {
 } from "@/lib/published-episodes";
 import { Button } from "@/components/ui/button";
 import {
+  clearOutboxForAnime,
   persistEpisode,
   persistEpisodeDelete,
   readOutbox,
@@ -1540,12 +1541,14 @@ function AdminEditor() {
           );
 
           if (canonicalId !== effectiveAnime.id) {
+            clearOutboxForAnime(effectiveAnime.id);
             removeAnime(effectiveAnime.id);
           }
 
           effectiveAnime = {
             ...effectiveAnime,
             id: canonicalId,
+            serverCatalogId: canonicalId,
             cover: canonicalCover,
             banner: canonicalBanner,
             updatedAt: serverUpdatedAt,
@@ -1870,6 +1873,7 @@ function AdminEditor() {
           to: "/admin/$id",
           params: { id: effectiveAnime.id },
           search: nextImportId ? { importId: nextImportId } : {},
+          replace: currentRouteId !== "new",
         });
       }
     }

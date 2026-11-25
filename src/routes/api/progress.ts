@@ -2,6 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { resolveApiUser } from "@/lib/auth/api-session";
 import { getSql } from "@/lib/db";
 import {
+  resolveAnimeCandidateIdsFromDb,
+  resolveEquivalentEpisodeIdsFromDb,
+} from "@/lib/anime-identity.server";
+import {
   recordProgressInRedis,
   getProgressFromRedis,
 } from "@/lib/redis";
@@ -105,6 +109,68 @@ export const Route = createFileRoute("/api/progress")({
                   },
                 },
               );
+            }
+
+            // Fallback por alias de episódio (caso o episódio tenha sido recriado com novo ID)
+            const animeHit = await sql.query<{ animeId: string }>(
+              `
+                SELECT "animeId" FROM "catalog_episode" WHERE "id" = $1
+                UNION
+                SELECT "id" AS "animeId" FROM "catalog_anime"
+                WHERE "episode_history" @> jsonb_build_array(jsonb_build_object('episodeId', $1::text))
+                UNION
+                SELECT COALESCE("current_id", "old_id") AS "animeId" FROM "catalog_anime_id_alias"
+                WHERE "episode_history" @> jsonb_build_array(jsonb_build_object('episodeId', $1::text))
+                LIMIT 5
+              `,
+              [episodeId],
+            );
+            const matchedAnimeId = animeHit?.[0]?.animeId?.trim();
+            if (matchedAnimeId) {
+              const resolvedAnime = await resolveAnimeCandidateIdsFromDb(
+                sql,
+                matchedAnimeId,
+              );
+              const resolvedEp = await resolveEquivalentEpisodeIdsFromDb(
+                sql,
+                resolvedAnime.candidateIds,
+                episodeId,
+              );
+              const altIds = resolvedEp.candidateEpisodeIds.filter(
+                (id) => id !== episodeId,
+              );
+              if (altIds.length > 0) {
+                for (const altEpId of altIds) {
+                  const altCached = await getProgressFromRedis(userKey, altEpId);
+                  if (altCached && altCached.position > 0) {
+                    return Response.json(altCached, {
+                      headers: {
+                        "Cache-Control": "private, no-cache, no-store, must-revalidate",
+                      },
+                    });
+                  }
+                }
+                const altRows = await sql.query<{
+                  position: number;
+                  duration: number;
+                }>(
+                  `SELECT position, duration FROM progress WHERE user_key = $1 AND episode_id = ANY($2::text[]) ORDER BY updated_at DESC LIMIT 1`,
+                  [userKey, altIds],
+                );
+                if (altRows && altRows.length > 0) {
+                  return Response.json(
+                    {
+                      position: Number(altRows[0].position) || 0,
+                      duration: Number(altRows[0].duration) || 0,
+                    },
+                    {
+                      headers: {
+                        "Cache-Control": "private, no-cache, no-store, must-revalidate",
+                      },
+                    },
+                  );
+                }
+              }
             }
           } catch {
             // fallback safe
