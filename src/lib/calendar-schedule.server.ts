@@ -561,6 +561,7 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
      WHERE s."airingAt" >= to_timestamp($1)
        AND s."airingAt" <= to_timestamp($2)
        AND (a."hidden" IS NOT TRUE)
+       AND (a."archived_at" IS NULL)
        AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])))
      UNION ALL
      SELECT
@@ -603,6 +604,7 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
        AND r."dayOfWeek" = $3
        AND r."timezone" = $4
        AND (a."hidden" IS NOT TRUE)
+       AND (a."archived_at" IS NULL)
        AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])))
      ORDER BY "entryType" DESC, "airingAtEpoch" ASC, "episode" ASC, "title" ASC;`,
     [startTimestamp, endTimestamp, todayWeekday, CALENDAR_TIMEZONE],
@@ -743,6 +745,7 @@ export async function getWeeklyScheduleFromDbAndRedis(
      WHERE s."airingAt" >= to_timestamp($1)
        AND s."airingAt" <= to_timestamp($2)
        AND (a."hidden" IS NOT TRUE)
+       AND (a."archived_at" IS NULL)
        AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])))
      UNION ALL
      SELECT
@@ -771,6 +774,7 @@ export async function getWeeklyScheduleFromDbAndRedis(
      WHERE r."active" = true
        AND r."timezone" = $3
        AND (a."hidden" IS NOT TRUE)
+       AND (a."archived_at" IS NULL)
        AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])))
      ORDER BY "entryType" DESC, "airingAtEpoch" ASC, "episode" ASC, "dayOfWeek" ASC, "title" ASC;`,
     [startTimestamp, endTimestamp, CALENDAR_TIMEZONE],
@@ -948,6 +952,7 @@ export async function searchCatalogAnimesForRecurrence(
          "year"
        FROM "catalog_anime"
        WHERE ("hidden" IS NOT TRUE)
+         AND ("archived_at" IS NULL)
        ORDER BY "updatedAt" DESC, "title" ASC
        LIMIT 25;`,
     );
@@ -969,6 +974,7 @@ export async function searchCatalogAnimesForRecurrence(
        "year"
      FROM "catalog_anime"
      WHERE ("hidden" IS NOT TRUE)
+       AND ("archived_at" IS NULL)
        AND (
          "title" ILIKE $1
          OR COALESCE("titleRomaji", '') ILIKE $1
@@ -1019,7 +1025,7 @@ export async function createCalendarRecurrence(
   const sql = deps?.sql ?? (await getSql());
 
   const [animeRow] = await sql.query<{ id: string }>(
-    `SELECT "id" FROM "catalog_anime" WHERE "id" = $1 LIMIT 1;`,
+    `SELECT "id" FROM "catalog_anime" WHERE "id" = $1 AND "archived_at" IS NULL LIMIT 1;`,
     [animeId],
   );
   if (!animeRow) {

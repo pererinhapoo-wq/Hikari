@@ -1873,19 +1873,30 @@ function collectDetailAliasIds(
     anilistId?: number | null;
     malId?: number | null;
     kitsuId?: number | null;
+    resolvedFromAliasId?: string | null;
+    resolvedAliasIds?: string[] | null;
+    extraIds?: Array<string | number | null | undefined>;
   },
 ): string[] {
   const seen = new Set<string>([primaryId.trim()]);
   const aliases: string[] = [];
 
-  const pushAlias = (candidate?: string | null) => {
-    const clean = candidate?.trim();
+  const pushAlias = (candidate?: string | number | null) => {
+    if (candidate === null || candidate === undefined) return;
+    const clean = String(candidate).trim();
     if (!clean || seen.has(clean)) return;
     seen.add(clean);
     aliases.push(clean);
   };
 
   pushAlias(refs.serverCatalogId);
+  pushAlias(refs.resolvedFromAliasId);
+  if (Array.isArray(refs.resolvedAliasIds)) {
+    for (const a of refs.resolvedAliasIds) pushAlias(a);
+  }
+  if (Array.isArray(refs.extraIds)) {
+    for (const a of refs.extraIds) pushAlias(a);
+  }
   if (typeof refs.anilistId === "number" && refs.anilistId > 0) {
     pushAlias(String(refs.anilistId));
   }
@@ -1912,6 +1923,8 @@ function syncLocalDetailCacheAliases(primaryId: string, detail: Anime): void {
     anilistId: detail.anilistId,
     malId: detail.malId,
     kitsuId: detail.kitsuId,
+    resolvedFromAliasId: detail.resolvedFromAliasId,
+    resolvedAliasIds: detail.resolvedAliasIds,
   });
 
   for (const aliasId of aliases) {
@@ -1937,6 +1950,8 @@ function evictLocalDetailCacheAliases(primaryId: string, detail?: Anime | null):
       anilistId: detail.anilistId,
       malId: detail.malId,
       kitsuId: detail.kitsuId,
+      resolvedFromAliasId: detail.resolvedFromAliasId,
+      resolvedAliasIds: detail.resolvedAliasIds,
     });
     for (const aliasId of aliases) {
       detailCache.delete(`detail:v7:${aliasId}`);

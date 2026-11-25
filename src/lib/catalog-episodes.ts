@@ -30,6 +30,7 @@ import {
   sanitizePlayableVideoUrl,
 } from "@/lib/published-episodes";
 import { normalizeHikariPlayerEpisodeId } from "@/lib/hikari-player";
+import { resolveAnimeCandidateIdsFromDb } from "@/lib/anime-identity.server";
 
 export const getCatalogEpisodesSchema = z.object({
   animeId: z.string().min(1, "animeId é obrigatório"),
@@ -275,19 +276,11 @@ export async function executeGetCatalogEpisodes(
 
       const candidateIds = [cleanId];
       try {
-        const numId = /^\d+$/.test(cleanId) ? parseInt(cleanId, 10) : null;
-        const matched = await sql.query<{ id: string; anilistId: number | null }>(
-          `SELECT "id", "anilistId" FROM "catalog_anime"
-           WHERE "id" = $1
-              OR ($2::int IS NOT NULL AND ("anilistId" = $2 OR "malId" = $2 OR "kitsuId" = $2))
-           LIMIT 1;`,
-          [cleanId, numId],
-        );
-        if (matched[0]?.id && !candidateIds.includes(matched[0].id)) {
-          candidateIds.push(matched[0].id);
-        }
-        if (matched[0]?.anilistId && !candidateIds.includes(String(matched[0].anilistId))) {
-          candidateIds.push(String(matched[0].anilistId));
+        const candidateInfo = await resolveAnimeCandidateIdsFromDb(sql, cleanId);
+        for (const c of candidateInfo.candidateIds) {
+          if (c && !candidateIds.includes(c)) {
+            candidateIds.push(c);
+          }
         }
       } catch {
         // ignore
@@ -569,6 +562,7 @@ async function queryPublicCatalogEpisodesFromDb(
        LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
        LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
        WHERE e."published" = true
+         AND (a."id" IS NULL OR a."archived_at" IS NULL)
        ORDER BY e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."seasonNumber" DESC, e."number" DESC
        LIMIT $1 OFFSET $2;`,
       [limit, offset],
@@ -867,6 +861,7 @@ export function buildPaginatedPublicEpisodesWhereClause(filters?: {
   const conditions: string[] = [
     `e."published" = true`,
     PLAYABLE_EPISODE_SQL_CONDITION,
+    `(a."id" IS NULL OR a."archived_at" IS NULL)`,
   ];
   const params: unknown[] = [];
 
@@ -1149,7 +1144,8 @@ export async function executeGetPublicCatalogAnimeOptions(): Promise<
              'Anime'
            ) AS "title"
          FROM "catalog_anime" a
-         WHERE EXISTS (
+         WHERE a."archived_at" IS NULL
+           AND EXISTS (
            SELECT 1
            FROM "catalog_episode" e
            WHERE e."animeId" = a."id"

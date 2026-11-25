@@ -765,6 +765,7 @@ async function queryCatalogCandidatesFromNeon(): Promise<HeroCatalogAnimeCandida
          AND e1."number" = 1
      ) ep1 ON ep1."ep1Sources" IS NOT NULL
      WHERE COALESCE(a."hidden", false) = false
+       AND a."archived_at" IS NULL
        AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])));`,
   );
 

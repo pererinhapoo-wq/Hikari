@@ -955,6 +955,7 @@ async function queryTrendingCatalogCandidatesFromNeon(): Promise<
        ) s
      ) ep_sample ON ep_sample."epSources" IS NOT NULL
      WHERE COALESCE(a."hidden", false) = false
+       AND a."archived_at" IS NULL
        AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])));`,
   );
 

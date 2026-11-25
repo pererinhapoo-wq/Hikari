@@ -186,16 +186,18 @@ export const Route = createFileRoute("/api/admin/backup")({
             published: boolean | null;
           }>(`
             SELECT
-              "id", "animeId", "seasonNumber", "number",
-              "title", "thumbnail", "duration", "synopsis",
-              "videoUrl", "videoUrl2", "videoUrl3", "videoUrl4", "videoUrl5",
-              "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
-              COALESCE("badge_lancamento", false) AS "badgeLancamento",
-              COALESCE("badge_novo", false) AS "badgeNovo",
-              COALESCE("badge_final", false) AS "badgeFinal",
-              "published"
-            FROM "catalog_episode"
-            ORDER BY "animeId" ASC, "seasonNumber" ASC, "number" ASC;
+              e."id", e."animeId", e."seasonNumber", e."number",
+              e."title", e."thumbnail", e."duration", e."synopsis",
+              e."videoUrl", e."videoUrl2", e."videoUrl3", e."videoUrl4", e."videoUrl5",
+              e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+              COALESCE(e."badge_lancamento", false) AS "badgeLancamento",
+              COALESCE(e."badge_novo", false) AS "badgeNovo",
+              COALESCE(e."badge_final", false) AS "badgeFinal",
+              e."published"
+            FROM "catalog_episode" e
+            INNER JOIN "catalog_anime" a ON a."id" = e."animeId"
+            WHERE a."archived_at" IS NULL
+            ORDER BY e."animeId" ASC, e."seasonNumber" ASC, e."number" ASC;
           `);
 
           // Agrupamento hierárquico

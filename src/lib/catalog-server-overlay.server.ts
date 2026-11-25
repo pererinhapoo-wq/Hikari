@@ -24,6 +24,12 @@ import {
   selectHomeSectionItems,
   sortByHasEpisodeFirst,
 } from "@/lib/anime-search-ranking";
+import {
+  findCanonicalCatalogAnime,
+  resolveAnimeCandidateIdsFromDb,
+  getAllAliasIdsForCanonical,
+  extractIdentityFromSnapshot,
+} from "@/lib/anime-identity.server";
 
 export interface DbCatalogAnimeRow {
   id: string;
@@ -189,6 +195,7 @@ export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
                AND e."published" = true
            ) AS "hasEpisode"
          FROM "catalog_anime" a
+         WHERE a."archived_at" IS NULL
          ORDER BY a."updatedAt" DESC;`,
       );
 
@@ -286,27 +293,21 @@ export async function resolveCatalogDetailAliasesForId(
   const aliases = new Set<string>([cleanId]);
 
   try {
+    const sql = await getSql();
+    const candidateInfo = await resolveAnimeCandidateIdsFromDb(sql, cleanId);
+    for (const c of candidateInfo.candidateIds) {
+      if (c) aliases.add(c);
+    }
     const index = await loadCatalogIndex();
-    if (!index) {
-      return Array.from(aliases);
-    }
-
-    const match = findMatchingRow(index, { id: cleanId }, cleanId);
-    if (!match) {
-      return Array.from(aliases);
-    }
-
-    if (match.id?.trim()) {
-      aliases.add(match.id.trim());
-    }
-    if (typeof match.anilistId === "number" && match.anilistId > 0) {
-      aliases.add(String(match.anilistId));
-    }
-    if (typeof match.malId === "number" && match.malId > 0) {
-      aliases.add(`mal-${match.malId}`);
-    }
-    if (typeof match.kitsuId === "number" && match.kitsuId > 0) {
-      aliases.add(`kitsu-${match.kitsuId}`);
+    if (index) {
+      const targetId = candidateInfo.canonicalId || cleanId;
+      const match = findMatchingRow(index, { id: targetId }, cleanId);
+      if (match) {
+        if (match.id?.trim()) aliases.add(match.id.trim());
+        if (typeof match.anilistId === "number" && match.anilistId > 0) aliases.add(String(match.anilistId));
+        if (typeof match.malId === "number" && match.malId > 0) aliases.add(`mal-${match.malId}`);
+        if (typeof match.kitsuId === "number" && match.kitsuId > 0) aliases.add(`kitsu-${match.kitsuId}`);
+      }
     }
   } catch {
     // Fail-open: retorna ao menos o próprio ID solicitado
@@ -433,61 +434,57 @@ export async function applyDbCatalogOverlayToHome(
 export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | null> {
   try {
     const sql = await getSql();
-    const rows = await sql.query<DbCatalogAnimeRow>(
-      `SELECT
-         "id", "title", "anilistId", "malId", "kitsuId",
-         "titleRomaji", "titleEnglish", "titleNative",
-         "cover", "banner", "synopsis", "format", "status",
-         "episodesCount", "year", "season", "genres", "trailerId",
-         "hidden", "score",
-         "updatedAt"
-       FROM "catalog_anime"
-       WHERE "id" = $1
-       LIMIT 1;`,
-      [animeId],
-    );
+    const candidateLookup = await resolveAnimeCandidateIdsFromDb(sql, animeId);
+    let resolvedCanonicalId = candidateLookup.canonicalId || animeId;
+    let resolvedFromAliasId = candidateLookup.resolvedFromAliasId;
+    let knownAliasIds = candidateLookup.candidateIds;
 
-    let row = rows[0];
+    let row = candidateLookup.row as DbCatalogAnimeRow | null;
+    if (!row) {
+      const rows = await sql.query<DbCatalogAnimeRow>(
+        `SELECT
+           "id", "title", "anilistId", "malId", "kitsuId",
+           "titleRomaji", "titleEnglish", "titleNative",
+           "cover", "banner", "synopsis", "format", "status",
+           "episodesCount", "year", "season", "genres", "trailerId",
+           "hidden", "score",
+           "updatedAt"
+         FROM "catalog_anime"
+         WHERE "id" = $1 AND "archived_at" IS NULL
+         LIMIT 1;`,
+        [resolvedCanonicalId],
+      );
+      row = rows[0] ?? null;
+    }
+
     if (!row) {
       try {
-        const trackingRows = await sql.query<{ animeSnapshot: unknown }>(
-          `SELECT "animeSnapshot" FROM "user_anime_tracking" WHERE "animeId" = $1 LIMIT 1`,
+        const snapRows = await sql.query<{ animeSnapshot: unknown }>(
+          `SELECT "animeSnapshot" FROM (
+             SELECT "animeSnapshot", "updatedAt" AS ts FROM "user_anime_tracking" WHERE "animeId" = $1 AND "animeSnapshot" IS NOT NULL
+             UNION ALL
+             SELECT "animeSnapshot", "addedAt" AS ts FROM "user_custom_list_item" WHERE "animeId" = $1 AND "animeSnapshot" IS NOT NULL
+             UNION ALL
+             SELECT "animeSnapshot", "createdAt" AS ts FROM "user_favorite" WHERE "targetType" = 'anime' AND "animeId" = $1 AND "animeSnapshot" IS NOT NULL
+           ) refs
+           ORDER BY ts DESC
+           LIMIT 1`,
           [animeId],
         );
-        const snapRaw = trackingRows[0]?.animeSnapshot;
-        let anilistId: number | null = null;
-        let malId: number | null = null;
-        let kitsuId: number | null = null;
+        const snapRaw = snapRows[0]?.animeSnapshot;
         if (snapRaw) {
-          const snap = typeof snapRaw === "string" ? JSON.parse(snapRaw) : snapRaw;
-          anilistId = snap?.anilistId ? Number(snap.anilistId) : null;
-          malId = snap?.malId ? Number(snap.malId) : null;
-          kitsuId = snap?.kitsuId ? Number(snap.kitsuId) : null;
-        }
-        if (anilistId || malId || kitsuId) {
-          const matchRows = await sql.query<DbCatalogAnimeRow>(
-            `SELECT "id", "title", "anilistId", "malId", "kitsuId",
-                    "titleRomaji", "titleEnglish", "titleNative",
-                    "cover", "banner", "synopsis", "format", "status",
-                    "episodesCount", "year", "season", "genres", "trailerId",
-                    "hidden", "score", "updatedAt"
-             FROM "catalog_anime"
-             WHERE "hidden" = false
-               AND (
-                 ($1::int IS NOT NULL AND "anilistId" = $1)
-                 OR ($2::int IS NOT NULL AND "malId" = $2)
-                 OR ($3::int IS NOT NULL AND "kitsuId" = $3)
-               )
-             ORDER BY "updatedAt" DESC
-             LIMIT 1;`,
-            [anilistId, malId, kitsuId],
-          );
-          if (matchRows[0]) {
-            row = matchRows[0];
+          const identityInput = extractIdentityFromSnapshot(snapRaw, animeId);
+          const canonicalLookup = await findCanonicalCatalogAnime(sql, identityInput);
+          if (canonicalLookup.row) {
+            row = canonicalLookup.row as DbCatalogAnimeRow;
+            resolvedCanonicalId = canonicalLookup.canonicalId || canonicalLookup.row.id;
+            resolvedFromAliasId = animeId;
+            const extraAliases = await getAllAliasIdsForCanonical(sql, resolvedCanonicalId);
+            knownAliasIds = Array.from(new Set([...knownAliasIds, resolvedCanonicalId, animeId, ...extraAliases]));
           }
         }
       } catch {
-        // Ignora falhas
+        // Ignora falhas de recuperação de snapshot
       }
     }
 
@@ -615,6 +612,8 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
       staff: [],
       catalogUpdatedAt: updatedAtMs || undefined,
       serverCatalogId: row.id,
+      resolvedFromAliasId: resolvedFromAliasId ?? (animeId !== row.id ? animeId : undefined),
+      resolvedAliasIds: knownAliasIds,
       hasEpisode: episodeRows.length > 0,
     };
   } catch (err) {
@@ -662,6 +661,8 @@ export async function applyDbCatalogOverlayToDetail(
   return {
     ...detail,
     ...mergedSlim,
+    serverCatalogId: match.id,
+    resolvedFromAliasId: requestedId && requestedId !== match.id ? requestedId : undefined,
     recommendations: mappedRecommendations,
     resolvedMobileBanner: bannerWasCustomized
       ? {
@@ -771,6 +772,7 @@ export async function searchLocalCatalogAnime(
          FROM "catalog_anime" c
          LEFT JOIN "anime_alias" a ON a."anime_id" = c."id"
          WHERE c."hidden" = false
+           AND c."archived_at" IS NULL
            AND (
              c."search_blob" ILIKE $1 ESCAPE '\\'
              OR c."title_norm" ILIKE $1 ESCAPE '\\'

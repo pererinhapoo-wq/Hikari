@@ -120,6 +120,7 @@ async function queryHomePublicEpisodesFromDb(
        LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
        LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
        WHERE e."published" = true
+         AND (a."id" IS NULL OR a."archived_at" IS NULL)
        ORDER BY e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."seasonNumber" DESC, e."number" DESC
        LIMIT $1 OFFSET $2;`,
       [limit, offset],

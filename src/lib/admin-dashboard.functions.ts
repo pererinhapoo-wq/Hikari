@@ -59,7 +59,7 @@ export async function fetchAdminSystemStatusFromDb(
       commentsCount: number;
     }>(`
       SELECT
-        (SELECT count(*)::int FROM "catalog_anime") AS "animesCount",
+        (SELECT count(*)::int FROM "catalog_anime" WHERE "archived_at" IS NULL) AS "animesCount",
         ep."total" AS "episodesCount",
         ep."published" AS "publishedEpisodesCount",
         (SELECT count(*)::int FROM "catalog_season") AS "seasonsCount",
@@ -226,7 +226,7 @@ export async function fetchAdminCatalogSyncMetaFromDb(
     return [];
   }
 
-  const conditions: string[] = [];
+  const conditions: string[] = ['"archived_at" IS NULL'];
   const params: unknown[] = [];
 
   if (typeof input?.sinceUpdatedAt === "number" && input.sinceUpdatedAt > 0) {
