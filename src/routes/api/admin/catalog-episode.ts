@@ -31,7 +31,7 @@ import {
   findCanonicalCatalogAnime,
   getAllAliasIdsForCanonical,
   reconcileEpisodeIdentityReferences,
-} from "@/lib/anime-identity.server";
+} from "@/lib/anime-identity";
 
 const episodeDeleteSchema = z.object({
   id: z.string().trim().min(1, "id é obrigatório"),

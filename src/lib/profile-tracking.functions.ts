@@ -38,7 +38,7 @@ import {
   resolveAnimeCandidateIdsFromDb,
   resolveCatalogMetadataMap,
   resolveEquivalentEpisodeIdsFromDb,
-} from "@/lib/anime-identity.server";
+} from "@/lib/anime-identity";
 
 /**
  * 1. upsertAnimeTracking — Criar ou atualizar acompanhamento de anime.

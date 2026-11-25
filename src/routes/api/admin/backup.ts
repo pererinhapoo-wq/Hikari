@@ -31,7 +31,7 @@ import {
   resolveReregistrationTargetId,
   upsertAliasMapping,
   type EpisodeHistoryEntry,
-} from "@/lib/anime-identity.server";
+} from "@/lib/anime-identity";
 
 const episodeSchema = z.object({
   id: z.string().trim().min(1).max(128),

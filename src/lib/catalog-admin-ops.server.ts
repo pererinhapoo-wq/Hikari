@@ -23,7 +23,7 @@ import {
   upsertAliasMapping,
   type CatalogAnimeIdentityRow,
   type EpisodeHistoryEntry,
-} from "@/lib/anime-identity.server";
+} from "@/lib/anime-identity";
 
 export const seasonItemSchema = z.object({
   number: z.number().int().min(1, "number da temporada deve ser >= 1"),

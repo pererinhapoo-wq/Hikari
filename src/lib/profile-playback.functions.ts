@@ -21,7 +21,7 @@ import {
   resolveAnimeCandidateIdsFromDb,
   resolveCatalogMetadataMap,
   resolveEquivalentEpisodeIdsFromDb,
-} from "@/lib/anime-identity.server";
+} from "@/lib/anime-identity";
 
 /**
  * Executa o início de sessão de reprodução para um usuário autenticado.

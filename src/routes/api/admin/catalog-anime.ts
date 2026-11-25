@@ -14,7 +14,7 @@ import {
   findCanonicalCatalogAnime,
   mergeEpisodeHistory,
   parseEpisodeHistoryArray,
-} from "@/lib/anime-identity.server";
+} from "@/lib/anime-identity";
 
 export const Route = createFileRoute("/api/admin/catalog-anime")({
   server: {

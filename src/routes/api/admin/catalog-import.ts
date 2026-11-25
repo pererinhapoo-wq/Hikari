@@ -26,7 +26,7 @@ import {
   resolveReregistrationTargetId,
   upsertAliasMapping,
   type EpisodeHistoryEntry,
-} from "@/lib/anime-identity.server";
+} from "@/lib/anime-identity";
 
 function sanitizeVideoUrl(url?: string | null): string | null {
   return sanitizePlayableVideoUrl(url);

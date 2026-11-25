@@ -115,7 +115,7 @@ export interface RawNotificationRow {
 }
 
 import { FALLBACK_ANIMES } from "@/lib/fallback-catalog";
-import { resolveCatalogMetadataMap } from "@/lib/anime-identity.server";
+import { resolveCatalogMetadataMap } from "@/lib/anime-identity";
 import { displayTitle } from "@/lib/types";
 
 const ANILIST_ENDPOINT = "https://graphql.anilist.co";

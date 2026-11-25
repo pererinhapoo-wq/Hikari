@@ -30,7 +30,7 @@ import {
   sanitizePlayableVideoUrl,
 } from "@/lib/published-episodes";
 import { normalizeHikariPlayerEpisodeId } from "@/lib/hikari-player";
-import { resolveAnimeCandidateIdsFromDb } from "@/lib/anime-identity.server";
+import { resolveAnimeCandidateIdsFromDb } from "@/lib/anime-identity";
 
 export const getCatalogEpisodesSchema = z.object({
   animeId: z.string().min(1, "animeId é obrigatório"),

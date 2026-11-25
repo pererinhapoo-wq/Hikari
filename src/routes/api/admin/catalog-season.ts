@@ -8,7 +8,7 @@ import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
 import {
   findCanonicalCatalogAnime,
   getAllAliasIdsForCanonical,
-} from "@/lib/anime-identity.server";
+} from "@/lib/anime-identity";
 
 async function resolveSeasonInvalidationAliases(
   sql: Awaited<ReturnType<typeof getSql>>,

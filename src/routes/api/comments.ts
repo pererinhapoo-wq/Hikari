@@ -11,7 +11,7 @@ import {
 import {
   resolveAnimeCandidateIdsFromDb,
   resolveEquivalentEpisodeIdsFromDb,
-} from "@/lib/anime-identity.server";
+} from "@/lib/anime-identity";
 
 export const Route = createFileRoute("/api/comments")({
   server: {

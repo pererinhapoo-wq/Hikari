@@ -9,7 +9,7 @@ import {
   inferIsDubbedFromTitles,
   resolveAnimeCandidateIdsFromDb,
   resolveCatalogMetadataMap,
-} from "@/lib/anime-identity.server";
+} from "@/lib/anime-identity";
 import {
   addFavoriteSchema,
   removeFavoriteSchema,

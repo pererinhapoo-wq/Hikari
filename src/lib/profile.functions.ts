@@ -20,7 +20,7 @@ import {
   type AnimeTrackingStatsSummary,
   createEmptyTrackingStatsSummary,
 } from "@/types/profile-tracking";
-import { resolveCatalogMetadataMap } from "@/lib/anime-identity.server";
+import { resolveCatalogMetadataMap } from "@/lib/anime-identity";
 
 export type SectionPrivacyLevel = "public" | "followers" | "private";
 export type AccountType = "public" | "private";

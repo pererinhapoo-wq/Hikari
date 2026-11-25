@@ -4,7 +4,7 @@ import { getSql } from "@/lib/db";
 import {
   resolveAnimeCandidateIdsFromDb,
   resolveEquivalentEpisodeIdsFromDb,
-} from "@/lib/anime-identity.server";
+} from "@/lib/anime-identity";
 import {
   recordProgressInRedis,
   getProgressFromRedis,

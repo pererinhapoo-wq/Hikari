@@ -29,7 +29,7 @@ import {
   resolveAnimeCandidateIdsFromDb,
   getAllAliasIdsForCanonical,
   extractIdentityFromSnapshot,
-} from "@/lib/anime-identity.server";
+} from "@/lib/anime-identity";
 
 export interface DbCatalogAnimeRow {
   id: string;
