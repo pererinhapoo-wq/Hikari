@@ -2,9 +2,17 @@ import * as Sentry from "@sentry/tanstackstart-react";
 
 import { sanitizeSentryEvent } from "./sentry-privacy";
 
-const dsn = process.env.SENTRY_DSN?.trim() || undefined;
+let serverInitialized = false;
 
-if (!Sentry.getClient()) {
+export function initSentryServer(): void {
+  if (serverInitialized || Sentry.getClient()) {
+    serverInitialized = true;
+    return;
+  }
+
+  serverInitialized = true;
+  const dsn = process.env.SENTRY_DSN?.trim() || undefined;
+
   Sentry.init({
     dsn,
     enabled: Boolean(dsn),
