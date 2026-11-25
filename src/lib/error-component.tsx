@@ -1,5 +1,7 @@
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import { TriangleAlert } from "lucide-react";
+import * as Sentry from "@sentry/tanstackstart-react";
+import { useEffect } from "react";
 
 const FALLBACK_MESSAGE = "Algo deu errado. Recarregue a página.";
 
@@ -9,7 +11,22 @@ function errorMessage(error: unknown): string {
   return FALLBACK_MESSAGE;
 }
 
+const capturedObjectErrors = new WeakSet<object>();
+let lastCapturedPrimitive: unknown = null;
+
 export function AppErrorComponent({ error }: ErrorComponentProps) {
+  useEffect(() => {
+    if (!error) return;
+    if (typeof error === "object") {
+      if (capturedObjectErrors.has(error)) return;
+      capturedObjectErrors.add(error);
+    } else {
+      if (lastCapturedPrimitive === error) return;
+      lastCapturedPrimitive = error;
+    }
+    Sentry.captureException(error);
+  }, [error]);
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-fg">
       <span className="text-danger" aria-hidden="true">
