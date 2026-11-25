@@ -11,7 +11,9 @@ import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { hasEpisodePlayableSource } from "@/lib/published-episodes";
 import {
   getRedisHomeTrendingWithFence,
+  HOME_TRENDING_PAYLOAD_VERSION,
   invalidateRedisHomeTrending,
+  resolveTrendingEnvironmentName,
   scheduleRedisBackgroundWrite,
   setRedisHomeTrending,
   type HomeTrendingPayload,
@@ -931,7 +933,8 @@ export function buildHomeTrendingPayload(
   }
 
   return {
-    v: 1,
+    v: HOME_TRENDING_PAYLOAD_VERSION,
+    env: resolveTrendingEnvironmentName(),
     generatedAt: nowMs,
     items,
   };
@@ -1235,10 +1238,13 @@ export async function getHomeTrendingPayloadWithDeps(
   nowMs = Date.now(),
 ): Promise<HomeTrendingPayload | null> {
   const currentDayKey = getTodayRangeSaoPaulo(new Date(nowMs)).todayKey;
+  const currentEnv = resolveTrendingEnvironmentName();
 
   if (
     ramTrendingPayload &&
     nowMs - ramTrendingPayload.timestamp < TRENDING_RAM_CACHE_TTL_MS &&
+    ramTrendingPayload.payload.v === HOME_TRENDING_PAYLOAD_VERSION &&
+    ramTrendingPayload.payload.env === currentEnv &&
     getTodayRangeSaoPaulo(new Date(ramTrendingPayload.payload.generatedAt)).todayKey ===
       currentDayKey
   ) {
@@ -1258,6 +1264,8 @@ export async function getHomeTrendingPayloadWithDeps(
       if (
         redisRead.status === "hit" &&
         redisRead.payload &&
+        redisRead.payload.v === HOME_TRENDING_PAYLOAD_VERSION &&
+        redisRead.payload.env === currentEnv &&
         redisRead.payload.items.length > 0 &&
         getTodayRangeSaoPaulo(new Date(redisRead.payload.generatedAt)).todayKey ===
           currentDayKey
@@ -1277,7 +1285,7 @@ export async function getHomeTrendingPayloadWithDeps(
           ? redisRead.fence
           : redisRead.status === "failed"
             ? null
-            : undefined;
+            : redisRead.fence ?? undefined;
 
       const [catalogRows, badgesLookup, audienceSignals] = await Promise.all([
         deps.queryCatalog(),
@@ -1301,7 +1309,8 @@ export async function getHomeTrendingPayloadWithDeps(
 
       if (scored.length === 0) {
         const emptyPayload: HomeTrendingPayload = {
-          v: 1,
+          v: HOME_TRENDING_PAYLOAD_VERSION,
+          env: currentEnv,
           generatedAt: nowMs,
           items: [],
         };

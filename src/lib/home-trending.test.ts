@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { beforeEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   getHomeTrendingItemsWithDeps,
+  getHomeTrendingPayloadWithDeps,
   invalidateHomeTrendingLocalCache,
   resetHomeTrendingTestState,
   scoreAndRankHomeTrending,
@@ -11,10 +12,15 @@ import {
 } from "@/lib/home-trending.server";
 import type { AnimeRecentBadgesLookup } from "@/lib/catalog-badges";
 import {
+  getHomeTrendingGenKey,
+  getHomeTrendingRedisKey,
   getRedisHomeTrendingWithFence,
   HOME_TRENDING_GEN_KEY,
+  HOME_TRENDING_PAYLOAD_VERSION,
   HOME_TRENDING_REDIS_KEY,
+  HOME_TRENDING_REDIS_TTL_SEC,
   invalidateRedisHomeTrending,
+  resolveTrendingEnvironmentName,
   setRedisHomeTrending,
   type RedisEvalClient,
 } from "@/lib/redis";
@@ -65,6 +71,7 @@ function makeCandidateRow(
 
 class MockTrendingRedis implements RedisEvalClient {
   store = new Map<string, string>();
+  ttlByKey = new Map<string, number>();
   shouldThrow = false;
 
   private incr(key: string): number {
@@ -101,6 +108,10 @@ class MockTrendingRedis implements RedisEvalClient {
         }
       }
       this.store.set(keys[0], strArgs[0]);
+      const ttl = Number(strArgs[1]);
+      if (Number.isFinite(ttl) && ttl > 0) {
+        this.ttlByKey.set(keys[0], ttl);
+      }
       return ["inserted"] as TData;
     }
 
@@ -514,7 +525,11 @@ describe("home-trending native data & calendar evolution", () => {
     assert.equal(res1.length, 1);
     assert.equal(res1[0].id, "888");
     assert.equal(catalogQueries, 1);
-    assert.equal(mockRedis.store.has(HOME_TRENDING_REDIS_KEY), true);
+    const activeRedisKey = getHomeTrendingRedisKey();
+    const activeGenKey = getHomeTrendingGenKey();
+    assert.equal(mockRedis.store.has(activeRedisKey), true);
+    assert.equal(mockRedis.ttlByKey.get(activeRedisKey), 720);
+    assert.equal(HOME_TRENDING_REDIS_TTL_SEC, 720);
 
     // Hit em cache RAM não reconsulta Neon
     const resCached = await getHomeTrendingItemsWithDeps(deps, nowMs + 60_000);
@@ -531,7 +546,7 @@ describe("home-trending native data & calendar evolution", () => {
     currentRows = [makeCandidateRow({ id: "999" }, nowMs)];
     invalidateHomeTrendingLocalCache();
     await invalidateRedisHomeTrending(mockRedis);
-    assert.equal(mockRedis.store.get(HOME_TRENDING_GEN_KEY), "1");
+    assert.equal(mockRedis.store.get(activeGenKey), "1");
 
     const read = await getRedisHomeTrendingWithFence(mockRedis);
     assert.equal(read.status, "miss");
@@ -546,10 +561,369 @@ describe("home-trending native data & calendar evolution", () => {
 
     // Fence evita gravação stale se houver invalidação concorrente
     const staleWrite = await setRedisHomeTrending(
-      { v: 1, generatedAt: nowMs, items: res1 },
+      {
+        v: HOME_TRENDING_PAYLOAD_VERSION,
+        env: resolveTrendingEnvironmentName(),
+        generatedAt: nowMs,
+        items: res1,
+      },
       "0",
       mockRedis,
     );
     assert.equal(staleWrite, "fenced");
+  });
+});
+
+describe("home-trending Redis environment isolation & v3 validation", () => {
+  const originalVercelEnv = process.env.VERCEL_ENV;
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  beforeEach(() => {
+    resetHomeTrendingTestState();
+  });
+
+  afterEach(() => {
+    if (originalVercelEnv === undefined) {
+      delete process.env.VERCEL_ENV;
+    } else {
+      process.env.VERCEL_ENV = originalVercelEnv;
+    }
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+    resetHomeTrendingTestState();
+  });
+
+  function makeEnvDeps(
+    mockRedis: MockTrendingRedis,
+    rowsProvider: () => TrendingCatalogAnimeCandidateRow[],
+    bgWrites: Promise<unknown>[],
+    onCatalogQuery: () => void,
+  ): HomeTrendingDeps {
+    return {
+      getRedisTrending: () => getRedisHomeTrendingWithFence(mockRedis),
+      setRedisTrending: (payload, fence) =>
+        setRedisHomeTrending(payload, fence, mockRedis),
+      scheduleWrite: (promise) => {
+        bgWrites.push(promise);
+      },
+      queryCatalog: async () => {
+        onCatalogQuery();
+        return rowsProvider();
+      },
+      queryBadges: async () => emptyBadgesLookup(),
+      queryAudienceSignals: async () => [],
+    };
+  }
+
+  it("1. Production, Preview, and Development resolve, write, and read only their own v3 keys", async () => {
+    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
+    const mockRedis = new MockTrendingRedis();
+    const bgWrites: Promise<unknown>[] = [];
+    let queries = 0;
+
+    // Production
+    process.env.VERCEL_ENV = "production";
+    assert.equal(resolveTrendingEnvironmentName(), "production");
+    assert.equal(getHomeTrendingRedisKey(), "hikari:production:home:trending:v3");
+    assert.equal(getHomeTrendingGenKey(), "hikari:production:home:trending:gen:v3");
+
+    const prodItems = await getHomeTrendingItemsWithDeps(
+      makeEnvDeps(
+        mockRedis,
+        () => [makeCandidateRow({ id: "101" }, nowMs)],
+        bgWrites,
+        () => {
+          queries += 1;
+        },
+      ),
+      nowMs,
+    );
+    await Promise.all(bgWrites.splice(0));
+    assert.equal(prodItems.map((i) => i.id).join(","), "101");
+    assert.equal(mockRedis.store.has("hikari:production:home:trending:v3"), true);
+    assert.equal(mockRedis.ttlByKey.get("hikari:production:home:trending:v3"), 720);
+    assert.equal(mockRedis.store.has("hikari:preview:home:trending:v3"), false);
+    assert.equal(mockRedis.store.has("hikari:development:home:trending:v3"), false);
+
+    // Preview (não lê a chave de Production nem escreve nela)
+    resetHomeTrendingTestState();
+    process.env.VERCEL_ENV = "preview";
+    assert.equal(resolveTrendingEnvironmentName(), "preview");
+    assert.equal(getHomeTrendingRedisKey(), "hikari:preview:home:trending:v3");
+    assert.equal(getHomeTrendingGenKey(), "hikari:preview:home:trending:gen:v3");
+
+    const previewItems = await getHomeTrendingItemsWithDeps(
+      makeEnvDeps(
+        mockRedis,
+        () => [makeCandidateRow({ id: "202" }, nowMs)],
+        bgWrites,
+        () => {
+          queries += 1;
+        },
+      ),
+      nowMs,
+    );
+    await Promise.all(bgWrites.splice(0));
+    assert.equal(previewItems.map((i) => i.id).join(","), "202");
+    assert.equal(mockRedis.store.has("hikari:preview:home:trending:v3"), true);
+    assert.equal(mockRedis.ttlByKey.get("hikari:preview:home:trending:v3"), 720);
+
+    // Development (fallback quando VERCEL_ENV não está definido e NODE_ENV !== production)
+    resetHomeTrendingTestState();
+    delete process.env.VERCEL_ENV;
+    process.env.NODE_ENV = "development";
+    assert.equal(resolveTrendingEnvironmentName(), "development");
+    assert.equal(getHomeTrendingRedisKey(), "hikari:development:home:trending:v3");
+    assert.equal(getHomeTrendingGenKey(), "hikari:development:home:trending:gen:v3");
+
+    const devItems = await getHomeTrendingItemsWithDeps(
+      makeEnvDeps(
+        mockRedis,
+        () => [makeCandidateRow({ id: "303" }, nowMs)],
+        bgWrites,
+        () => {
+          queries += 1;
+        },
+      ),
+      nowMs,
+    );
+    await Promise.all(bgWrites.splice(0));
+    assert.equal(devItems.map((i) => i.id).join(","), "303");
+    assert.equal(mockRedis.store.has("hikari:development:home:trending:v3"), true);
+    assert.equal(mockRedis.ttlByKey.get("hikari:development:home:trending:v3"), 720);
+    assert.equal(queries, 3);
+
+    // Cada ambiente lê seu próprio payload isolado do Redis
+    resetHomeTrendingTestState();
+    process.env.VERCEL_ENV = "production";
+    const prodRead = await getRedisHomeTrendingWithFence(mockRedis);
+    assert.equal(prodRead.status, "hit");
+    assert.equal(prodRead.payload?.env, "production");
+    assert.equal(prodRead.payload?.items[0]?.id, "101");
+
+    process.env.VERCEL_ENV = "preview";
+    const prevRead = await getRedisHomeTrendingWithFence(mockRedis);
+    assert.equal(prevRead.status, "hit");
+    assert.equal(prevRead.payload?.env, "preview");
+    assert.equal(prevRead.payload?.items[0]?.id, "202");
+
+    process.env.VERCEL_ENV = "development";
+    const devRead = await getRedisHomeTrendingWithFence(mockRedis);
+    assert.equal(devRead.status, "hit");
+    assert.equal(devRead.payload?.env, "development");
+    assert.equal(devRead.payload?.items[0]?.id, "303");
+  });
+
+  it("2. rejects payload tagged for a different environment on both read and write", async () => {
+    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
+    const mockRedis = new MockTrendingRedis();
+    const bgWrites: Promise<unknown>[] = [];
+    let queries = 0;
+
+    // Payload de production gravado indevidamente dentro da chave de preview
+    process.env.VERCEL_ENV = "preview";
+    const previewKey = getHomeTrendingRedisKey("preview");
+    const foreignEnvelope = {
+      v: 1,
+      globalGen: "0",
+      idGens: {},
+      data: {
+        v: HOME_TRENDING_PAYLOAD_VERSION,
+        env: "production",
+        generatedAt: nowMs,
+        items: [{ id: "5081", titles: { romaji: "Bakemonogatari", english: "", native: "" }, cover: "https://cdn.example.com/5081.jpg", banner: "", synopsis: "", score: 83, genres: [], format: "TV", status: "FINISHED", episodesCount: 15, season: "SUMMER", year: 2009, trailerId: null, source: "local" as const }],
+      },
+    };
+    mockRedis.store.set(previewKey, JSON.stringify(foreignEnvelope));
+
+    // Leitura direta no Redis deve rejeitar como miss
+    const directRead = await getRedisHomeTrendingWithFence(mockRedis);
+    assert.equal(directRead.status, "miss");
+    assert.equal(directRead.payload, null);
+
+    // Tentativa de gravação direta com env divergente deve retornar skipped
+    const foreignWrite = await setRedisHomeTrending(
+      foreignEnvelope.data,
+      "0",
+      mockRedis,
+    );
+    assert.equal(foreignWrite, "skipped");
+
+    // Serviço deve ignorar payload estrangeiro, recalcular no catálogo de preview e sobrescrever com env=preview
+    const items = await getHomeTrendingItemsWithDeps(
+      makeEnvDeps(
+        mockRedis,
+        () => [makeCandidateRow({ id: "777" }, nowMs)],
+        bgWrites,
+        () => {
+          queries += 1;
+        },
+      ),
+      nowMs,
+    );
+    await Promise.all(bgWrites.splice(0));
+    assert.equal(queries, 1);
+    assert.equal(items.map((i) => i.id).join(","), "777");
+
+    const refreshedRead = await getRedisHomeTrendingWithFence(mockRedis);
+    assert.equal(refreshedRead.status, "hit");
+    assert.equal(refreshedRead.payload?.env, "preview");
+    assert.equal(refreshedRead.payload?.items[0]?.id, "777");
+  });
+
+  it("3. ignores legacy v2 keys and rejects legacy v2 payloads without reusing them", async () => {
+    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
+    const mockRedis = new MockTrendingRedis();
+    const bgWrites: Promise<unknown>[] = [];
+    let queries = 0;
+
+    assert.equal(HOME_TRENDING_REDIS_KEY, "hikari:home:trending:v2");
+    assert.equal(HOME_TRENDING_GEN_KEY, "hikari:home:trending:gen:v2");
+
+    // Chave antiga v2 populada (ex.: Bakemonogatari legado)
+    mockRedis.store.set(
+      HOME_TRENDING_REDIS_KEY,
+      JSON.stringify({
+        v: 1,
+        globalGen: "0",
+        idGens: {},
+        data: {
+          v: 1,
+          generatedAt: nowMs,
+          items: [{ id: "5081", titles: { romaji: "Bakemonogatari", english: "", native: "" }, cover: "https://cdn.example.com/5081.jpg", banner: "", synopsis: "", score: 83, genres: [], format: "TV", status: "FINISHED", episodesCount: 15, season: "SUMMER", year: 2009, trailerId: null }],
+        },
+      }),
+    );
+
+    // Payload legado v1/sem env também colocado sob a chave v3 para testar validação estrita
+    process.env.VERCEL_ENV = "preview";
+    mockRedis.store.set(
+      getHomeTrendingRedisKey("preview"),
+      JSON.stringify({
+        v: 1,
+        globalGen: "0",
+        idGens: {},
+        data: {
+          v: 1,
+          generatedAt: nowMs,
+          items: [{ id: "5081", titles: { romaji: "Bakemonogatari", english: "", native: "" }, cover: "https://cdn.example.com/5081.jpg", banner: "", synopsis: "", score: 83, genres: [], format: "TV", status: "FINISHED", episodesCount: 15, season: "SUMMER", year: 2009, trailerId: null, source: "local" as const }],
+        },
+      }),
+    );
+
+    const read = await getRedisHomeTrendingWithFence(mockRedis);
+    assert.equal(read.status, "miss");
+    assert.equal(read.payload, null);
+
+    // Defesa em profundidade: mesmo que um mock retorne payload legado v2 como hit, getHomeTrendingPayloadWithDeps rejeita
+    const payload = await getHomeTrendingPayloadWithDeps(
+      {
+        getRedisTrending: async () => ({
+          status: "hit",
+          fence: "0",
+          payload: {
+            v: 1 as unknown as typeof HOME_TRENDING_PAYLOAD_VERSION,
+            generatedAt: nowMs,
+            items: [{ id: "5081", titles: { romaji: "Bakemonogatari", english: "", native: "" }, cover: "https://cdn.example.com/5081.jpg", banner: "", synopsis: "", score: 83, genres: [], format: "TV", status: "FINISHED", episodesCount: 15, season: "SUMMER", year: 2009, trailerId: null, source: "local" as const }],
+          },
+        }),
+        setRedisTrending: (p, f) => setRedisHomeTrending(p, f, mockRedis),
+        scheduleWrite: (p) => {
+          bgWrites.push(p);
+        },
+        queryCatalog: async () => {
+          queries += 1;
+          return [makeCandidateRow({ id: "909" }, nowMs)];
+        },
+        queryBadges: async () => emptyBadgesLookup(),
+        queryAudienceSignals: async () => [],
+      },
+      nowMs,
+    );
+    await Promise.all(bgWrites.splice(0));
+    assert.equal(queries, 1);
+    assert.equal(payload?.v, HOME_TRENDING_PAYLOAD_VERSION);
+    assert.equal(payload?.env, "preview");
+    assert.equal(payload?.items.map((i) => i.id).join(","), "909");
+    // A chave legada v2 não foi apagada manualmente nem alterada
+    assert.equal(mockRedis.store.has(HOME_TRENDING_REDIS_KEY), true);
+  });
+
+  it("4. invalidation in Preview only bumps Preview generation and does not affect Production", async () => {
+    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
+    const mockRedis = new MockTrendingRedis();
+    const bgWrites: Promise<unknown>[] = [];
+
+    process.env.VERCEL_ENV = "production";
+    await getHomeTrendingItemsWithDeps(
+      makeEnvDeps(
+        mockRedis,
+        () => [makeCandidateRow({ id: "111" }, nowMs)],
+        bgWrites,
+        () => {},
+      ),
+      nowMs,
+    );
+    await Promise.all(bgWrites.splice(0));
+
+    resetHomeTrendingTestState();
+    process.env.VERCEL_ENV = "preview";
+    await getHomeTrendingItemsWithDeps(
+      makeEnvDeps(
+        mockRedis,
+        () => [makeCandidateRow({ id: "222" }, nowMs)],
+        bgWrites,
+        () => {},
+      ),
+      nowMs,
+    );
+    await Promise.all(bgWrites.splice(0));
+
+    // Invalida somente Preview
+    await invalidateRedisHomeTrending(mockRedis);
+    assert.equal(mockRedis.store.get("hikari:preview:home:trending:gen:v3"), "1");
+    assert.equal(mockRedis.store.has("hikari:preview:home:trending:v3"), false);
+    // Production permanece intacto
+    assert.equal(mockRedis.store.has("hikari:production:home:trending:v3"), true);
+    assert.equal(mockRedis.store.get("hikari:production:home:trending:gen:v3"), undefined);
+
+    process.env.VERCEL_ENV = "production";
+    const prodStillHit = await getRedisHomeTrendingWithFence(mockRedis);
+    assert.equal(prodStillHit.status, "hit");
+    assert.equal(prodStillHit.payload?.items[0]?.id, "111");
+
+    // Fence em Preview rejeita escrita com geração antiga "0"
+    process.env.VERCEL_ENV = "preview";
+    const stalePreviewWrite = await setRedisHomeTrending(
+      {
+        v: HOME_TRENDING_PAYLOAD_VERSION,
+        env: "preview",
+        generatedAt: nowMs,
+        items: [
+          {
+            id: "222",
+            titles: { romaji: "Anime 222", english: "", native: "" },
+            cover: "https://cdn.example.com/222.jpg",
+            banner: "",
+            synopsis: "",
+            score: 80,
+            genres: [],
+            format: "TV",
+            status: "RELEASING",
+            episodesCount: 12,
+            season: "SPRING",
+            year: 2026,
+            trailerId: null,
+            source: "local",
+          },
+        ],
+      },
+      "0",
+      mockRedis,
+    );
+    assert.equal(stalePreviewWrite, "fenced");
   });
 });

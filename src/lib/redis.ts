@@ -3901,9 +3901,25 @@ export async function invalidateRedisHeroBannerPool(
 export const HOME_TRENDING_REDIS_KEY = "hikari:home:trending:v2";
 export const HOME_TRENDING_GEN_KEY = "hikari:home:trending:gen:v2";
 export const HOME_TRENDING_REDIS_TTL_SEC = 720; // 12 minutos
+export const HOME_TRENDING_PAYLOAD_VERSION = 3 as const;
+
+export function resolveTrendingEnvironmentName(): string {
+  return resolveHeroEnvironmentName();
+}
+
+export function getHomeTrendingRedisKey(envName?: string): string {
+  const env = envName || resolveTrendingEnvironmentName();
+  return `hikari:${env}:home:trending:v3`;
+}
+
+export function getHomeTrendingGenKey(envName?: string): string {
+  const env = envName || resolveTrendingEnvironmentName();
+  return `hikari:${env}:home:trending:gen:v3`;
+}
 
 export interface HomeTrendingPayload {
-  v: 1;
+  v: typeof HOME_TRENDING_PAYLOAD_VERSION;
+  env?: string;
   generatedAt: number;
   items: SlimAnime[];
 }
@@ -3914,11 +3930,22 @@ export interface RedisHomeTrendingReadResult {
   fence: string | null;
 }
 
-function isValidHomeTrendingPayload(raw: unknown): raw is HomeTrendingPayload {
+function isValidHomeTrendingPayload(
+  raw: unknown,
+  currentEnv?: string,
+): raw is HomeTrendingPayload {
   if (!raw || typeof raw !== "object") return false;
   const candidate = raw as Partial<HomeTrendingPayload>;
+  if (candidate.v !== HOME_TRENDING_PAYLOAD_VERSION) {
+    return false;
+  }
+  if (typeof candidate.env !== "string" || candidate.env.trim().length === 0) {
+    return false;
+  }
+  if (currentEnv && candidate.env !== currentEnv) {
+    return false;
+  }
   return (
-    candidate.v === 1 &&
     typeof candidate.generatedAt === "number" &&
     Number.isFinite(candidate.generatedAt) &&
     Array.isArray(candidate.items) &&
@@ -3941,11 +3968,15 @@ export async function getRedisHomeTrendingWithFence(
     return { status: "unavailable", payload: null, fence: null };
   }
 
+  const currentEnv = resolveTrendingEnvironmentName();
+  const redisKey = getHomeTrendingRedisKey(currentEnv);
+  const genKey = getHomeTrendingGenKey(currentEnv);
+
   try {
     const res = await withRedisTimeout(
       client.eval<never[], unknown[]>(
         GET_ENVELOPE_OR_FENCE_SCRIPT,
-        [HOME_TRENDING_REDIS_KEY, HOME_TRENDING_GEN_KEY],
+        [redisKey, genKey],
         [],
       ),
       "getRedisHomeTrendingWithFence",
@@ -3968,12 +3999,12 @@ export async function getRedisHomeTrendingWithFence(
           parsed &&
           parsed.v === 1 &&
           parsed.globalGen === globalGen &&
-          isValidHomeTrendingPayload(parsed.data)
+          isValidHomeTrendingPayload(parsed.data, currentEnv)
         ) {
           return { status: "hit", payload: parsed.data, fence: globalGen };
         }
       } catch {
-        // Payload inválido no Redis: trata como miss para recalcular com segurança
+        // Payload inválido, legado ou de outro ambiente no Redis: trata como miss para recalcular com segurança
       }
     }
 
@@ -3996,7 +4027,15 @@ export async function setRedisHomeTrending(
   if (!client) {
     return "unavailable";
   }
-  if (!isValidHomeTrendingPayload(payload)) {
+  const currentEnv = resolveTrendingEnvironmentName();
+  if (payload.env && payload.env !== currentEnv) {
+    return "skipped";
+  }
+  const stampedPayload: HomeTrendingPayload = {
+    ...payload,
+    env: currentEnv,
+  };
+  if (!isValidHomeTrendingPayload(stampedPayload, currentEnv)) {
     return "skipped";
   }
   if (fence === null) {
@@ -4008,15 +4047,18 @@ export async function setRedisHomeTrending(
     v: 1,
     globalGen: activeGen,
     idGens: {},
-    data: payload,
+    data: stampedPayload,
   };
+
+  const redisKey = getHomeTrendingRedisKey(currentEnv);
+  const genKey = getHomeTrendingGenKey(currentEnv);
 
   try {
     const raw = JSON.stringify(envelope);
     const res = await withRedisTimeout(
       client.eval<string[], unknown[]>(
         SET_ENVELOPE_WITH_FENCE_SCRIPT,
-        [HOME_TRENDING_REDIS_KEY, HOME_TRENDING_GEN_KEY],
+        [redisKey, genKey],
         [raw, String(HOME_TRENDING_REDIS_TTL_SEC), activeGen],
       ),
       "setRedisHomeTrending",
@@ -4040,11 +4082,15 @@ export async function invalidateRedisHomeTrending(
   const client = resolveScopedRedisClient(redisOverride);
   if (!client) return;
 
+  const currentEnv = resolveTrendingEnvironmentName();
+  const redisKey = getHomeTrendingRedisKey(currentEnv);
+  const genKey = getHomeTrendingGenKey(currentEnv);
+
   try {
     await withRedisTimeout(
       client.eval<[string], number>(
         INVALIDATE_IDS_SCRIPT,
-        [HOME_TRENDING_GEN_KEY, HOME_TRENDING_REDIS_KEY],
+        [genKey, redisKey],
         ["1"],
       ),
       "invalidateRedisHomeTrending",
