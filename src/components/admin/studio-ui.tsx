@@ -320,7 +320,9 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
       customUnit: preset === "custom" ? customUnit : undefined,
     });
     previewLabel = resolved.durationLabel;
-    previewExpires = formatBanDateTime(Date.now() + resolved.durationMs);
+    previewExpires = resolved.isPermanent
+      ? "Sem data de expiração (permanente)"
+      : formatBanDateTime(Date.now() + (resolved.durationMs ?? 0));
   } catch (err) {
     durationValid = false;
     durationError =
@@ -354,6 +356,7 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
         body: JSON.stringify({
           userId: target.userId,
           preset,
+          isPermanent: preset === "permanent",
           customAmount: preset === "custom" ? Number(customAmount) : undefined,
           customUnit: preset === "custom" ? customUnit : undefined,
           reason: trimmedReason,
@@ -369,13 +372,15 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
 
       if (!res.ok || !data?.ban) {
         throw new Error(
-          data?.error || "Não foi possível aplicar o banimento temporário.",
+          data?.error || "Não foi possível aplicar o banimento.",
         );
       }
 
       toast.success(
         data.message ||
-          `Usuário suspenso de comentar por ${data.ban.durationLabel}.`,
+          (data.ban.isPermanent
+            ? "Banimento permanente aplicado."
+            : `Usuário suspenso de comentar por ${data.ban.durationLabel}.`),
       );
       onSuccess?.(data.ban);
       onClose();
@@ -460,6 +465,18 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
                 >
                   Custom
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setPreset("permanent")}
+                  className={cn(
+                    "h-9 rounded-lg border px-2 text-xs font-semibold transition-colors cursor-pointer",
+                    preset === "permanent"
+                      ? "border-rose-600 bg-rose-600 text-white shadow-sm shadow-rose-600/30"
+                      : "border-white/[0.08] bg-[#161226] text-zinc-300 hover:border-rose-500/30 hover:bg-[#1f1a36]",
+                  )}
+                >
+                  Permanente
+                </button>
               </div>
 
               {preset === "custom" && (
@@ -501,11 +518,17 @@ export function UserBanModal({ target, onClose, onSuccess }: UserBanModalProps) 
                   <Clock className="size-3.5 text-purple-400" />
                   <span>
                     Duração:{" "}
-                    <strong className="text-zinc-100">{previewLabel}</strong> ·
-                    Expira em{" "}
-                    <strong className="studio-tabular text-zinc-100">
-                      {previewExpires}
-                    </strong>
+                    <strong className="text-zinc-100">{previewLabel}</strong> ·{" "}
+                    {preset === "permanent" ? (
+                      <strong className="text-rose-300">{previewExpires}</strong>
+                    ) : (
+                      <>
+                        Expira em{" "}
+                        <strong className="studio-tabular text-zinc-100">
+                          {previewExpires}
+                        </strong>
+                      </>
+                    )}
                   </span>
                 </div>
               ) : (

@@ -92,6 +92,8 @@ export const Route = createFileRoute("/api/admin/bans")({
             typeof body.customUnit === "string" ? body.customUnit.trim() : null;
           const reason =
             typeof body.reason === "string" ? body.reason : "";
+          const isPermanent =
+            body.isPermanent === true || preset.toLowerCase() === "permanent";
 
           const sql = await getSql();
           const ban = await applyTemporaryUserBan(sql, {
@@ -99,6 +101,7 @@ export const Route = createFileRoute("/api/admin/bans")({
             preset,
             customAmount,
             customUnit,
+            isPermanent,
             reason,
             actorId: adminSession.id,
             actorEmail: adminSession.email,
@@ -109,7 +112,9 @@ export const Route = createFileRoute("/api/admin/bans")({
             {
               ok: true,
               ban,
-              message: `Banimento temporário aplicado por ${ban.durationLabel}.`,
+              message: ban.isPermanent
+                ? "Banimento permanente aplicado com sucesso."
+                : `Banimento temporário aplicado por ${ban.durationLabel}.`,
             },
             { status: 201 },
           );

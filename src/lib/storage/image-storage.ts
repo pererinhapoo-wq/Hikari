@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth/server";
 import { requireAdminUser } from "@/lib/auth/admin-guard";
 import { getSql } from "@/lib/db";
 import { getActiveUserBan } from "@/lib/moderation-bans.server";
-import { formatBanDateTime } from "@/lib/moderation-ban-types";
+import { formatBanDateTime, isPermanentBan } from "@/lib/moderation-ban-types";
 
 /**
  * HIKARI — Categorias Oficiais de Armazenamento de Imagens
@@ -357,7 +357,9 @@ export async function handleClientBlobUpload(
           const activeBan = await getActiveUserBan(await getSql(), userId);
           if (activeBan) {
             throw new StorageValidationError(
-              `Sua conta está temporariamente impedida de enviar imagens nos comentários até ${formatBanDateTime(activeBan.expiresAt)}. Motivo: ${activeBan.reason}`,
+              isPermanentBan(activeBan)
+                ? `Sua conta está permanentemente impedida de enviar imagens nos comentários. Motivo: ${activeBan.reason}`
+                : `Sua conta está temporariamente impedida de enviar imagens nos comentários até ${formatBanDateTime(activeBan.expiresAt)}. Motivo: ${activeBan.reason}`,
               403,
             );
           }

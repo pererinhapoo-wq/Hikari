@@ -10,6 +10,8 @@ import {
   Loader2,
   MessageCircle,
   Play,
+  ShieldAlert,
+  ShieldCheck,
   Trash2,
   UserCheck,
   UserCircle,
@@ -563,6 +565,8 @@ export function NotificationItemCard({
 
   const isLikeNotification = notification.type === "comment_like";
   const isReplyNotification = notification.type === "comment_reply";
+  const isAccountBanned = notification.type === "account_banned";
+  const isAccountUnbanned = notification.type === "account_unbanned";
   const isGroupedFollowers =
     notification.type === "grouped_followers" ||
     (Boolean(notification.groupedFollowers) && (notification.totalFollowersCount ?? 0) >= 3);
@@ -574,6 +578,8 @@ export function NotificationItemCard({
   const isCommentNotification =
     !isLikeNotification &&
     !isReplyNotification &&
+    !isAccountBanned &&
+    !isAccountUnbanned &&
     !isGroupedFollowers &&
     !isIndividualFollower &&
     (Boolean(notification.commentId) ||
@@ -764,6 +770,41 @@ export function NotificationItemCard({
       );
     }
 
+    if (isAccountBanned || isAccountUnbanned) {
+      const separatorIdx = notification.message.indexOf(": ");
+      const hasPrefixedTitle = separatorIdx > 0 && separatorIdx < 40;
+      const titleText = hasPrefixedTitle
+        ? notification.message.slice(0, separatorIdx)
+        : isAccountBanned
+          ? "Conta banida"
+          : "Banimento encerrado";
+      const bodyText = hasPrefixedTitle
+        ? notification.message.slice(separatorIdx + 2)
+        : notification.message;
+
+      return (
+        <div className="space-y-0.5">
+          <p
+            className={cn(
+              "font-bold tracking-tight leading-snug",
+              isAccountBanned ? "text-rose-200" : "text-emerald-200",
+              compact ? "text-[11.5px]" : "text-xs sm:text-[13px]",
+            )}
+          >
+            {titleText}
+          </p>
+          <p
+            className={cn(
+              "text-zinc-300 leading-snug",
+              compact ? "text-[11px]" : "text-[11.5px] sm:text-xs",
+            )}
+          >
+            {bodyText}
+          </p>
+        </div>
+      );
+    }
+
     if (actorName && notification.message.startsWith(`${actorName} `)) {
       const rest = notification.message.slice(actorName.length);
       return (
@@ -859,11 +900,20 @@ export function NotificationItemCard({
             ) : (
               <div
                 className={cn(
-                  "flex items-center justify-center rounded-full bg-gradient-to-br from-[#241940] to-[#130f24] text-[#c084fc] font-bold ring-2 ring-purple-500/25 shadow-md",
+                  "flex items-center justify-center rounded-full font-bold ring-2 shadow-md",
+                  isAccountBanned
+                    ? "bg-gradient-to-br from-rose-950/90 to-[#190d16] text-rose-300 ring-rose-500/35"
+                    : isAccountUnbanned
+                      ? "bg-gradient-to-br from-emerald-950/90 to-[#0d1f1a] text-emerald-300 ring-emerald-500/35"
+                      : "bg-gradient-to-br from-[#241940] to-[#130f24] text-[#c084fc] ring-purple-500/25",
                   compact ? "size-7.5 text-xs" : "size-10 text-sm",
                 )}
               >
-                {actorName ? (
+                {isAccountBanned ? (
+                  <ShieldAlert className={compact ? "size-4 text-rose-400" : "size-5 text-rose-400"} />
+                ) : isAccountUnbanned ? (
+                  <ShieldCheck className={compact ? "size-4 text-emerald-400" : "size-5 text-emerald-400"} />
+                ) : actorName ? (
                   <span>{actorName.charAt(0).toUpperCase()}</span>
                 ) : (
                   <UserCircle className={compact ? "size-4 text-zinc-400" : "size-5 text-zinc-400"} />

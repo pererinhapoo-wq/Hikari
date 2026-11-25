@@ -31,7 +31,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getBearerToken } from "@/lib/auth/client";
-import { formatBanRemaining } from "@/lib/moderation-ban-types";
+import {
+  formatBanRemaining,
+  isBanActiveAt,
+  isPermanentBan,
+} from "@/lib/moderation-ban-types";
 import { cn } from "@/lib/utils";
 import type { AdminUserListItem } from "@/routes/api/admin/users";
 
@@ -687,11 +691,13 @@ function AdminUsersPage() {
   );
 }
 
-function useUserBanNowMs(expiresAt: number | null): number | null {
+function useUserBanNowMs(ban: AdminUserListItem["activeBan"]): number | null {
+  const expiresAt = ban?.expiresAt ?? null;
+  const permanent = isPermanentBan(ban);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   useEffect(() => {
-    if (!expiresAt || expiresAt <= Date.now()) return;
+    if (permanent || !expiresAt || expiresAt <= Date.now()) return;
     const interval = window.setInterval(() => {
       const now = Date.now();
       setNowMs(now);
@@ -700,9 +706,9 @@ function useUserBanNowMs(expiresAt: number | null): number | null {
       }
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [expiresAt]);
+  }, [expiresAt, permanent]);
 
-  if (!expiresAt || expiresAt <= nowMs) return null;
+  if (!ban || !isBanActiveAt(ban, nowMs)) return null;
   return nowMs;
 }
 
@@ -711,7 +717,7 @@ function UserBanDesktopCell({
 }: {
   ban: AdminUserListItem["activeBan"];
 }) {
-  const nowMs = useUserBanNowMs(ban?.expiresAt ?? null);
+  const nowMs = useUserBanNowMs(ban);
   if (!ban || nowMs === null) {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400">
@@ -737,7 +743,7 @@ function UserBanMobileBanner({
 }: {
   ban: NonNullable<AdminUserListItem["activeBan"]>;
 }) {
-  const nowMs = useUserBanNowMs(ban.expiresAt);
+  const nowMs = useUserBanNowMs(ban);
   if (nowMs === null) return null;
 
   return (
@@ -756,17 +762,20 @@ function UserDetailsBanAlert({
 }: {
   ban: NonNullable<AdminUserListItem["activeBan"]>;
 }) {
-  const nowMs = useUserBanNowMs(ban.expiresAt);
+  const nowMs = useUserBanNowMs(ban);
   if (nowMs === null) return null;
+  const permanent = isPermanentBan(ban);
 
   return (
     <div className="rounded-xl border border-rose-500/30 bg-rose-500/15 p-3.5">
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold text-rose-200">
-          Suspensão Temporária Ativa
+          {permanent ? "Banimento Permanente Ativo" : "Suspensão Temporária Ativa"}
         </span>
         <span className="studio-tabular text-[11px] font-semibold text-rose-300">
-          Restante: {formatBanRemaining(ban.expiresAt, nowMs)}
+          {permanent
+            ? "Permanente"
+            : `Restante: ${formatBanRemaining(ban.expiresAt, nowMs)}`}
         </span>
       </div>
       <p className="mt-1 text-xs text-rose-200/90">Motivo: {ban.reason}</p>
@@ -794,7 +803,7 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
   const avatarSrc = u.avatarUrl || u.image;
   const displayName = u.displayName || u.name;
   const initial = (displayName || u.email || "?")[0]?.toUpperCase();
-  const hasPotentialBan = Boolean(u.activeBan && u.activeBan.expiresAt > Date.now());
+  const hasPotentialBan = isBanActiveAt(u.activeBan);
 
   return (
     <div className="space-y-3 p-4">
@@ -935,7 +944,7 @@ const AdminUserDesktopRow = memo(function AdminUserDesktopRow({
   const avatarSrc = u.avatarUrl || u.image;
   const displayName = u.displayName || u.name;
   const initial = (displayName || u.email || "?")[0]?.toUpperCase();
-  const hasPotentialBan = Boolean(u.activeBan && u.activeBan.expiresAt > Date.now());
+  const hasPotentialBan = isBanActiveAt(u.activeBan);
 
   return (
     <tr className="group transition-colors hover:bg-[#1a172e]/70">

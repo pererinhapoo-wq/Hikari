@@ -32,6 +32,7 @@ import {
   getAllAliasIdsForCanonical,
   reconcileEpisodeIdentityReferences,
 } from "@/lib/anime-identity";
+import { dispatchEpisodePublishedNotifications } from "@/lib/notifications.functions";
 
 const episodeDeleteSchema = z.object({
   id: z.string().trim().min(1, "id é obrigatório"),
@@ -122,6 +123,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             badgeFinal: boolean;
             published: boolean;
             publishedAt: string | null;
+            authorId: string | null;
           };
 
           const [existingByIdRows, existingBySlotRows] = await Promise.all([
@@ -134,7 +136,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                       COALESCE("badge_lancamento", false) AS "badgeLancamento",
                       COALESCE("badge_novo", false) AS "badgeNovo",
                       COALESCE("badge_final", false) AS "badgeFinal",
-                      "published", "publishedAt"
+                      "published", "publishedAt", "authorId"
                FROM "catalog_episode"
                WHERE "id" = $1 LIMIT 1;`,
               [data.id],
@@ -148,7 +150,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                       COALESCE("badge_lancamento", false) AS "badgeLancamento",
                       COALESCE("badge_novo", false) AS "badgeNovo",
                       COALESCE("badge_final", false) AS "badgeFinal",
-                      "published", "publishedAt"
+                      "published", "publishedAt", "authorId"
                FROM "catalog_episode"
                WHERE ("animeId" = $1 OR "animeId" = $2) AND "seasonNumber" = $3 AND "number" = $4 LIMIT 1;`,
               [canonicalAnimeId, data.animeId, data.seasonNumber, data.number],
@@ -340,6 +342,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             badgeLancamento: boolean;
             badgeNovo: boolean;
             badgeFinal: boolean;
+            authorId: string | null;
           }>(
             `INSERT INTO "catalog_episode" (
                "id", "animeId", "seasonNumber", "number",
@@ -348,6 +351,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                "hikari_player_episode_id",
                "opening_start_seconds", "opening_end_seconds",
                "badge_lancamento", "badge_novo", "badge_final",
+               "authorId",
                "published", "publishedAt", "createdAt", "updatedAt"
              )
              VALUES (
@@ -357,6 +361,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                $17,
                $19, $20,
                $23, $24, $25,
+               $29,
                $14,
                CASE WHEN $14 = true THEN CURRENT_TIMESTAMP ELSE NULL END,
                CURRENT_TIMESTAMP,
@@ -415,6 +420,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                  WHEN $28 = true THEN EXCLUDED."badge_final"
                  ELSE "catalog_episode"."badge_final"
                END,
+               "authorId" = COALESCE("catalog_episode"."authorId", EXCLUDED."authorId"),
                "published" = EXCLUDED."published",
                "publishedAt" = CASE
                  WHEN EXCLUDED."published" = true AND "catalog_episode"."publishedAt" IS NULL THEN CURRENT_TIMESTAMP
@@ -422,7 +428,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                  ELSE "catalog_episode"."publishedAt"
                END,
                "updatedAt" = CURRENT_TIMESTAMP
-             RETURNING "id", "published", "publishedAt", "hikari_player_episode_id" AS "hikariPlayerEpisodeId", "opening_start_seconds" AS "openingStartSeconds", "opening_end_seconds" AS "openingEndSeconds", "badge_lancamento" AS "badgeLancamento", "badge_novo" AS "badgeNovo", "badge_final" AS "badgeFinal";`,
+             RETURNING "id", "published", "publishedAt", "hikari_player_episode_id" AS "hikariPlayerEpisodeId", "opening_start_seconds" AS "openingStartSeconds", "opening_end_seconds" AS "openingEndSeconds", "badge_lancamento" AS "badgeLancamento", "badge_novo" AS "badgeNovo", "badge_final" AS "badgeFinal", "authorId";`,
             [
               canonicalId,
               canonicalAnimeId,
@@ -452,6 +458,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
               badgesPatch.hasLancamentoField,
               badgesPatch.hasNovoField,
               badgesPatch.hasFinalField,
+              existingRow?.authorId ?? adminId,
             ],
           );
 
@@ -516,71 +523,16 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           // 9. Notificações para seguidores do anime quando o episódio for publicado pela primeira vez
           if (isFirstTimePublished) {
             try {
-              // Busca os usuários únicos que acompanham o anime (por ID canônico ou aliases), excluindo o administrador que publicou
-              const followers = await sql.query<{ userId: string }>(
-                `SELECT DISTINCT u."userId"
-                 FROM (
-                   SELECT "userId" FROM "user_favorite"
-                   WHERE "animeId" = ANY($1) AND "targetType" = 'anime'
-                   UNION
-                   SELECT l."userId"
-                   FROM "user_custom_list_item" i
-                   JOIN "user_custom_list" l ON l."id" = i."listId"
-                   WHERE i."animeId" = ANY($1)
-                   UNION
-                   SELECT "userId" FROM "user_watched_episode"
-                   WHERE "animeId" = ANY($1)
-                   UNION
-                   SELECT "userId" FROM "user_anime_tracking"
-                   WHERE "animeId" = ANY($1)
-                 ) u
-                 WHERE u."userId" != $2
-                 LIMIT 2000;`,
-                [candidateAnimeIds, adminId],
-              );
-
-              if (followers.length > 0) {
-                const animeName = data.animeTitle?.trim() || fallbackAnimeTitle || "Anime";
-                const epName = data.title?.trim() || `Episódio ${data.number}`;
-                const notifMessage = `Novo episódio disponível: ${animeName} - ${epName}`;
-
-                // Inserção em lotes de 100 para escalabilidade segura
-                const batchSize = 100;
-                for (let i = 0; i < followers.length; i += batchSize) {
-                  const chunk = followers.slice(i, i + batchSize);
-                  const values: unknown[] = [];
-                  const valueRows: string[] = [];
-
-                  chunk.forEach((f, idx) => {
-                    const offset = idx * 8;
-                    const notifId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-                    const dedupKey = `episode:${f.userId}:${effectiveId}`;
-                    valueRows.push(
-                      `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, false, CURRENT_TIMESTAMP)`,
-                    );
-                    values.push(
-                      notifId,
-                      f.userId,
-                      adminId,
-                      "episode",
-                      notifMessage,
-                      canonicalAnimeId,
-                      effectiveId,
-                      dedupKey,
-                    );
-                  });
-
-                  await sql.query(
-                    `INSERT INTO "notification" (
-                       "id", "userId", "actorId", "type", "message",
-                       "animeId", "episodeId", "dedupKey", "read", "createdAt"
-                     )
-                     VALUES ${valueRows.join(", ")}
-                     ON CONFLICT ("dedupKey") DO NOTHING;`,
-                    values,
-                  );
-                }
-              }
+              await dispatchEpisodePublishedNotifications(sql, {
+                animeId: canonicalAnimeId,
+                candidateAnimeIds,
+                episodeId: effectiveId,
+                animeTitle: data.animeTitle?.trim() || fallbackAnimeTitle || "Anime",
+                episodeTitle: data.title?.trim() || `Episódio ${data.number}`,
+                episodeNumber: data.number,
+                episodeAuthorId: savedRow?.authorId ?? existingRow?.authorId ?? adminId,
+                publisherId: adminId,
+              });
             } catch (notifErr) {
               console.warn(
                 "[catalog-episode] Falha não impeditiva no disparo de notificações:",

@@ -8,12 +8,13 @@ export type BanDurationPreset =
   | "3d"
   | "7d"
   | "30d"
-  | "custom";
+  | "custom"
+  | "permanent";
 
 export type CustomDurationUnit = "minutes" | "hours" | "days";
 
 export interface BanPresetOption {
-  value: Exclude<BanDurationPreset, "custom">;
+  value: Exclude<BanDurationPreset, "custom" | "permanent">;
   label: string;
   shortLabel: string;
   durationMs: number;
@@ -85,9 +86,10 @@ export interface ActiveUserBan {
   reason: string;
   durationPreset: BanDurationPreset;
   durationLabel: string;
-  durationMs: number;
+  durationMs: number | null;
+  isPermanent?: boolean;
   bannedAt: number;
-  expiresAt: number;
+  expiresAt: number | null;
   bannedBy: string;
   bannedByName: string | null;
 }
@@ -97,7 +99,7 @@ export interface EnrichedActiveUserBan extends ActiveUserBan {
   userNick: string | null;
   userEmail: string | null;
   userImage: string | null;
-  remainingMs: number;
+  remainingMs: number | null;
 }
 
 export interface BanHistoryEntry {
@@ -112,6 +114,7 @@ export interface BanHistoryEntry {
   durationPreset?: BanDurationPreset | null;
   durationLabel?: string | null;
   durationMs?: number | null;
+  isPermanent?: boolean;
   bannedAt?: number | null;
   expiresAt?: number | null;
   actorId: string;
@@ -119,16 +122,42 @@ export interface BanHistoryEntry {
   createdAt: number;
 }
 
+export function isPermanentBan(
+  ban:
+    | Pick<ActiveUserBan, "isPermanent" | "durationPreset" | "expiresAt">
+    | null
+    | undefined,
+): boolean {
+  if (!ban) return false;
+  return (
+    ban.isPermanent === true ||
+    ban.durationPreset === "permanent" ||
+    ban.expiresAt === null
+  );
+}
+
 export function resolveBanDuration(input: {
   preset?: string | null;
   customAmount?: number | string | null;
   customUnit?: string | null;
+  isPermanent?: boolean;
 }): {
   preset: BanDurationPreset;
-  durationMs: number;
+  durationMs: number | null;
   durationLabel: string;
+  isPermanent: boolean;
 } {
-  const rawPreset = typeof input.preset === "string" ? input.preset.trim().toLowerCase() : "";
+  const rawPreset =
+    typeof input.preset === "string" ? input.preset.trim().toLowerCase() : "";
+
+  if (input.isPermanent === true || rawPreset === "permanent" || rawPreset === "permanente") {
+    return {
+      preset: "permanent",
+      durationMs: null,
+      durationLabel: "Permanente",
+      isPermanent: true,
+    };
+  }
 
   if (rawPreset && rawPreset !== "custom") {
     const found = BAN_DURATION_PRESETS.find((p) => p.value === rawPreset);
@@ -139,6 +168,7 @@ export function resolveBanDuration(input: {
       preset: found.value,
       durationMs: found.durationMs,
       durationLabel: found.label,
+      isPermanent: false,
     };
   }
 
@@ -184,15 +214,24 @@ export function resolveBanDuration(input: {
     preset: "custom",
     durationMs,
     durationLabel: `${parsedAmount} ${unitLabel}`,
+    isPermanent: false,
   };
 }
 
 export function isBanActiveAt(ban: ActiveUserBan | null | undefined, nowMs = Date.now()): boolean {
   if (!ban) return false;
-  return Number.isFinite(ban.expiresAt) && ban.expiresAt > nowMs;
+  if (isPermanentBan(ban)) return true;
+  return (
+    typeof ban.expiresAt === "number" &&
+    Number.isFinite(ban.expiresAt) &&
+    ban.expiresAt > nowMs
+  );
 }
 
-export function formatBanDateTime(timestampMs: number): string {
+export function formatBanDateTime(timestampMs: number | null | undefined): string {
+  if (timestampMs === null || timestampMs === undefined || !Number.isFinite(timestampMs)) {
+    return "Permanente";
+  }
   try {
     return new Intl.DateTimeFormat("pt-BR", {
       dateStyle: "short",
@@ -203,7 +242,13 @@ export function formatBanDateTime(timestampMs: number): string {
   }
 }
 
-export function formatBanRemaining(expiresAt: number, nowMs = Date.now()): string {
+export function formatBanRemaining(
+  expiresAt: number | null | undefined,
+  nowMs = Date.now(),
+): string {
+  if (expiresAt === null || expiresAt === undefined || !Number.isFinite(expiresAt)) {
+    return "Permanente";
+  }
   const diff = Math.max(0, expiresAt - nowMs);
   if (diff <= 0) return "Expirado";
 

@@ -5,15 +5,74 @@ import { isHikariAdmin } from "@/lib/auth/admin";
 import {
   formatBanDateTime,
   isBanActiveAt,
+  isPermanentBan,
   resolveBanDuration,
   type ActiveUserBan,
   type BanDurationPreset,
   type BanHistoryEntry,
   type EnrichedActiveUserBan,
 } from "@/lib/moderation-ban-types";
+import { executeCreateNotification } from "@/lib/notification-create.server";
 
 export const COMMENT_BAN_KEY_PREFIX = "comment_ban:";
 export const COMMENT_BAN_LOG_KEY_PREFIX = "comment_ban_log:";
+
+const userBanTransitionLocks = new Map<string, Promise<unknown>>();
+
+async function withUserBanLock<T>(
+  userId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const lockKey = userId.trim();
+  if (!lockKey) return fn();
+
+  const previous = userBanTransitionLocks.get(lockKey) ?? Promise.resolve();
+  let release: () => void = () => {};
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  userBanTransitionLocks.set(
+    lockKey,
+    previous.then(
+      () => current,
+      () => current,
+    ),
+  );
+
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (userBanTransitionLocks.get(lockKey) === current) {
+      userBanTransitionLocks.delete(lockKey);
+    }
+  }
+}
+
+export const BAN_ENDED_NOTIFICATION_MESSAGE =
+  "Banimento encerrado: Seu banimento foi encerrado e sua conta está liberada. Você já pode voltar a utilizar o Hikari normalmente.";
+
+export function buildBanAppliedNotificationMessage(ban: ActiveUserBan): string {
+  const cleanReason = typeof ban.reason === "string" ? ban.reason.trim() : "";
+
+  if (isPermanentBan(ban)) {
+    return cleanReason
+      ? `Conta banida: Sua conta foi banida permanentemente. Motivo: ${cleanReason}`
+      : "Conta banida: Sua conta foi banida permanentemente.";
+  }
+
+  const durationPart = ban.durationLabel?.trim()
+    ? `por ${ban.durationLabel.trim()}`
+    : "temporariamente";
+  const untilPart =
+    typeof ban.expiresAt === "number" && Number.isFinite(ban.expiresAt)
+      ? ` (até ${formatBanDateTime(ban.expiresAt)})`
+      : "";
+  const reasonPart = cleanReason ? ` Motivo: ${cleanReason}` : "";
+
+  return `Conta banida: Sua conta foi banida temporariamente ${durationPart}${untilPart}.${reasonPart}`;
+}
 
 export class ModerationBanError extends Error {
   readonly status: number;
@@ -44,14 +103,27 @@ function parseActiveBanJson(rawValue: string): ActiveUserBan | null {
   try {
     const parsed = JSON.parse(rawValue) as Partial<ActiveUserBan>;
     if (!parsed || typeof parsed !== "object") return null;
-    if (
-      typeof parsed.userId !== "string" ||
-      !parsed.userId.trim() ||
-      typeof parsed.expiresAt !== "number" ||
-      !Number.isFinite(parsed.expiresAt)
-    ) {
+    if (typeof parsed.userId !== "string" || !parsed.userId.trim()) {
       return null;
     }
+
+    const permanent =
+      parsed.isPermanent === true ||
+      parsed.durationPreset === "permanent" ||
+      parsed.expiresAt === null;
+
+    const hasFiniteExpiry =
+      typeof parsed.expiresAt === "number" && Number.isFinite(parsed.expiresAt);
+
+    if (!permanent && !hasFiniteExpiry) {
+      return null;
+    }
+
+    const expiresAt = permanent ? null : (parsed.expiresAt as number);
+    const bannedAt =
+      typeof parsed.bannedAt === "number" && Number.isFinite(parsed.bannedAt)
+        ? parsed.bannedAt
+        : expiresAt ?? Date.now();
 
     return {
       banId:
@@ -63,20 +135,23 @@ function parseActiveBanJson(rawValue: string): ActiveUserBan | null {
         typeof parsed.reason === "string" && parsed.reason.trim()
           ? parsed.reason.trim()
           : "Violação das diretrizes da comunidade.",
-      durationPreset: (parsed.durationPreset as BanDurationPreset) || "custom",
+      durationPreset: permanent
+        ? "permanent"
+        : (parsed.durationPreset as BanDurationPreset) || "custom",
       durationLabel:
         typeof parsed.durationLabel === "string" && parsed.durationLabel.trim()
           ? parsed.durationLabel.trim()
-          : "Temporário",
-      durationMs:
-        typeof parsed.durationMs === "number" && Number.isFinite(parsed.durationMs)
+          : permanent
+            ? "Permanente"
+            : "Temporário",
+      durationMs: permanent
+        ? null
+        : typeof parsed.durationMs === "number" && Number.isFinite(parsed.durationMs)
           ? parsed.durationMs
-          : Math.max(0, parsed.expiresAt - (parsed.bannedAt ?? parsed.expiresAt)),
-      bannedAt:
-        typeof parsed.bannedAt === "number" && Number.isFinite(parsed.bannedAt)
-          ? parsed.bannedAt
-          : parsed.expiresAt,
-      expiresAt: parsed.expiresAt,
+          : Math.max(0, (expiresAt ?? bannedAt) - bannedAt),
+      isPermanent: permanent,
+      bannedAt,
+      expiresAt,
       bannedBy:
         typeof parsed.bannedBy === "string" ? parsed.bannedBy.trim() : "",
       bannedByName:
@@ -113,6 +188,8 @@ function parseBanHistoryJson(rawValue: string): BanHistoryEntry | null {
         typeof parsed.durationLabel === "string" ? parsed.durationLabel : null,
       durationMs:
         typeof parsed.durationMs === "number" ? parsed.durationMs : null,
+      isPermanent:
+        parsed.isPermanent === true || parsed.durationPreset === "permanent",
       bannedAt: typeof parsed.bannedAt === "number" ? parsed.bannedAt : null,
       expiresAt: typeof parsed.expiresAt === "number" ? parsed.expiresAt : null,
       actorId: typeof parsed.actorId === "string" ? parsed.actorId : "",
@@ -139,8 +216,119 @@ async function appendBanHistoryEntry(sql: Sql, entry: BanHistoryEntry): Promise<
 }
 
 /**
+ * Verifica sem mutações se ainda existe algum banimento ativo para o usuário no banco.
+ */
+async function hasAnyActiveBanForUser(
+  sql: Sql,
+  userId: string,
+  nowMs = Date.now(),
+): Promise<boolean> {
+  const cleanUserId = userId.trim();
+  if (!cleanUserId) return false;
+
+  const rows = await sql.query<{ key: string; value: string }>(
+    `SELECT "key", "value" FROM "admin_settings" WHERE "key" LIKE $1;`,
+    [`${COMMENT_BAN_KEY_PREFIX}%`],
+  );
+
+  for (const row of rows ?? []) {
+    const parsed = parseActiveBanJson(row.value);
+    if (!parsed) continue;
+    if (parsed.userId === cleanUserId && isBanActiveAt(parsed, nowMs)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Envia a notificação de encerramento de banimento somente se não houver nenhum outro ban ativo.
+ * Usa dedupKey único por (userId, banId) com ON CONFLICT DO NOTHING para garantir unicidade absoluta.
+ */
+async function notifyBanEndedIfNoOtherActiveBan(
+  sql: Sql,
+  ban: ActiveUserBan,
+  nowMs: number,
+): Promise<boolean> {
+  const stillBanned = await hasAnyActiveBanForUser(sql, ban.userId, nowMs).catch(
+    () => true,
+  );
+  if (stillBanned) {
+    return false;
+  }
+
+  const result = await executeCreateNotification(sql, {
+    userId: ban.userId,
+    actorId: null,
+    type: "account_unbanned",
+    message: BAN_ENDED_NOTIFICATION_MESSAGE,
+    dedupKey: `ban_ended:${ban.userId}:${ban.banId}`,
+    ignoreOnConflict: true,
+  }).catch((err) => {
+    console.warn("[moderation-bans] Falha ao criar notificação de liberação:", err);
+    return { success: false };
+  });
+
+  return Boolean(result.success);
+}
+
+/**
+ * Transiciona atomicamente um banimento temporário expirado:
+ * remove a chave somente se o JSON ainda for exatamente o mesmo,
+ * grava no histórico e notifica o usuário apenas uma vez.
+ */
+async function expireBanRowAtomically(
+  sql: Sql,
+  key: string,
+  rawValue: string,
+  parsed: ActiveUserBan,
+  nowMs: number,
+): Promise<boolean> {
+  if (isPermanentBan(parsed)) {
+    return false;
+  }
+  if (isBanActiveAt(parsed, nowMs)) {
+    return false;
+  }
+
+  const deletedRows = await sql
+    .query<{ key: string }>(
+      `DELETE FROM "admin_settings"
+       WHERE "key" = $1 AND "value" = $2
+       RETURNING "key";`,
+      [key, rawValue],
+    )
+    .catch(() => [] as Array<{ key: string }>);
+
+  if (!deletedRows || deletedRows.length === 0) {
+    return false;
+  }
+
+  await appendBanHistoryEntry(sql, {
+    id: `log-${nowMs}-${Math.random().toString(36).slice(2, 7)}`,
+    banId: parsed.banId,
+    action: "expired",
+    userId: parsed.userId,
+    reason: parsed.reason,
+    durationPreset: parsed.durationPreset,
+    durationLabel: parsed.durationLabel,
+    durationMs: parsed.durationMs,
+    isPermanent: false,
+    bannedAt: parsed.bannedAt,
+    expiresAt: parsed.expiresAt,
+    actorId: "system",
+    actorName: "Expiração automática",
+    createdAt: nowMs,
+  }).catch(() => undefined);
+
+  await notifyBanEndedIfNoOtherActiveBan(sql, parsed, nowMs);
+  return true;
+}
+
+/**
  * Obtém o banimento ativo de um usuário no PostgreSQL.
- * Se o prazo já tiver expirado, remove o registro vencido automaticamente e retorna null.
+ * Se o prazo temporário já tiver expirado, remove o registro vencido atomicamente,
+ * notifica o usuário uma única vez (caso não haja outro banimento ativo) e retorna null.
  */
 export async function getActiveUserBan(
   sql: Sql,
@@ -150,59 +338,100 @@ export async function getActiveUserBan(
   const cleanUserId = typeof userId === "string" ? userId.trim() : "";
   if (!cleanUserId) return null;
 
-  const key = buildActiveBanKey(cleanUserId);
+  return withUserBanLock(cleanUserId, async () => {
+    const key = buildActiveBanKey(cleanUserId);
+    const rows = await sql.query<{ key: string; value: string }>(
+      `SELECT "key", "value" FROM "admin_settings" WHERE "key" = $1 LIMIT 1;`,
+      [key],
+    );
+
+    if (!rows || rows.length === 0) {
+      return null;
+    }
+
+    const rawValue = rows[0].value;
+    const parsed = parseActiveBanJson(rawValue);
+    if (!parsed) {
+      return null;
+    }
+
+    if (isPermanentBan(parsed)) {
+      return parsed;
+    }
+
+    if (!isBanActiveAt(parsed, nowMs)) {
+      await expireBanRowAtomically(sql, key, rawValue, parsed, nowMs);
+      return null;
+    }
+
+    return parsed;
+  });
+}
+
+/**
+ * Reconcilia em lote todos os banimentos temporários expirados em admin_settings.
+ */
+export async function reconcileExpiredUserBans(
+  sql: Sql,
+  nowMs = Date.now(),
+): Promise<number> {
   const rows = await sql.query<{ key: string; value: string }>(
-    `SELECT "key", "value" FROM "admin_settings" WHERE "key" = $1 LIMIT 1;`,
-    [key],
+    `SELECT "key", "value" FROM "admin_settings" WHERE "key" LIKE $1;`,
+    [`${COMMENT_BAN_KEY_PREFIX}%`],
   );
 
-  if (!rows || rows.length === 0) {
-    return null;
+  let expiredCount = 0;
+  for (const row of rows ?? []) {
+    const parsed = parseActiveBanJson(row.value);
+    if (!parsed) continue;
+    if (isPermanentBan(parsed)) continue;
+    if (!isBanActiveAt(parsed, nowMs)) {
+      const transitioned = await withUserBanLock(parsed.userId, () =>
+        expireBanRowAtomically(sql, row.key, row.value, parsed, nowMs),
+      );
+      if (transitioned) {
+        expiredCount++;
+      }
+    }
   }
-
-  const parsed = parseActiveBanJson(rows[0].value);
-  if (!parsed) {
-    return null;
-  }
-
-  if (!isBanActiveAt(parsed, nowMs)) {
-    await sql
-      .query(`DELETE FROM "admin_settings" WHERE "key" = $1;`, [key])
-      .catch(() => undefined);
-    await appendBanHistoryEntry(sql, {
-      id: `log-${nowMs}-${Math.random().toString(36).slice(2, 7)}`,
-      banId: parsed.banId,
-      action: "expired",
-      userId: parsed.userId,
-      reason: parsed.reason,
-      durationPreset: parsed.durationPreset,
-      durationLabel: parsed.durationLabel,
-      durationMs: parsed.durationMs,
-      bannedAt: parsed.bannedAt,
-      expiresAt: parsed.expiresAt,
-      actorId: "system",
-      actorName: "Expiração automática",
-      createdAt: nowMs,
-    }).catch(() => undefined);
-    return null;
-  }
-
-  return parsed;
+  return expiredCount;
 }
 
 export function buildBannedCommentResponse(
   ban: ActiveUserBan,
   nowMs = Date.now(),
 ): Response {
-  const remainingMs = Math.max(0, ban.expiresAt - nowMs);
-  const untilLabel = formatBanDateTime(ban.expiresAt);
+  if (isPermanentBan(ban)) {
+    return Response.json(
+      {
+        error: `Sua conta está permanentemente impedida de interagir nos comentários. Motivo: ${ban.reason}`,
+        code: "USER_COMMENT_BANNED",
+        isPermanent: true,
+        banReason: ban.reason,
+        bannedUntil: null,
+        expiresAt: null,
+        remainingMs: null,
+      },
+      {
+        status: 403,
+        headers: {
+          "Cache-Control": "private, no-cache, no-store, must-revalidate",
+        },
+      },
+    );
+  }
+
+  const expiresAt = ban.expiresAt ?? nowMs;
+  const remainingMs = Math.max(0, expiresAt - nowMs);
+  const untilLabel = formatBanDateTime(expiresAt);
   return Response.json(
     {
       error: `Sua conta está temporariamente impedida de interagir nos comentários até ${untilLabel}. Motivo: ${ban.reason}`,
       code: "USER_COMMENT_BANNED",
+      isPermanent: false,
       banReason: ban.reason,
-      bannedUntil: new Date(ban.expiresAt).toISOString(),
-      expiresAt: ban.expiresAt,
+      bannedUntil: new Date(expiresAt).toISOString(),
+      expiresAt,
       remainingMs,
     },
     {
@@ -215,7 +444,7 @@ export function buildBannedCommentResponse(
 }
 
 /**
- * Carrega mapa de banimentos ativos (expirando os vencidos automaticamente).
+ * Carrega mapa de banimentos ativos (somente leitura, sem DELETE síncrono na listagem).
  */
 export async function listActiveBansMap(
   sql: Sql,
@@ -257,6 +486,7 @@ export async function applyTemporaryUserBan(
     preset?: string | null;
     customAmount?: number | string | null;
     customUnit?: string | null;
+    isPermanent?: boolean;
     reason: string;
     actorId: string;
     actorEmail?: string | null;
@@ -289,14 +519,16 @@ export async function applyTemporaryUserBan(
 
   let resolvedDuration: {
     preset: BanDurationPreset;
-    durationMs: number;
+    durationMs: number | null;
     durationLabel: string;
+    isPermanent: boolean;
   };
   try {
     resolvedDuration = resolveBanDuration({
       preset: input.preset,
       customAmount: input.customAmount,
       customUnit: input.customUnit,
+      isPermanent: input.isPermanent,
     });
   } catch (err) {
     throw new ModerationBanError(
@@ -354,7 +586,9 @@ export async function applyTemporaryUserBan(
     typeof input.nowMs === "number" && Number.isFinite(input.nowMs)
       ? input.nowMs
       : Date.now();
-  const expiresAt = nowMs + resolvedDuration.durationMs;
+  const expiresAt = resolvedDuration.isPermanent
+    ? null
+    : nowMs + (resolvedDuration.durationMs ?? 0);
   const banId = `ban-${nowMs}-${Math.random().toString(36).slice(2, 8)}`;
 
   const banRecord: ActiveUserBan = {
@@ -364,6 +598,7 @@ export async function applyTemporaryUserBan(
     durationPreset: resolvedDuration.preset,
     durationLabel: resolvedDuration.durationLabel,
     durationMs: resolvedDuration.durationMs,
+    isPermanent: resolvedDuration.isPermanent,
     bannedAt: nowMs,
     expiresAt,
     bannedBy: input.actorId,
@@ -391,6 +626,7 @@ export async function applyTemporaryUserBan(
     durationPreset: resolvedDuration.preset,
     durationLabel: resolvedDuration.durationLabel,
     durationMs: resolvedDuration.durationMs,
+    isPermanent: resolvedDuration.isPermanent,
     bannedAt: nowMs,
     expiresAt,
     actorId: input.actorId,
@@ -398,8 +634,22 @@ export async function applyTemporaryUserBan(
     createdAt: nowMs,
   });
 
+  // Notificação criada somente após o banimento ter sido efetivamente persistido no banco
+  await executeCreateNotification(sql, {
+    userId: target.id,
+    actorId: null,
+    type: "account_banned",
+    message: buildBanAppliedNotificationMessage(banRecord),
+    dedupKey: `ban_applied:${target.id}:${banRecord.banId}`,
+    ignoreOnConflict: true,
+  }).catch((err) => {
+    console.warn("[moderation-bans] Falha ao criar notificação de banimento:", err);
+  });
+
   return banRecord;
 }
+
+export const applyUserBan = applyTemporaryUserBan;
 
 export async function revokeUserBan(
   sql: Sql,
@@ -421,54 +671,82 @@ export async function revokeUserBan(
     typeof input.nowMs === "number" && Number.isFinite(input.nowMs)
       ? input.nowMs
       : Date.now();
-  const activeBan = await getActiveUserBan(sql, targetUserId, nowMs);
-  if (!activeBan) {
-    throw new ModerationBanError(
-      "Este usuário não possui um banimento temporário ativo.",
-      404,
-    );
-  }
-
-  const userRows = await sql.query<{
-    id: string;
-    name: string | null;
-    email: string | null;
-    nick: string | null;
-  }>(
-    `SELECT u."id", u."name", u."email", p."nick"
-     FROM "user" u
-     LEFT JOIN "profile" p ON p."userId" = u."id"
-     WHERE u."id" = $1
-     LIMIT 1;`,
-    [targetUserId],
-  );
-  const target = userRows[0];
-
   const key = buildActiveBanKey(targetUserId);
-  await sql.query(`DELETE FROM "admin_settings" WHERE "key" = $1;`, [key]);
 
-  await appendBanHistoryEntry(sql, {
-    id: `log-${nowMs}-${Math.random().toString(36).slice(2, 7)}`,
-    banId: activeBan.banId,
-    action: "unban",
-    userId: targetUserId,
-    userName: target?.name ?? null,
-    userNick: target?.nick ?? null,
-    userEmail: target?.email ?? null,
-    reason:
-      input.revokeReason?.trim() ||
-      `Banimento encerrado antecipadamente (motivo original: ${activeBan.reason})`,
-    durationPreset: activeBan.durationPreset,
-    durationLabel: activeBan.durationLabel,
-    durationMs: activeBan.durationMs,
-    bannedAt: activeBan.bannedAt,
-    expiresAt: activeBan.expiresAt,
-    actorId: input.actorId,
-    actorName: input.actorName?.trim() || input.actorEmail || "Administrador",
-    createdAt: nowMs,
+  return withUserBanLock(targetUserId, async () => {
+    const existingRows = await sql.query<{ key: string; value: string }>(
+      `SELECT "key", "value" FROM "admin_settings" WHERE "key" = $1 LIMIT 1;`,
+      [key],
+    );
+
+    const rawValue = existingRows[0]?.value;
+    const activeBan = rawValue ? parseActiveBanJson(rawValue) : null;
+
+    if (!activeBan || !isBanActiveAt(activeBan, nowMs)) {
+      if (activeBan && rawValue && !isPermanentBan(activeBan)) {
+        await expireBanRowAtomically(sql, key, rawValue, activeBan, nowMs);
+      }
+      throw new ModerationBanError(
+        "Este usuário não possui um banimento ativo.",
+        404,
+      );
+    }
+
+    const deletedRows = await sql.query<{ key: string }>(
+      `DELETE FROM "admin_settings"
+       WHERE "key" = $1 AND "value" = $2
+       RETURNING "key";`,
+      [key, rawValue],
+    );
+
+    if (!deletedRows || deletedRows.length === 0) {
+      throw new ModerationBanError(
+        "Este usuário não possui um banimento ativo.",
+        404,
+      );
+    }
+
+    const userRows = await sql.query<{
+      id: string;
+      name: string | null;
+      email: string | null;
+      nick: string | null;
+    }>(
+      `SELECT u."id", u."name", u."email", p."nick"
+       FROM "user" u
+       LEFT JOIN "profile" p ON p."userId" = u."id"
+       WHERE u."id" = $1
+       LIMIT 1;`,
+      [targetUserId],
+    );
+    const target = userRows[0];
+
+    await appendBanHistoryEntry(sql, {
+      id: `log-${nowMs}-${Math.random().toString(36).slice(2, 7)}`,
+      banId: activeBan.banId,
+      action: "unban",
+      userId: targetUserId,
+      userName: target?.name ?? null,
+      userNick: target?.nick ?? null,
+      userEmail: target?.email ?? null,
+      reason:
+        input.revokeReason?.trim() ||
+        `Banimento encerrado antecipadamente (motivo original: ${activeBan.reason})`,
+      durationPreset: activeBan.durationPreset,
+      durationLabel: activeBan.durationLabel,
+      durationMs: activeBan.durationMs,
+      isPermanent: isPermanentBan(activeBan),
+      bannedAt: activeBan.bannedAt,
+      expiresAt: activeBan.expiresAt,
+      actorId: input.actorId,
+      actorName: input.actorName?.trim() || input.actorEmail || "Administrador",
+      createdAt: nowMs,
+    });
+
+    await notifyBanEndedIfNoOtherActiveBan(sql, activeBan, nowMs);
+
+    return { ok: true, revokedBan: activeBan };
   });
-
-  return { ok: true, revokedBan: activeBan };
 }
 
 export async function listBansAndHistory(
@@ -478,6 +756,8 @@ export async function listBansAndHistory(
   activeBans: EnrichedActiveUserBan[];
   history: BanHistoryEntry[];
 }> {
+  await reconcileExpiredUserBans(sql, nowMs).catch(() => 0);
+
   const activeMap = await listActiveBansMap(sql, nowMs);
   const activeList = Array.from(activeMap.values()).sort(
     (a, b) => b.bannedAt - a.bannedAt,
@@ -540,13 +820,17 @@ export async function listBansAndHistory(
 
   const activeBans: EnrichedActiveUserBan[] = activeList.map((ban) => {
     const meta = userMetaMap.get(ban.userId);
+    const permanent = isPermanentBan(ban);
     return {
       ...ban,
       userName: meta?.name || "Usuário",
       userNick: meta?.nick ?? null,
       userEmail: meta?.email ?? null,
       userImage: meta?.image ?? null,
-      remainingMs: Math.max(0, ban.expiresAt - nowMs),
+      remainingMs:
+        permanent || ban.expiresAt === null
+          ? null
+          : Math.max(0, ban.expiresAt - nowMs),
     };
   });
 

@@ -401,6 +401,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                        "videoUrl", "videoUrl2", "videoUrl3", "videoUrl4", "videoUrl5",
                        "hikari_player_episode_id",
                        "badge_lancamento", "badge_novo", "badge_final",
+                       "authorId",
                        "published", "publishedAt", "createdAt", "updatedAt"
                      )
                      VALUES (
@@ -409,6 +410,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                        $9, $10, $11, $12, $13,
                        $15,
                        $17, $18, $19,
+                       $23,
                        $14,
                        CASE WHEN $14 = true THEN CURRENT_TIMESTAMP ELSE NULL END,
                        CURRENT_TIMESTAMP,
@@ -443,6 +445,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                          WHEN $22 = true THEN EXCLUDED."badge_final"
                          ELSE "catalog_episode"."badge_final"
                        END,
+                       "authorId" = COALESCE("catalog_episode"."authorId", EXCLUDED."authorId"),
                        "published" = EXCLUDED."published",
                        "publishedAt" = CASE
                          WHEN EXCLUDED."published" = true AND "catalog_episode"."publishedAt" IS NULL THEN CURRENT_TIMESTAMP
@@ -473,6 +476,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                       badgesPatch.hasLancamentoField,
                       badgesPatch.hasNovoField,
                       badgesPatch.hasFinalField,
+                      adminId,
                     ],
                   );
                   const candidateSlots = [

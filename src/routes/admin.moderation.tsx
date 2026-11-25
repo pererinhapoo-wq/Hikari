@@ -49,6 +49,8 @@ import { getBearerToken } from "@/lib/auth/client";
 import {
   formatBanDateTime,
   formatBanRemaining,
+  isBanActiveAt,
+  isPermanentBan,
   type ActiveUserBan,
   type BanHistoryEntry,
   type EnrichedActiveUserBan,
@@ -1662,23 +1664,28 @@ function useBanCountdownNowMs(expiresAt: number | null): number {
   return nowMs;
 }
 
-function ActiveBanRemainingBadge({ expiresAt }: { expiresAt: number }) {
+function ActiveBanRemainingBadge({ expiresAt }: { expiresAt: number | null }) {
   const nowMs = useBanCountdownNowMs(expiresAt);
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-300">
       <Clock className="size-3" />
-      Restante: {formatBanRemaining(expiresAt, nowMs)}
+      {expiresAt === null
+        ? "Permanente"
+        : `Restante: ${formatBanRemaining(expiresAt, nowMs)}`}
     </span>
   );
 }
 
 function AuthorBanStatusBadge({ ban }: { ban: ActiveUserBan }) {
   const nowMs = useBanCountdownNowMs(ban.expiresAt);
-  if (ban.expiresAt <= nowMs) return null;
+  if (!isBanActiveAt(ban, nowMs)) return null;
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-300">
       <Ban className="size-3" />
-      Banido · {formatBanRemaining(ban.expiresAt, nowMs)}
+      Banido ·{" "}
+      {isPermanentBan(ban)
+        ? "Permanente"
+        : formatBanRemaining(ban.expiresAt, nowMs)}
     </span>
   );
 }
@@ -1700,9 +1707,7 @@ const CommentModerationCard = memo(function CommentModerationCard({
   onRevokeAuthorBan: () => void;
   onPreviewImage: (url: string) => void;
 }) {
-  const authorBanned = Boolean(
-    comment.authorActiveBan && comment.authorActiveBan.expiresAt > Date.now(),
-  );
+  const authorBanned = isBanActiveAt(comment.authorActiveBan);
 
   return (
     <article

@@ -3,13 +3,23 @@ import { z } from "zod";
 
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql, type Sql } from "@/lib/db";
+import {
+  buildNotificationDedupKey,
+  dispatchEpisodePublishedNotifications,
+  executeCreateNotification,
+  type CreateNotificationParams,
+  type DispatchEpisodeNotificationsParams,
+  type NotificationType,
+} from "@/lib/notification-create.server";
 
-export type NotificationType =
-  | "new_follower"
-  | "follow_request"
-  | "follow_accept"
-  | "comment_like"
-  | "comment_reply";
+export {
+  buildNotificationDedupKey,
+  dispatchEpisodePublishedNotifications,
+  executeCreateNotification,
+  type CreateNotificationParams,
+  type DispatchEpisodeNotificationsParams,
+  type NotificationType,
+};
 
 export type NotificationItem = {
   id: string;
@@ -77,17 +87,7 @@ export type GetNotificationsResult = {
   nextOffset: number;
 };
 
-export interface CreateNotificationParams {
-  userId: string;
-  actorId?: string | null;
-  type: NotificationType | string;
-  message: string;
-  commentId?: string | null;
-  animeId?: string | null;
-  episodeId?: string | null;
-  dedupKey?: string | null;
-  bypassLock?: boolean;
-}
+
 
 export interface RawNotificationRow {
   id: string;
@@ -416,153 +416,17 @@ export async function resolveAnimeMetadataMap(
   return result;
 }
 
-export function buildNotificationDedupKey(params: {
-  userId: string;
-  actorId?: string | null;
-  type: string;
-  commentId?: string | null;
-  dedupKey?: string | null;
-}): string {
-  if (params.dedupKey && params.dedupKey.trim()) {
-    return params.dedupKey.trim();
-  }
-  const { userId, actorId, type, commentId } = params;
-  const safeActor = actorId ? String(actorId).trim() : "";
-  const safeComment = commentId ? String(commentId).trim() : "";
-
-  switch (type) {
-    case "new_follower":
-      return `new_follower:${userId}:${safeActor}`;
-    case "follow_request":
-      return `follow_request:${userId}:${safeActor}`;
-    case "follow_accept":
-      return `follow_accept:${userId}:${safeActor}`;
-    case "comment_like":
-      return `comment_like:${userId}:${safeComment}`;
-    case "comment_reply":
-      return `comment_reply:${userId}:${safeActor}:${safeComment}`;
-    default:
-      if (safeComment) {
-        return `${type}:${userId}:${safeActor}:${safeComment}`;
-      }
-      return `${type}:${userId}:${safeActor}`;
-  }
-}
-
-const notificationLocks = new Map<string, Promise<unknown>>();
-
 /**
- * Criação atômica de notificação com validação de:
- * 1. Não gerar auto-notificações (actorId === userId).
- * 2. Bloqueio mútuo via user_block em qualquer direção.
- * 3. Deduplicação persistente no PostgreSQL via UNIQUE ("dedupKey") e ON CONFLICT.
- * 4. Mutex em memória (notificationLocks) como otimização local adicional.
+ * Reconcilia banimentos temporários expirados do usuário sob demanda antes de listar/contar notificações,
+ * garantindo entrega confiável da notificação de liberação compatível com arquitetura serverless/sem cron.
  */
-export async function executeCreateNotification(
-  sql: Sql,
-  params: CreateNotificationParams,
-): Promise<{ success: boolean; notificationId?: string; reason?: string }> {
-  // 1. Evitar notificações para ações do próprio usuário logo no início
-  if (params.actorId && params.actorId === params.userId) {
-    return { success: false, reason: "self_action" };
-  }
-
-  const dedupKey = buildNotificationDedupKey(params);
-
-  // Se bypassLock for solicitado (ex: teste de concorrência pura entre instâncias), vai direto ao banco
-  if (params.bypassLock) {
-    return executeCreateNotificationInternal(sql, params, dedupKey);
-  }
-
-  const lockKey = dedupKey;
-  const previous = notificationLocks.get(lockKey) ?? Promise.resolve();
-  let release: () => void = () => {};
-  const current = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  notificationLocks.set(lockKey, previous.then(() => current, () => current));
-
-  await previous;
+async function reconcileUserBanOnNotificationRead(sql: Sql, userId: string): Promise<void> {
   try {
-    return await executeCreateNotificationInternal(sql, params, dedupKey);
-  } finally {
-    release();
-    if (notificationLocks.get(lockKey) === current) {
-      notificationLocks.delete(lockKey);
-    }
+    const { getActiveUserBan } = await import("@/lib/moderation-bans.server");
+    await getActiveUserBan(sql, userId);
+  } catch {
+    // Fail-open para não bloquear carregamento de notificações
   }
-}
-
-async function executeCreateNotificationInternal(
-  sql: Sql,
-  params: CreateNotificationParams,
-  dedupKey: string,
-): Promise<{ success: boolean; notificationId?: string; reason?: string }> {
-  const { userId, actorId, type, message, commentId, animeId, episodeId } = params;
-
-  // 1. Evitar notificações para ações do próprio usuário
-  if (actorId && actorId === userId) {
-    return { success: false, reason: "self_action" };
-  }
-
-  // 2. Não criar ou entregar notificações entre usuários com bloqueio ativo em qualquer direção
-  if (actorId) {
-    const blockRows = await sql<{ count: string }>`
-      select count(*)::text as count
-      from "user_block"
-      where ("blockerId" = ${userId} and "blockedId" = ${actorId})
-         or ("blockerId" = ${actorId} and "blockedId" = ${userId})
-      limit 1
-    `;
-    if (Number(blockRows[0]?.count ?? "0") > 0) {
-      return { success: false, reason: "blocked_user" };
-    }
-  }
-
-  // 3. Deduplicação persistente atômica via INSERT ... ON CONFLICT ("dedupKey") DO UPDATE
-  const newId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
-  const inserted = await sql<{ id: string }>`
-    insert into "notification" (
-      "id",
-      "userId",
-      "actorId",
-      "type",
-      "message",
-      "read",
-      "createdAt",
-      "commentId",
-      "animeId",
-      "episodeId",
-      "dedupKey"
-    )
-    values (
-      ${newId},
-      ${userId},
-      ${actorId ?? null},
-      ${type},
-      ${message},
-      false,
-      current_timestamp,
-      ${commentId ?? null},
-      ${animeId ?? null},
-      ${episodeId ?? null},
-      ${dedupKey}
-    )
-    on conflict ("dedupKey") do update
-    set
-      "actorId" = coalesce(excluded."actorId", "notification"."actorId"),
-      "message" = excluded."message",
-      "read" = false,
-      "createdAt" = current_timestamp,
-      "commentId" = coalesce(excluded."commentId", "notification"."commentId"),
-      "animeId" = coalesce(excluded."animeId", "notification"."animeId"),
-      "episodeId" = coalesce(excluded."episodeId", "notification"."episodeId")
-    returning "id"
-  `;
-
-  const returnedId = inserted[0]?.id || newId;
-  return { success: true, notificationId: returnedId };
 }
 
 /**
@@ -573,6 +437,8 @@ export async function executeGetNotifications(
   userId: string,
   params?: GetNotificationsParams,
 ): Promise<GetNotificationsResult> {
+  await reconcileUserBanOnNotificationRead(sql, userId);
+
   const limit = Math.min(50, Math.max(1, Number(params?.limit ?? 20)));
   const offset = Math.max(0, Number(params?.offset ?? 0));
   const filter = params?.filter === "unread" ? "unread" : "all";
@@ -1003,6 +869,8 @@ export async function executeGetUnreadNotificationCount(
   sql: Sql,
   userId: string,
 ): Promise<{ unreadCount: number }> {
+  await reconcileUserBanOnNotificationRead(sql, userId);
+
   const rows = await sql<{ count: string }>`
     select count(*)::text as count
     from "notification" n
