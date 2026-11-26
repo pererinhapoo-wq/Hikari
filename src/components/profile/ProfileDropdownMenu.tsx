@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { User, ShieldCheck, LogOut, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { signOut } from "@/lib/auth/client";
 import type { AppUser } from "@/lib/auth/use-current-user";
@@ -194,11 +195,17 @@ export function ProfileDropdownMenu({ user, onOpenChange }: ProfileDropdownMenuP
   const isProfileActive = pathname.startsWith("/account") || pathname.startsWith("/profile");
 
   const handleLogout = async () => {
+    if (isLoggingOut) return;
     try {
       setIsLoggingOut(true);
       await signOut();
-    } catch {
+    } catch (err: unknown) {
       setIsLoggingOut(false);
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Não foi possível encerrar a sessão. Tente novamente.";
+      toast.error(msg);
     }
   };
 

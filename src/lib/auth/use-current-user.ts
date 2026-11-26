@@ -127,7 +127,7 @@ export function useCurrentUserState(): CurrentUserState {
 
   // Enquanto o useSession() ainda está validando no cliente, preserva o usuário
   // já verificado via cookie no SSR para evitar flash de "Entrar" ou sumir o avatar.
-  if (initialSessionUser) {
+  if (isPending && initialSessionUser) {
     return {
       user: initialSessionUser,
       isPending: false,

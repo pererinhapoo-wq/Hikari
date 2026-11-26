@@ -247,44 +247,59 @@ function waitForPopupToken(popup: Window): Promise<string | null> {
  * a hand-rolled control must catch it and let the visitor retry. In the live
  * preview the local clear is sufficient, so it always resolves.
  */
+let isSigningOut = false;
+
 export async function signOut(redirectTo = "/"): Promise<void> {
-  if (typeof window !== "undefined") {
-    try {
-      window.sessionStorage.setItem("hikari_signed_out", "true");
-      useHikariStore.getState().setCurrentUserId(null);
-    } catch {
-      /* ignore */
-    }
-    invalidateAllProfileCaches();
-  }
+  if (isSigningOut) return;
+  isSigningOut = true;
 
-  if (!authEnabled) {
-    if (typeof window !== "undefined") {
-      window.location.href = redirectTo;
-    }
-    return;
-  }
-
-  await runSignOut({
-    livePreview: inLivePreview(),
-    hasBearer: Boolean(getBearerToken()),
-    // Better Auth resolves with `{ error }` instead of rejecting, so surface a
-    // failed response as a rejection for the sequence to act on.
-    requestSignOut: async () => {
-      const { error } = await authClient.signOut();
-      if (error) throw new Error(error.message ?? "Sign-out failed");
-    },
-    clearToken: () => {
-      setBearerToken(null);
-      invalidateAllProfileCaches();
-      try {
-        useHikariStore.getState().setCurrentUserId(null);
-      } catch {
-        // ignore
+  try {
+    if (!authEnabled) {
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem("hikari_signed_out", "true");
+          useHikariStore.getState().setCurrentUserId(null);
+        } catch {
+          /* ignore */
+        }
+        invalidateAllProfileCaches();
+        window.location.href = redirectTo;
       }
-    },
-    redirect: () => {
-      window.location.href = redirectTo;
-    },
-  });
+      return;
+    }
+
+    await runSignOut({
+      livePreview: inLivePreview(),
+      hasBearer: Boolean(getBearerToken()),
+      // Better Auth resolves with `{ error }` instead of rejecting, so surface a
+      // failed response as a rejection for the sequence to act on.
+      requestSignOut: async () => {
+        const { error } = await authClient.signOut();
+        if (error) throw new Error(error.message ?? "Sign-out failed");
+      },
+      clearToken: () => {
+        setBearerToken(null);
+        if (typeof window !== "undefined") {
+          try {
+            window.sessionStorage.setItem("hikari_signed_out", "true");
+          } catch {
+            /* ignore */
+          }
+          try {
+            useHikariStore.getState().setCurrentUserId(null);
+          } catch {
+            // ignore
+          }
+        }
+        invalidateAllProfileCaches();
+      },
+      redirect: () => {
+        if (typeof window !== "undefined") {
+          window.location.href = redirectTo;
+        }
+      },
+    });
+  } finally {
+    isSigningOut = false;
+  }
 }
