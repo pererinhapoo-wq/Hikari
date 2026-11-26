@@ -2189,17 +2189,33 @@ export function Shell() {
                   </Link>
                 </li>
 
-                {/* 6. Feedback (apenas apresentação visual nesta etapa) */}
+                {/* 6. Feedback */}
                 <li>
-                  <div
-                    aria-disabled="true"
-                    className="flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border border-transparent px-3 py-2.5 text-[15px] font-medium tracking-[-0.01em] text-zinc-300/85 select-none"
+                  <Link
+                    to="/feedback"
+                    onClick={() => setMenuOpen(false)}
+                    className={cn(
+                      "group relative flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border px-3 py-2.5 text-[15px] tracking-[-0.01em]",
+                      "motion-safe:transition-[background-color,border-color,color,box-shadow] motion-safe:duration-150 motion-reduce:transition-none",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
+                      pathname.startsWith("/feedback")
+                        ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)]"
+                        : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/[0.06]",
+                    )}
                   >
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.06] bg-white/[0.035] text-zinc-400">
+                    <span
+                      className={cn(
+                        "flex size-9 shrink-0 items-center justify-center rounded-lg border",
+                        "motion-safe:transition-[background-color,border-color,color] motion-safe:duration-150 motion-reduce:transition-none",
+                        pathname.startsWith("/feedback")
+                          ? "border-purple-400/35 bg-purple-500/25 text-purple-200 shadow-[0_0_14px_rgba(168,85,247,0.22)]"
+                          : "border-white/[0.06] bg-white/[0.035] text-zinc-400 [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/25 [@media(hover:hover)_and_(pointer:fine)]:group-hover:bg-purple-500/15 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-200",
+                      )}
+                    >
                       <MessageSquare className="size-[18px]" />
                     </span>
                     <span className="truncate whitespace-nowrap">Feedback</span>
-                  </div>
+                  </Link>
                 </li>
               </ul>
             </nav>

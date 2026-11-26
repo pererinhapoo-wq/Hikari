@@ -19,6 +19,7 @@ import { Route as ContatoRouteImport } from './routes/contato'
 import { Route as DiagnosticRouteImport } from './routes/diagnostic'
 import { Route as DmcaRouteImport } from './routes/dmca'
 import { Route as EpisodesRouteImport } from './routes/episodes'
+import { Route as FeedbackRouteImport } from './routes/feedback'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MyListRouteImport } from './routes/my-list'
 import { Route as NewsRouteImport } from './routes/news'
@@ -40,6 +41,7 @@ import { Route as AdminIdRouteImport } from './routes/admin.$id'
 import { Route as AdminBackupRouteImport } from './routes/admin.backup'
 import { Route as AdminCalendarRouteImport } from './routes/admin.calendar'
 import { Route as AdminDiagnosticsRouteImport } from './routes/admin.diagnostics'
+import { Route as AdminFeedbackRouteImport } from './routes/admin.feedback'
 import { Route as AdminHealthRouteImport } from './routes/admin.health'
 import { Route as AdminHikariAiRouteImport } from './routes/admin.hikari-ai'
 import { Route as AdminImagesRouteImport } from './routes/admin.images'
@@ -149,6 +151,11 @@ const EpisodesRoute = EpisodesRouteImport.update({
   path: '/episodes',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FeedbackRoute = FeedbackRouteImport.update({
+  id: '/feedback',
+  path: '/feedback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -252,6 +259,11 @@ const AdminCalendarRoute = AdminCalendarRouteImport.update({
 const AdminDiagnosticsRoute = AdminDiagnosticsRouteImport.update({
   id: '/diagnostics',
   path: '/diagnostics',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminFeedbackRoute = AdminFeedbackRouteImport.update({
+  id: '/feedback',
+  path: '/feedback',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminHealthRoute = AdminHealthRouteImport.update({
@@ -559,6 +571,7 @@ export interface FileRoutesByFullPath {
   '/diagnostic': typeof DiagnosticRoute
   '/dmca': typeof DmcaRoute
   '/episodes': typeof EpisodesRoute
+  '/feedback': typeof FeedbackRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
   '/news': typeof NewsRoute
@@ -579,6 +592,7 @@ export interface FileRoutesByFullPath {
   '/admin/backup': typeof AdminBackupRoute
   '/admin/calendar': typeof AdminCalendarRoute
   '/admin/diagnostics': typeof AdminDiagnosticsRoute
+  '/admin/feedback': typeof AdminFeedbackRoute
   '/admin/health': typeof AdminHealthRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/images': typeof AdminImagesRoute
@@ -648,6 +662,7 @@ export interface FileRoutesByTo {
   '/diagnostic': typeof DiagnosticRoute
   '/dmca': typeof DmcaRoute
   '/episodes': typeof EpisodesRoute
+  '/feedback': typeof FeedbackRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
   '/news': typeof NewsRoute
@@ -668,6 +683,7 @@ export interface FileRoutesByTo {
   '/admin/backup': typeof AdminBackupRoute
   '/admin/calendar': typeof AdminCalendarRoute
   '/admin/diagnostics': typeof AdminDiagnosticsRoute
+  '/admin/feedback': typeof AdminFeedbackRoute
   '/admin/health': typeof AdminHealthRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/images': typeof AdminImagesRoute
@@ -740,6 +756,7 @@ export interface FileRoutesById {
   '/diagnostic': typeof DiagnosticRoute
   '/dmca': typeof DmcaRoute
   '/episodes': typeof EpisodesRoute
+  '/feedback': typeof FeedbackRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
   '/news': typeof NewsRoute
@@ -760,6 +777,7 @@ export interface FileRoutesById {
   '/admin/backup': typeof AdminBackupRoute
   '/admin/calendar': typeof AdminCalendarRoute
   '/admin/diagnostics': typeof AdminDiagnosticsRoute
+  '/admin/feedback': typeof AdminFeedbackRoute
   '/admin/health': typeof AdminHealthRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/images': typeof AdminImagesRoute
@@ -833,6 +851,7 @@ export interface FileRouteTypes {
     | '/diagnostic'
     | '/dmca'
     | '/episodes'
+    | '/feedback'
     | '/login'
     | '/my-list'
     | '/news'
@@ -853,6 +872,7 @@ export interface FileRouteTypes {
     | '/admin/backup'
     | '/admin/calendar'
     | '/admin/diagnostics'
+    | '/admin/feedback'
     | '/admin/health'
     | '/admin/hikari-ai'
     | '/admin/images'
@@ -922,6 +942,7 @@ export interface FileRouteTypes {
     | '/diagnostic'
     | '/dmca'
     | '/episodes'
+    | '/feedback'
     | '/login'
     | '/my-list'
     | '/news'
@@ -942,6 +963,7 @@ export interface FileRouteTypes {
     | '/admin/backup'
     | '/admin/calendar'
     | '/admin/diagnostics'
+    | '/admin/feedback'
     | '/admin/health'
     | '/admin/hikari-ai'
     | '/admin/images'
@@ -1013,6 +1035,7 @@ export interface FileRouteTypes {
     | '/diagnostic'
     | '/dmca'
     | '/episodes'
+    | '/feedback'
     | '/login'
     | '/my-list'
     | '/news'
@@ -1033,6 +1056,7 @@ export interface FileRouteTypes {
     | '/admin/backup'
     | '/admin/calendar'
     | '/admin/diagnostics'
+    | '/admin/feedback'
     | '/admin/health'
     | '/admin/hikari-ai'
     | '/admin/images'
@@ -1105,6 +1129,7 @@ export interface RootRouteChildren {
   DiagnosticRoute: typeof DiagnosticRoute
   DmcaRoute: typeof DmcaRoute
   EpisodesRoute: typeof EpisodesRoute
+  FeedbackRoute: typeof FeedbackRoute
   LoginRoute: typeof LoginRoute
   MyListRoute: typeof MyListRoute
   NewsRoute: typeof NewsRoute
@@ -1234,6 +1259,13 @@ declare module '@tanstack/react-router' {
       path: '/episodes'
       fullPath: '/episodes'
       preLoaderRoute: typeof EpisodesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/feedback': {
+      id: '/feedback'
+      path: '/feedback'
+      fullPath: '/feedback'
+      preLoaderRoute: typeof FeedbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -1381,6 +1413,13 @@ declare module '@tanstack/react-router' {
       path: '/diagnostics'
       fullPath: '/admin/diagnostics'
       preLoaderRoute: typeof AdminDiagnosticsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/feedback': {
+      id: '/admin/feedback'
+      path: '/feedback'
+      fullPath: '/admin/feedback'
+      preLoaderRoute: typeof AdminFeedbackRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/health': {
@@ -1797,6 +1836,7 @@ interface AdminRouteChildren {
   AdminBackupRoute: typeof AdminBackupRoute
   AdminCalendarRoute: typeof AdminCalendarRoute
   AdminDiagnosticsRoute: typeof AdminDiagnosticsRoute
+  AdminFeedbackRoute: typeof AdminFeedbackRoute
   AdminHealthRoute: typeof AdminHealthRoute
   AdminHikariAiRoute: typeof AdminHikariAiRoute
   AdminImagesRoute: typeof AdminImagesRoute
@@ -1813,6 +1853,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminBackupRoute: AdminBackupRoute,
   AdminCalendarRoute: AdminCalendarRoute,
   AdminDiagnosticsRoute: AdminDiagnosticsRoute,
+  AdminFeedbackRoute: AdminFeedbackRoute,
   AdminHealthRoute: AdminHealthRoute,
   AdminHikariAiRoute: AdminHikariAiRoute,
   AdminImagesRoute: AdminImagesRoute,
@@ -1873,6 +1914,7 @@ const rootRouteChildren: RootRouteChildren = {
   DiagnosticRoute: DiagnosticRoute,
   DmcaRoute: DmcaRoute,
   EpisodesRoute: EpisodesRoute,
+  FeedbackRoute: FeedbackRoute,
   LoginRoute: LoginRoute,
   MyListRoute: MyListRoute,
   NewsRoute: NewsRoute,

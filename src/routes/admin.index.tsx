@@ -20,6 +20,7 @@ import {
   HardDriveDownload,
   Image as ImageIcon,
   List,
+  MessageSquare,
   Plus,
   RefreshCw,
   Search,
@@ -152,6 +153,12 @@ const STUDIO_SHORTCUTS = [
     description: "Modo manutenção e ping",
     to: "/admin/maintenance",
     icon: Wrench,
+  },
+  {
+    title: "Feedback dos Usuários",
+    description: "Sugestões, bugs e pedidos",
+    to: "/admin/feedback",
+    icon: MessageSquare,
   },
   {
     title: "Saúde do Sistema",
