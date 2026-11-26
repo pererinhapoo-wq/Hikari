@@ -72,13 +72,6 @@ export function useCurrentUserState(): CurrentUserState {
     getSignedOutServerSnapshot,
   );
 
-  if (isSignedOut) {
-    return {
-      user: null,
-      isPending: false,
-    };
-  }
-
   if (!authEnabled) {
     // eslint-disable-next-line react-hooks/rules-of-hooks -- authEnabled is constant for the app's lifetime
     const adminEmailOverride = useSyncExternalStore(
@@ -86,6 +79,13 @@ export function useCurrentUserState(): CurrentUserState {
       getAdminEmailSnapshot,
       getAdminEmailServerSnapshot,
     );
+
+    if (isSignedOut) {
+      return {
+        user: null,
+        isPending: false,
+      };
+    }
 
     if (adminEmailOverride) {
       return {
@@ -105,6 +105,13 @@ export function useCurrentUserState(): CurrentUserState {
   }
 
   const { data, isPending } = authClient.useSession();
+
+  if (isSignedOut) {
+    return {
+      user: null,
+      isPending: false,
+    };
+  }
   const user = data?.user;
   if (user) {
     const matchesInitial = initialSessionUser?.id === user.id;

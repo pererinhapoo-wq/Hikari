@@ -262,6 +262,13 @@ export function hasLocalPublishedEpisodes(seasons?: Season[] | null): boolean {
 }
 
 export function localToAnime(local: LocalAnime): Anime {
+  const normalizedGenres = Array.isArray(local.genres) ? local.genres : [];
+  const normalizedSeasons: Season[] = Array.isArray(local.seasons)
+    ? local.seasons
+        .filter((s): s is Season => Boolean(s && typeof s === "object"))
+        .map((s) => (Array.isArray(s.episodes) ? s : { ...s, episodes: [] }))
+    : [];
+
   return {
     id: local.id,
     anilistId: local.anilistId,
@@ -276,7 +283,7 @@ export function localToAnime(local: LocalAnime): Anime {
     banner: local.banner,
     synopsis: local.synopsis,
     score: local.score,
-    genres: local.genres,
+    genres: normalizedGenres,
     format: local.format,
     status: local.status,
     episodesCount: local.episodesCount,
@@ -284,15 +291,15 @@ export function localToAnime(local: LocalAnime): Anime {
     year: local.year,
     trailerId: local.trailerId,
     source: "local",
-    studios: local.studios ?? [],
+    studios: Array.isArray(local.studios) ? local.studios : [],
     streamingEpisodes: [],
-    seasons: local.seasons,
+    seasons: normalizedSeasons,
     recommendations: [],
-    characters: local.characters ?? [],
-    staff: local.staff ?? [],
+    characters: Array.isArray(local.characters) ? local.characters : [],
+    staff: Array.isArray(local.staff) ? local.staff : [],
     catalogUpdatedAt: local.updatedAt || undefined,
     serverCatalogId: local.serverCatalogId,
-    hasEpisode: local.hasEpisode ?? hasLocalPublishedEpisodes(local.seasons),
+    hasEpisode: local.hasEpisode ?? hasLocalPublishedEpisodes(normalizedSeasons),
     ...(local.recentBadges ? { recentBadges: normalizeAnimeRecentBadges(local.recentBadges) } : {}),
   };
 }

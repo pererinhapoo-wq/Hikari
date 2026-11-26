@@ -81,10 +81,11 @@ export function overlaySeasonList(
 }
 
 function filterPublishedSeasons(seasons: Season[]): Season[] {
-  return (seasons || [])
+  return (Array.isArray(seasons) ? seasons : [])
+    .filter((s): s is Season => Boolean(s && typeof s === "object"))
     .map((s) => ({
       ...s,
-      episodes: (s.episodes || []).filter(isEpisodePublished),
+      episodes: (Array.isArray(s.episodes) ? s.episodes : []).filter(isEpisodePublished),
     }))
     .filter((s) => s.episodes.length > 0);
 }
@@ -97,8 +98,12 @@ export function mergeSeasonsWithRemote(
   localSeasons: Season[],
   remoteSeasons?: Season[],
 ): Season[] {
-  const safeLocal = Array.isArray(localSeasons) ? localSeasons : [];
-  const safeRemote = Array.isArray(remoteSeasons) ? remoteSeasons : [];
+  const safeLocal = (Array.isArray(localSeasons) ? localSeasons : [])
+    .filter((s): s is Season => Boolean(s && typeof s === "object"))
+    .map((s) => (Array.isArray(s.episodes) ? s : { ...s, episodes: [] }));
+  const safeRemote = (Array.isArray(remoteSeasons) ? remoteSeasons : [])
+    .filter((s): s is Season => Boolean(s && typeof s === "object"))
+    .map((s) => (Array.isArray(s.episodes) ? s : { ...s, episodes: [] }));
 
   if (safeRemote.length === 0) {
     const publishedSeasons = filterPublishedSeasons(safeLocal);
@@ -129,8 +134,8 @@ export function mergeSeasonsWithRemote(
   for (const sNum of allSeasonNumbers) {
     const ls = localBySeasonNum.get(sNum);
     const rs = remoteBySeasonNum.get(sNum);
-    const localEps = ls?.episodes ?? [];
-    const remoteEps = rs?.episodes ?? [];
+    const localEps = Array.isArray(ls?.episodes) ? ls.episodes : [];
+    const remoteEps = Array.isArray(rs?.episodes) ? rs.episodes : [];
 
     const localByEpNum = new Map<number, Episode>();
     for (const ep of localEps) {
@@ -699,12 +704,12 @@ export function resolveAdminAnimeWithRemote(
     banner: useRemoteBanner ? remote.banner : storedMatch.banner,
     synopsis:
       (remoteIsNewer ? remote.synopsis : storedMatch.synopsis) || remote.synopsis,
-    genres:
-      remoteIsNewer && remote.genres?.length
-        ? remote.genres
-        : storedMatch.genres.length
-          ? storedMatch.genres
-          : remote.genres,
+    genres: (() => {
+      const remoteGenres = Array.isArray(remote.genres) ? remote.genres : [];
+      const storedGenres = Array.isArray(storedMatch.genres) ? storedMatch.genres : [];
+      if (remoteIsNewer && remoteGenres.length > 0) return remoteGenres;
+      return storedGenres.length > 0 ? storedGenres : remoteGenres;
+    })(),
     format: (remoteIsNewer ? remote.format : storedMatch.format) || remote.format,
     status: (remoteIsNewer ? remote.status : storedMatch.status) || remote.status,
     episodesCount: storedMatch.episodesCount ?? remote.episodesCount,
@@ -827,6 +832,9 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       isRemoteDefaultCdn(local.banner) &&
       !isKitsuImageUrl(local.banner);
 
+    const localGenres = Array.isArray(local.genres) ? local.genres : [];
+    const remoteGenres = Array.isArray(remote.genres) ? remote.genres : [];
+
     return {
       ...remote,
       ...local,
@@ -840,9 +848,9 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       synopsis: local.synopsis || remote.synopsis,
       seasons: resolvedSeasons,
       trailerId: local.trailerId || remote.trailerId,
-      genres: local.genres.length ? local.genres : remote.genres,
-      recommendations: remote.recommendations,
-      streamingEpisodes: remote.streamingEpisodes,
+      genres: localGenres.length > 0 ? localGenres : remoteGenres,
+      recommendations: Array.isArray(remote.recommendations) ? remote.recommendations : [],
+      streamingEpisodes: Array.isArray(remote.streamingEpisodes) ? remote.streamingEpisodes : [],
       studios: mergedStudios,
       characters: mergedCharacters,
       staff: mergedStaff,
@@ -898,6 +906,9 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       isRemoteDefaultCdn(local.banner) &&
       !isKitsuImageUrl(local.banner);
 
+    const localGenres = Array.isArray(local.genres) ? local.genres : [];
+    const remoteGenres = Array.isArray(remote.genres) ? remote.genres : [];
+
     return {
       ...remote,
       ...local,
@@ -907,8 +918,9 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       banner: preferRemoteKitsuBanner ? remote.banner : local.banner || remote.banner,
       seasons: resolvedSeasons,
       trailerId: local.trailerId || remote.trailerId,
-      recommendations: remote.recommendations,
-      streamingEpisodes: remote.streamingEpisodes,
+      genres: localGenres.length > 0 ? localGenres : remoteGenres,
+      recommendations: Array.isArray(remote.recommendations) ? remote.recommendations : [],
+      streamingEpisodes: Array.isArray(remote.streamingEpisodes) ? remote.streamingEpisodes : [],
       studios: mergedStudios,
       characters: mergedCharacters,
       staff: mergedStaff,
@@ -916,7 +928,26 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
     };
   }
 
-  return remote;
+  const hasNormalizedGenres = Array.isArray(remote.genres);
+  const hasNormalizedRecommendations = Array.isArray(remote.recommendations);
+  const hasNormalizedSeasons =
+    Array.isArray(remote.seasons) &&
+    remote.seasons.every((s) => Boolean(s && Array.isArray(s.episodes)));
+
+  if (hasNormalizedGenres && hasNormalizedRecommendations && hasNormalizedSeasons) {
+    return remote;
+  }
+
+  return {
+    ...remote,
+    genres: hasNormalizedGenres ? remote.genres : [],
+    recommendations: hasNormalizedRecommendations ? remote.recommendations : [],
+    seasons: Array.isArray(remote.seasons)
+      ? remote.seasons
+          .filter((s): s is Season => Boolean(s && typeof s === "object"))
+          .map((s) => (Array.isArray(s.episodes) ? s : { ...s, episodes: [] }))
+      : [],
+  };
 }
 
 export function findLocalCover(id: string, locals: LocalAnime[], list: SlimAnime[]): SlimAnime | undefined {

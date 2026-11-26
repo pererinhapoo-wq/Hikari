@@ -703,7 +703,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
         )}
 
         {/* Gêneros / Categorias: Vidro fosco translúcido esbranquiçado com desfoque e texto escuro */}
-        {anime.genres.length > 0 && (
+        {Array.isArray(anime.genres) && anime.genres.length > 0 && (
           <div className="flex flex-wrap items-center justify-center gap-1.5 pt-0.5 max-w-lg">
             {anime.genres.slice(0, 4).map((genre) => (
               <span

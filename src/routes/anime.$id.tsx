@@ -1141,15 +1141,18 @@ function AnimePageContent({
         setResolvedSeasons((prev) => {
           const baseline = prev ?? baseAnime?.seasons ?? null;
           if (
-            baseline &&
+            Array.isArray(baseline) &&
+            Array.isArray(seasons) &&
             baseline.length === seasons.length &&
             baseline.every((s, idx) => {
               const next = seasons[idx];
-              if (!next || s.id !== next.id || s.episodes.length !== next.episodes.length) {
+              const sEpisodes = Array.isArray(s?.episodes) ? s.episodes : [];
+              const nextEpisodes = Array.isArray(next?.episodes) ? next.episodes : [];
+              if (!next || s.id !== next.id || sEpisodes.length !== nextEpisodes.length) {
                 return false;
               }
-              return s.episodes.every((ep, epIdx) => {
-                const nextEp = next.episodes[epIdx];
+              return sEpisodes.every((ep, epIdx) => {
+                const nextEp = nextEpisodes[epIdx];
                 return (
                   Boolean(nextEp) &&
                   ep.id === nextEp.id &&
@@ -3563,7 +3566,7 @@ function AnimePageContent({
 
               {/* GÊNEROS */}
               <div className="mt-3 flex flex-wrap gap-1.5">
-                {anime.genres.map((g) => (
+                {Array.isArray(anime.genres) && anime.genres.map((g) => (
                   <Link
                     key={g}
                     to="/search"
@@ -4000,7 +4003,7 @@ function AnimePageContent({
       </SectionReveal>
 
       {/* 5. RELACIONADOS (SEM BOTÃO DE SALVAR) */}
-      {anime.recommendations.length > 0 && (
+      {Array.isArray(anime.recommendations) && anime.recommendations.length > 0 && (
         <SectionReveal
           lazy={false}
           className="[content-visibility:auto] [contain-intrinsic-size:auto_280px]"
