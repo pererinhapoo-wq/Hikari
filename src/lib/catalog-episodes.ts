@@ -486,15 +486,27 @@ const publicCatalogEpisodesInFlight = new Map<
 >();
 let publicCatalogEpisodesCacheEpoch = 0;
 
-export function invalidatePublicCatalogEpisodesCache(): void {
+export function invalidatePublicCatalogEpisodesLocalCache(): void {
   publicCatalogEpisodesCacheEpoch += 1;
   publicCatalogEpisodesCache.clear();
   publicCatalogEpisodesInFlight.clear();
   publicCatalogAnimeOptionsCacheEpoch += 1;
   cachedPublicCatalogAnimeOptions = null;
   publicCatalogAnimeOptionsInFlight = null;
+}
+
+export function invalidatePublicCatalogEpisodesCache(): void {
+  invalidatePublicCatalogEpisodesLocalCache();
   void invalidateRedisPublicCatalogEpisodes().catch(() => {});
   void invalidateRedisPublicCatalogAnimeOptions().catch(() => {});
+}
+
+export async function invalidatePublicCatalogEpisodesCacheAsync(): Promise<void> {
+  invalidatePublicCatalogEpisodesLocalCache();
+  await Promise.allSettled([
+    invalidateRedisPublicCatalogEpisodes(),
+    invalidateRedisPublicCatalogAnimeOptions(),
+  ]);
 }
 
 function setPublicCatalogEpisodesRamCache(

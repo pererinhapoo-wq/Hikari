@@ -3709,6 +3709,8 @@ export function getHeroGenKey(envName?: string): string {
 }
 
 export type HeroBannerBucket =
+  | "em_alta"
+  | "episodios_publicados"
   | "novidade"
   | "episodio_novo"
   | "engajamento"

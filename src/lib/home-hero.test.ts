@@ -4,46 +4,48 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   buildHeroBannerPool,
-  computeCalendarScore,
-  computeEngagementScore,
   getHomeHeroItemsWithDeps,
+  invalidateHomeHeroCacheAsync,
   invalidateHomeHeroLocalCache,
   MAX_HERO_SLIDES,
+  HERO_ROTATION_WINDOW_MS,
   resetHomeHeroTestState,
   scoreAndDeduplicateHeroCandidates,
   selectHeroSlidesForWindow,
-  type HeroAudienceMetrics,
   type HeroCatalogAnimeCandidateRow,
   type HomeHeroDeps,
 } from "@/lib/home-hero.server";
+import {
+  getHomeTrendingItemsWithDeps,
+  invalidateHomeTrendingLocalCache,
+  resetHomeTrendingTestState,
+  type HomeTrendingDeps,
+} from "@/lib/home-trending.server";
+import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
 import { pickHeroItems } from "@/lib/home-hero-fallback";
 import type { AnimeRecentBadgesLookup } from "@/lib/catalog-badges";
 import type { SlimAnime } from "@/lib/types";
 import {
   HERO_BANNER_PAYLOAD_VERSION,
+  HOME_TRENDING_PAYLOAD_VERSION,
   getRedisHeroBannerPoolWithFence,
+  getRedisHomeTrendingWithFence,
   HERO_BANNER_GEN_KEY,
   HERO_BANNER_REDIS_KEY,
   getHeroRedisKey,
   getHeroGenKey,
+  getHomeTrendingRedisKey,
+  getHomeTrendingGenKey,
   invalidateRedisHeroBannerPool,
   resolveHeroEnvironmentName,
   setRedisHeroBannerPool,
+  setRedisHomeTrending,
   type HeroBannerPoolPayload,
   type RedisEvalClient,
 } from "@/lib/redis";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
-
-function emptyBadgesLookup(): AnimeRecentBadgesLookup {
-  return {
-    byId: new Map(),
-    byAnilistId: new Map(),
-    byMalId: new Map(),
-    byKitsuId: new Map(),
-  };
-}
 
 function makeCandidateRow(
   overrides: Partial<HeroCatalogAnimeCandidateRow> & { id: string },
@@ -69,6 +71,7 @@ function makeCandidateRow(
     genres: ["Action", "Fantasy"],
     trailerId: null,
     hidden: false,
+    archivedAt: null,
     score: 82,
     popularity: 50000,
     trending: 1000,
@@ -78,6 +81,33 @@ function makeCandidateRow(
     firstEpisodePublishedAt: new Date(nowMs - 44 * DAY_MS).toISOString(),
     latestEpisodePublishedAt: new Date(nowMs - 20 * DAY_MS).toISOString(),
     ep1Sources: [{ videoUrl: `https://cdn.example.com/ep1-${overrides.id}.mp4` }],
+    ...overrides,
+  };
+}
+
+function makeTrendingSlim(
+  overrides: Partial<SlimAnime> & { id: string },
+): SlimAnime {
+  return {
+    titles: {
+      romaji: overrides.titles?.romaji ?? `Trending ${overrides.id}`,
+      english: overrides.titles?.english ?? `Trending ${overrides.id} EN`,
+      native: overrides.titles?.native ?? "",
+    },
+    cover: overrides.cover ?? `https://cdn.example.com/cover-${overrides.id}.jpg`,
+    banner: overrides.banner ?? "",
+    synopsis: overrides.synopsis ?? "",
+    score: overrides.score ?? 85,
+    popularity: overrides.popularity ?? 75000,
+    genres: overrides.genres ?? ["Action"],
+    format: overrides.format ?? "TV",
+    status: overrides.status ?? "RELEASING",
+    episodesCount: overrides.episodesCount ?? 12,
+    season: overrides.season ?? "SPRING",
+    year: overrides.year ?? 2026,
+    trailerId: overrides.trailerId ?? null,
+    source: overrides.source ?? "local",
+    hasEpisode: overrides.hasEpisode ?? false,
     ...overrides,
   };
 }
@@ -155,311 +185,384 @@ class MockHeroRedis implements RedisEvalClient {
   }
 }
 
-describe("home-hero dynamic selection, scoring, rotation & caching", () => {
+describe("home-hero unified 2-group selection, first-slide rotation & cache invalidation", () => {
   beforeEach(() => {
     resetHomeHeroTestState();
+    resetHomeTrendingTestState();
   });
 
-  it("selects up to 8 items directly from Neon catalog independently of AniList top-18", async () => {
+  it("1. includes Em Alta animes from getHomeTrendingItems and enriches banner/synopsis/trailerId from catalog", async () => {
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
-    // 12 animes com IDs próprios fora de qualquer lista top-18 do AniList
-    const rows: HeroCatalogAnimeCandidateRow[] = [
-      makeCandidateRow({
-        id: "700001",
-        createdAt: new Date(nowMs - 2 * DAY_MS).toISOString(),
-        firstEpisodePublishedAt: new Date(nowMs - 2 * DAY_MS).toISOString(),
-        latestEpisodePublishedAt: new Date(nowMs - 2 * DAY_MS).toISOString(),
-      }, nowMs),
-      makeCandidateRow({
-        id: "700002",
-        createdAt: new Date(nowMs - 5 * DAY_MS).toISOString(),
-        firstEpisodePublishedAt: new Date(nowMs - 5 * DAY_MS).toISOString(),
-        latestEpisodePublishedAt: new Date(nowMs - 5 * DAY_MS).toISOString(),
-      }, nowMs),
-      makeCandidateRow({
-        id: "700003",
-        latestEpisodePublishedAt: new Date(nowMs - 3 * HOUR_MS).toISOString(),
-      }, nowMs),
-      makeCandidateRow({
-        id: "700004",
-        latestEpisodePublishedAt: new Date(nowMs - 2 * DAY_MS).toISOString(),
-      }, nowMs),
-      makeCandidateRow({
-        id: "700005",
-        latestEpisodePublishedAt: new Date(nowMs - 4 * DAY_MS).toISOString(),
-      }, nowMs),
-      ...Array.from({ length: 7 }, (_, i) =>
-        makeCandidateRow({
-          id: String(700010 + i),
-          score: 75 + i,
-        }, nowMs),
-      ),
-    ];
+    const emptyBadges: AnimeRecentBadgesLookup = {
+      byId: new Map(),
+      byAnilistId: new Map(),
+      byMalId: new Map(),
+      byKitsuId: new Map(),
+    };
 
-    const audience = new Map<string, HeroAudienceMetrics>([
-      ["700010", { progUsers7d: 18, progUsers14d: 25, playbackUsers7d: 12, playbackUsers14d: 16 }],
-      ["700011", { progUsers7d: 10, progUsers14d: 14, playbackUsers7d: 8, playbackUsers14d: 11 }],
-    ]);
+    // Produz Em Alta real via getHomeTrendingItemsWithDeps (que zera banner/synopsis/trailerId no SlimAnime)
+    const trendingDeps: HomeTrendingDeps = {
+      getRedisTrending: async () => ({ status: "unavailable", payload: null, fence: null }),
+      setRedisTrending: async () => "unavailable",
+      scheduleWrite: () => {},
+      queryCatalog: async () => [
+        {
+          id: "210001",
+          title: "Em Alta Sem Ep",
+          anilistId: 210001,
+          malId: null,
+          kitsuId: null,
+          titleRomaji: "Em Alta Sem Ep",
+          titleEnglish: "Trending Without Ep",
+          titleNative: null,
+          cover: "https://cdn.example.com/cover-210001.jpg",
+          format: "TV",
+          status: "RELEASING",
+          episodesCount: 12,
+          year: 2026,
+          season: "SPRING",
+          genres: ["Action"],
+          hidden: false,
+          score: 88,
+          popularity: 90000,
+          trending: 1500,
+          updatedAt: new Date(nowMs - HOUR_MS).toISOString(),
+          publishedEpisodeCount: 0,
+          latestEpisodePublishedAt: null,
+          epSources: [],
+          hasTodayAiringSchedule: true,
+          hasWeekAiringSchedule: true,
+        },
+      ],
+      queryBadges: async () => emptyBadges,
+      queryAudienceSignals: async () => [
+        {
+          userId: "u-1",
+          animeId: "210001",
+          playbackAt: new Date(nowMs - 2 * HOUR_MS).toISOString(),
+          progressAt: null,
+          commentAt: null,
+        },
+      ],
+    };
 
-    const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), audience, nowMs);
-    const pool = buildHeroBannerPool(scored, nowMs);
-    const slides = selectHeroSlidesForWindow(pool, nowMs, MAX_HERO_SLIDES);
+    const trendingItems = await getHomeTrendingItemsWithDeps(trendingDeps, nowMs);
+    assert.equal(trendingItems.length, 1);
+    assert.equal(trendingItems[0].banner, "");
 
-    assert.equal(slides.length, 8);
-    assert.ok(slides.some((s) => s.id === "700001" || s.id === "700002"));
-    assert.ok(slides.some((s) => s.id === "700003"));
-    assert.ok(slides.some((s) => s.id === "700010" || s.id === "700011"));
-    assert.ok(slides.every((s) => s.hasEpisode === true));
+    const heroItems = await getHomeHeroItemsWithDeps(
+      {
+        getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
+        setRedisPool: async () => "unavailable",
+        scheduleWrite: () => {},
+        getTrendingItems: async () => trendingItems,
+        queryCatalog: async () => [
+          makeCandidateRow(
+            {
+              id: "210001",
+              title: "Em Alta Sem Ep",
+              titleRomaji: "Em Alta Sem Ep",
+              banner: "https://cdn.example.com/banner-210001.jpg",
+              synopsis: "Sinopse completa enriquecida no Hero.",
+              trailerId: "yt_210001",
+              publishedEpisodeCount: 0,
+              firstEpisodePublishedAt: null,
+              latestEpisodePublishedAt: null,
+              ep1Sources: [],
+              epSources: [],
+            },
+            nowMs,
+          ),
+        ],
+      },
+      nowMs,
+    );
+
+    assert.equal(heroItems.length, 1);
+    assert.equal(heroItems[0].id, "210001");
+    assert.equal(heroItems[0].banner, "https://cdn.example.com/banner-210001.jpg");
+    assert.equal(heroItems[0].synopsis, "Sinopse completa enriquecida no Hero.");
+    assert.equal(heroItems[0].trailerId, "yt_210001");
+    assert.equal(heroItems[0].hasEpisode, false);
   });
 
-  it("prioritizes distinct horizontal banners strictly ahead of cover-only fallbacks", () => {
+  it("2. includes published playable episodes including internal IDs, Hikari Player IDs, and non-ep-1 episodes", () => {
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
     const rows: HeroCatalogAnimeCandidateRow[] = [
-      // 6 sem banner próprio (ou banner == capa), mas com scores altíssimos
-      ...Array.from({ length: 6 }, (_, i) =>
-        makeCandidateRow({
-          id: String(800001 + i),
-          banner: i % 2 === 0 ? null : `https://cdn.example.com/cover-${800001 + i}.jpg`,
-          createdAt: new Date(nowMs - 1 * DAY_MS).toISOString(),
-          firstEpisodePublishedAt: new Date(nowMs - 1 * DAY_MS).toISOString(),
-          score: 99,
-        }, nowMs),
-      ),
-      // 6 com banner horizontal próprio diferente da capa
-      ...Array.from({ length: 6 }, (_, i) =>
-        makeCandidateRow({
-          id: String(800101 + i),
-          score: 70,
-        }, nowMs),
-      ),
-    ];
-
-    const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), new Map(), nowMs);
-    const pool = buildHeroBannerPool(scored, nowMs);
-    const slides = selectHeroSlidesForWindow(pool, nowMs, MAX_HERO_SLIDES);
-
-    assert.equal(slides.length, 8);
-    const selectedIds = slides.map((s) => s.id);
-    // Todos os 6 com banner horizontal próprio devem vir antes dos 2 de fallback
-    for (let i = 0; i < 6; i++) {
-      assert.ok(
-        selectedIds.slice(0, 6).includes(String(800101 + i)),
-        `Expected distinct banner anime ${800101 + i} in first 6 slides`,
-      );
-    }
-  });
-
-  it("applies temporal decay to new episodes and novelties, ignoring superficial updatedAt edits", () => {
-    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
-    const rows: HeroCatalogAnimeCandidateRow[] = [
-      // Anime antigo editado administrativamente hoje (updatedAt hoje, mas último episódio há 60 dias)
-      makeCandidateRow({
-        id: "900001",
-        createdAt: new Date(nowMs - 180 * DAY_MS).toISOString(),
-        updatedAt: new Date(nowMs - 10 * 60 * 1000).toISOString(),
-        firstEpisodePublishedAt: new Date(nowMs - 170 * DAY_MS).toISOString(),
-        latestEpisodePublishedAt: new Date(nowMs - 60 * DAY_MS).toISOString(),
-      }, nowMs),
-      // Anime antigo que acabou de ganhar episódio há 2h -> episódio novo forte, não novidade
-      makeCandidateRow({
-        id: "900002",
-        createdAt: new Date(nowMs - 180 * DAY_MS).toISOString(),
-        firstEpisodePublishedAt: new Date(nowMs - 170 * DAY_MS).toISOString(),
-        latestEpisodePublishedAt: new Date(nowMs - 2 * HOUR_MS).toISOString(),
-      }, nowMs),
-      // Anime antigo que ganhou episódio há 8 dias -> ainda entra, mas com menos força que 2h
-      makeCandidateRow({
-        id: "900003",
-        createdAt: new Date(nowMs - 180 * DAY_MS).toISOString(),
-        firstEpisodePublishedAt: new Date(nowMs - 170 * DAY_MS).toISOString(),
-        latestEpisodePublishedAt: new Date(nowMs - 8 * DAY_MS).toISOString(),
-      }, nowMs),
-      // Novidade com 3 dias vs novidade com 26 dias (decaimento após 21 dias) vs 45 dias (zero novidade)
-      makeCandidateRow({
-        id: "900004",
-        createdAt: new Date(nowMs - 3 * DAY_MS).toISOString(),
-        firstEpisodePublishedAt: new Date(nowMs - 3 * DAY_MS).toISOString(),
-        latestEpisodePublishedAt: new Date(nowMs - 3 * DAY_MS).toISOString(),
-      }, nowMs),
-      makeCandidateRow({
-        id: "900005",
-        createdAt: new Date(nowMs - 26 * DAY_MS).toISOString(),
-        firstEpisodePublishedAt: new Date(nowMs - 26 * DAY_MS).toISOString(),
-        latestEpisodePublishedAt: new Date(nowMs - 26 * DAY_MS).toISOString(),
-      }, nowMs),
-      makeCandidateRow({
-        id: "900006",
-        createdAt: new Date(nowMs - 45 * DAY_MS).toISOString(),
-        firstEpisodePublishedAt: new Date(nowMs - 45 * DAY_MS).toISOString(),
-        latestEpisodePublishedAt: new Date(nowMs - 45 * DAY_MS).toISOString(),
-      }, nowMs),
-    ];
-
-    const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), new Map(), nowMs);
-    const byId = new Map(scored.map((c) => [c.anime.id, c]));
-
-    assert.equal(byId.get("900001")!.noveltyScore, 0);
-    assert.equal(byId.get("900001")!.newEpisodeScore, 0);
-
-    assert.equal(byId.get("900002")!.noveltyScore, 0);
-    assert.ok(byId.get("900002")!.newEpisodeScore > byId.get("900003")!.newEpisodeScore);
-
-    assert.ok(byId.get("900004")!.noveltyScore > byId.get("900005")!.noveltyScore);
-    assert.ok(byId.get("900005")!.noveltyScore > 0);
-    assert.equal(byId.get("900006")!.noveltyScore, 0);
-  });
-
-  it("deduplicates dubbed and subbed variants and prefers original non-dubbed entry", () => {
-    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
-    const rows: HeroCatalogAnimeCandidateRow[] = [
-      makeCandidateRow({
-        id: "113415",
-        title: "Jujutsu Kaisen",
-        titleRomaji: "Jujutsu Kaisen",
-        titleEnglish: "JUJUTSU KAISEN",
-        score: 86,
-      }, nowMs),
-      makeCandidateRow({
-        id: "mal-40748",
-        anilistId: null,
-        malId: 40748,
-        title: "Jujutsu Kaisen (Dublado)",
-        titleRomaji: "Jujutsu Kaisen (Dublado)",
-        titleEnglish: "JUJUTSU KAISEN Dublado",
-        score: 95,
-      }, nowMs),
-    ];
-
-    const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), new Map(), nowMs);
-    assert.equal(scored.length, 1);
-    assert.equal(scored[0].anime.id, "113415");
-    assert.equal(scored[0].isDubbed, false);
-  });
-
-  it("excludes hidden, +18/Hentai, invalid IDs, and non-playable zero-signal candidates while accepting internal IDs and non-ep-1 episodes", () => {
-    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
-    const rows: HeroCatalogAnimeCandidateRow[] = [
-      makeCandidateRow({ id: "101", hidden: true }, nowMs),
-      makeCandidateRow({ id: "102", genres: ["Action", "Hentai"] }, nowMs),
-      makeCandidateRow({ id: "bad/id", anilistId: null, malId: null, kitsuId: null }, nowMs),
-      // ID interno puro do Hikari (local-*) sem ID externo deve ser elegível
       makeCandidateRow({ id: "local-pure", anilistId: null, malId: null, kitsuId: null }, nowMs),
-      // ID interno customizado sem ID externo e apenas episódio 5 publicado (sem ep-1)
-      makeCandidateRow({
-        id: "hikari-ep5-only",
-        anilistId: null,
-        malId: null,
-        kitsuId: null,
-        publishedEpisodeCount: 1,
-        ep1Sources: [],
-        epSources: [{ number: 5, seasonNumber: 1, videoUrl: "https://cdn.example.com/ep5.mp4" }],
-      }, nowMs),
-      // local-* COM anilistId válido resolve para o ID canônico 176301 com serverCatalogId local-mapped
+      makeCandidateRow(
+        {
+          id: "hikari-ep5-only",
+          anilistId: null,
+          malId: null,
+          kitsuId: null,
+          publishedEpisodeCount: 1,
+          ep1Sources: [],
+          epSources: [{ number: 5, seasonNumber: 1, videoUrl: "https://cdn.example.com/ep5.mp4" }],
+        },
+        nowMs,
+      ),
+      makeCandidateRow(
+        { id: "105", ep1Sources: [{ hikariPlayerEpisodeId: "ep_valid_105" }] },
+        nowMs,
+      ),
       makeCandidateRow({ id: "local-mapped", anilistId: 176301, title: "Solo Leveling" }, nowMs),
-      // Sem episódio publicado e sem outros sinais (calendário/engajamento)
-      makeCandidateRow({ id: "103", publishedEpisodeCount: 0, ep1Sources: [] }, nowMs),
-      // Episódio com fonte inválida (#) e sem hikariPlayerEpisodeId nem outros sinais
-      makeCandidateRow({ id: "104", ep1Sources: [{ videoUrl: "#" }] }, nowMs),
-      // Episódio 1 válido via Hikari Player ID
-      makeCandidateRow({ id: "105", ep1Sources: [{ hikariPlayerEpisodeId: "ep_valid_105" }] }, nowMs),
     ];
 
-    const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), new Map(), nowMs);
+    const scored = scoreAndDeduplicateHeroCandidates(rows, [], nowMs);
     const ids = scored.map((s) => s.anime.id).sort();
     assert.deepEqual(ids, ["105", "176301", "hikari-ep5-only", "local-pure"]);
 
     const mapped = scored.find((s) => s.anime.id === "176301");
     assert.equal(mapped?.anime.serverCatalogId, "local-mapped");
-
-    const pureLocal = scored.find((s) => s.anime.id === "local-pure");
-    assert.equal(pureLocal?.anime.serverCatalogId, "local-pure");
-    assert.equal(pureLocal?.anime.hasEpisode, true);
+    assert.equal(mapped?.hasPublishedEpisode, true);
 
     const ep5Only = scored.find((s) => s.anime.id === "hikari-ep5-only");
-    assert.equal(ep5Only?.anime.hasEpisode, true);
     assert.equal(ep5Only?.anime.firstAvailableEpisodeNumber, 5);
   });
 
-  it("handles empty or failing audience query cleanly without breaking selection", async () => {
+  it("3. canonically deduplicates an anime appearing in both Em Alta and Published Episodes (and dubbed vs subbed)", () => {
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
-    const rows = Array.from({ length: 10 }, (_, i) =>
-      makeCandidateRow({ id: String(500001 + i) }, nowMs),
+    const rows: HeroCatalogAnimeCandidateRow[] = [
+      makeCandidateRow(
+        {
+          id: "113415",
+          title: "Jujutsu Kaisen",
+          titleRomaji: "Jujutsu Kaisen",
+          titleEnglish: "JUJUTSU KAISEN",
+          score: 86,
+        },
+        nowMs,
+      ),
+      makeCandidateRow(
+        {
+          id: "mal-40748",
+          anilistId: null,
+          malId: 40748,
+          title: "Jujutsu Kaisen (Dublado)",
+          titleRomaji: "Jujutsu Kaisen (Dublado)",
+          titleEnglish: "JUJUTSU KAISEN Dublado",
+          score: 95,
+        },
+        nowMs,
+      ),
+    ];
+
+    const trendingItems: SlimAnime[] = [
+      makeTrendingSlim({
+        id: "113415",
+        anilistId: 113415,
+        titles: { romaji: "Jujutsu Kaisen", english: "JUJUTSU KAISEN", native: "" },
+        hasEpisode: true,
+      }),
+      makeTrendingSlim({
+        id: "mal-40748",
+        malId: 40748,
+        titles: { romaji: "Jujutsu Kaisen (Dublado)", english: "JUJUTSU KAISEN Dublado", native: "" },
+        hasEpisode: true,
+      }),
+    ];
+
+    const scored = scoreAndDeduplicateHeroCandidates(rows, trendingItems, nowMs);
+    assert.equal(scored.length, 1);
+    assert.equal(scored[0].anime.id, "113415");
+    assert.equal(scored[0].isDubbed, false);
+    assert.equal(scored[0].isEmAlta, true);
+    assert.equal(scored[0].hasPublishedEpisode, true);
+
+    const pool = buildHeroBannerPool(scored, nowMs);
+    assert.equal(pool.items.length, 1);
+  });
+
+  it("4. excludes animes outside the two approved groups (unpublished, invalid sources, calendar-only, engagement-only, freshly registered)", () => {
+    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
+    const rows: HeroCatalogAnimeCandidateRow[] = [
+      // Sem episódio publicado e fora de Em Alta
+      makeCandidateRow({ id: "910001", publishedEpisodeCount: 0, ep1Sources: [], epSources: [] }, nowMs),
+      // Fonte inválida (#) e fora de Em Alta
+      makeCandidateRow({ id: "910002", publishedEpisodeCount: 1, ep1Sources: [{ videoUrl: "#" }] }, nowMs),
+      // Campo legado simulado de calendário/recorrência sem episódio publicado e fora de Em Alta
+      {
+        ...makeCandidateRow({ id: "910003", publishedEpisodeCount: 0, ep1Sources: [], epSources: [] }, nowMs),
+        hasTodayAiringSchedule: true,
+        hasTodayWeeklyRecurrence: true,
+      } as HeroCatalogAnimeCandidateRow,
+      // Válido via Grupo 2
+      makeCandidateRow({ id: "5081", title: "Bakemonogatari", titleRomaji: "Bakemonogatari" }, nowMs),
+    ];
+
+    const scored = scoreAndDeduplicateHeroCandidates(rows, [], nowMs);
+    assert.deepEqual(
+      scored.map((s) => s.anime.id),
+      ["5081"],
     );
+
+    const heroServerSource = readFileSync(
+      resolve(process.cwd(), "src/lib/home-hero.server.ts"),
+      "utf8",
+    );
+    assert.equal(heroServerSource.includes("airing_stats"), false);
+    assert.equal(heroServerSource.includes("recurrence_stats"), false);
+    assert.equal(heroServerSource.includes("recent_engagement_ids"), false);
+    assert.equal(heroServerSource.includes("user_anime_tracking"), false);
+    assert.equal(heroServerSource.includes("queryAudienceMetricsFromNeon"), false);
+  });
+
+  it("5. excludes hidden, archived, and +18/Hentai candidates even if present in trendingItems", () => {
+    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
+    const rows: HeroCatalogAnimeCandidateRow[] = [
+      makeCandidateRow({ id: "101", hidden: true }, nowMs),
+      makeCandidateRow({ id: "102", genres: ["Action", "Hentai"] }, nowMs),
+      makeCandidateRow({ id: "103", archivedAt: new Date(nowMs - DAY_MS).toISOString() }, nowMs),
+      makeCandidateRow({ id: "bad/id", anilistId: null, malId: null, kitsuId: null }, nowMs),
+      makeCandidateRow({ id: "104", title: "Valid Anime", titleRomaji: "Valid Anime" }, nowMs),
+    ];
+
+    // Simula snapshot antigo de Em Alta contendo itens hidden, archived e Hentai
+    const staleTrending: SlimAnime[] = [
+      makeTrendingSlim({ id: "101", anilistId: 101 }),
+      makeTrendingSlim({ id: "102", anilistId: 102, genres: ["Hentai"] }),
+      makeTrendingSlim({ id: "103", anilistId: 103 }),
+      makeTrendingSlim({ id: "104", anilistId: 104 }),
+    ];
+
+    const scored = scoreAndDeduplicateHeroCandidates(rows, staleTrending, nowMs);
+    assert.deepEqual(
+      scored.map((s) => s.anime.id),
+      ["104"],
+    );
+  });
+
+  it("6. rotates position [0] across consecutive 15-minute windows without Bakemonogatari locking slot 0 (both distinct-banner and single-distinct + cover-only)", () => {
+    const t0 = Date.UTC(2026, 4, 15, 12, 0, 0);
+
+    // Caso A: Bakemonogatari é o ÚNICO com banner horizontal distinto (Grupo 2) e Em Alta tem animes apenas com cover
+    const singleDistinctRows: HeroCatalogAnimeCandidateRow[] = [
+      makeCandidateRow(
+        {
+          id: "5081",
+          title: "Bakemonogatari",
+          titleRomaji: "Bakemonogatari",
+          banner: "https://cdn.example.com/banner-5081.jpg",
+          cover: "https://cdn.example.com/cover-5081.jpg",
+        },
+        t0,
+      ),
+      ...Array.from({ length: 5 }, (_, i) =>
+        makeCandidateRow(
+          {
+            id: String(700001 + i),
+            banner: null,
+            cover: `https://cdn.example.com/cover-${700001 + i}.jpg`,
+            publishedEpisodeCount: 0,
+            ep1Sources: [],
+            epSources: [],
+          },
+          t0,
+        ),
+      ),
+    ];
+
+    const trendingCoverOnly = Array.from({ length: 5 }, (_, i) =>
+      makeTrendingSlim({
+        id: String(700001 + i),
+        anilistId: 700001 + i,
+        cover: `https://cdn.example.com/cover-${700001 + i}.jpg`,
+        banner: "",
+      }),
+    );
+
+    const scoredA = scoreAndDeduplicateHeroCandidates(singleDistinctRows, trendingCoverOnly, t0);
+    const poolA = buildHeroBannerPool(scoredA, t0);
+
+    const firstIdsA: string[] = [];
+    for (let w = 0; w < 6; w++) {
+      const slides = selectHeroSlidesForWindow(poolA, t0 + w * HERO_ROTATION_WINDOW_MS, MAX_HERO_SLIDES);
+      assert.equal(slides.length, 6);
+      firstIdsA.push(slides[0].id);
+      if (w > 0) {
+        assert.notEqual(
+          slides[0].id,
+          firstIdsA[w - 1],
+          `Position [0] must vary between window ${w - 1} and ${w}`,
+        );
+      }
+    }
+    assert.equal(new Set(firstIdsA).size, 6);
+    assert.ok(firstIdsA.includes("5081"));
+    assert.ok(firstIdsA.includes("700001"));
+
+    // Caso B: 6 banners distintos (4 Em Alta + 2 Episódios publicados) + 6 cover-only -> banners distintos ficam à frente dos cover-only e [0] gira entre todos os 6
+    const mixedRows: HeroCatalogAnimeCandidateRow[] = [
+      ...Array.from({ length: 6 }, (_, i) =>
+        makeCandidateRow({ id: String(800101 + i) }, t0),
+      ),
+      ...Array.from({ length: 6 }, (_, i) =>
+        makeCandidateRow(
+          {
+            id: String(800001 + i),
+            banner: i % 2 === 0 ? null : `https://cdn.example.com/cover-${800001 + i}.jpg`,
+          },
+          t0,
+        ),
+      ),
+    ];
+    const scoredB = scoreAndDeduplicateHeroCandidates(
+      mixedRows,
+      Array.from({ length: 4 }, (_, i) => makeTrendingSlim({ id: String(800101 + i), anilistId: 800101 + i })),
+      t0,
+    );
+    const poolB = buildHeroBannerPool(scoredB, t0);
+
+    const firstIdsB: string[] = [];
+    for (let w = 0; w < 6; w++) {
+      const slides = selectHeroSlidesForWindow(poolB, t0 + w * HERO_ROTATION_WINDOW_MS, MAX_HERO_SLIDES);
+      assert.equal(slides.length, 8);
+      for (let i = 0; i < 6; i++) {
+        assert.ok(
+          slides.slice(0, 6).some((s) => s.id === String(800101 + i)),
+          `Distinct banner ${800101 + i} must appear in first 6 slots`,
+        );
+      }
+      firstIdsB.push(slides[0].id);
+      if (w > 0) {
+        assert.notEqual(slides[0].id, firstIdsB[w - 1]);
+      }
+    }
+    assert.equal(new Set(firstIdsB).size, 6);
+  });
+
+  it("7. keeps 1 static slide without fabricating animes when only 1 valid candidate exists across both groups", async () => {
+    const t0 = Date.UTC(2026, 4, 15, 12, 0, 0);
+    const singleValidRows: HeroCatalogAnimeCandidateRow[] = [
+      makeCandidateRow({ id: "5081", title: "Bakemonogatari", titleRomaji: "Bakemonogatari" }, t0),
+      makeCandidateRow({ id: "930001", publishedEpisodeCount: 0, ep1Sources: [], epSources: [] }, t0),
+      makeCandidateRow({ id: "930002", publishedEpisodeCount: 0, ep1Sources: [], epSources: [] }, t0),
+    ];
 
     const deps: HomeHeroDeps = {
       getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
       setRedisPool: async () => "unavailable",
       scheduleWrite: () => {},
-      queryCatalog: async () => rows,
-      queryBadges: async () => emptyBadgesLookup(),
-      queryAudience: async () => {
-        throw new Error("Audience query timeout");
-      },
+      queryCatalog: async () => singleValidRows,
+      getTrendingItems: async () => [],
     };
 
-    const items = await getHomeHeroItemsWithDeps(deps, nowMs);
-    assert.equal(items.length, 8);
+    const items1 = await getHomeHeroItemsWithDeps(deps, t0);
+    const items2 = await getHomeHeroItemsWithDeps(deps, t0 + HERO_ROTATION_WINDOW_MS);
+
+    assert.deepEqual(items1.map((x) => x.id), ["5081"]);
+    assert.deepEqual(items2.map((x) => x.id), ["5081"]);
   });
 
-  it("falls back cleanly on Redis outage and serves stale RAM pool if DB also fails", async () => {
-    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
-    const rows = Array.from({ length: 8 }, (_, i) =>
-      makeCandidateRow({ id: String(600001 + i) }, nowMs),
-    );
-
-    // 1. Redis falha, DB funciona -> popula staleHeroPool
-    const items1 = await getHomeHeroItemsWithDeps(
-      {
-        getRedisPool: async () => ({ status: "failed", payload: null, fence: null }),
-        setRedisPool: async () => "failed",
-        scheduleWrite: () => {},
-        queryCatalog: async () => rows,
-        queryBadges: async () => emptyBadgesLookup(),
-        queryAudience: async () => new Map(),
-      },
-      nowMs,
-    );
-    assert.equal(items1.length, 8);
-
-    // 2. Limpa cache quente RAM (mantendo stale), agora Redis E DB falham -> devolve reserva stale
-    invalidateHomeHeroLocalCache();
-    const items2 = await getHomeHeroItemsWithDeps(
-      {
-        getRedisPool: async () => ({ status: "failed", payload: null, fence: null }),
-        setRedisPool: async () => "failed",
-        scheduleWrite: () => {},
-        queryCatalog: async () => {
-          throw new Error("Neon connection error");
-        },
-        queryBadges: async () => emptyBadgesLookup(),
-        queryAudience: async () => new Map(),
-      },
-      nowMs,
-    );
-    assert.equal(items2.length, 8);
-    assert.deepEqual(
-      items2.map((x) => x.id),
-      items1.map((x) => x.id),
-    );
-  });
-
-  it("avoids DB/audience queries on RAM and Redis cache hits and rotates deterministically by window", async () => {
+  it("8. avoids getHomeTrendingItems and queryCatalog calls on RAM and Redis cache hits", async () => {
     const t0 = Date.UTC(2026, 4, 15, 12, 0, 0);
-    const rows = Array.from({ length: 14 }, (_, i) =>
-      makeCandidateRow(
-        {
-          id: String(400001 + i),
-          createdAt: new Date(t0 - (i < 4 ? i + 1 : 60) * DAY_MS).toISOString(),
-          firstEpisodePublishedAt: new Date(t0 - (i < 4 ? i + 1 : 60) * DAY_MS).toISOString(),
-          latestEpisodePublishedAt: new Date(t0 - (i < 8 ? i + 1 : 30) * DAY_MS).toISOString(),
-        },
-        t0,
-      ),
+    const rows = Array.from({ length: 12 }, (_, i) =>
+      makeCandidateRow({ id: String(400001 + i) }, t0),
     );
-
     const mockRedis = new MockHeroRedis();
     let catalogQueries = 0;
-    let audienceQueries = 0;
+    let trendingCalls = 0;
 
     const deps: HomeHeroDeps = {
       getRedisPool: () => getRedisHeroBannerPoolWithFence(mockRedis),
@@ -467,91 +570,188 @@ describe("home-hero dynamic selection, scoring, rotation & caching", () => {
       scheduleWrite: (promise) => {
         void promise;
       },
+      getTrendingItems: async () => {
+        trendingCalls += 1;
+        return [makeTrendingSlim({ id: "400001", anilistId: 400001 })];
+      },
       queryCatalog: async () => {
         catalogQueries += 1;
         return rows;
       },
-      queryBadges: async () => emptyBadgesLookup(),
-      queryAudience: async () => {
-        audienceQueries += 1;
-        return new Map();
-      },
     };
 
-    // 1. Cold miss -> consulta Neon 1x e grava no Redis
     const firstWindowSlides = await getHomeHeroItemsWithDeps(deps, t0);
     await new Promise((r) => setTimeout(r, 10));
     assert.equal(firstWindowSlides.length, 8);
     assert.equal(catalogQueries, 1);
-    assert.equal(audienceQueries, 1);
+    assert.equal(trendingCalls, 1);
     assert.ok(mockRedis.store.has(getHeroRedisKey("development")));
 
-    // 2. Mesma janela -> RAM hit (0 DB, 0 audience, determinístico == SSR/hydration)
+    // RAM hit
     const sameWindowRam = await getHomeHeroItemsWithDeps(deps, t0 + 20_000);
-    assert.deepEqual(
-      sameWindowRam.map((a) => a.id),
-      firstWindowSlides.map((a) => a.id),
-    );
+    assert.deepEqual(sameWindowRam.map((a) => a.id), firstWindowSlides.map((a) => a.id));
     assert.equal(catalogQueries, 1);
-    assert.equal(audienceQueries, 1);
+    assert.equal(trendingCalls, 1);
 
-    // 3. Limpa RAM -> Redis hit (0 DB, 0 audience)
+    // Clear RAM -> Redis hit
     invalidateHomeHeroLocalCache();
     const sameWindowRedis = await getHomeHeroItemsWithDeps(deps, t0 + 30_000);
-    assert.deepEqual(
-      sameWindowRedis.map((a) => a.id),
-      firstWindowSlides.map((a) => a.id),
-    );
+    assert.deepEqual(sameWindowRedis.map((a) => a.id), firstWindowSlides.map((a) => a.id));
     assert.equal(catalogQueries, 1);
-    assert.equal(audienceQueries, 1);
+    assert.equal(trendingCalls, 1);
 
-    // 4. Janela seguinte (+15 min) rotaciona os destaques usando o pool em cache sem consultar Neon
-    const nextWindowSlides = await getHomeHeroItemsWithDeps(deps, t0 + 15 * 60 * 1000);
+    // Next 15-min window still uses cached pool
+    const nextWindowSlides = await getHomeHeroItemsWithDeps(deps, t0 + HERO_ROTATION_WINDOW_MS);
     assert.equal(nextWindowSlides.length, 8);
     assert.equal(catalogQueries, 1);
-    assert.equal(audienceQueries, 1);
-    assert.notDeepEqual(
-      nextWindowSlides.map((a) => a.id),
-      firstWindowSlides.map((a) => a.id),
-    );
+    assert.equal(trendingCalls, 1);
+    assert.notDeepEqual(nextWindowSlides.map((a) => a.id), firstWindowSlides.map((a) => a.id));
   });
 
-  it("enforces Redis generation fence when invalidated during in-flight calculation", async () => {
+  it("9. explicit invalidation clears ramHeroPool, staleHeroPool, and Redis Hero/Em Alta keys+generations (and fails open on Redis error)", async () => {
+    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
+    const rows = Array.from({ length: 8 }, (_, i) =>
+      makeCandidateRow({ id: String(600001 + i) }, nowMs),
+    );
+
+    // 9a. preserveStale=true preserves staleHeroPool for DB+Redis outage fallback
+    const items1 = await getHomeHeroItemsWithDeps(
+      {
+        getRedisPool: async () => ({ status: "failed", payload: null, fence: null }),
+        setRedisPool: async () => "failed",
+        scheduleWrite: () => {},
+        queryCatalog: async () => rows,
+        getTrendingItems: async () => [],
+      },
+      nowMs,
+    );
+    assert.equal(items1.length, 8);
+
+    invalidateHomeHeroLocalCache({ preserveStale: true });
+    const itemsStale = await getHomeHeroItemsWithDeps(
+      {
+        getRedisPool: async () => ({ status: "failed", payload: null, fence: null }),
+        setRedisPool: async () => "failed",
+        scheduleWrite: () => {},
+        queryCatalog: async () => {
+          throw new Error("Neon connection error");
+        },
+        getTrendingItems: async () => [],
+      },
+      nowMs,
+    );
+    assert.equal(itemsStale.length, 8);
+
+    // 9b. Default invalidation clears staleHeroPool so DB failure returns [] instead of stale cache
     const mockRedis = new MockHeroRedis();
+    mockRedis.store.set(getHeroRedisKey("development"), JSON.stringify({ v: HERO_BANNER_PAYLOAD_VERSION }));
+    mockRedis.store.set(getHeroGenKey("development"), "2");
+    mockRedis.store.set(getHomeTrendingRedisKey("development"), JSON.stringify({ v: HOME_TRENDING_PAYLOAD_VERSION }));
+    mockRedis.store.set(getHomeTrendingGenKey("development"), "5");
+
+    await invalidateHomePublicEpisodesCacheAsync({ redisOverride: mockRedis });
+
+    assert.equal(mockRedis.store.has(getHeroRedisKey("development")), false);
+    assert.equal(mockRedis.store.get(getHeroGenKey("development")), "3");
+    assert.equal(mockRedis.store.has(getHomeTrendingRedisKey("development")), false);
+    assert.equal(mockRedis.store.get(getHomeTrendingGenKey("development")), "6");
+
+    const afterExplicitInvalidation = await getHomeHeroItemsWithDeps(
+      {
+        getRedisPool: async () => ({ status: "failed", payload: null, fence: null }),
+        setRedisPool: async () => "failed",
+        scheduleWrite: () => {},
+        queryCatalog: async () => {
+          throw new Error("Neon connection error");
+        },
+        getTrendingItems: async () => [],
+      },
+      nowMs,
+    );
+    assert.deepEqual(afterExplicitInvalidation, []);
+
+    // 9c. Fail-open when Redis throws during async invalidation
+    mockRedis.shouldThrow = true;
+    await assert.doesNotReject(async () => {
+      await invalidateHomeHeroCacheAsync(mockRedis);
+      await invalidateHomePublicEpisodesCacheAsync({ redisOverride: mockRedis });
+    });
+  });
+
+  it("10. prevents concurrent invalidation during in-flight calculation from restoring stale RAM/staleHeroPool or overwriting Redis", async () => {
+    const mockRedis = new MockHeroRedis();
+    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
+
+    // 10a. requestEpoch guard on in-flight Neon computation
+    let resolveInFlightCatalog!: (rows: HeroCatalogAnimeCandidateRow[]) => void;
+    const inFlightCatalogPromise = new Promise<HeroCatalogAnimeCandidateRow[]>((resolveFn) => {
+      resolveInFlightCatalog = resolveFn;
+    });
+    const bgWrites: Promise<unknown>[] = [];
+
+    const inflightPromise = getHomeHeroItemsWithDeps(
+      {
+        getRedisPool: async () => getRedisHeroBannerPoolWithFence(mockRedis),
+        setRedisPool: (p, f) => setRedisHeroBannerPool(p, f, mockRedis),
+        scheduleWrite: (p) => {
+          bgWrites.push(p);
+        },
+        getTrendingItems: async () => [],
+        queryCatalog: () => inFlightCatalogPromise,
+      },
+      nowMs,
+    );
+
+    // Aguarda passar pela leitura do Redis e suspender na query do catálogo
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Invalidação concorrente antes da query antiga resolver
+    await invalidateHomeHeroCacheAsync(mockRedis);
+    assert.equal(mockRedis.store.get(getHeroGenKey("development")), "1");
+
+    // Agora a query antiga termina
+    resolveInFlightCatalog([makeCandidateRow({ id: "5081", title: "Old Inflight" }, nowMs)]);
+    await inflightPromise;
+    await Promise.all(bgWrites.splice(0));
+
+    // O cálculo antigo NÃO deve ter gravado no Redis nem populado ramHeroPool/staleHeroPool
+    assert.equal(mockRedis.store.has(getHeroRedisKey("development")), false);
+
+    // Se o próximo request falhar no DB, não recebe o old inflight como staleHeroPool
+    const afterRace = await getHomeHeroItemsWithDeps(
+      {
+        getRedisPool: async () => ({ status: "failed", payload: null, fence: null }),
+        setRedisPool: async () => "failed",
+        scheduleWrite: () => {},
+        getTrendingItems: async () => [],
+        queryCatalog: async () => {
+          throw new Error("DB error");
+        },
+      },
+      nowMs,
+    );
+    assert.deepEqual(afterRace, []);
+
+    // 10b. Fence guard direto no Redis
     const read = await getRedisHeroBannerPoolWithFence(mockRedis);
     assert.equal(read.status, "miss");
     const staleFence = read.fence;
-
-    // Simula invalidação administrativa concorrente antes da escrita terminar
     await invalidateRedisHeroBannerPool(mockRedis);
-    assert.equal(mockRedis.store.get(getHeroGenKey("development")), "1");
+    assert.equal(mockRedis.store.get(getHeroGenKey("development")), "2");
 
-    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
     const payload: HeroBannerPoolPayload = {
       v: HERO_BANNER_PAYLOAD_VERSION,
       env: resolveHeroEnvironmentName(),
       generatedAt: nowMs,
       items: [
         {
-          anime: {
+          anime: makeTrendingSlim({
             id: "176301",
-            titles: { romaji: "Solo Leveling", english: "Solo Leveling", native: "" },
-            cover: "https://cdn.example.com/cover.jpg",
             banner: "https://cdn.example.com/banner.jpg",
-            synopsis: "Sinopse",
-            score: 85,
-            popularity: 100000,
-            genres: ["Action"],
-            format: "TV",
-            status: "FINISHED",
-            episodesCount: 12,
-            season: "WINTER",
-            year: 2024,
-            trailerId: null,
-            source: "local",
+            cover: "https://cdn.example.com/cover.jpg",
             hasEpisode: true,
-          },
-          bucket: "preenchimento",
+          }),
+          bucket: "episodios_publicados",
           score: 80,
           hasDistinctBanner: true,
           titleKey: "solo leveling",
@@ -560,572 +760,214 @@ describe("home-hero dynamic selection, scoring, rotation & caching", () => {
       ],
     };
 
-    const writeRes = await setRedisHeroBannerPool(payload, staleFence, mockRedis);
-    assert.equal(writeRes, "fenced");
+    assert.equal(await setRedisHeroBannerPool(payload, staleFence, mockRedis), "fenced");
     assert.equal(mockRedis.store.has(getHeroRedisKey("development")), false);
-
-    // Nova leitura obtém fence atualizado ("1") e consegue gravar
-    const read2 = await getRedisHeroBannerPoolWithFence(mockRedis);
-    assert.equal(read2.fence, "1");
-    const writeRes2 = await setRedisHeroBannerPool(payload, read2.fence, mockRedis);
-    assert.equal(writeRes2, "inserted");
-    assert.equal(mockRedis.store.has(getHeroRedisKey("development")), true);
   });
 
-  it("scores real playback and progress audience signals while reconciling canonical and external IDs", () => {
+  it("11. reuses provided trendingItems without invoking getTrendingItems redundantly (and fetchHomeCatalog shares emAltaItems)", async () => {
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
-    const rows: HeroCatalogAnimeCandidateRow[] = [
-      // Anime A salvo com id local-a e anilistId 210001; audiência registrada no anilistId 210001 via playback
-      makeCandidateRow({
-        id: "local-a",
-        anilistId: 210001,
-        title: "Playback Hit",
-        titleRomaji: "Playback Hit",
-        score: 75,
-      }, nowMs),
-      // Anime B sem sinais de playback ou progresso real
-      makeCandidateRow({
-        id: "210002",
-        anilistId: 210002,
-        title: "No Playback",
-        titleRomaji: "No Playback",
-        score: 75,
-      }, nowMs),
-    ];
+    let trendingFetcherCalls = 0;
 
-    const audience = new Map<string, HeroAudienceMetrics>([
-      [
-        "210001",
-        {
-          progUsers7d: 5,
-          progUsers14d: 8,
-          playbackUsers7d: 6,
-          playbackUsers14d: 9,
+    const items = await getHomeHeroItemsWithDeps(
+      {
+        getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
+        setRedisPool: async () => "unavailable",
+        scheduleWrite: () => {},
+        getTrendingItems: async () => {
+          trendingFetcherCalls += 1;
+          return [];
         },
-      ],
-      [
-        "210002",
-        {
-          progUsers7d: 0,
-          progUsers14d: 0,
-          playbackUsers7d: 0,
-          playbackUsers14d: 0,
-        },
-      ],
-    ]);
-
-    const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), audience, nowMs);
-    const byId = new Map(scored.map((s) => [s.anime.id, s]));
-    const a = byId.get("210001")!;
-    const b = byId.get("210002")!;
-
-    assert.ok(a.engagementScore > 0);
-    assert.equal(b.engagementScore, 0);
-    assert.equal(a.anime.serverCatalogId, "local-a");
-  });
-
-  it("invalidates hero banner key and bumps generation through invalidateServerCatalogCachesAsync", async () => {
-    const { invalidateServerCatalogCachesAsync } = await import("@/lib/api");
-    const mockRedis = new MockHeroRedis();
-    mockRedis.store.set(getHeroRedisKey("development"), JSON.stringify({ v: HERO_BANNER_PAYLOAD_VERSION }));
-    mockRedis.store.set(getHeroGenKey("development"), "3");
-
-    await invalidateServerCatalogCachesAsync("176301", { anilistId: 176301 }, mockRedis);
-
-    assert.equal(mockRedis.store.has(getHeroRedisKey("development")), false);
-    assert.equal(mockRedis.store.get(getHeroGenKey("development")), "4");
-  });
-
-  it("excludes newly registered anime without real signals and ignores createdAt alone for novelty", () => {
-    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
-    const rows: HeroCatalogAnimeCandidateRow[] = [
-      // Recém-cadastrado hoje com score/popularidade altos, mas sem episódio publicado, sem engajamento e sem calendário
-      makeCandidateRow({
-        id: "910001",
-        score: 98,
-        popularity: 900000,
-        createdAt: new Date(nowMs - 10 * 60 * 1000).toISOString(),
-        updatedAt: new Date(nowMs - 5 * 60 * 1000).toISOString(),
-        publishedEpisodeCount: 0,
-        firstEpisodePublishedAt: null,
-        latestEpisodePublishedAt: null,
-        ep1Sources: [],
-        epSources: [],
-      }, nowMs),
-      // Recém-cadastrado hoje cujo único episódio publicado foi há 90 dias -> não deve ganhar novidade pelo createdAt
-      makeCandidateRow({
-        id: "910002",
-        createdAt: new Date(nowMs - 10 * 60 * 1000).toISOString(),
-        updatedAt: new Date(nowMs - 5 * 60 * 1000).toISOString(),
-        firstEpisodePublishedAt: new Date(nowMs - 90 * DAY_MS).toISOString(),
-        latestEpisodePublishedAt: new Date(nowMs - 90 * DAY_MS).toISOString(),
-      }, nowMs),
-    ];
-
-    const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), new Map(), nowMs);
-    assert.equal(scored.some((c) => c.anime.id === "910001"), false);
-    const oldEpCandidate = scored.find((c) => c.anime.id === "910002");
-    assert.ok(oldEpCandidate);
-    assert.equal(oldEpCandidate.noveltyScore, 0);
-    assert.equal(oldEpCandidate.newEpisodeScore, 0);
-  });
-
-  it("includes calendar and weekly recurrence candidates without confusing them with published episodes and avoids padding empty slots", () => {
-    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
-    const rows: HeroCatalogAnimeCandidateRow[] = [
-      // 1) Anime publicado com episódio 3 (sem ep 1)
-      makeCandidateRow({
-        id: "5081",
-        title: "Bakemonogatari",
-        titleRomaji: "Bakemonogatari",
-        publishedEpisodeCount: 1,
-        ep1Sources: [],
-        epSources: [{ number: 3, seasonNumber: 1, videoUrl: "https://cdn.example.com/bake-ep3.mp4" }],
-      }, nowMs),
-      // 2) Anime somente no calendário de hoje (catalog_airing_schedule), sem episódio publicado
-      makeCandidateRow({
-        id: "920001",
-        publishedEpisodeCount: 0,
-        firstEpisodePublishedAt: null,
-        latestEpisodePublishedAt: null,
-        ep1Sources: [],
-        epSources: [],
-        hasTodayAiringSchedule: true,
-        hasWeekAiringSchedule: true,
-      }, nowMs),
-      // 3) Anime somente em recorrência semanal ativa (catalog_weekly_recurrence), sem episódio publicado
-      makeCandidateRow({
-        id: "local-rec-1",
-        anilistId: null,
-        malId: null,
-        kitsuId: null,
-        publishedEpisodeCount: 0,
-        firstEpisodePublishedAt: null,
-        latestEpisodePublishedAt: null,
-        ep1Sources: [],
-        epSources: [],
-        hasTodayWeeklyRecurrence: true,
-        hasActiveWeeklyRecurrence: true,
-      }, nowMs),
-      // 4) Anime cadastrado sem qualquer sinal -> deve ficar fora (não preencher slots)
-      makeCandidateRow({
-        id: "920002",
-        publishedEpisodeCount: 0,
-        ep1Sources: [],
-        epSources: [],
-      }, nowMs),
-    ];
-
-    assert.ok(
-      computeCalendarScore({
-        hasTodaySchedule: true,
-        hasWeekSchedule: true,
-        hasTodayRecurrence: false,
-        hasActiveRecurrence: false,
-        hasPublishedEpisode: false,
-        score: 80,
-      }) > 0,
-    );
-
-    const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), new Map(), nowMs);
-    const pool = buildHeroBannerPool(scored, nowMs);
-    const slides = selectHeroSlidesForWindow(pool, nowMs, MAX_HERO_SLIDES);
-
-    // Exatamente 3 candidatos válidos (não força preenchimento para 8 com anime sem sinal)
-    assert.equal(slides.length, 3);
-    const byId = new Map(slides.map((s) => [s.id, s]));
-
-    assert.equal(byId.get("5081")?.hasEpisode, true);
-    assert.equal(byId.get("5081")?.firstAvailableEpisodeNumber, 3);
-
-    assert.equal(byId.get("920001")?.hasEpisode, false);
-    assert.equal(byId.get("local-rec-1")?.hasEpisode, false);
-    assert.equal(byId.has("920002"), false);
-  });
-
-  it("keeps single valid candidate stable across windows without fabricating rotation, and rotates when >= 2 candidates exist", async () => {
-    const t0 = Date.UTC(2026, 4, 15, 12, 0, 0);
-
-    // Caso 1: apenas 1 candidato válido no catálogo (e vários cadastros sem sinal)
-    const singleValidRows: HeroCatalogAnimeCandidateRow[] = [
-      makeCandidateRow({ id: "5081", title: "Bakemonogatari", titleRomaji: "Bakemonogatari" }, t0),
-      makeCandidateRow({ id: "930001", publishedEpisodeCount: 0, ep1Sources: [] }, t0),
-      makeCandidateRow({ id: "930002", publishedEpisodeCount: 0, ep1Sources: [] }, t0),
-    ];
-
-    const singleItems1 = await getHomeHeroItemsWithDeps(
-      {
-        getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
-        setRedisPool: async () => "unavailable",
-        scheduleWrite: () => {},
-        queryCatalog: async () => singleValidRows,
-        queryBadges: async () => emptyBadgesLookup(),
-        queryAudience: async () => new Map(),
+        queryCatalog: async () => [],
       },
-      t0,
-    );
-    const singleItems2 = await getHomeHeroItemsWithDeps(
+      nowMs,
       {
-        getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
-        setRedisPool: async () => "unavailable",
-        scheduleWrite: () => {},
-        queryCatalog: async () => singleValidRows,
-        queryBadges: async () => emptyBadgesLookup(),
-        queryAudience: async () => new Map(),
+        trendingItems: [
+          makeTrendingSlim({
+            id: "300001",
+            anilistId: 300001,
+            banner: "https://cdn.example.com/banner-300001.jpg",
+          }),
+        ],
       },
-      t0 + 15 * 60 * 1000,
     );
 
-    assert.deepEqual(
-      singleItems1.map((x) => x.id),
-      ["5081"],
-    );
-    assert.deepEqual(
-      singleItems2.map((x) => x.id),
-      ["5081"],
-    );
+    assert.equal(trendingFetcherCalls, 0);
+    assert.deepEqual(items.map((i) => i.id), ["300001"]);
 
-    // Caso 2: 2 candidatos válidos -> ambos ficam disponíveis para rotação do Hero
-    resetHomeHeroTestState();
-    const twoValidRows: HeroCatalogAnimeCandidateRow[] = [
-      makeCandidateRow({ id: "5081", title: "Bakemonogatari", titleRomaji: "Bakemonogatari" }, t0),
-      makeCandidateRow({
-        id: "local-cal-2",
-        anilistId: null,
-        publishedEpisodeCount: 0,
-        ep1Sources: [],
-        hasTodayAiringSchedule: true,
-      }, t0),
-    ];
-
-    const twoItems = await getHomeHeroItemsWithDeps(
-      {
-        getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
-        setRedisPool: async () => "unavailable",
-        scheduleWrite: () => {},
-        queryCatalog: async () => twoValidRows,
-        queryBadges: async () => emptyBadgesLookup(),
-        queryAudience: async () => new Map(),
-      },
-      t0,
-    );
-    assert.equal(twoItems.length, 2);
+    const apiSource = readFileSync(resolve(process.cwd(), "src/lib/api.ts"), "utf8");
+    assert.match(apiSource, /getHomeHeroItems\(Date\.now\(\),\s*\{\s*trendingItems\s*\}\)/);
   });
 
-  it("prevents pickHeroItems fallback from collapsing to 1 item when multiple valid candidates exist", () => {
-    const makeSlim = (id: string, overrides?: Partial<SlimAnime>): SlimAnime => ({
-      id,
-      titles: { romaji: `Anime ${id}`, english: "", native: "" },
-      cover: `https://cdn.example.com/c-${id}.jpg`,
-      banner: `https://cdn.example.com/b-${id}.jpg`,
-      synopsis: "",
-      score: 80,
-      genres: ["Action"],
-      format: "TV",
-      status: "RELEASING",
-      episodesCount: 12,
-      season: "SPRING",
-      year: 2026,
-      trailerId: null,
-      source: "local",
-      hasEpisode: false,
-      ...overrides,
+  describe("12. environment isolation (preview vs production) and Redis v4/v2 & v3 preservation", () => {
+    const originalVercelEnv = process.env.VERCEL_ENV;
+    const originalNodeEnv = process.env.NODE_ENV;
+
+    afterEach(() => {
+      if (originalVercelEnv === undefined) {
+        delete process.env.VERCEL_ENV;
+      } else {
+        process.env.VERCEL_ENV = originalVercelEnv;
+      }
+      if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
     });
 
-    // Antes colapsava para [firstWithBanner] (1 item) quando ninguém tinha hasEpisode === true
-    const noEpisodeResult = pickHeroItems(
-      [makeSlim("1"), makeSlim("2")],
-      [makeSlim("3")],
-      [makeSlim("4", { todayEpisode: { number: 2, airingAt: 1700000000 } })],
-    );
-    assert.equal(noEpisodeResult.length, 4);
-    assert.equal(noEpisodeResult[0].id, "4");
+    it("enforces preview vs production isolation for Hero v4 (v2) and Em Alta v3 (v3)", async () => {
+      const mockRedis = new MockHeroRedis();
+      const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
+      process.env.VERCEL_ENV = "preview";
 
-    // Quando apenas 1 tem hasEpisode === true e há candidatos válidos de calendário/catálogo
-    const oneEpisodeWithOthers = pickHeroItems(
-      [makeSlim("5081", { hasEpisode: true }), makeSlim("20")],
-      [makeSlim("30")],
-      [makeSlim("40", { todayEpisode: { number: 1, airingAt: 1700000000 } })],
-    );
-    assert.equal(oneEpisodeWithOthers.length, 4);
-    assert.equal(oneEpisodeWithOthers[0].id, "5081");
+      assert.equal(HERO_BANNER_REDIS_KEY, "hikari:home:hero-banner:v2");
+      assert.equal(HERO_BANNER_GEN_KEY, "hikari:home:hero-banner:gen:v2");
+      assert.equal(getHeroRedisKey("preview"), "hikari:preview:home:hero-banner:v4");
+      assert.equal(getHeroGenKey("preview"), "hikari:preview:home:hero-banner:gen:v4");
+      assert.equal(getHeroRedisKey("production"), "hikari:production:home:hero-banner:v4");
+      assert.equal(getHomeTrendingRedisKey("preview"), "hikari:preview:home:trending:v3");
+      assert.equal(getHomeTrendingRedisKey("production"), "hikari:production:home:trending:v3");
 
-    // Quando genuinamente só existe 1 candidato válido, permanece estável em 1
-    const trulyOne = pickHeroItems([makeSlim("5081", { hasEpisode: true })], [], []);
-    assert.deepEqual(
-      trulyOne.map((i) => i.id),
-      ["5081"],
-    );
-  });
-});
+      const validAnimeRow = makeCandidateRow({ id: "960001" }, nowMs);
+      const sampleItem = buildHeroBannerPool(
+        scoreAndDeduplicateHeroCandidates([validAnimeRow], [], nowMs),
+        nowMs,
+      ).items[0];
 
-describe("home-hero regression: isolation from manual/profile tracking lists and v4/v2 cache hardening", () => {
-  const originalVercelEnv = process.env.VERCEL_ENV;
-  const originalNodeEnv = process.env.NODE_ENV;
+      // Cross-env payload (production under preview key) must be rejected
+      mockRedis.store.set(
+        getHeroRedisKey("preview"),
+        JSON.stringify({
+          v: 1,
+          globalGen: "0",
+          idGens: {},
+          data: {
+            v: HERO_BANNER_PAYLOAD_VERSION,
+            env: "production",
+            generatedAt: nowMs,
+            items: [sampleItem],
+          },
+        }),
+      );
+      assert.equal((await getRedisHeroBannerPoolWithFence(mockRedis)).status, "miss");
 
-  beforeEach(() => {
-    resetHomeHeroTestState();
-  });
+      // Legacy v1 payload must be rejected
+      mockRedis.store.set(
+        getHeroRedisKey("preview"),
+        JSON.stringify({
+          v: 1,
+          globalGen: "0",
+          idGens: {},
+          data: {
+            v: 1,
+            env: "preview",
+            generatedAt: nowMs,
+            items: [sampleItem],
+          },
+        }),
+      );
+      assert.equal((await getRedisHeroBannerPoolWithFence(mockRedis)).status, "miss");
 
-  afterEach(() => {
-    if (originalVercelEnv === undefined) {
-      delete process.env.VERCEL_ENV;
-    } else {
-      process.env.VERCEL_ENV = originalVercelEnv;
-    }
-    if (originalNodeEnv === undefined) {
-      delete process.env.NODE_ENV;
-    } else {
-      process.env.NODE_ENV = originalNodeEnv;
-    }
-  });
-
-  it("1-3. excludes user_anime_tracking and origin='manual' from SQL, scoring, and Hero eligibility (watching/completed/on_hold/dropped/planning)", () => {
-    const heroServerSource = readFileSync(
-      resolve(process.cwd(), "src/lib/home-hero.server.ts"),
-      "utf8",
-    );
-
-    // SQL não consulta user_anime_tracking nem origin = 'manual' e restringe user_watched_episode a origin = 'playback'
-    assert.equal(heroServerSource.includes("user_anime_tracking"), false);
-    assert.equal(heroServerSource.includes("manualUsers14d"), false);
-    assert.equal(heroServerSource.includes("origin\" = 'manual'"), false);
-    const playbackFilterMatches = heroServerSource.match(/w\."origin"\s*=\s*'playback'/g) ?? [];
-    assert.ok(
-      playbackFilterMatches.length >= 2,
-      "Expected w.\"origin\" = 'playback' in both recent_engagement_ids and queryAudienceMetricsFromNeon",
-    );
-
-    // Mesmo se um objeto externo injetar manualUsers14d em runtime, computeEngagementScore ignora completamente
-    const injectedManualMetrics = {
-      progUsers7d: 0,
-      progUsers14d: 0,
-      playbackUsers7d: 0,
-      playbackUsers14d: 0,
-      manualUsers14d: 500,
-    } as unknown as HeroAudienceMetrics;
-    assert.equal(computeEngagementScore(injectedManualMetrics), 0);
-
-    // Anime sem episódio publicado e sem calendário, tendo apenas marcas manuais de listas pessoais, nunca é elegível
-    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
-    const manualOnlyRows: HeroCatalogAnimeCandidateRow[] = [
-      makeCandidateRow(
+      // Write valid preview pool via getHomeHeroItemsWithDeps
+      const bgWrites: Promise<unknown>[] = [];
+      const prevItems = await getHomeHeroItemsWithDeps(
         {
-          id: "940001",
-          title: "Tracking Completed Only",
-          publishedEpisodeCount: 0,
-          firstEpisodePublishedAt: null,
-          latestEpisodePublishedAt: null,
-          ep1Sources: [],
-          epSources: [],
-          hasTodayAiringSchedule: false,
-          hasWeekAiringSchedule: false,
-          hasTodayWeeklyRecurrence: false,
-          hasActiveWeeklyRecurrence: false,
+          getRedisPool: () => getRedisHeroBannerPoolWithFence(mockRedis),
+          setRedisPool: (p, f) => setRedisHeroBannerPool(p, f, mockRedis),
+          scheduleWrite: (p) => {
+            bgWrites.push(p);
+          },
+          getTrendingItems: async () => [],
+          queryCatalog: async () => [validAnimeRow],
         },
         nowMs,
-      ),
-    ];
+      );
+      await Promise.all(bgWrites.splice(0));
+      assert.deepEqual(prevItems.map((a) => a.id), ["960001"]);
 
-    const audience = new Map<string, HeroAudienceMetrics>([["940001", injectedManualMetrics]]);
-    const scored = scoreAndDeduplicateHeroCandidates(manualOnlyRows, emptyBadgesLookup(), audience, nowMs);
-    assert.equal(scored.length, 0);
+      // Em Alta v3 preview write/read check
+      const trendingPreviewWrite = await setRedisHomeTrending(
+        {
+          v: HOME_TRENDING_PAYLOAD_VERSION,
+          env: "preview",
+          generatedAt: nowMs,
+          items: [makeTrendingSlim({ id: "960001" })],
+        },
+        "0",
+        mockRedis,
+      );
+      assert.equal(trendingPreviewWrite, "inserted");
+      assert.equal((await getRedisHomeTrendingWithFence(mockRedis)).status, "hit");
 
-    const pool = buildHeroBannerPool(scored, nowMs);
-    assert.equal(pool.items.length, 0);
+      // Switch to production -> preview RAM/Redis pools are NOT reused
+      process.env.VERCEL_ENV = "production";
+      assert.equal((await getRedisHomeTrendingWithFence(mockRedis)).status, "miss");
+      invalidateHomeTrendingLocalCache();
+
+      let prodDbCalls = 0;
+      const prodRow = makeCandidateRow({ id: "960002" }, nowMs);
+      const prodItems = await getHomeHeroItemsWithDeps(
+        {
+          getRedisPool: () => getRedisHeroBannerPoolWithFence(mockRedis),
+          setRedisPool: (p, f) => setRedisHeroBannerPool(p, f, mockRedis),
+          scheduleWrite: () => {},
+          getTrendingItems: async () => [],
+          queryCatalog: async () => {
+            prodDbCalls += 1;
+            return [prodRow];
+          },
+        },
+        nowMs,
+      );
+      assert.equal(prodDbCalls, 1);
+      assert.deepEqual(prodItems.map((a) => a.id), ["960002"]);
+    });
   });
 
-  it("4-6. preserves real playback (origin='playback' & user_episode_progress), published episodes, and calendar/recurrence", () => {
+  it("preserves temporal decay for published episodes and safe pickHeroItems fallback", () => {
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
     const rows: HeroCatalogAnimeCandidateRow[] = [
-      // Apenas engajamento real via playback/progresso
       makeCandidateRow(
         {
-          id: "950001",
-          publishedEpisodeCount: 0,
-          firstEpisodePublishedAt: null,
-          latestEpisodePublishedAt: null,
-          ep1Sources: [],
-          epSources: [],
+          id: "900001",
+          createdAt: new Date(nowMs - 180 * DAY_MS).toISOString(),
+          updatedAt: new Date(nowMs - 10 * 60 * 1000).toISOString(),
+          firstEpisodePublishedAt: new Date(nowMs - 170 * DAY_MS).toISOString(),
+          latestEpisodePublishedAt: new Date(nowMs - 60 * DAY_MS).toISOString(),
         },
         nowMs,
       ),
-      // Episódio publicado recente
       makeCandidateRow(
         {
-          id: "950002",
-          publishedEpisodeCount: 2,
-          firstEpisodePublishedAt: new Date(nowMs - 3 * DAY_MS).toISOString(),
+          id: "900002",
+          createdAt: new Date(nowMs - 180 * DAY_MS).toISOString(),
+          firstEpisodePublishedAt: new Date(nowMs - 170 * DAY_MS).toISOString(),
           latestEpisodePublishedAt: new Date(nowMs - 2 * HOUR_MS).toISOString(),
         },
         nowMs,
       ),
-      // Calendário / recorrência ativa sem episódio publicado
       makeCandidateRow(
         {
-          id: "950003",
-          publishedEpisodeCount: 0,
-          firstEpisodePublishedAt: null,
-          latestEpisodePublishedAt: null,
-          ep1Sources: [],
-          epSources: [],
-          hasTodayAiringSchedule: true,
+          id: "900003",
+          createdAt: new Date(nowMs - 180 * DAY_MS).toISOString(),
+          firstEpisodePublishedAt: new Date(nowMs - 170 * DAY_MS).toISOString(),
+          latestEpisodePublishedAt: new Date(nowMs - 8 * DAY_MS).toISOString(),
         },
         nowMs,
       ),
     ];
 
-    const audience = new Map<string, HeroAudienceMetrics>([
-      [
-        "950001",
-        {
-          progUsers7d: 4,
-          progUsers14d: 6,
-          playbackUsers7d: 3,
-          playbackUsers14d: 5,
-        },
-      ],
-    ]);
-
-    const scored = scoreAndDeduplicateHeroCandidates(rows, emptyBadgesLookup(), audience, nowMs);
+    const scored = scoreAndDeduplicateHeroCandidates(rows, [], nowMs);
     const byId = new Map(scored.map((c) => [c.anime.id, c]));
+    assert.equal(byId.get("900001")!.noveltyScore, 0);
+    assert.equal(byId.get("900001")!.newEpisodeScore, 0);
+    assert.ok(byId.get("900002")!.newEpisodeScore > byId.get("900003")!.newEpisodeScore);
 
-    assert.ok(byId.has("950001"));
-    assert.ok((byId.get("950001")?.engagementScore ?? 0) > 0);
-    assert.ok(byId.has("950002"));
-    assert.ok((byId.get("950002")?.newEpisodeScore ?? 0) > 0);
-    assert.ok(byId.has("950003"));
-    assert.ok((byId.get("950003")?.calendarScore ?? 0) > 0);
-  });
-
-  it("7-9. rejects legacy v1/v3 and foreign-env payloads in Redis & RAM while accepting v2 payload in matching env", async () => {
-    const mockRedis = new MockHeroRedis();
-    const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
-    process.env.VERCEL_ENV = "preview";
-
-    assert.equal(HERO_BANNER_REDIS_KEY, "hikari:home:hero-banner:v2");
-    assert.equal(HERO_BANNER_GEN_KEY, "hikari:home:hero-banner:gen:v2");
-    assert.equal(getHeroRedisKey("preview"), "hikari:preview:home:hero-banner:v4");
-    assert.equal(getHeroGenKey("preview"), "hikari:preview:home:hero-banner:gen:v4");
-
-    const validAnimeRow = makeCandidateRow({ id: "960001" }, nowMs);
-    const sampleItem = buildHeroBannerPool(
-      scoreAndDeduplicateHeroCandidates([validAnimeRow], emptyBadgesLookup(), new Map(), nowMs),
-      nowMs,
-    ).items[0];
-
-    // Legacy v3 key or v1 payload stored even under v4 key must be rejected
-    mockRedis.store.set(
-      "hikari:preview:home:hero-banner:v3",
-      JSON.stringify({
-        v: 1,
-        globalGen: "0",
-        idGens: {},
-        data: { v: 1, env: "preview", generatedAt: nowMs, items: [sampleItem] },
-      }),
+    const noEpisodeResult = pickHeroItems(
+      [makeTrendingSlim({ id: "1", banner: "https://cdn.example.com/b-1.jpg" }), makeTrendingSlim({ id: "2", banner: "https://cdn.example.com/b-2.jpg" })],
+      [makeTrendingSlim({ id: "3", banner: "https://cdn.example.com/b-3.jpg" })],
+      [],
     );
-    mockRedis.store.set(
-      getHeroRedisKey("preview"),
-      JSON.stringify({
-        v: 1,
-        globalGen: "0",
-        idGens: {},
-        data: { v: 1, env: "preview", generatedAt: nowMs, items: [sampleItem] },
-      }),
-    );
-    assert.equal((await getRedisHeroBannerPoolWithFence(mockRedis)).status, "miss");
-
-    // Cross-env payload (production under preview key) must be rejected
-    mockRedis.store.set(
-      getHeroRedisKey("preview"),
-      JSON.stringify({
-        v: 1,
-        globalGen: "0",
-        idGens: {},
-        data: {
-          v: HERO_BANNER_PAYLOAD_VERSION,
-          env: "production",
-          generatedAt: nowMs,
-          items: [sampleItem],
-        },
-      }),
-    );
-    assert.equal((await getRedisHeroBannerPoolWithFence(mockRedis)).status, "miss");
-
-    // Even if a legacy/wrong-env hit is injected into RAM/deps, getHomeHeroItemsWithDeps recalculates from Neon
-    let dbCalls = 0;
-    const bgWrites: Promise<unknown>[] = [];
-    const recalculated = await getHomeHeroItemsWithDeps(
-      {
-        getRedisPool: async () => ({
-          status: "hit",
-          fence: "0",
-          payload: {
-            v: 1 as unknown as typeof HERO_BANNER_PAYLOAD_VERSION,
-            env: "production",
-            generatedAt: nowMs,
-            items: [
-              {
-                ...sampleItem,
-                anime: { ...sampleItem.anime, id: "999999" },
-              },
-            ],
-          },
-        }),
-        setRedisPool: (p, f) => setRedisHeroBannerPool(p, f, mockRedis),
-        scheduleWrite: (p) => {
-          bgWrites.push(p);
-        },
-        queryCatalog: async () => {
-          dbCalls += 1;
-          return [validAnimeRow];
-        },
-        queryBadges: async () => emptyBadgesLookup(),
-        queryAudience: async () => new Map(),
-      },
-      nowMs,
-    );
-    await Promise.all(bgWrites.splice(0));
-
-    assert.equal(dbCalls, 1);
-    assert.deepEqual(recalculated.map((a) => a.id), ["960001"]);
-
-    // Subsequent read from Redis in preview accepts v2 + env=preview without touching Neon
-    invalidateHomeHeroLocalCache();
-    const fromRedis = await getHomeHeroItemsWithDeps(
-      {
-        getRedisPool: () => getRedisHeroBannerPoolWithFence(mockRedis),
-        setRedisPool: (p, f) => setRedisHeroBannerPool(p, f, mockRedis),
-        scheduleWrite: () => {},
-        queryCatalog: async () => {
-          throw new Error("Should not hit DB on valid v4 Redis hit");
-        },
-        queryBadges: async () => emptyBadgesLookup(),
-        queryAudience: async () => new Map(),
-      },
-      nowMs,
-    );
-    assert.deepEqual(fromRedis.map((a) => a.id), ["960001"]);
-
-    // If environment switches to production, stale preview ramHeroPool is NOT reused
-    process.env.VERCEL_ENV = "production";
-    let prodDbCalls = 0;
-    const prodRow = makeCandidateRow({ id: "960002" }, nowMs);
-    const prodItems = await getHomeHeroItemsWithDeps(
-      {
-        getRedisPool: () => getRedisHeroBannerPoolWithFence(mockRedis),
-        setRedisPool: (p, f) => setRedisHeroBannerPool(p, f, mockRedis),
-        scheduleWrite: () => {},
-        queryCatalog: async () => {
-          prodDbCalls += 1;
-          return [prodRow];
-        },
-        queryBadges: async () => emptyBadgesLookup(),
-        queryAudience: async () => new Map(),
-      },
-      nowMs,
-    );
-    assert.equal(prodDbCalls, 1);
-    assert.deepEqual(prodItems.map((a) => a.id), ["960002"]);
+    assert.equal(noEpisodeResult.length, 3);
   });
 });

@@ -5196,6 +5196,28 @@ export const fetchHomeCatalog =
       const { todayKey } = getTodayRangeSaoPaulo();
       const key = `home:${todayKey}`;
 
+      const emAltaPromise = import("@/lib/home-trending.server")
+        .then((m) => m.getHomeTrendingItems())
+        .catch((err) => {
+          console.warn(
+            "[Hikari] Falha segura ao selecionar ranking Em Alta:",
+            err instanceof Error ? err.message : err,
+          );
+          return [] as SlimAnime[];
+        });
+
+      const heroPromise = emAltaPromise.then((trendingItems) =>
+        import("@/lib/home-hero.server")
+          .then((m) => m.getHomeHeroItems(Date.now(), { trendingItems }))
+          .catch((err) => {
+            console.warn(
+              "[Hikari] Falha segura ao selecionar destaques do banner Hero (fallback para catálogo):",
+              err instanceof Error ? err.message : err,
+            );
+            return [] as SlimAnime[];
+          }),
+      );
+
       const [rawCatalog, dbTodaySchedule, heroItems, emAltaItems] = await Promise.all([
         withCache<HomeCatalog>(
           key,
@@ -5277,24 +5299,8 @@ export const fetchHomeCatalog =
             );
             return null;
           }),
-        import("@/lib/home-hero.server")
-          .then((m) => m.getHomeHeroItems())
-          .catch((err) => {
-            console.warn(
-              "[Hikari] Falha segura ao selecionar destaques do banner Hero (fallback para catálogo):",
-              err instanceof Error ? err.message : err,
-            );
-            return [];
-          }),
-        import("@/lib/home-trending.server")
-          .then((m) => m.getHomeTrendingItems())
-          .catch((err) => {
-            console.warn(
-              "[Hikari] Falha segura ao selecionar ranking Em Alta:",
-              err instanceof Error ? err.message : err,
-            );
-            return [] as SlimAnime[];
-          }),
+        heroPromise,
+        emAltaPromise,
       ]);
 
       // A programação de hoje vem exclusivamente de PostgreSQL (catalog_airing_schedule) + Redis.

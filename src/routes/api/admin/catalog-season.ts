@@ -4,7 +4,7 @@ import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolati
 import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
-import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
+import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
 import {
   findCanonicalCatalogAnime,
   getAllAliasIdsForCanonical,
@@ -84,7 +84,7 @@ export const Route = createFileRoute("/api/admin/catalog-season")({
 
           const invalidationAliases = await resolveSeasonInvalidationAliases(sql, targetAnimeId);
           await invalidateCatalogEpisodesCacheAsync(animeId, ...invalidationAliases);
-          invalidateHomePublicEpisodesCache();
+          await invalidateHomePublicEpisodesCacheAsync();
 
           return Response.json({
             ok: true,
@@ -203,7 +203,7 @@ export const Route = createFileRoute("/api/admin/catalog-season")({
           const invalidationAliases = await resolveSeasonInvalidationAliases(sql, targetAnimeId);
           await invalidateCatalogEpisodesCacheAsync(animeId, ...invalidationAliases);
           if (seasonResult.length > 0 || episodeResult.length > 0) {
-            invalidateHomePublicEpisodesCache();
+            await invalidateHomePublicEpisodesCacheAsync();
           }
 
           return Response.json({

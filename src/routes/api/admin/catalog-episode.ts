@@ -8,7 +8,7 @@ import {
 } from "@/lib/published-episodes";
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
-import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
+import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
 import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
 import {
   deleteEpisodeSourcesForEpisode,
@@ -556,7 +556,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
 
           // Invalida cache em memória e Redis do anime (todos os aliases) e da Home
           await invalidateCatalogEpisodesCacheAsync(...cacheAliasIds);
-          invalidateHomePublicEpisodesCache();
+          await invalidateHomePublicEpisodesCacheAsync();
 
           return Response.json({
             ok: true,
@@ -682,7 +682,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             );
           }
           if (deleted) {
-            invalidateHomePublicEpisodesCache();
+            await invalidateHomePublicEpisodesCacheAsync();
           }
 
           return Response.json({

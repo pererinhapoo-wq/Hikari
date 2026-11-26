@@ -1,11 +1,6 @@
 import { getSql } from "@/lib/db";
-import {
-  CALENDAR_TIMEZONE,
-  getTodayRangeSaoPaulo,
-  getWeekdaySaoPaulo,
-} from "@/lib/calendar-timezone";
-import type { AnimeRecentBadgesLookup } from "@/lib/catalog-badges";
 import { buildHikariPlayerEpisodeUrl } from "@/lib/hikari-player";
+import { getHomeTrendingItems } from "@/lib/home-trending.server";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { hasEpisodePlayableSource } from "@/lib/published-episodes";
 import {
@@ -18,6 +13,7 @@ import {
   type HeroBannerBucket,
   type HeroBannerPoolItem,
   type HeroBannerPoolPayload,
+  type RedisEvalClient,
   type RedisHeroBannerPoolReadResult,
   type RedisScopedWriteStatus,
 } from "@/lib/redis";
@@ -66,6 +62,7 @@ export interface HeroCatalogAnimeCandidateRow {
   genres: string[] | null;
   trailerId: string | null;
   hidden: boolean | null;
+  archivedAt?: string | Date | null;
   score: number | null;
   popularity: number | null;
   trending: number | null;
@@ -76,25 +73,6 @@ export interface HeroCatalogAnimeCandidateRow {
   latestEpisodePublishedAt: string | Date | null;
   ep1Sources?: HeroEpisode1SourceRow[] | null;
   epSources?: HeroEpisode1SourceRow[] | null;
-  hasTodayAiringSchedule?: boolean | null;
-  hasWeekAiringSchedule?: boolean | null;
-  hasTodayWeeklyRecurrence?: boolean | null;
-  hasActiveWeeklyRecurrence?: boolean | null;
-}
-
-export interface HeroAudienceRawRow {
-  animeId: string;
-  progUsers7d: number;
-  progUsers14d: number;
-  playbackUsers7d: number;
-  playbackUsers14d: number;
-}
-
-export interface HeroAudienceMetrics {
-  progUsers7d: number;
-  progUsers14d: number;
-  playbackUsers7d: number;
-  playbackUsers14d: number;
 }
 
 export interface ScoredHeroCandidate {
@@ -106,11 +84,12 @@ export interface ScoredHeroCandidate {
   isDubbed: boolean;
   hasDistinctBanner: boolean;
   hasPublishedEpisode: boolean;
+  isEmAlta: boolean;
   titleKey: string;
+  emAltaScore: number;
+  publishedScore: number;
   noveltyScore: number;
   newEpisodeScore: number;
-  engagementScore: number;
-  calendarScore: number;
   evergreenScore: number;
 }
 
@@ -256,7 +235,16 @@ export function isHeroEpisodeRowPlayable(ep: HeroEpisode1SourceRow | null | unde
   return Boolean(buildHikariPlayerEpisodeUrl(ep.hikariPlayerEpisodeId));
 }
 
-function isNonStubHeroTitle(row: HeroCatalogAnimeCandidateRow): boolean {
+function isNonStubHeroTitle(row: {
+  id: string;
+  anilistId?: number | null;
+  malId?: number | null;
+  kitsuId?: number | null;
+  title?: string | null;
+  titleRomaji?: string | null;
+  titleEnglish?: string | null;
+  titleNative?: string | null;
+}): boolean {
   const candidates = [row.titleRomaji, row.titleEnglish, row.title, row.titleNative]
     .map((v) => v?.trim() || "")
     .filter(Boolean);
@@ -270,45 +258,15 @@ function isNonStubHeroTitle(row: HeroCatalogAnimeCandidateRow): boolean {
   return candidates.some((t) => !idTokens.has(t));
 }
 
-export function reconcileAudienceMetricsForRow(
-  row: Pick<HeroCatalogAnimeCandidateRow, "id" | "anilistId" | "malId" | "kitsuId">,
-  audienceByKey: Map<string, HeroAudienceMetrics>,
-): HeroAudienceMetrics {
-  const keys = new Set<string>([row.id.trim()]);
-  if (row.anilistId && row.anilistId > 0) keys.add(String(row.anilistId));
-  if (row.malId && row.malId > 0) keys.add(`mal-${row.malId}`);
-  if (row.kitsuId && row.kitsuId > 0) keys.add(`kitsu-${row.kitsuId}`);
-
-  const agg: HeroAudienceMetrics = {
-    progUsers7d: 0,
-    progUsers14d: 0,
-    playbackUsers7d: 0,
-    playbackUsers14d: 0,
-  };
-
-  for (const key of keys) {
-    const m = audienceByKey.get(key);
-    if (!m) continue;
-    agg.progUsers7d += m.progUsers7d;
-    agg.progUsers14d += m.progUsers14d;
-    agg.playbackUsers7d += m.playbackUsers7d;
-    agg.playbackUsers14d += m.playbackUsers14d;
-  }
-
-  return agg;
-}
-
 export function computeNoveltyScore(params: {
   animeCreatedAtMs?: number;
   firstEpisodePublishedAtMs: number;
   publishedEpisodeCount: number;
-  badges: { lancamento: boolean; novo: boolean; final: boolean } | null;
+  badges?: { lancamento: boolean; novo: boolean; final: boolean } | null;
   nowMs: number;
 }): number {
   const { firstEpisodePublishedAtMs, publishedEpisodeCount, nowMs } = params;
 
-  // A data de cadastro/atualização do catálogo não promove um anime sozinha:
-  // novidade exige episódio efetivamente publicado recentemente e catálogo sazonal (<= 26 eps).
   if (!publishedEpisodeCount || publishedEpisodeCount < 1 || publishedEpisodeCount > 26) {
     return 0;
   }
@@ -355,17 +313,6 @@ export function computeNewEpisodeScore(params: {
   return Math.round((recency + releasingBoost + qualityTie) * 100) / 100;
 }
 
-export function computeEngagementScore(metrics: HeroAudienceMetrics): number {
-  const weighted =
-    metrics.progUsers7d * 3.0 +
-    Math.max(0, metrics.progUsers14d - metrics.progUsers7d) * 1.4 +
-    metrics.playbackUsers7d * 3.5 +
-    Math.max(0, metrics.playbackUsers14d - metrics.playbackUsers7d) * 1.6;
-
-  if (weighted <= 0) return 0;
-  return Math.round(Math.log1p(weighted) * 32 * 100) / 100;
-}
-
 export function computeEvergreenScore(params: {
   score: number | null;
   popularity: number | null;
@@ -385,55 +332,92 @@ export function computeEvergreenScore(params: {
   return Math.round((scorePart + popPart + statusPart + recentActivityPart) * 100) / 100;
 }
 
-export function computeCalendarScore(params: {
-  hasTodaySchedule: boolean;
-  hasWeekSchedule: boolean;
-  hasTodayRecurrence: boolean;
-  hasActiveRecurrence: boolean;
-  hasPublishedEpisode: boolean;
-  score: number | null;
-}): number {
-  const {
-    hasTodaySchedule,
-    hasWeekSchedule,
-    hasTodayRecurrence,
-    hasActiveRecurrence,
-    hasPublishedEpisode,
-    score,
-  } = params;
+function collectMatchKeysFromIds(params: {
+  id?: string | null;
+  serverCatalogId?: string | null;
+  anilistId?: number | null;
+  malId?: number | null;
+  kitsuId?: number | null;
+}): string[] {
+  const keys: string[] = [];
+  const cleanId = params.id?.trim();
+  const cleanServerId = params.serverCatalogId?.trim();
+  if (cleanServerId) keys.push(`id:${cleanServerId}`);
+  if (cleanId) keys.push(`id:${cleanId}`);
 
-  if (!hasTodaySchedule && !hasWeekSchedule && !hasTodayRecurrence && !hasActiveRecurrence) {
-    return 0;
+  const resolvedWatchId = cleanId
+    ? resolveHeroWatchId({
+        id: cleanId,
+        anilistId: params.anilistId,
+        malId: params.malId,
+        kitsuId: params.kitsuId,
+      })
+    : null;
+  if (resolvedWatchId) keys.push(`watch:${resolvedWatchId}`);
+
+  if (typeof params.anilistId === "number" && Number.isFinite(params.anilistId) && params.anilistId > 0) {
+    keys.push(`ani:${Math.floor(params.anilistId)}`);
+  } else if (cleanId && /^\d+$/.test(cleanId)) {
+    keys.push(`ani:${Number(cleanId)}`);
   }
 
-  let baseScore = 0;
-  if (hasTodaySchedule) {
-    baseScore = 98;
-  } else if (hasTodayRecurrence) {
-    baseScore = 94;
-  } else if (hasWeekSchedule) {
-    baseScore = 76;
-  } else if (hasActiveRecurrence) {
-    baseScore = 68;
+  if (typeof params.malId === "number" && Number.isFinite(params.malId) && params.malId > 0) {
+    keys.push(`mal:${Math.floor(params.malId)}`);
+  } else if (cleanId && /^mal-(\d+)$/i.test(cleanId)) {
+    keys.push(`mal:${Number(cleanId.slice(4))}`);
   }
 
-  const playableBonus = hasPublishedEpisode ? 12 : 0;
-  const qualityTie = Math.min(10, Math.max(0, (score ?? 70) / 10));
+  if (typeof params.kitsuId === "number" && Number.isFinite(params.kitsuId) && params.kitsuId > 0) {
+    keys.push(`kitsu:${Math.floor(params.kitsuId)}`);
+  } else if (cleanId && /^kitsu-(\d+)$/i.test(cleanId)) {
+    keys.push(`kitsu:${Number(cleanId.slice(6))}`);
+  }
 
-  return Math.round((baseScore + playableBonus + qualityTie) * 100) / 100;
+  return Array.from(new Set(keys));
 }
 
 export function scoreAndDeduplicateHeroCandidates(
   rows: HeroCatalogAnimeCandidateRow[],
-  _badgesLookup: AnimeRecentBadgesLookup,
-  audienceByKey: Map<string, HeroAudienceMetrics>,
-  nowMs: number,
+  trendingItems: SlimAnime[] = [],
+  nowMs = Date.now(),
 ): ScoredHeroCandidate[] {
   const candidates: ScoredHeroCandidate[] = [];
+  const blockedKeys = new Set<string>();
+
+  // Indexa Grupo 1 (Animes em Alta no Hikari) preservando exatamente a ordem recebida
+  const trendingEntries = trendingItems
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => Boolean(item && item.id?.trim()) && !isAdultHeroCandidate(item.genres));
+
+  const trendingByKey = new Map<string, { item: SlimAnime; index: number }>();
+  for (const entry of trendingEntries) {
+    const keys = collectMatchKeysFromIds({
+      id: entry.item.id,
+      serverCatalogId: entry.item.serverCatalogId,
+      anilistId: entry.item.anilistId,
+      malId: entry.item.malId,
+      kitsuId: entry.item.kitsuId,
+    });
+    for (const k of keys) {
+      if (!trendingByKey.has(k)) {
+        trendingByKey.set(k, entry);
+      }
+    }
+  }
+
+  const matchedTrendingIndices = new Set<number>();
 
   for (const row of rows) {
-    if (!row || row.hidden === true) continue;
-    if (isAdultHeroCandidate(row.genres)) continue;
+    if (!row) continue;
+
+    // Bloqueia explicitamente ocultos, arquivados e +18/Hentai (inclusive para evitar fallback de Em Alta stale)
+    if (row.hidden === true || Boolean(row.archivedAt) || isAdultHeroCandidate(row.genres)) {
+      for (const k of collectMatchKeysFromIds(row)) {
+        blockedKeys.add(k);
+      }
+      continue;
+    }
+
     if (!isNonStubHeroTitle(row)) continue;
 
     const rawSources = [
@@ -460,28 +444,37 @@ export function scoreAndDeduplicateHeroCandidates(
       }
     }
 
-    const audienceMetrics = reconcileAudienceMetricsForRow(row, audienceByKey);
-    const engagementScore = computeEngagementScore(audienceMetrics);
-    const calendarScore = computeCalendarScore({
-      hasTodaySchedule: Boolean(row.hasTodayAiringSchedule),
-      hasWeekSchedule: Boolean(row.hasWeekAiringSchedule),
-      hasTodayRecurrence: Boolean(row.hasTodayWeeklyRecurrence),
-      hasActiveRecurrence: Boolean(row.hasActiveWeeklyRecurrence),
-      hasPublishedEpisode: hasPublishedPlayableEpisode,
-      score: row.score,
-    });
+    // Verifica pertinência ao Grupo 1 (Animes em Alta no Hikari)
+    let matchedTrending: { item: SlimAnime; index: number } | null = null;
+    for (const k of collectMatchKeysFromIds(row)) {
+      const found = trendingByKey.get(k);
+      if (found) {
+        matchedTrending = found;
+        break;
+      }
+    }
 
-    // Elegibilidade estrita: precisa ter episódio publicado reproduzível, engajamento real
-    // da comunidade ou programação ativa de calendário/recorrência (nunca só cadastro).
-    if (!hasPublishedPlayableEpisode && engagementScore <= 0 && calendarScore <= 0) {
+    const isEmAlta = matchedTrending !== null;
+    if (matchedTrending) {
+      matchedTrendingIndices.add(matchedTrending.index);
+    }
+
+    // Critério exclusivo de elegibilidade:
+    // Grupo 1 (Em Alta no Hikari) OU Grupo 2 (Episódio publicado reproduzível)
+    if (!isEmAlta && !hasPublishedPlayableEpisode) {
       continue;
     }
 
     const watchId = resolveHeroWatchId(row);
     if (!watchId) continue;
 
-    const cleanCover = stripCatalogImageVersion(row.cover);
-    const cleanBanner = stripCatalogImageVersion(row.banner);
+    const rowCover = stripCatalogImageVersion(row.cover);
+    const rowBanner = stripCatalogImageVersion(row.banner);
+    const trendingCover = matchedTrending ? stripCatalogImageVersion(matchedTrending.item.cover) : "";
+    const trendingBanner = matchedTrending ? stripCatalogImageVersion(matchedTrending.item.banner) : "";
+
+    const cleanCover = isValidHeroImageUrl(rowCover) ? rowCover : trendingCover;
+    const cleanBanner = isValidHeroImageUrl(rowBanner) ? rowBanner : trendingBanner;
     if (!isValidHeroImageUrl(cleanBanner) && !isValidHeroImageUrl(cleanCover)) {
       continue;
     }
@@ -496,6 +489,7 @@ export function scoreAndDeduplicateHeroCandidates(
       (!isStubTitle ? row.title.trim() : "") ||
       row.titleEnglish?.trim() ||
       row.titleNative?.trim() ||
+      matchedTrending?.item.titles?.romaji?.trim() ||
       "Anime";
 
     const firstEpisodePublishedAtMs = toHeroTimestampMs(row.firstEpisodePublishedAt);
@@ -506,7 +500,6 @@ export function scoreAndDeduplicateHeroCandidates(
       ? computeNoveltyScore({
           firstEpisodePublishedAtMs,
           publishedEpisodeCount: publishedCount,
-          badges: null,
           nowMs,
         })
       : 0;
@@ -528,30 +521,38 @@ export function scoreAndDeduplicateHeroCandidates(
         })
       : 0;
 
+    const publishedScore = hasPublishedPlayableEpisode
+      ? Math.max(noveltyScore, newEpisodeScore, evergreenScore, 10)
+      : 0;
+    const emAltaScore = matchedTrending ? Math.max(10, 200 - matchedTrending.index * 5) : 0;
+
     const slimAnime: SlimAnime = {
       id: watchId,
-      anilistId: row.anilistId ?? undefined,
-      malId: row.malId ?? undefined,
-      kitsuId: row.kitsuId ?? undefined,
+      anilistId: row.anilistId ?? matchedTrending?.item.anilistId ?? undefined,
+      malId: row.malId ?? matchedTrending?.item.malId ?? undefined,
+      kitsuId: row.kitsuId ?? matchedTrending?.item.kitsuId ?? undefined,
       titles: {
         romaji,
-        english: row.titleEnglish?.trim() || "",
-        native: row.titleNative?.trim() || "",
+        english: row.titleEnglish?.trim() || matchedTrending?.item.titles?.english?.trim() || "",
+        native: row.titleNative?.trim() || matchedTrending?.item.titles?.native?.trim() || "",
       },
       cover: cleanCover || cleanBanner,
       banner: cleanBanner || "",
-      synopsis: row.synopsis?.trim() || "",
-      score: row.score ?? null,
-      popularity: row.popularity ?? null,
-      genres: Array.isArray(row.genres) ? row.genres.filter(Boolean) : [],
-      format: row.format?.trim() || "TV",
-      status: row.status?.trim() || "FINISHED",
+      synopsis: row.synopsis?.trim() || matchedTrending?.item.synopsis?.trim() || "",
+      score: row.score ?? matchedTrending?.item.score ?? null,
+      popularity: row.popularity ?? matchedTrending?.item.popularity ?? null,
+      genres:
+        Array.isArray(row.genres) && row.genres.length > 0
+          ? row.genres.filter(Boolean)
+          : (matchedTrending?.item.genres ?? []),
+      format: row.format?.trim() || matchedTrending?.item.format?.trim() || "TV",
+      status: row.status?.trim() || matchedTrending?.item.status?.trim() || "FINISHED",
       episodesCount: hasPublishedPlayableEpisode
         ? row.episodesCount ?? publishedCount
-        : row.episodesCount ?? null,
-      season: row.season?.trim() || null,
-      year: row.year ?? null,
-      trailerId: row.trailerId?.trim() || null,
+        : row.episodesCount ?? matchedTrending?.item.episodesCount ?? null,
+      season: row.season?.trim() || matchedTrending?.item.season || null,
+      year: row.year ?? matchedTrending?.item.year ?? null,
+      trailerId: row.trailerId?.trim() || matchedTrending?.item.trailerId || null,
       source: "local",
       catalogUpdatedAt: animeUpdatedAtMs || latestEpisodePublishedAtMs || undefined,
       serverCatalogId: row.id,
@@ -574,32 +575,105 @@ export function scoreAndDeduplicateHeroCandidates(
       isDubbed: isDubbedHeroRow(row),
       hasDistinctBanner: distinctBanner,
       hasPublishedEpisode: hasPublishedPlayableEpisode,
+      isEmAlta,
       titleKey,
+      emAltaScore,
+      publishedScore,
       noveltyScore,
       newEpisodeScore,
-      engagementScore,
-      calendarScore,
       evergreenScore,
     });
   }
 
-  // Deduplicação preferindo banner horizontal próprio, versão original (não dublada),
-  // episódio publicado real e maior pontuação
+  // Preserva itens de Em Alta que não possuam linha correspondente no retorno de catalog_anime
+  // (ex.: fallback ou mocks parciais), desde que válidos e não bloqueados por hidden/archived/+18.
+  for (const { item, index } of trendingEntries) {
+    if (matchedTrendingIndices.has(index)) continue;
+
+    const itemKeys = collectMatchKeysFromIds({
+      id: item.id,
+      serverCatalogId: item.serverCatalogId,
+      anilistId: item.anilistId,
+      malId: item.malId,
+      kitsuId: item.kitsuId,
+    });
+    if (itemKeys.some((k) => blockedKeys.has(k))) {
+      continue;
+    }
+
+    const watchId = resolveHeroWatchId({
+      id: item.id,
+      anilistId: item.anilistId ?? null,
+      malId: item.malId ?? null,
+      kitsuId: item.kitsuId ?? null,
+    });
+    if (!watchId) continue;
+
+    const nonStub = isNonStubHeroTitle({
+      id: item.id,
+      anilistId: item.anilistId ?? null,
+      malId: item.malId ?? null,
+      kitsuId: item.kitsuId ?? null,
+      title: item.titles?.romaji || item.titles?.english,
+      titleRomaji: item.titles?.romaji,
+      titleEnglish: item.titles?.english,
+      titleNative: item.titles?.native,
+    });
+    if (!nonStub) continue;
+
+    const cleanCover = stripCatalogImageVersion(item.cover);
+    const cleanBanner = stripCatalogImageVersion(item.banner);
+    if (!isValidHeroImageUrl(cleanBanner) && !isValidHeroImageUrl(cleanCover)) {
+      continue;
+    }
+
+    const distinctBanner = hasDistinctHorizontalBanner(cleanCover, cleanBanner);
+    const titleObj = {
+      title: item.titles?.romaji || item.titles?.english || "",
+      titleRomaji: item.titles?.romaji || "",
+      titleEnglish: item.titles?.english || "",
+      titleNative: item.titles?.native || "",
+    };
+    const titleKey = normalizeHeroTitleKey(titleObj) || watchId;
+    const emAltaScore = Math.max(10, 200 - index * 5);
+    const hasPublished = Boolean(item.hasEpisode);
+
+    candidates.push({
+      anime: {
+        ...item,
+        id: watchId,
+        cover: cleanCover || cleanBanner,
+        banner: cleanBanner || "",
+        hasEpisode: hasPublished,
+      },
+      sourceId: item.serverCatalogId?.trim() || item.id,
+      anilistId: item.anilistId ?? null,
+      malId: item.malId ?? null,
+      kitsuId: item.kitsuId ?? null,
+      isDubbed: isDubbedHeroRow(titleObj),
+      hasDistinctBanner: distinctBanner,
+      hasPublishedEpisode: hasPublished,
+      isEmAlta: true,
+      titleKey,
+      emAltaScore,
+      publishedScore: hasPublished ? 10 : 0,
+      noveltyScore: 0,
+      newEpisodeScore: 0,
+      evergreenScore: hasPublished ? 10 : 0,
+    });
+  }
+
+  // Deduplicação canônica preferindo banner horizontal próprio, versão original (não dublada),
+  // episódio publicado real e maior pontuação, mesclando pertinência dos dois grupos.
   const bestRankKey = (c: ScoredHeroCandidate): number =>
     (c.hasDistinctBanner ? 100000 : 0) +
     (!c.isDubbed ? 10000 : 0) +
     (c.hasPublishedEpisode ? 1000 : 0) +
-    Math.max(
-      c.noveltyScore,
-      c.newEpisodeScore,
-      c.engagementScore,
-      c.calendarScore,
-      c.evergreenScore,
-    );
+    Math.max(c.emAltaScore, c.publishedScore);
 
   const sortedForDedup = [...candidates].sort((a, b) => bestRankKey(b) - bestRankKey(a));
   const deduped: ScoredHeroCandidate[] = [];
-  const seenKeys = new Set<string>();
+  const ownerByKey = new Map<string, ScoredHeroCandidate>();
 
   for (const c of sortedForDedup) {
     const keys = [
@@ -610,11 +684,44 @@ export function scoreAndDeduplicateHeroCandidates(
       ...(c.titleKey ? [`title:${c.titleKey}`] : []),
     ];
 
-    if (keys.some((k) => seenKeys.has(k))) {
+    let existingOwner: ScoredHeroCandidate | undefined;
+    for (const k of keys) {
+      const found = ownerByKey.get(k);
+      if (found) {
+        existingOwner = found;
+        break;
+      }
+    }
+
+    if (existingOwner) {
+      existingOwner.isEmAlta = existingOwner.isEmAlta || c.isEmAlta;
+      existingOwner.emAltaScore = Math.max(existingOwner.emAltaScore, c.emAltaScore);
+      existingOwner.hasPublishedEpisode =
+        existingOwner.hasPublishedEpisode || c.hasPublishedEpisode;
+      existingOwner.publishedScore = Math.max(existingOwner.publishedScore, c.publishedScore);
+      existingOwner.noveltyScore = Math.max(existingOwner.noveltyScore, c.noveltyScore);
+      existingOwner.newEpisodeScore = Math.max(existingOwner.newEpisodeScore, c.newEpisodeScore);
+      existingOwner.evergreenScore = Math.max(existingOwner.evergreenScore, c.evergreenScore);
+      if (c.hasPublishedEpisode && !existingOwner.anime.hasEpisode) {
+        existingOwner.anime = {
+          ...existingOwner.anime,
+          hasEpisode: true,
+          ...(c.anime.firstAvailableEpisodeNumber !== undefined
+            ? { firstAvailableEpisodeNumber: c.anime.firstAvailableEpisodeNumber }
+            : {}),
+        };
+      }
+      for (const k of keys) {
+        if (!ownerByKey.has(k)) {
+          ownerByKey.set(k, existingOwner);
+        }
+      }
       continue;
     }
 
-    for (const k of keys) seenKeys.add(k);
+    for (const k of keys) {
+      ownerByKey.set(k, c);
+    }
     deduped.push(c);
   }
 
@@ -631,7 +738,7 @@ export function buildHeroBannerPool(
   const populateTier = (tierCandidates: ScoredHeroCandidate[]) => {
     if (tierCandidates.length === 0 || poolItems.length >= MAX_HERO_POOL_SIZE) return;
 
-    const addFromBucket = (
+    const addFromGroup = (
       bucket: HeroBannerBucket,
       list: ScoredHeroCandidate[],
       getScore: (c: ScoredHeroCandidate) => number,
@@ -658,16 +765,35 @@ export function buildHeroBannerPool(
       }
     };
 
-    addFromBucket("novidade", tierCandidates, (c) => c.noveltyScore, 6);
-    addFromBucket("episodio_novo", tierCandidates, (c) => c.newEpisodeScore, 8);
-    addFromBucket("engajamento", tierCandidates, (c) => c.engagementScore, 8);
-    addFromBucket("calendario", tierCandidates, (c) => c.calendarScore, 8);
-    addFromBucket("preenchimento", tierCandidates, (c) => c.evergreenScore, MAX_HERO_POOL_SIZE);
+    const emAltaCandidates = tierCandidates.filter((c) => c.isEmAlta && c.emAltaScore > 0);
+    const publishedCandidates = tierCandidates.filter(
+      (c) => c.hasPublishedEpisode && c.publishedScore > 0,
+    );
+
+    // Equilibra os dois grupos aprovados no pool do tier (Em Alta + Episódios Publicados)
+    addFromGroup("em_alta", emAltaCandidates, (c) => c.emAltaScore, 12);
+    addFromGroup("episodios_publicados", publishedCandidates, (c) => c.publishedScore, 12);
+
+    // Se algum dos grupos tiver menos de 12 candidatos, completa a capacidade do pool com os restantes do tier
+    if (poolItems.length < MAX_HERO_POOL_SIZE) {
+      addFromGroup(
+        "em_alta",
+        emAltaCandidates,
+        (c) => c.emAltaScore,
+        MAX_HERO_POOL_SIZE,
+      );
+      addFromGroup(
+        "episodios_publicados",
+        publishedCandidates,
+        (c) => c.publishedScore,
+        MAX_HERO_POOL_SIZE,
+      );
+    }
   };
 
   // Tier 1: Animes com banner horizontal próprio (sempre priorizados)
   populateTier(candidates.filter((c) => c.hasDistinctBanner));
-  // Tier 2: Animes apenas com capa vertical (fallback estritamente secundário)
+  // Tier 2: Animes apenas com capa vertical (fallback secundário)
   if (poolItems.length < MAX_HERO_POOL_SIZE) {
     populateTier(candidates.filter((c) => !c.hasDistinctBanner));
   }
@@ -680,28 +806,52 @@ export function buildHeroBannerPool(
   };
 }
 
-function pickRotatedFromBucket(
-  bucketItems: HeroBannerPoolItem[],
-  count: number,
-  windowIndex: number,
+function buildInterleavedGroupList(
+  items: HeroBannerPoolItem[],
   usedIds: Set<string>,
   usedTitleKeys: Set<string>,
 ): HeroBannerPoolItem[] {
-  if (bucketItems.length === 0 || count <= 0) return [];
-  const picked: HeroBannerPoolItem[] = [];
-  const len = bucketItems.length;
-  const start = ((windowIndex % len) + len) % len;
-
-  for (let i = 0; i < len && picked.length < count; i++) {
-    const item = bucketItems[(start + i) % len];
+  const uniqueItems: HeroBannerPoolItem[] = [];
+  for (const item of items) {
+    if (!item?.anime?.id) continue;
     if (usedIds.has(item.anime.id)) continue;
     if (item.titleKey && usedTitleKeys.has(item.titleKey)) continue;
     usedIds.add(item.anime.id);
     if (item.titleKey) usedTitleKeys.add(item.titleKey);
-    picked.push(item);
+    uniqueItems.push(item);
   }
 
-  return picked;
+  if (uniqueItems.length <= 1) {
+    return uniqueItems;
+  }
+
+  const emAltaGroup = uniqueItems.filter((i) => i.bucket === "em_alta");
+  const publishedGroup = uniqueItems.filter((i) => i.bucket !== "em_alta");
+
+  const consolidated: HeroBannerPoolItem[] = [];
+  const maxLen = Math.max(emAltaGroup.length, publishedGroup.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (i < emAltaGroup.length) consolidated.push(emAltaGroup[i]);
+    if (i < publishedGroup.length) consolidated.push(publishedGroup[i]);
+  }
+
+  return consolidated;
+}
+
+function rotateSlice(
+  items: HeroBannerPoolItem[],
+  count: number,
+  windowIndex: number,
+): HeroBannerPoolItem[] {
+  if (items.length === 0 || count <= 0) return [];
+  const len = items.length;
+  const start = ((windowIndex % len) + len) % len;
+  const take = Math.min(count, len);
+  const out: HeroBannerPoolItem[] = [];
+  for (let i = 0; i < take; i++) {
+    out.push(items[(start + i) % len]);
+  }
+  return out;
 }
 
 export function selectHeroSlidesForWindow(
@@ -716,68 +866,41 @@ export function selectHeroSlidesForWindow(
   const targetMax = Math.max(1, Math.min(maxSlides, MAX_HERO_SLIDES));
   const windowIndex = Math.floor(nowMs / HERO_ROTATION_WINDOW_MS);
 
-  const selected: HeroBannerPoolItem[] = [];
   const usedIds = new Set<string>();
   const usedTitleKeys = new Set<string>();
 
-  const fillFromTier = (tierItems: HeroBannerPoolItem[]) => {
-    if (tierItems.length === 0 || selected.length >= targetMax) return;
+  const distinctTier = buildInterleavedGroupList(
+    pool.items.filter((i) => i.hasDistinctBanner),
+    usedIds,
+    usedTitleKeys,
+  );
+  const coverOnlyTier = buildInterleavedGroupList(
+    pool.items.filter((i) => !i.hasDistinctBanner),
+    usedIds,
+    usedTitleKeys,
+  );
 
-    const nov = tierItems.filter((i) => i.bucket === "novidade");
-    const ep = tierItems.filter((i) => i.bucket === "episodio_novo");
-    const eng = tierItems.filter((i) => i.bucket === "engajamento");
-    const cal = tierItems.filter((i) => i.bucket === "calendario");
-    const fill = tierItems.filter((i) => i.bucket === "preenchimento");
-
-    // Quotas equilibradas: ~2 novidades, ~3 episódios novos, ~2 engajamento, ~2 calendário, restante preenchimento
-    const novTarget = Math.min(2, targetMax - selected.length);
-    selected.push(...pickRotatedFromBucket(nov, novTarget, windowIndex, usedIds, usedTitleKeys));
-
-    const epTarget = Math.min(3, targetMax - selected.length);
-    selected.push(...pickRotatedFromBucket(ep, epTarget, windowIndex, usedIds, usedTitleKeys));
-
-    const engTarget = Math.min(
-      selected.filter((s) => s.bucket === "novidade").length < 2 ? 3 : 2,
-      targetMax - selected.length,
-    );
-    selected.push(...pickRotatedFromBucket(eng, engTarget, windowIndex, usedIds, usedTitleKeys));
-
-    const calTarget = Math.min(2, targetMax - selected.length);
-    selected.push(...pickRotatedFromBucket(cal, calTarget, windowIndex, usedIds, usedTitleKeys));
-
-    if (selected.length < targetMax) {
-      selected.push(
-        ...pickRotatedFromBucket(
-          fill,
-          targetMax - selected.length,
-          windowIndex,
-          usedIds,
-          usedTitleKeys,
-        ),
-      );
-    }
-
-    // Se algum bucket foi menor que sua cota, completa com o restante deste tier (respeitando rotação)
-    if (selected.length < targetMax) {
-      selected.push(
-        ...pickRotatedFromBucket(
-          tierItems,
-          targetMax - selected.length,
-          windowIndex,
-          usedIds,
-          usedTitleKeys,
-        ),
-      );
-    }
-  };
-
-  // Regra estrita: esgota todos os candidatos com banner horizontal próprio antes de recorrer a cover-only
-  fillFromTier(pool.items.filter((i) => i.hasDistinctBanner));
-  if (selected.length < targetMax) {
-    fillFromTier(pool.items.filter((i) => !i.hasDistinctBanner));
+  // Quando há >= 2 banners horizontais distintos, rotaciona-os de forma consolidada
+  // mantendo todos antes dos fallbacks cover-only e variando a posição [0] entre janelas.
+  if (distinctTier.length >= 2) {
+    const selectedDistinct = rotateSlice(distinctTier, targetMax, windowIndex);
+    const remaining = targetMax - selectedDistinct.length;
+    const selectedCover =
+      remaining > 0 ? rotateSlice(coverOnlyTier, remaining, windowIndex) : [];
+    return [...selectedDistinct, ...selectedCover].map((item) => item.anime);
   }
 
-  return selected.slice(0, targetMax).map((item) => item.anime);
+  // Quando há apenas 0 ou 1 banner horizontal distinto, consolida ambos os tiers na mesma lista
+  // antes de rotacionar para impedir que um único anime (ex.: Bakemonogatari) trave a posição [0].
+  const consolidated = [...distinctTier, ...coverOnlyTier];
+  if (consolidated.length === 0) {
+    return [];
+  }
+  if (consolidated.length === 1) {
+    return [consolidated[0].anime];
+  }
+
+  return rotateSlice(consolidated, targetMax, windowIndex).map((item) => item.anime);
 }
 
 // Estado do cache local em memória (processo Node / Serverless)
@@ -786,15 +909,27 @@ let staleHeroPool: HeroBannerPoolPayload | null = null;
 let heroPoolInFlight: Promise<HeroBannerPoolPayload | null> | null = null;
 let heroPoolEpoch = 0;
 
-export function invalidateHomeHeroLocalCache(): void {
+export function invalidateHomeHeroLocalCache(options?: {
+  preserveStale?: boolean;
+}): void {
   heroPoolEpoch += 1;
   ramHeroPool = null;
+  if (!options?.preserveStale) {
+    staleHeroPool = null;
+  }
   heroPoolInFlight = null;
 }
 
 export function invalidateHomeHeroCache(): void {
   invalidateHomeHeroLocalCache();
   void invalidateRedisHeroBannerPool().catch(() => {});
+}
+
+export async function invalidateHomeHeroCacheAsync(
+  redisOverride?: RedisEvalClient | null,
+): Promise<void> {
+  invalidateHomeHeroLocalCache();
+  await invalidateRedisHeroBannerPool(redisOverride).catch(() => {});
 }
 
 export function resetHomeHeroTestState(): void {
@@ -804,12 +939,50 @@ export function resetHomeHeroTestState(): void {
   heroPoolInFlight = null;
 }
 
-async function queryCatalogCandidatesFromNeon(): Promise<HeroCatalogAnimeCandidateRow[]> {
+async function queryCatalogCandidatesFromNeon(
+  trendingItems: SlimAnime[] = [],
+): Promise<HeroCatalogAnimeCandidateRow[]> {
   const sql = await getSql();
-  const todayRange = getTodayRangeSaoPaulo();
-  const todayWeekday = getWeekdaySaoPaulo(todayRange.todayKey);
-  const weekStartSec = todayRange.startTimestamp - 86400;
-  const weekEndSec = todayRange.endTimestamp + 6 * 86400;
+
+  const trendingCatalogIds = new Set<string>();
+  const trendingAnilistIds = new Set<number>();
+  const trendingMalIds = new Set<number>();
+  const trendingKitsuIds = new Set<number>();
+
+  for (const item of trendingItems) {
+    if (!item) continue;
+    const rawServerId = typeof item.serverCatalogId === "string" ? item.serverCatalogId.trim() : "";
+    const rawId = typeof item.id === "string" ? item.id.trim() : "";
+    if (rawServerId) trendingCatalogIds.add(rawServerId);
+    if (rawId) {
+      trendingCatalogIds.add(rawId);
+      if (/^\d+$/.test(rawId)) {
+        const parsed = Number(rawId);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          trendingAnilistIds.add(Math.floor(parsed));
+        }
+      } else if (/^mal-(\d+)$/i.test(rawId)) {
+        const parsed = Number(rawId.slice(4));
+        if (Number.isFinite(parsed) && parsed > 0) {
+          trendingMalIds.add(Math.floor(parsed));
+        }
+      } else if (/^kitsu-(\d+)$/i.test(rawId)) {
+        const parsed = Number(rawId.slice(6));
+        if (Number.isFinite(parsed) && parsed > 0) {
+          trendingKitsuIds.add(Math.floor(parsed));
+        }
+      }
+    }
+    if (typeof item.anilistId === "number" && Number.isFinite(item.anilistId) && item.anilistId > 0) {
+      trendingAnilistIds.add(Math.floor(item.anilistId));
+    }
+    if (typeof item.malId === "number" && Number.isFinite(item.malId) && item.malId > 0) {
+      trendingMalIds.add(Math.floor(item.malId));
+    }
+    if (typeof item.kitsuId === "number" && Number.isFinite(item.kitsuId) && item.kitsuId > 0) {
+      trendingKitsuIds.add(Math.floor(item.kitsuId));
+    }
+  }
 
   const rows = await sql.query<HeroCatalogAnimeCandidateRow>(
     `WITH ep_stats AS (
@@ -829,37 +1002,6 @@ async function queryCatalogCandidatesFromNeon(): Promise<HeroCatalogAnimeCandida
            OR (e."hikari_player_episode_id" IS NOT NULL AND BTRIM(e."hikari_player_episode_id") <> '')
          )
        GROUP BY e."animeId"
-     ),
-     airing_stats AS (
-       SELECT
-         s."animeId",
-         BOOL_OR(s."airingAt" >= to_timestamp($1) AND s."airingAt" <= to_timestamp($2)) AS "hasTodayAiringSchedule",
-         true AS "hasWeekAiringSchedule"
-       FROM "catalog_airing_schedule" s
-       WHERE s."airingAt" >= to_timestamp($3)
-         AND s."airingAt" <= to_timestamp($4)
-       GROUP BY s."animeId"
-     ),
-     recurrence_stats AS (
-       SELECT
-         r."animeId",
-         BOOL_OR(r."dayOfWeek" = $5) AS "hasTodayWeeklyRecurrence",
-         true AS "hasActiveWeeklyRecurrence"
-       FROM "catalog_weekly_recurrence" r
-       WHERE r."active" = true
-         AND r."timezone" = $6
-       GROUP BY r."animeId"
-     ),
-     recent_engagement_ids AS (
-       SELECT DISTINCT p."animeId"
-       FROM "user_episode_progress" p
-       WHERE p."updatedAt" >= NOW() - INTERVAL '14 days'
-         AND p."accumulatedTime" >= 60
-       UNION
-       SELECT DISTINCT w."animeId"
-       FROM "user_watched_episode" w
-       WHERE w."watchedAt" >= NOW() - INTERVAL '14 days'
-         AND w."origin" = 'playback'
      )
      SELECT
        a."id",
@@ -881,6 +1023,7 @@ async function queryCatalogCandidatesFromNeon(): Promise<HeroCatalogAnimeCandida
        a."genres",
        a."trailerId",
        COALESCE(a."hidden", false) AS "hidden",
+       a."archived_at" AS "archivedAt",
        a."score",
        a."popularity",
        a."trending",
@@ -889,15 +1032,9 @@ async function queryCatalogCandidatesFromNeon(): Promise<HeroCatalogAnimeCandida
        COALESCE(ep_stats."publishedEpisodeCount", 0)::int AS "publishedEpisodeCount",
        ep_stats."firstEpisodePublishedAt",
        ep_stats."latestEpisodePublishedAt",
-       ep_sample."epSources",
-       COALESCE(airing_stats."hasTodayAiringSchedule", false) AS "hasTodayAiringSchedule",
-       COALESCE(airing_stats."hasWeekAiringSchedule", false) AS "hasWeekAiringSchedule",
-       COALESCE(recurrence_stats."hasTodayWeeklyRecurrence", false) AS "hasTodayWeeklyRecurrence",
-       COALESCE(recurrence_stats."hasActiveWeeklyRecurrence", false) AS "hasActiveWeeklyRecurrence"
+       ep_sample."epSources"
      FROM "catalog_anime" a
      LEFT JOIN ep_stats ON ep_stats."animeId" = a."id"
-     LEFT JOIN airing_stats ON airing_stats."animeId" = a."id"
-     LEFT JOIN recurrence_stats ON recurrence_stats."animeId" = a."id"
      LEFT JOIN LATERAL (
        SELECT JSONB_AGG(sub.*) AS "epSources"
        FROM (
@@ -925,87 +1062,31 @@ async function queryCatalogCandidatesFromNeon(): Promise<HeroCatalogAnimeCandida
          LIMIT 10
        ) sub
      ) ep_sample ON ep_stats."publishedEpisodeCount" > 0
-     WHERE COALESCE(a."hidden", false) = false
-       AND a."archived_at" IS NULL
-       AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])))
-       AND (
+     WHERE (
+       (
          ep_stats."animeId" IS NOT NULL
-         OR airing_stats."animeId" IS NOT NULL
-         OR recurrence_stats."animeId" IS NOT NULL
-         OR EXISTS (
-           SELECT 1
-           FROM recent_engagement_ids re
-           WHERE re."animeId" = a."id"
-             OR (a."anilistId" IS NOT NULL AND re."animeId" = a."anilistId"::text)
-             OR (a."malId" IS NOT NULL AND re."animeId" = ('mal-' || a."malId"::text))
-             OR (a."kitsuId" IS NOT NULL AND re."animeId" = ('kitsu-' || a."kitsuId"::text))
-         )
-       );`,
+         AND COALESCE(a."hidden", false) = false
+         AND a."archived_at" IS NULL
+         AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])))
+       )
+       OR a."id" = ANY($1::text[])
+       OR (a."anilistId" IS NOT NULL AND a."anilistId" = ANY($2::int[]))
+       OR (a."malId" IS NOT NULL AND a."malId" = ANY($3::int[]))
+       OR (a."kitsuId" IS NOT NULL AND a."kitsuId" = ANY($4::int[]))
+     );`,
     [
-      todayRange.startTimestamp,
-      todayRange.endTimestamp,
-      weekStartSec,
-      weekEndSec,
-      todayWeekday,
-      CALENDAR_TIMEZONE,
+      Array.from(trendingCatalogIds),
+      Array.from(trendingAnilistIds),
+      Array.from(trendingMalIds),
+      Array.from(trendingKitsuIds),
     ],
   );
 
   return Array.isArray(rows) ? rows : [];
 }
 
-async function queryAudienceMetricsFromNeon(): Promise<Map<string, HeroAudienceMetrics>> {
-  const byAnimeId = new Map<string, HeroAudienceMetrics>();
-  try {
-    const sql = await getSql();
-    const rows = await sql.query<HeroAudienceRawRow>(
-      `WITH prog AS (
-         SELECT
-           p."animeId",
-           COUNT(DISTINCT p."userId") FILTER (WHERE p."updatedAt" >= NOW() - INTERVAL '7 days')::int AS "progUsers7d",
-           COUNT(DISTINCT p."userId")::int AS "progUsers14d"
-         FROM "user_episode_progress" p
-         WHERE p."updatedAt" >= NOW() - INTERVAL '14 days'
-           AND p."accumulatedTime" >= 60
-         GROUP BY p."animeId"
-       ),
-       watched AS (
-         SELECT
-           w."animeId",
-           COUNT(DISTINCT w."userId") FILTER (WHERE w."watchedAt" >= NOW() - INTERVAL '7 days')::int AS "playbackUsers7d",
-           COUNT(DISTINCT w."userId")::int AS "playbackUsers14d"
-         FROM "user_watched_episode" w
-         WHERE w."watchedAt" >= NOW() - INTERVAL '14 days'
-           AND w."origin" = 'playback'
-         GROUP BY w."animeId"
-       )
-       SELECT
-         COALESCE(prog."animeId", watched."animeId") AS "animeId",
-         COALESCE(prog."progUsers7d", 0)::int AS "progUsers7d",
-         COALESCE(prog."progUsers14d", 0)::int AS "progUsers14d",
-         COALESCE(watched."playbackUsers7d", 0)::int AS "playbackUsers7d",
-         COALESCE(watched."playbackUsers14d", 0)::int AS "playbackUsers14d"
-       FROM prog
-       FULL OUTER JOIN watched ON watched."animeId" = prog."animeId";`,
-    );
-
-    for (const row of rows ?? []) {
-      const id = row?.animeId?.trim();
-      if (!id) continue;
-      byAnimeId.set(id, {
-        progUsers7d: Number(row.progUsers7d) || 0,
-        progUsers14d: Number(row.progUsers14d) || 0,
-        playbackUsers7d: Number(row.playbackUsers7d) || 0,
-        playbackUsers14d: Number(row.playbackUsers14d) || 0,
-      });
-    }
-  } catch (err) {
-    console.warn(
-      "[home-hero] Falha segura ao consultar métricas de audiência (continuando sem audiência):",
-      err instanceof Error ? err.message : err,
-    );
-  }
-  return byAnimeId;
+export interface GetHomeHeroOptions {
+  trendingItems?: SlimAnime[];
 }
 
 export interface HomeHeroDeps {
@@ -1015,9 +1096,8 @@ export interface HomeHeroDeps {
     fence?: string | null,
   ) => Promise<RedisScopedWriteStatus>;
   scheduleWrite: (promise: Promise<unknown>, operation?: string) => void;
-  queryCatalog: () => Promise<HeroCatalogAnimeCandidateRow[]>;
-  queryBadges: () => Promise<AnimeRecentBadgesLookup>;
-  queryAudience: () => Promise<Map<string, HeroAudienceMetrics>>;
+  queryCatalog: (trendingItems?: SlimAnime[]) => Promise<HeroCatalogAnimeCandidateRow[]>;
+  getTrendingItems?: () => Promise<SlimAnime[]>;
 }
 
 const defaultHomeHeroDeps: HomeHeroDeps = {
@@ -1025,13 +1105,7 @@ const defaultHomeHeroDeps: HomeHeroDeps = {
   setRedisPool: (payload, fence) => setRedisHeroBannerPool(payload, fence),
   scheduleWrite: scheduleRedisBackgroundWrite,
   queryCatalog: queryCatalogCandidatesFromNeon,
-  queryBadges: async () => ({
-    byId: new Map(),
-    byAnilistId: new Map(),
-    byMalId: new Map(),
-    byKitsuId: new Map(),
-  }),
-  queryAudience: queryAudienceMetricsFromNeon,
+  getTrendingItems: () => getHomeTrendingItems(),
 };
 
 function isCurrentHeroPoolPayload(
@@ -1051,6 +1125,7 @@ function isCurrentHeroPoolPayload(
 export async function getHomeHeroPoolWithDeps(
   deps: HomeHeroDeps = defaultHomeHeroDeps,
   nowMs = Date.now(),
+  options?: GetHomeHeroOptions,
 ): Promise<HeroBannerPoolPayload | null> {
   const currentEnv = resolveHeroEnvironmentName();
 
@@ -1079,8 +1154,8 @@ export async function getHomeHeroPoolWithDeps(
         redisRead.status === "hit" &&
         isCurrentHeroPoolPayload(redisRead.payload, currentEnv)
       ) {
-        staleHeroPool = redisRead.payload;
         if (requestEpoch === heroPoolEpoch) {
+          staleHeroPool = redisRead.payload;
           ramHeroPool = { payload: redisRead.payload, timestamp: Date.now() };
         }
         return redisRead.payload;
@@ -1093,22 +1168,18 @@ export async function getHomeHeroPoolWithDeps(
             ? null
             : undefined;
 
-      // 4. Miss no Redis/RAM: consulta Neon (catálogo, badges em cache e audiência agregada)
-      const [catalogRows, badgesLookup, audienceByKey] = await Promise.all([
-        deps.queryCatalog(),
-        deps.queryBadges().catch(() => ({
-          byId: new Map(),
-          byAnilistId: new Map(),
-          byMalId: new Map(),
-          byKitsuId: new Map(),
-        })),
-        deps.queryAudience().catch(() => new Map<string, HeroAudienceMetrics>()),
-      ]);
+      // 4. Miss no Redis/RAM: obtém Grupo 1 (Em Alta) e consulta Grupo 2 + enriquecimento no Neon
+      const trendingItems = Array.isArray(options?.trendingItems)
+        ? options.trendingItems
+        : deps.getTrendingItems
+          ? await deps.getTrendingItems().catch(() => [] as SlimAnime[])
+          : [];
+
+      const catalogRows = await deps.queryCatalog(trendingItems);
 
       const scored = scoreAndDeduplicateHeroCandidates(
         catalogRows,
-        badgesLookup,
-        audienceByKey,
+        trendingItems,
         nowMs,
       );
 
@@ -1129,8 +1200,8 @@ export async function getHomeHeroPoolWithDeps(
         return staleHeroPool;
       }
 
-      staleHeroPool = pool;
       if (requestEpoch === heroPoolEpoch) {
+        staleHeroPool = pool;
         ramHeroPool = { payload: pool, timestamp: Date.now() };
         deps.scheduleWrite(deps.setRedisPool(pool, activeFence), "setRedisHeroBannerPool");
       }
@@ -1161,11 +1232,15 @@ export async function getHomeHeroPoolWithDeps(
 export async function getHomeHeroItemsWithDeps(
   deps: HomeHeroDeps = defaultHomeHeroDeps,
   nowMs = Date.now(),
+  options?: GetHomeHeroOptions,
 ): Promise<SlimAnime[]> {
-  const pool = await getHomeHeroPoolWithDeps(deps, nowMs);
+  const pool = await getHomeHeroPoolWithDeps(deps, nowMs, options);
   return selectHeroSlidesForWindow(pool, nowMs, MAX_HERO_SLIDES);
 }
 
-export async function getHomeHeroItems(nowMs = Date.now()): Promise<SlimAnime[]> {
-  return getHomeHeroItemsWithDeps(defaultHomeHeroDeps, nowMs);
+export async function getHomeHeroItems(
+  nowMs = Date.now(),
+  options?: GetHomeHeroOptions,
+): Promise<SlimAnime[]> {
+  return getHomeHeroItemsWithDeps(defaultHomeHeroDeps, nowMs, options);
 }

@@ -17,6 +17,7 @@ import {
   scheduleRedisBackgroundWrite,
   setRedisHomeTrending,
   type HomeTrendingPayload,
+  type RedisEvalClient,
   type RedisHomeTrendingReadResult,
   type RedisScopedWriteStatus,
 } from "@/lib/redis";
@@ -948,9 +949,14 @@ let staleTrendingPayload: HomeTrendingPayload | null = null;
 let trendingInFlight: Promise<HomeTrendingPayload | null> | null = null;
 let trendingEpoch = 0;
 
-export function invalidateHomeTrendingLocalCache(): void {
+export function invalidateHomeTrendingLocalCache(options?: {
+  preserveStale?: boolean;
+}): void {
   trendingEpoch += 1;
   ramTrendingPayload = null;
+  if (!options?.preserveStale) {
+    staleTrendingPayload = null;
+  }
   trendingInFlight = null;
 }
 
@@ -960,6 +966,13 @@ export function invalidateHomeTrendingCache(): void {
     invalidateRedisHomeTrending(),
     "invalidateRedisHomeTrending",
   );
+}
+
+export async function invalidateHomeTrendingCacheAsync(
+  redisOverride?: RedisEvalClient | null,
+): Promise<void> {
+  invalidateHomeTrendingLocalCache();
+  await invalidateRedisHomeTrending(redisOverride).catch(() => {});
 }
 
 export function resetHomeTrendingTestState(): void {
@@ -1270,8 +1283,8 @@ export async function getHomeTrendingPayloadWithDeps(
         getTodayRangeSaoPaulo(new Date(redisRead.payload.generatedAt)).todayKey ===
           currentDayKey
       ) {
-        staleTrendingPayload = redisRead.payload;
         if (requestEpoch === trendingEpoch) {
+          staleTrendingPayload = redisRead.payload;
           ramTrendingPayload = {
             payload: redisRead.payload,
             timestamp: Date.now(),
@@ -1329,8 +1342,8 @@ export async function getHomeTrendingPayloadWithDeps(
         MAX_HOME_TRENDING_CACHE_ITEMS,
       );
 
-      staleTrendingPayload = payload;
       if (requestEpoch === trendingEpoch) {
+        staleTrendingPayload = payload;
         ramTrendingPayload = {
           payload,
           timestamp: Date.now(),

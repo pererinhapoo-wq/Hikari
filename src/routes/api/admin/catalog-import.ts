@@ -5,7 +5,7 @@ import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { withTransaction } from "@/lib/db";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
-import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
+import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
 import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { syncCatalogEpisodeSlotsToSources } from "@/lib/sources";
 import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
@@ -540,7 +540,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
 
           // Invalida cache de episódios e catálogo dos animes afetados
           await invalidateCatalogEpisodesCacheAsync(...Array.from(affectedAnimeIds));
-          invalidateHomePublicEpisodesCache();
+          await invalidateHomePublicEpisodesCacheAsync({ skipHeroAndTrending: true });
           await invalidateServerCatalogCachesAsync();
 
           return Response.json({

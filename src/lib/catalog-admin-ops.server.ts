@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withTransaction } from "@/lib/db";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
-import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
+import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
 import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { resolveCatalogAnimeMediaWrite } from "@/lib/types";
@@ -575,7 +575,10 @@ export async function executeAdminUpsertCatalogAnime(
       .map((v) => (typeof v === "number" ? String(v) : v ?? undefined))
       .filter((v): v is string => Boolean(v)),
   );
-  invalidateHomePublicEpisodesCache();
+  await invalidateHomePublicEpisodesCacheAsync({
+    skipHeroAndTrending: true,
+    redisOverride: options?.redisOverride,
+  });
 
   await invalidateServerCatalogCachesAsync(
     canonicalSavedId,
@@ -803,7 +806,10 @@ export async function executeAdminArchiveCatalogAnime(
   ];
   await invalidateCatalogEpisodesCacheAsync(...epInvalidationIds);
   if (archiveResult.found) {
-    invalidateHomePublicEpisodesCache();
+    await invalidateHomePublicEpisodesCacheAsync({
+      skipHeroAndTrending: true,
+      redisOverride: options?.redisOverride,
+    });
   }
   await invalidateServerCatalogCachesAsync(
     archiveResult.targetId,

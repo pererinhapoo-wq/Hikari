@@ -1,10 +1,14 @@
 import { getSql } from "@/lib/db";
-import { invalidatePublicCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import {
+  invalidatePublicCatalogEpisodesCache,
+  invalidatePublicCatalogEpisodesCacheAsync,
+} from "@/lib/catalog-episodes";
 import {
   getRedisHomePublicEpisodesWithFence,
   setRedisHomePublicEpisodes,
   invalidateRedisHomePublicEpisodes,
   scheduleRedisBackgroundWrite,
+  type RedisEvalClient,
 } from "@/lib/redis";
 
 export interface HomeEpisodeRow {
@@ -73,6 +77,30 @@ export function invalidateHomePublicEpisodesCache(): void {
   import("@/lib/home-trending.server")
     .then((m) => m.invalidateHomeTrendingCache())
     .catch(() => {});
+}
+
+export async function invalidateHomePublicEpisodesCacheAsync(options?: {
+  skipHeroAndTrending?: boolean;
+  redisOverride?: RedisEvalClient | null;
+}): Promise<void> {
+  homePublicEpisodesCacheEpoch += 1;
+  cachedHomePublicEpisodesResult = null;
+  homePublicEpisodesInFlightPromise = null;
+
+  await Promise.allSettled([
+    invalidateRedisHomePublicEpisodes(),
+    invalidatePublicCatalogEpisodesCacheAsync(),
+    ...(options?.skipHeroAndTrending
+      ? []
+      : [
+          import("@/lib/home-hero.server").then((m) =>
+            m.invalidateHomeHeroCacheAsync(options?.redisOverride),
+          ),
+          import("@/lib/home-trending.server").then((m) =>
+            m.invalidateHomeTrendingCacheAsync(options?.redisOverride),
+          ),
+        ]),
+  ]);
 }
 
 async function queryHomePublicEpisodesFromDb(

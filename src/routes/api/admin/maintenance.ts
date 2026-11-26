@@ -9,7 +9,7 @@ import {
   invalidatePublicSettingsCache,
 } from "@/lib/settings/settings.server";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
-import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
+import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
 import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 
 const updateMaintenanceSchema = z.object({
@@ -325,7 +325,9 @@ export const Route = createFileRoute("/api/admin/maintenance")({
 
             if (payload.target === "episodes" || payload.target === "all") {
               await invalidateCatalogEpisodesCacheAsync();
-              invalidateHomePublicEpisodesCache();
+              await invalidateHomePublicEpisodesCacheAsync({
+                skipHeroAndTrending: payload.target === "all",
+              });
               cleared.push("Cache de Episódios em Memória");
             }
 

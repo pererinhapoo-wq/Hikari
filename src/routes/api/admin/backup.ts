@@ -9,7 +9,7 @@ import {
   invalidatePublicSettingsCache,
 } from "@/lib/settings/settings.server";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
-import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
+import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
 import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { syncCatalogEpisodeSlotsToSources } from "@/lib/sources";
@@ -764,7 +764,7 @@ export const Route = createFileRoute("/api/admin/backup")({
 
             // Invalidação geral de caches
             await invalidateCatalogEpisodesCacheAsync(...Array.from(affectedAnimeIds));
-            invalidateHomePublicEpisodesCache();
+            await invalidateHomePublicEpisodesCacheAsync({ skipHeroAndTrending: true });
             await invalidateServerCatalogCachesAsync(undefined, {
               extraIds: Array.from(affectedAnimeIds),
             });

@@ -3,7 +3,7 @@ import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolati
 import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { getSql, withTransaction } from "@/lib/db";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
-import { invalidateHomePublicEpisodesCache } from "@/lib/home-episodes";
+import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
 import {
   animeAdminPostSchema,
   executeAdminArchiveCatalogAnime,
@@ -195,7 +195,7 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
 
             await invalidateCatalogEpisodesCacheAsync(...Array.from(seasonAliases));
             if (seasonResult.sRes.length > 0 || seasonResult.epRes.length > 0) {
-              invalidateHomePublicEpisodesCache();
+              await invalidateHomePublicEpisodesCacheAsync();
             }
 
             return Response.json({
