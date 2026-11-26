@@ -998,6 +998,16 @@ export function scoreAndDeduplicateHeroCandidates(
   return deduped;
 }
 
+const HERO_SOURCE_POOL_QUOTA = Math.floor(MAX_HERO_POOL_SIZE / 2);
+
+function isPoolItemEmAlta(item: HeroBannerPoolItem): boolean {
+  return item.isEmAlta === true || item.bucket === "em_alta";
+}
+
+function isPoolItemCalendarToday(item: HeroBannerPoolItem): boolean {
+  return item.isCalendarToday === true || item.bucket === "calendario";
+}
+
 export function buildHeroBannerPool(
   candidates: ScoredHeroCandidate[],
   nowMs: number,
@@ -1005,67 +1015,97 @@ export function buildHeroBannerPool(
   const poolItems: HeroBannerPoolItem[] = [];
   const usedIds = new Set<string>();
 
-  const populateTier = (tierCandidates: ScoredHeroCandidate[]) => {
-    if (tierCandidates.length === 0 || poolItems.length >= MAX_HERO_POOL_SIZE) return;
-
-    const addFromGroup = (
-      bucket: HeroBannerBucket,
-      list: ScoredHeroCandidate[],
-      getScore: (c: ScoredHeroCandidate) => number,
-      limit: number,
-    ) => {
-      let added = 0;
-      const ordered = [...list].sort((a, b) => getScore(b) - getScore(a));
-      for (const c of ordered) {
-        if (added >= limit || poolItems.length >= MAX_HERO_POOL_SIZE) break;
-        if (usedIds.has(c.anime.id)) continue;
-        const score = getScore(c);
-        if (score <= 0) continue;
-
-        usedIds.add(c.anime.id);
-        poolItems.push({
-          anime: c.anime,
-          bucket,
-          score,
-          hasDistinctBanner: c.hasDistinctBanner,
-          titleKey: c.titleKey,
-          rank: poolItems.length + 1,
-        });
-        added += 1;
+  const addFromGroup = (
+    bucket: HeroBannerBucket,
+    list: ScoredHeroCandidate[],
+    getScore: (c: ScoredHeroCandidate) => number,
+    limit: number,
+  ): number => {
+    let added = 0;
+    const ordered = [...list].sort((a, b) => {
+      const diff = getScore(b) - getScore(a);
+      if (diff !== 0) return diff;
+      if (a.hasDistinctBanner !== b.hasDistinctBanner) {
+        return a.hasDistinctBanner ? -1 : 1;
       }
-    };
+      if (a.hasPublishedEpisode !== b.hasPublishedEpisode) {
+        return a.hasPublishedEpisode ? -1 : 1;
+      }
+      return a.anime.id.localeCompare(b.anime.id);
+    });
+    for (const c of ordered) {
+      if (added >= limit || poolItems.length >= MAX_HERO_POOL_SIZE) break;
+      if (usedIds.has(c.anime.id)) continue;
+      const score = getScore(c);
+      if (score <= 0) continue;
 
-    const emAltaCandidates = tierCandidates.filter((c) => c.isEmAlta && c.emAltaScore > 0);
-    const calendarCandidates = tierCandidates.filter(
-      (c) => c.isCalendarToday && c.calendarScore > 0,
-    );
-
-    // Equilibra as duas fontes aprovadas no pool do tier (Em Alta + Calendário)
-    addFromGroup("em_alta", emAltaCandidates, (c) => c.emAltaScore, 12);
-    addFromGroup("calendario", calendarCandidates, (c) => c.calendarScore, 12);
-
-    // Se uma das fontes tiver menos de 12 candidatos, completa a capacidade do pool com os restantes do tier
-    if (poolItems.length < MAX_HERO_POOL_SIZE) {
-      addFromGroup(
-        "em_alta",
-        emAltaCandidates,
-        (c) => c.emAltaScore,
-        MAX_HERO_POOL_SIZE,
-      );
-      addFromGroup(
-        "calendario",
-        calendarCandidates,
-        (c) => c.calendarScore,
-        MAX_HERO_POOL_SIZE,
-      );
+      usedIds.add(c.anime.id);
+      poolItems.push({
+        anime: c.anime,
+        bucket,
+        score,
+        hasDistinctBanner: c.hasDistinctBanner,
+        titleKey: c.titleKey,
+        rank: poolItems.length + 1,
+        isEmAlta: c.isEmAlta,
+        isCalendarToday: c.isCalendarToday,
+      });
+      added += 1;
     }
+    return added;
   };
 
-  // Tier 1: Animes com banner horizontal próprio (sempre priorizados)
-  populateTier(candidates.filter((c) => c.hasDistinctBanner));
-  // Tier 2: Animes apenas com capa vertical (fallback secundário)
+  const distinctCandidates = candidates.filter((c) => c.hasDistinctBanner);
+  const coverOnlyCandidates = candidates.filter((c) => !c.hasDistinctBanner);
+
+  const distinctEmAlta = distinctCandidates.filter((c) => c.isEmAlta && c.emAltaScore > 0);
+  const distinctCalendar = distinctCandidates.filter(
+    (c) => c.isCalendarToday && c.calendarScore > 0,
+  );
+  const coverEmAlta = coverOnlyCandidates.filter((c) => c.isEmAlta && c.emAltaScore > 0);
+  const coverCalendar = coverOnlyCandidates.filter(
+    (c) => c.isCalendarToday && c.calendarScore > 0,
+  );
+
+  // Fase 1: Prioriza banners horizontais próprios mantendo cota equilibrada (até 12 de cada fonte)
+  const emAltaFromDistinct = addFromGroup(
+    "em_alta",
+    distinctEmAlta,
+    (c) => c.emAltaScore,
+    HERO_SOURCE_POOL_QUOTA,
+  );
+  const calendarFromDistinct = addFromGroup(
+    "calendario",
+    distinctCalendar,
+    (c) => c.calendarScore,
+    HERO_SOURCE_POOL_QUOTA,
+  );
+
+  // Fase 2: Se uma fonte não completou sua cota com banners horizontais,
+  // preserva sua participação no pool usando seus candidatos cover-only antes do overflow da outra fonte.
+  if (emAltaFromDistinct < HERO_SOURCE_POOL_QUOTA) {
+    addFromGroup(
+      "em_alta",
+      coverEmAlta,
+      (c) => c.emAltaScore,
+      HERO_SOURCE_POOL_QUOTA - emAltaFromDistinct,
+    );
+  }
+  if (calendarFromDistinct < HERO_SOURCE_POOL_QUOTA) {
+    addFromGroup(
+      "calendario",
+      coverCalendar,
+      (c) => c.calendarScore,
+      HERO_SOURCE_POOL_QUOTA - calendarFromDistinct,
+    );
+  }
+
+  // Fase 3: Completa o restante da capacidade do pool (até 24), priorizando banners horizontais
   if (poolItems.length < MAX_HERO_POOL_SIZE) {
-    populateTier(candidates.filter((c) => !c.hasDistinctBanner));
+    addFromGroup("em_alta", distinctEmAlta, (c) => c.emAltaScore, MAX_HERO_POOL_SIZE);
+    addFromGroup("calendario", distinctCalendar, (c) => c.calendarScore, MAX_HERO_POOL_SIZE);
+    addFromGroup("em_alta", coverEmAlta, (c) => c.emAltaScore, MAX_HERO_POOL_SIZE);
+    addFromGroup("calendario", coverCalendar, (c) => c.calendarScore, MAX_HERO_POOL_SIZE);
   }
 
   return {
@@ -1074,6 +1114,36 @@ export function buildHeroBannerPool(
     generatedAt: nowMs,
     items: poolItems,
   };
+}
+
+function distributeGroupsEvenly(
+  larger: HeroBannerPoolItem[],
+  smaller: HeroBannerPoolItem[],
+): HeroBannerPoolItem[] {
+  if (smaller.length === 0) return larger;
+  if (larger.length === 0) return smaller;
+
+  const total = larger.length + smaller.length;
+  const out: HeroBannerPoolItem[] = [];
+  let li = 0;
+  let si = 0;
+
+  for (let k = 0; k < total; k++) {
+    const prevThreshold = Math.floor((k * smaller.length) / total);
+    const nextThreshold = Math.floor(((k + 1) * smaller.length) / total);
+    if (nextThreshold > prevThreshold && si < smaller.length) {
+      out.push(smaller[si]);
+      si += 1;
+    } else if (li < larger.length) {
+      out.push(larger[li]);
+      li += 1;
+    } else if (si < smaller.length) {
+      out.push(smaller[si]);
+      si += 1;
+    }
+  }
+
+  return out;
 }
 
 function buildInterleavedGroupList(
@@ -1096,16 +1166,12 @@ function buildInterleavedGroupList(
   }
 
   const emAltaGroup = uniqueItems.filter((i) => i.bucket === "em_alta");
-  const publishedGroup = uniqueItems.filter((i) => i.bucket !== "em_alta");
+  const calendarGroup = uniqueItems.filter((i) => i.bucket !== "em_alta");
 
-  const consolidated: HeroBannerPoolItem[] = [];
-  const maxLen = Math.max(emAltaGroup.length, publishedGroup.length);
-  for (let i = 0; i < maxLen; i++) {
-    if (i < emAltaGroup.length) consolidated.push(emAltaGroup[i]);
-    if (i < publishedGroup.length) consolidated.push(publishedGroup[i]);
+  if (emAltaGroup.length >= calendarGroup.length) {
+    return distributeGroupsEvenly(emAltaGroup, calendarGroup);
   }
-
-  return consolidated;
+  return distributeGroupsEvenly(calendarGroup, emAltaGroup);
 }
 
 function rotateSlice(
@@ -1122,6 +1188,102 @@ function rotateSlice(
     out.push(items[(start + i) % len]);
   }
   return out;
+}
+
+function ensureSourcePresenceInSlides(
+  selected: HeroBannerPoolItem[],
+  distinctTier: HeroBannerPoolItem[],
+  coverOnlyTier: HeroBannerPoolItem[],
+  windowIndex: number,
+  keepDistinctAhead: boolean,
+): HeroBannerPoolItem[] {
+  if (selected.length < 2) {
+    return selected;
+  }
+
+  const distinctCalendar = distinctTier.filter(isPoolItemCalendarToday);
+  const coverCalendar = coverOnlyTier.filter(isPoolItemCalendarToday);
+  const distinctEmAlta = distinctTier.filter(isPoolItemEmAlta);
+  const coverEmAlta = coverOnlyTier.filter(isPoolItemEmAlta);
+
+  const hasCalendarInPool = distinctCalendar.length + coverCalendar.length > 0;
+  const hasEmAltaInPool = distinctEmAlta.length + coverEmAlta.length > 0;
+
+  if (!hasCalendarInPool || !hasEmAltaInPool) {
+    return selected;
+  }
+
+  const desiredBaseline = selected.length >= 6 ? 2 : 1;
+
+  // Para não rebaixar a prioridade de banners horizontais quando a própria fonte os possui,
+  // garante participação usando o tier distinto da fonte quando disponível, ou cover-only caso contrário.
+  const calendarSourceList = distinctCalendar.length > 0 ? distinctCalendar : coverCalendar;
+  const emAltaSourceList = distinctEmAlta.length > 0 ? distinctEmAlta : coverEmAlta;
+
+  const minCalendar = Math.min(calendarSourceList.length, desiredBaseline);
+  const minEmAlta = Math.min(emAltaSourceList.length, desiredBaseline);
+
+  const result = [...selected];
+
+  const topUpSource = (
+    sourcePool: HeroBannerPoolItem[],
+    isTargetSource: (item: HeroBannerPoolItem) => boolean,
+    isOtherSource: (item: HeroBannerPoolItem) => boolean,
+    targetCount: number,
+    otherMinCount: number,
+  ) => {
+    const currentCount = result.filter(isTargetSource).length;
+    const needed = targetCount - currentCount;
+    if (needed <= 0) return;
+
+    const presentIds = new Set(result.map((item) => item.anime.id));
+    const missing = sourcePool.filter((item) => !presentIds.has(item.anime.id));
+    if (missing.length === 0) return;
+
+    const additions = rotateSlice(missing, needed, windowIndex);
+    let otherCount = result.filter(isOtherSource).length;
+
+    for (const addition of additions) {
+      let replaceIdx = -1;
+      // Substitui sempre a partir do final (nunca a posição [0], preservando a rotação principal)
+      for (let i = result.length - 1; i >= 1; i--) {
+        const candidate = result[i];
+        if (isTargetSource(candidate)) continue;
+        if (isOtherSource(candidate) && otherCount - 1 < otherMinCount) continue;
+        replaceIdx = i;
+        break;
+      }
+      if (replaceIdx === -1) break;
+      if (isOtherSource(result[replaceIdx])) {
+        otherCount -= 1;
+      }
+      result[replaceIdx] = addition;
+    }
+  };
+
+  topUpSource(
+    calendarSourceList,
+    isPoolItemCalendarToday,
+    isPoolItemEmAlta,
+    minCalendar,
+    minEmAlta,
+  );
+  topUpSource(
+    emAltaSourceList,
+    isPoolItemEmAlta,
+    isPoolItemCalendarToday,
+    minEmAlta,
+    minCalendar,
+  );
+
+  if (!keepDistinctAhead) {
+    return result;
+  }
+
+  // Preserva banners horizontais distintos à frente dos fallbacks cover-only
+  const distinctSelected = result.filter((item) => item.hasDistinctBanner);
+  const coverSelected = result.filter((item) => !item.hasDistinctBanner);
+  return [...distinctSelected, ...coverSelected];
 }
 
 export function selectHeroSlidesForWindow(
@@ -1150,14 +1312,21 @@ export function selectHeroSlidesForWindow(
     usedTitleKeys,
   );
 
-  // Quando há >= 2 banners horizontais distintos, rotaciona-os de forma consolidada
-  // mantendo todos antes dos fallbacks cover-only e variando a posição [0] entre janelas.
+  // Quando há >= 2 banners horizontais distintos, rotaciona-os mantendo-os à frente
+  // dos fallbacks cover-only e garantindo participação efetiva de Calendário + Em Alta nos slides finais.
   if (distinctTier.length >= 2) {
     const selectedDistinct = rotateSlice(distinctTier, targetMax, windowIndex);
     const remaining = targetMax - selectedDistinct.length;
     const selectedCover =
       remaining > 0 ? rotateSlice(coverOnlyTier, remaining, windowIndex) : [];
-    return [...selectedDistinct, ...selectedCover].map((item) => item.anime);
+    const selected = ensureSourcePresenceInSlides(
+      [...selectedDistinct, ...selectedCover],
+      distinctTier,
+      coverOnlyTier,
+      windowIndex,
+      true,
+    );
+    return selected.map((item) => item.anime);
   }
 
   // Quando há apenas 0 ou 1 banner horizontal distinto, consolida ambos os tiers na mesma lista
@@ -1170,7 +1339,14 @@ export function selectHeroSlidesForWindow(
     return [consolidated[0].anime];
   }
 
-  return rotateSlice(consolidated, targetMax, windowIndex).map((item) => item.anime);
+  const selected = ensureSourcePresenceInSlides(
+    rotateSlice(consolidated, targetMax, windowIndex),
+    distinctTier,
+    coverOnlyTier,
+    windowIndex,
+    false,
+  );
+  return selected.map((item) => item.anime);
 }
 
 // Estado do cache local em memória (processo Node / Serverless)

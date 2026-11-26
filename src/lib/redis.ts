@@ -3724,6 +3724,8 @@ export interface HeroBannerPoolItem {
   hasDistinctBanner: boolean;
   titleKey: string;
   rank: number;
+  isEmAlta?: boolean;
+  isCalendarToday?: boolean;
 }
 
 export interface HeroBannerPoolPayload {

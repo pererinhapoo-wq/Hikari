@@ -1201,4 +1201,197 @@ describe("home-hero Calendar + Em Alta composition, daily rollover, rotation & c
     );
     assert.equal(noEpisodeResult.length, 3);
   });
+
+  it("14. ensures today Calendar animes (airing schedule & weekly recurrence) effectively appear in final slides alongside Em Alta across all windows without auto-including newly published animes", async () => {
+    const t0 = Date.UTC(2026, 4, 15, 15, 0, 0);
+
+    // Cenário 14a: Em Alta tem 14 animes com banner distinto; Calendário de hoje tem apenas 3 cover-only (banner: null).
+    // Regressão anterior: distinctTier (>= 8 itens de Em Alta) consumia todos os 8 slots e excluía 100% do Calendário dos slides finais.
+    const emAltaDistinctRows = Array.from({ length: 14 }, (_, i) =>
+      makeCandidateRow(
+        {
+          id: String(970001 + i),
+          title: `Em Alta ${i + 1}`,
+          banner: `https://cdn.example.com/banner-${970001 + i}.jpg`,
+          popularity: 120000 - i * 1000,
+          score: 88 - (i % 5),
+        },
+        t0,
+      ),
+    );
+    const emAltaTrending = emAltaDistinctRows.map((r) =>
+      makeTrendingSlim({
+        id: r.id,
+        anilistId: Number(r.id),
+        banner: r.banner ?? "",
+        popularity: r.popularity ?? 0,
+        score: r.score ?? 80,
+      }),
+    );
+
+    const calendarCoverOnlyRows: HeroCatalogAnimeCandidateRow[] = [
+      makeCandidateRow(
+        {
+          id: "971001",
+          title: "Calendario Grade Hoje Cover",
+          banner: null,
+          hasTodayAiringSchedule: true,
+          publishedEpisodeCount: 0,
+          ep1Sources: [],
+          epSources: [],
+        },
+        t0,
+      ),
+      makeCandidateRow(
+        {
+          id: "971002",
+          title: "Calendario Recorrente Hoje Cover",
+          banner: null,
+          hasTodayWeeklyRecurrence: true,
+          publishedEpisodeCount: 0,
+          ep1Sources: [],
+          epSources: [],
+        },
+        t0,
+      ),
+      makeCandidateRow(
+        {
+          id: "971003",
+          title: "Calendario Grade Hoje Cover 2",
+          banner: null,
+          hasTodayAiringSchedule: true,
+        },
+        t0,
+      ),
+    ];
+
+    // Anime recém-publicado (fora do Calendário de hoje e fora do Em Alta) NÃO pode entrar nos slides finais
+    const newlyPublishedNonCalendar = makeCandidateRow(
+      {
+        id: "979999",
+        title: "Recem Publicado Nao Elegivel",
+        createdAt: new Date(t0 - 5 * 60 * 1000).toISOString(),
+        latestEpisodePublishedAt: new Date(t0 - 2 * 60 * 1000).toISOString(),
+        score: 99,
+        popularity: 500000,
+        hasTodayAiringSchedule: false,
+        hasTodayWeeklyRecurrence: false,
+      },
+      t0,
+    );
+
+    const deps14a: HomeHeroDeps = {
+      getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
+      setRedisPool: async () => "unavailable",
+      scheduleWrite: () => {},
+      getTrendingItems: async () => emAltaTrending,
+      queryCatalog: async () => [...emAltaDistinctRows, ...calendarCoverOnlyRows, newlyPublishedNonCalendar],
+    };
+
+    const calendarCoverIds = new Set(calendarCoverOnlyRows.map((r) => r.id));
+    const emAltaIds = new Set(emAltaDistinctRows.map((r) => r.id));
+    const leadIdsAcrossWindows: string[] = [];
+
+    for (let w = 0; w < 6; w++) {
+      const slides = await getHomeHeroItemsWithDeps(deps14a, t0 + w * HERO_ROTATION_WINDOW_MS);
+      assert.equal(slides.length, MAX_HERO_SLIDES);
+      const slideIds = slides.map((s) => s.id);
+      assert.equal(new Set(slideIds).size, MAX_HERO_SLIDES, "Final slides must be unique");
+      assert.ok(!slideIds.includes("979999"), "Newly published non-Calendar/non-Em-Alta anime must never enter slides");
+
+      const calCount = slideIds.filter((id) => calendarCoverIds.has(id)).length;
+      const emAltaCount = slideIds.filter((id) => emAltaIds.has(id)).length;
+      assert.ok(calCount >= 2, `Window ${w} must include at least 2 today Calendar slides, got ${calCount}`);
+      assert.ok(emAltaCount >= 2, `Window ${w} must include Em Alta slides, got ${emAltaCount}`);
+      leadIdsAcrossWindows.push(slides[0].id);
+    }
+    assert.ok(new Set(leadIdsAcrossWindows).size > 1, "Position [0] must rotate across windows");
+
+    // Cenário 14b: Calendário tem apenas 2 banners distintos vs 12 banners distintos do Em Alta, sendo 1 em comum (dual-source).
+    // Nenhum ciclo de 15 min deve eliminar todo o Calendário dos slides finais e a duplicata só aparece 1x.
+    resetHomeHeroTestState();
+    const emAlta12 = Array.from({ length: 12 }, (_, i) =>
+      makeCandidateRow(
+        {
+          id: String(980001 + i),
+          title: `Em Alta B ${i + 1}`,
+          banner: `https://cdn.example.com/banner-${980001 + i}.jpg`,
+          hasTodayAiringSchedule: i === 0, // 980001 está tanto no Em Alta quanto no Calendário
+        },
+        t0,
+      ),
+    );
+    const calWeeklyExtra = makeCandidateRow(
+      {
+        id: "981001",
+        title: "Calendario Recorrencia Unica",
+        banner: "https://cdn.example.com/banner-981001.jpg",
+        hasTodayWeeklyRecurrence: true,
+      },
+      t0,
+    );
+    const deps14b: HomeHeroDeps = {
+      getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
+      setRedisPool: async () => "unavailable",
+      scheduleWrite: () => {},
+      getTrendingItems: async () =>
+        emAlta12.map((r) =>
+          makeTrendingSlim({
+            id: r.id,
+            anilistId: Number(r.id),
+            banner: r.banner ?? "",
+          }),
+        ),
+      queryCatalog: async () => [...emAlta12, calWeeklyExtra],
+    };
+
+    const allCalendarIds14b = new Set(["980001", "981001"]);
+    const seenCalendarInSlides = new Set<string>();
+    for (let w = 0; w < 14; w++) {
+      const slides = await getHomeHeroItemsWithDeps(deps14b, t0 + w * HERO_ROTATION_WINDOW_MS);
+      assert.equal(slides.length, MAX_HERO_SLIDES);
+      const slideIds = slides.map((s) => s.id);
+      assert.equal(new Set(slideIds).size, MAX_HERO_SLIDES, "Overlap dual-source anime must appear at most once");
+      const calHits = slideIds.filter((id) => allCalendarIds14b.has(id));
+      assert.ok(calHits.length >= 1, `Window ${w} eliminated all Calendar animes from final slides`);
+      for (const id of calHits) seenCalendarInSlides.add(id);
+    }
+    assert.ok(seenCalendarInSlides.has("980001"));
+    assert.ok(seenCalendarInSlides.has("981001"));
+
+    // Cenário 14c: Simetria inversa — Calendário com 12 banners distintos e Em Alta com apenas cover-only continua preservando Em Alta nos slides finais
+    resetHomeHeroTestState();
+    const cal12Distinct = Array.from({ length: 12 }, (_, i) =>
+      makeCandidateRow(
+        {
+          id: String(990001 + i),
+          title: `Cal Distinct ${i + 1}`,
+          banner: `https://cdn.example.com/banner-${990001 + i}.jpg`,
+          hasTodayAiringSchedule: true,
+        },
+        t0,
+      ),
+    );
+    const emAltaCoverOnly = [
+      makeCandidateRow({ id: "995001", title: "Em Alta Cover 1", banner: null }, t0),
+      makeCandidateRow({ id: "995002", title: "Em Alta Cover 2", banner: null }, t0),
+    ];
+    const slides14c = await getHomeHeroItemsWithDeps(
+      {
+        getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
+        setRedisPool: async () => "unavailable",
+        scheduleWrite: () => {},
+        getTrendingItems: async () =>
+          emAltaCoverOnly.map((r) =>
+            makeTrendingSlim({ id: r.id, anilistId: Number(r.id), banner: "" }),
+          ),
+        queryCatalog: async () => [...cal12Distinct, ...emAltaCoverOnly],
+      },
+      t0,
+    );
+    assert.equal(slides14c.length, MAX_HERO_SLIDES);
+    assert.ok(slides14c.some((s) => s.id === "995001" || s.id === "995002"));
+    assert.ok(slides14c.some((s) => s.id.startsWith("9900")));
+  });
 });
+
