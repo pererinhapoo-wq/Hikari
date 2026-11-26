@@ -15,6 +15,7 @@ import {
   Loader2,
   LogIn,
   Menu,
+  MessageSquare,
   Search,
   Settings2,
   Tags,
@@ -124,6 +125,40 @@ function useNotificationPanelPresence(open: boolean, exitMs = 170) {
     mounted: open || mounted,
     visible: open,
     closing: !open && mounted,
+  };
+}
+
+function useDrawerPresence(open: boolean, exitMs = 200) {
+  const [mounted, setMounted] = useState(open);
+  const [visible, setVisible] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      let secondFrameId: number | null = null;
+      const firstFrameId = window.requestAnimationFrame(() => {
+        secondFrameId = window.requestAnimationFrame(() => {
+          setVisible(true);
+        });
+      });
+      return () => {
+        window.cancelAnimationFrame(firstFrameId);
+        if (secondFrameId !== null) {
+          window.cancelAnimationFrame(secondFrameId);
+        }
+      };
+    }
+
+    setVisible(false);
+    const timer = window.setTimeout(() => {
+      setMounted(false);
+    }, exitMs);
+    return () => window.clearTimeout(timer);
+  }, [open, exitMs]);
+
+  return {
+    mounted: open || mounted,
+    visible,
   };
 }
 
@@ -742,6 +777,7 @@ export function Shell() {
 
   const notificationsPanel =
     useNotificationPanelPresence(notificationsOpen, 170);
+  const drawerPanel = useDrawerPresence(menuOpen, 200);
   const notificationsPresentationReady = useNotificationsPresentationReady();
 
   useIsomorphicLayoutEffect(() => {
@@ -792,10 +828,28 @@ export function Shell() {
   const notificationsSentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    setMenuOpen(false);
     setNotificationsOpen(false);
     setSearchOpen(false);
     setLoginModalOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     if (!notificationsOpen) {
@@ -1913,128 +1967,165 @@ export function Shell() {
       {/* =========================================================
           MENU LATERAL
       ========================================================== */}
-      {menuOpen && (
+      {drawerPanel.mounted && (
         <>
           <button
             type="button"
-            onClick={() =>
-              setMenuOpen(false)
-            }
-            className="fixed inset-0 z-50 bg-black/60"
+            onClick={() => setMenuOpen(false)}
+            className={cn(
+              "fixed inset-0 z-50 bg-black/70 backdrop-blur-[3px]",
+              "motion-safe:transition-opacity motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+              drawerPanel.visible
+                ? "opacity-100"
+                : "pointer-events-none opacity-0",
+            )}
             aria-label="Fechar menu"
           />
 
-          <aside className="fixed inset-y-0 left-0 z-[60] w-[82%] max-w-sm overflow-y-auto bg-bg shadow-2xl">
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu de navegação"
+            className={cn(
+              "fixed inset-y-0 left-0 z-[60] flex w-[min(84vw,20.5rem)] flex-col overflow-hidden border-r border-purple-500/20 bg-gradient-to-b from-[#0e0b1a] via-[#090811] to-[#06050a] text-zinc-100 shadow-[20px_0_60px_rgba(0,0,0,0.85)] backdrop-blur-2xl",
+              "motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+              drawerPanel.visible
+                ? "translate-x-0"
+                : "pointer-events-none -translate-x-full",
+            )}
+          >
+            {/* Brilho sutil de acento violeta no topo */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-400/60 to-transparent"
+            />
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -top-20 -left-20 size-52 rounded-full bg-purple-600/[0.08] blur-3xl"
+            />
 
             {/* CABEÇALHO DO MENU */}
-            <div className="flex h-20 items-center justify-between border-b border-border px-5">
+            <div className="relative flex h-16 shrink-0 items-center justify-between border-b border-white/[0.07] px-5 sm:h-[78px]">
               <div onClick={() => setMenuOpen(false)}>
                 <Logo size="lg" />
               </div>
 
               <button
                 type="button"
-                onClick={() =>
-                  setMenuOpen(false)
-                }
-                className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
+                onClick={() => setMenuOpen(false)}
+                className={cn(
+                  "flex size-11 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-zinc-400",
+                  "[@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/30 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-500/12 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white",
+                  "motion-safe:transition-[background-color,border-color,color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
+                )}
                 aria-label="Fechar menu"
               >
-                <X className="size-6" />
+                <X className="size-5" />
               </button>
             </div>
 
-            <nav className="p-4">
-
-              {/* =================================================
-                  NAVEGAÇÃO
-              ================================================== */}
-              <div>
-                <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
-                  Navegação
-                </p>
-
-                <div className="space-y-1">
-                  {/* Início */}
+            <nav
+              aria-label="Menu principal"
+              className="flex-1 overflow-y-auto overscroll-contain px-3.5 py-4 custom-scrollbar"
+            >
+              <ul className="space-y-1.5">
+                {/* 1. Início */}
+                <li>
                   <Link
                     to="/"
                     onClick={() => setMenuOpen(false)}
                     className={cn(
-                      "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
+                      "group relative flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border px-3 py-2.5 text-[15px] tracking-[-0.01em]",
+                      "motion-safe:transition-[background-color,border-color,color,box-shadow] motion-safe:duration-150 motion-reduce:transition-none",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
                       pathname === "/"
-                        ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                        : "text-muted hover:bg-elevated hover:text-fg",
+                        ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)]"
+                        : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/[0.06]",
                     )}
                   >
-                    <House className="size-5" />
-                    <span>Início</span>
+                    <span
+                      className={cn(
+                        "flex size-9 shrink-0 items-center justify-center rounded-lg border",
+                        "motion-safe:transition-[background-color,border-color,color] motion-safe:duration-150 motion-reduce:transition-none",
+                        pathname === "/"
+                          ? "border-purple-400/35 bg-purple-500/25 text-purple-200 shadow-[0_0_14px_rgba(168,85,247,0.22)]"
+                          : "border-white/[0.06] bg-white/[0.035] text-zinc-400 [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/25 [@media(hover:hover)_and_(pointer:fine)]:group-hover:bg-purple-500/15 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-200",
+                      )}
+                    >
+                      <House className="size-[18px]" />
+                    </span>
+                    <span className="truncate whitespace-nowrap">Início</span>
                   </Link>
+                </li>
 
-                  {/* Calendário */}
-                  {settings.modules.calendar && (
+                {/* 2. Calendário */}
+                {settings.modules.calendar && (
+                  <li>
                     <Link
                       to="/calendar"
                       onClick={() => setMenuOpen(false)}
                       className={cn(
-                        "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
+                        "group relative flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border px-3 py-2.5 text-[15px] tracking-[-0.01em]",
+                        "motion-safe:transition-[background-color,border-color,color,box-shadow] motion-safe:duration-150 motion-reduce:transition-none",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
                         pathname.startsWith("/calendar")
-                          ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                          : "text-muted hover:bg-elevated hover:text-fg",
+                          ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)]"
+                          : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/[0.06]",
                       )}
                     >
-                      <Calendar className="size-5" />
-                      <span>Calendário</span>
+                      <span
+                        className={cn(
+                          "flex size-9 shrink-0 items-center justify-center rounded-lg border",
+                          "motion-safe:transition-[background-color,border-color,color] motion-safe:duration-150 motion-reduce:transition-none",
+                          pathname.startsWith("/calendar")
+                            ? "border-purple-400/35 bg-purple-500/25 text-purple-200 shadow-[0_0_14px_rgba(168,85,247,0.22)]"
+                            : "border-white/[0.06] bg-white/[0.035] text-zinc-400 [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/25 [@media(hover:hover)_and_(pointer:fine)]:group-hover:bg-purple-500/15 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-200",
+                        )}
+                      >
+                        <Calendar className="size-[18px]" />
+                      </span>
+                      <span className="truncate whitespace-nowrap">Calendário</span>
                     </Link>
+                  </li>
+                )}
+
+                {/* 3. Admin */}
+                {user &&
+                  (isServerVerifiedAdmin ||
+                    user.isAdmin ||
+                    isHikariAdmin(user.primaryEmail)) && (
+                    <li>
+                      <Link
+                        to="/admin"
+                        onClick={() => setMenuOpen(false)}
+                        className={cn(
+                          "group relative flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border px-3 py-2.5 text-[15px] tracking-[-0.01em]",
+                          "motion-safe:transition-[background-color,border-color,color,box-shadow] motion-safe:duration-150 motion-reduce:transition-none",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
+                          pathname.startsWith("/admin")
+                            ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)]"
+                            : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/[0.06]",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "flex size-9 shrink-0 items-center justify-center rounded-lg border",
+                            "motion-safe:transition-[background-color,border-color,color] motion-safe:duration-150 motion-reduce:transition-none",
+                            pathname.startsWith("/admin")
+                              ? "border-purple-400/35 bg-purple-500/25 text-purple-200 shadow-[0_0_14px_rgba(168,85,247,0.22)]"
+                              : "border-white/[0.06] bg-white/[0.035] text-zinc-400 [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/25 [@media(hover:hover)_and_(pointer:fine)]:group-hover:bg-purple-500/15 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-200",
+                          )}
+                        >
+                          <Settings2 className="size-[18px]" />
+                        </span>
+                        <span className="truncate whitespace-nowrap">Admin</span>
+                      </Link>
+                    </li>
                   )}
 
-                  {!user && !authPending && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setLoginModalMode("login");
-                        setLoginModalOpen(true);
-                      }}
-                      onFocus={() => void prefetchLoginMenu()}
-                      onPointerDown={(e) => {
-                        if (e.button === 0) void prefetchLoginMenu();
-                      }}
-                      className="flex w-full items-center gap-4 rounded-xl px-4 py-3.5 text-base font-semibold text-[#c084fc] [@media(hover:hover)_and_(pointer:fine)]:hover:bg-elevated transition-colors motion-reduce:transition-none text-left"
-                    >
-                      <LogIn className="size-5" />
-                      <span>Entrar</span>
-                    </button>
-                  )}
-
-                  {user && (isServerVerifiedAdmin || user.isAdmin || isHikariAdmin(user.primaryEmail)) && (
-                    <Link
-                      to="/admin"
-                      onClick={() => setMenuOpen(false)}
-                      className={cn(
-                        "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
-                        pathname.startsWith("/admin")
-                          ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                          : "text-muted hover:bg-elevated hover:text-fg",
-                      )}
-                    >
-                      <Settings2 className="size-5" />
-                      <span>Admin</span>
-                    </Link>
-                  )}
-
-                </div>
-              </div>
-
-              {/* =================================================
-                  ANIMES
-              ================================================== */}
-              <div className="mt-6">
-                <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
-                  Catálogo
-                </p>
-
-                <div className="space-y-1">
-
+                {/* 4. Temporadas */}
+                <li>
                   <Link
                     to="/browse/$section"
                     params={{ section: "season" }}
@@ -2043,49 +2134,103 @@ export function Shell() {
                       year: currentSeasonInfo.year,
                       page: 1,
                     }}
-                    onClick={() =>
-                      setMenuOpen(false)
-                    }
+                    onClick={() => setMenuOpen(false)}
                     className={cn(
-                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                      "group relative flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border px-3 py-2.5 text-[15px] tracking-[-0.01em]",
+                      "motion-safe:transition-[background-color,border-color,color,box-shadow] motion-safe:duration-150 motion-reduce:transition-none",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
                       isOnSeasonRoute
-                        ? "bg-elevated text-fg"
-                        : "text-muted hover:bg-elevated hover:text-fg",
+                        ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)]"
+                        : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/[0.06]",
                     )}
                   >
-                    <CalendarDays className="size-5" />
-
-                    <span>
-                      Temporadas
+                    <span
+                      className={cn(
+                        "flex size-9 shrink-0 items-center justify-center rounded-lg border",
+                        "motion-safe:transition-[background-color,border-color,color] motion-safe:duration-150 motion-reduce:transition-none",
+                        isOnSeasonRoute
+                          ? "border-purple-400/35 bg-purple-500/25 text-purple-200 shadow-[0_0_14px_rgba(168,85,247,0.22)]"
+                          : "border-white/[0.06] bg-white/[0.035] text-zinc-400 [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/25 [@media(hover:hover)_and_(pointer:fine)]:group-hover:bg-purple-500/15 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-200",
+                      )}
+                    >
+                      <CalendarDays className="size-[18px]" />
                     </span>
+                    <span className="truncate whitespace-nowrap">Temporadas</span>
                   </Link>
+                </li>
 
+                {/* 5. Gêneros */}
+                <li>
                   <Link
                     to="/browse/$section"
                     params={{ section: "genres" }}
-                    onClick={() =>
-                      setMenuOpen(false)
-                    }
+                    onClick={() => setMenuOpen(false)}
                     className={cn(
-                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                      pathname.startsWith(
-                        "/browse/genres",
-                      )
-                        ? "bg-elevated text-fg"
-                        : "text-muted hover:bg-elevated hover:text-fg",
+                      "group relative flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border px-3 py-2.5 text-[15px] tracking-[-0.01em]",
+                      "motion-safe:transition-[background-color,border-color,color,box-shadow] motion-safe:duration-150 motion-reduce:transition-none",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
+                      pathname.startsWith("/browse/genres")
+                        ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)]"
+                        : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/[0.06]",
                     )}
                   >
-                    <Tags className="size-5" />
-
-                    <span>
-                      Gêneros
+                    <span
+                      className={cn(
+                        "flex size-9 shrink-0 items-center justify-center rounded-lg border",
+                        "motion-safe:transition-[background-color,border-color,color] motion-safe:duration-150 motion-reduce:transition-none",
+                        pathname.startsWith("/browse/genres")
+                          ? "border-purple-400/35 bg-purple-500/25 text-purple-200 shadow-[0_0_14px_rgba(168,85,247,0.22)]"
+                          : "border-white/[0.06] bg-white/[0.035] text-zinc-400 [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/25 [@media(hover:hover)_and_(pointer:fine)]:group-hover:bg-purple-500/15 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-200",
+                      )}
+                    >
+                      <Tags className="size-[18px]" />
                     </span>
+                    <span className="truncate whitespace-nowrap">Gêneros</span>
                   </Link>
+                </li>
 
-                </div>
-              </div>
-
+                {/* 6. Feedback (apenas apresentação visual nesta etapa) */}
+                <li>
+                  <div
+                    aria-disabled="true"
+                    className="flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border border-transparent px-3 py-2.5 text-[15px] font-medium tracking-[-0.01em] text-zinc-300/85 select-none"
+                  >
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.06] bg-white/[0.035] text-zinc-400">
+                      <MessageSquare className="size-[18px]" />
+                    </span>
+                    <span className="truncate whitespace-nowrap">Feedback</span>
+                  </div>
+                </li>
+              </ul>
             </nav>
+
+            {!user && !authPending && (
+              <div className="shrink-0 border-t border-white/[0.07] bg-black/25 p-3.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setLoginModalMode("login");
+                    setLoginModalOpen(true);
+                  }}
+                  onFocus={() => void prefetchLoginMenu()}
+                  onPointerDown={(e) => {
+                    if (e.button === 0) void prefetchLoginMenu();
+                  }}
+                  className={cn(
+                    "group flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border border-purple-500/25 bg-purple-500/12 px-3 py-2.5 text-left text-[15px] font-semibold tracking-[-0.01em] text-purple-100",
+                    "[@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-400/40 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white",
+                    "motion-safe:transition-[background-color,border-color,color,transform] motion-safe:duration-150 motion-safe:active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
+                  )}
+                >
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-purple-400/30 bg-purple-500/20 text-purple-200 [@media(hover:hover)_and_(pointer:fine)]:group-hover:bg-purple-500/30">
+                    <LogIn className="size-[18px]" />
+                  </span>
+                  <span className="truncate whitespace-nowrap">Entrar</span>
+                </button>
+              </div>
+            )}
           </aside>
         </>
       )}
