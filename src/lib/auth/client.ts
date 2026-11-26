@@ -2,6 +2,7 @@ import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.mjs";
 import { invalidateAllProfileCaches } from "@/lib/profile-client-cache";
+import { useHikariStore } from "@/lib/store";
 import { GROK_PROVIDERS } from "./providers";
 
 /**
@@ -250,6 +251,7 @@ export async function signOut(redirectTo = "/"): Promise<void> {
   if (typeof window !== "undefined") {
     try {
       window.sessionStorage.setItem("hikari_signed_out", "true");
+      useHikariStore.getState().setCurrentUserId(null);
     } catch {
       /* ignore */
     }
@@ -275,6 +277,11 @@ export async function signOut(redirectTo = "/"): Promise<void> {
     clearToken: () => {
       setBearerToken(null);
       invalidateAllProfileCaches();
+      try {
+        useHikariStore.getState().setCurrentUserId(null);
+      } catch {
+        // ignore
+      }
     },
     redirect: () => {
       window.location.href = redirectTo;

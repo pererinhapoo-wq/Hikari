@@ -812,8 +812,17 @@ export const useHikariStore = create<HikariState>()(
         return persistedState as HikariState;
       },
 
-      onRehydrateStorage: () => () => {
+      onRehydrateStorage: () => (state) => {
         // A hidratação só é concluída após carregar o catálogo do IndexedDB ou fallback
+        if (typeof window !== "undefined") {
+          try {
+            if (window.sessionStorage.getItem("hikari_signed_out") === "true") {
+              state?.setCurrentUserId(null);
+            }
+          } catch {
+            // ignore
+          }
+        }
       },
 
       partialize: (s) => {

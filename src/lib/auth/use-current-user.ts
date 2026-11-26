@@ -66,13 +66,20 @@ export type CurrentUserState = {
 export function useCurrentUserState(): CurrentUserState {
   const initialSessionUser = useContext(InitialSessionUserContext);
 
+  const isSignedOut = useSyncExternalStore(
+    subscribeToNothing,
+    getSignedOutSnapshot,
+    getSignedOutServerSnapshot,
+  );
+
+  if (isSignedOut) {
+    return {
+      user: null,
+      isPending: false,
+    };
+  }
+
   if (!authEnabled) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- authEnabled is constant for the app's lifetime
-    const isSignedOut = useSyncExternalStore(
-      subscribeToNothing,
-      getSignedOutSnapshot,
-      getSignedOutServerSnapshot,
-    );
     // eslint-disable-next-line react-hooks/rules-of-hooks -- authEnabled is constant for the app's lifetime
     const adminEmailOverride = useSyncExternalStore(
       subscribeToNothing,
@@ -80,12 +87,6 @@ export function useCurrentUserState(): CurrentUserState {
       getAdminEmailServerSnapshot,
     );
 
-    if (isSignedOut) {
-      return {
-        user: null,
-        isPending: false,
-      };
-    }
     if (adminEmailOverride) {
       return {
         user: {
@@ -102,6 +103,7 @@ export function useCurrentUserState(): CurrentUserState {
       isPending: false,
     };
   }
+
   const { data, isPending } = authClient.useSession();
   const user = data?.user;
   if (user) {
@@ -124,8 +126,8 @@ export function useCurrentUserState(): CurrentUserState {
   }
 
   // Enquanto o useSession() ainda está validando no cliente, preserva o usuário
-  // já verificado via cookie no SSR para evitar flash de "Entrar".
-  if (isPending && initialSessionUser) {
+  // já verificado via cookie no SSR para evitar flash de "Entrar" ou sumir o avatar.
+  if (initialSessionUser) {
     return {
       user: initialSessionUser,
       isPending: false,
