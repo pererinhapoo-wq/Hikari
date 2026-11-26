@@ -960,19 +960,38 @@ export function invalidateHomeTrendingLocalCache(options?: {
   trendingInFlight = null;
 }
 
-export function invalidateHomeTrendingCache(): void {
+export function invalidateHomeTrendingCache(options?: {
+  skipHero?: boolean;
+}): void {
   invalidateHomeTrendingLocalCache();
   scheduleRedisBackgroundWrite(
     invalidateRedisHomeTrending(),
     "invalidateRedisHomeTrending",
   );
+  if (!options?.skipHero) {
+    import("@/lib/home-hero.server")
+      .then((m) => m.invalidateHomeHeroCache())
+      .catch(() => {});
+  }
 }
 
 export async function invalidateHomeTrendingCacheAsync(
   redisOverride?: RedisEvalClient | null,
+  options?: {
+    skipHero?: boolean;
+  },
 ): Promise<void> {
   invalidateHomeTrendingLocalCache();
-  await invalidateRedisHomeTrending(redisOverride).catch(() => {});
+  await Promise.allSettled([
+    invalidateRedisHomeTrending(redisOverride),
+    ...(options?.skipHero
+      ? []
+      : [
+          import("@/lib/home-hero.server").then((m) =>
+            m.invalidateHomeHeroCacheAsync(redisOverride),
+          ),
+        ]),
+  ]);
 }
 
 export function resetHomeTrendingTestState(): void {

@@ -4,9 +4,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   buildHeroBannerPool,
+  computeCalendarScore,
+  computeNewEpisodeScore,
+  computeNoveltyScore,
   getHomeHeroItemsWithDeps,
   invalidateHomeHeroCacheAsync,
   invalidateHomeHeroLocalCache,
+  MAX_HERO_POOL_SIZE,
   MAX_HERO_SLIDES,
   HERO_ROTATION_WINDOW_MS,
   resetHomeHeroTestState,
@@ -17,6 +21,7 @@ import {
 } from "@/lib/home-hero.server";
 import {
   getHomeTrendingItemsWithDeps,
+  invalidateHomeTrendingCacheAsync,
   invalidateHomeTrendingLocalCache,
   resetHomeTrendingTestState,
   type HomeTrendingDeps,
@@ -81,6 +86,8 @@ function makeCandidateRow(
     firstEpisodePublishedAt: new Date(nowMs - 44 * DAY_MS).toISOString(),
     latestEpisodePublishedAt: new Date(nowMs - 20 * DAY_MS).toISOString(),
     ep1Sources: [{ videoUrl: `https://cdn.example.com/ep1-${overrides.id}.mp4` }],
+    hasTodayAiringSchedule: false,
+    hasTodayWeeklyRecurrence: false,
     ...overrides,
   };
 }
@@ -185,7 +192,7 @@ class MockHeroRedis implements RedisEvalClient {
   }
 }
 
-describe("home-hero unified 2-group selection, first-slide rotation & cache invalidation", () => {
+describe("home-hero Calendar + Em Alta composition, daily rollover, rotation & cache invalidation", () => {
   beforeEach(() => {
     resetHomeHeroTestState();
     resetHomeTrendingTestState();
@@ -286,10 +293,19 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
     assert.equal(heroItems[0].hasEpisode, false);
   });
 
-  it("2. includes published playable episodes including internal IDs, Hikari Player IDs, and non-ep-1 episodes", () => {
+  it("2. includes Calendar-today animes (airing schedule and weekly recurrence, with or without episodes) and preserves playable metadata", () => {
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
     const rows: HeroCatalogAnimeCandidateRow[] = [
-      makeCandidateRow({ id: "local-pure", anilistId: null, malId: null, kitsuId: null }, nowMs),
+      makeCandidateRow(
+        {
+          id: "local-pure",
+          anilistId: null,
+          malId: null,
+          kitsuId: null,
+          hasTodayAiringSchedule: true,
+        },
+        nowMs,
+      ),
       makeCandidateRow(
         {
           id: "hikari-ep5-only",
@@ -299,14 +315,30 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
           publishedEpisodeCount: 1,
           ep1Sources: [],
           epSources: [{ number: 5, seasonNumber: 1, videoUrl: "https://cdn.example.com/ep5.mp4" }],
+          hasTodayWeeklyRecurrence: true,
         },
         nowMs,
       ),
       makeCandidateRow(
-        { id: "105", ep1Sources: [{ hikariPlayerEpisodeId: "ep_valid_105" }] },
+        {
+          id: "105",
+          ep1Sources: [{ hikariPlayerEpisodeId: "ep_valid_105" }],
+          hasTodayAiringSchedule: true,
+        },
         nowMs,
       ),
-      makeCandidateRow({ id: "local-mapped", anilistId: 176301, title: "Solo Leveling" }, nowMs),
+      makeCandidateRow(
+        {
+          id: "local-mapped",
+          anilistId: 176301,
+          title: "Solo Leveling",
+          publishedEpisodeCount: 0,
+          ep1Sources: [],
+          epSources: [],
+          hasTodayAiringSchedule: true,
+        },
+        nowMs,
+      ),
     ];
 
     const scored = scoreAndDeduplicateHeroCandidates(rows, [], nowMs);
@@ -315,13 +347,21 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
 
     const mapped = scored.find((s) => s.anime.id === "176301");
     assert.equal(mapped?.anime.serverCatalogId, "local-mapped");
-    assert.equal(mapped?.hasPublishedEpisode, true);
+    assert.equal(mapped?.isCalendarToday, true);
+    assert.equal(mapped?.hasPublishedEpisode, false);
+    assert.equal(mapped?.anime.hasEpisode, false);
 
     const ep5Only = scored.find((s) => s.anime.id === "hikari-ep5-only");
+    assert.equal(ep5Only?.isCalendarToday, true);
     assert.equal(ep5Only?.anime.firstAvailableEpisodeNumber, 5);
+    assert.equal(ep5Only?.anime.hasEpisode, true);
+
+    const pool = buildHeroBannerPool(scored, nowMs);
+    assert.equal(pool.items.length, 4);
+    assert.ok(pool.items.every((item) => item.bucket === "calendario"));
   });
 
-  it("3. canonically deduplicates an anime appearing in both Em Alta and Published Episodes (and dubbed vs subbed)", () => {
+  it("3. canonically deduplicates an anime appearing in both Calendar and Em Alta (and dubbed vs subbed)", () => {
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
     const rows: HeroCatalogAnimeCandidateRow[] = [
       makeCandidateRow(
@@ -331,6 +371,7 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
           titleRomaji: "Jujutsu Kaisen",
           titleEnglish: "JUJUTSU KAISEN",
           score: 86,
+          hasTodayAiringSchedule: true,
         },
         nowMs,
       ),
@@ -343,6 +384,7 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
           titleRomaji: "Jujutsu Kaisen (Dublado)",
           titleEnglish: "JUJUTSU KAISEN Dublado",
           score: 95,
+          hasTodayWeeklyRecurrence: true,
         },
         nowMs,
       ),
@@ -368,54 +410,118 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
     assert.equal(scored[0].anime.id, "113415");
     assert.equal(scored[0].isDubbed, false);
     assert.equal(scored[0].isEmAlta, true);
+    assert.equal(scored[0].isCalendarToday, true);
     assert.equal(scored[0].hasPublishedEpisode, true);
 
     const pool = buildHeroBannerPool(scored, nowMs);
     assert.equal(pool.items.length, 1);
   });
 
-  it("4. excludes animes outside the two approved groups (unpublished, invalid sources, calendar-only, engagement-only, freshly registered)", () => {
+  it("4. rejects newly-published/newly-registered/episode-only animes outside Calendar and Em Alta, while preserving popular Em Alta and SQL Calendar queries", () => {
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
     const rows: HeroCatalogAnimeCandidateRow[] = [
-      // Sem episódio publicado e fora de Em Alta
-      makeCandidateRow({ id: "910001", publishedEpisodeCount: 0, ep1Sources: [], epSources: [] }, nowMs),
-      // Fonte inválida (#) e fora de Em Alta
-      makeCandidateRow({ id: "910002", publishedEpisodeCount: 1, ep1Sources: [{ videoUrl: "#" }] }, nowMs),
-      // Campo legado simulado de calendário/recorrência sem episódio publicado e fora de Em Alta
-      {
-        ...makeCandidateRow({ id: "910003", publishedEpisodeCount: 0, ep1Sources: [], epSources: [] }, nowMs),
-        hasTodayAiringSchedule: true,
-        hasTodayWeeklyRecurrence: true,
-      } as HeroCatalogAnimeCandidateRow,
-      // Válido via Grupo 2
-      makeCandidateRow({ id: "5081", title: "Bakemonogatari", titleRomaji: "Bakemonogatari" }, nowMs),
+      // Recém-cadastrado e recém-publicado há 5 minutos, mas fora de Calendário e Em Alta -> NÃO deve entrar
+      makeCandidateRow(
+        {
+          id: "910001",
+          title: "Recem Publicado Qualquer",
+          createdAt: new Date(nowMs - 5 * 60 * 1000).toISOString(),
+          updatedAt: new Date(nowMs - 5 * 60 * 1000).toISOString(),
+          publishedEpisodeCount: 1,
+          firstEpisodePublishedAt: new Date(nowMs - 5 * 60 * 1000).toISOString(),
+          latestEpisodePublishedAt: new Date(nowMs - 5 * 60 * 1000).toISOString(),
+          ep1Sources: [{ videoUrl: "https://cdn.example.com/recent.mp4" }],
+          hasTodayAiringSchedule: false,
+          hasTodayWeeklyRecurrence: false,
+        },
+        nowMs,
+      ),
+      // Sem episódio publicado e fora de Calendário/Em Alta
+      makeCandidateRow({ id: "910002", publishedEpisodeCount: 0, ep1Sources: [], epSources: [] }, nowMs),
+      // Programado no Calendário de hoje (sem episódio publicado ainda) -> entra via Fonte A
+      makeCandidateRow(
+        {
+          id: "910003",
+          title: "Calendario Hoje",
+          titleRomaji: "Calendario Hoje",
+          publishedEpisodeCount: 0,
+          ep1Sources: [],
+          epSources: [],
+          hasTodayAiringSchedule: true,
+        },
+        nowMs,
+      ),
+      // Popular em Em Alta antigo (FINISHED há 2 anos, sem episódio recente) -> entra via Fonte B
+      makeCandidateRow(
+        {
+          id: "5081",
+          title: "Bakemonogatari",
+          titleRomaji: "Bakemonogatari",
+          status: "FINISHED",
+          score: 91,
+          popularity: 350000,
+          createdAt: new Date(nowMs - 700 * DAY_MS).toISOString(),
+          firstEpisodePublishedAt: new Date(nowMs - 690 * DAY_MS).toISOString(),
+          latestEpisodePublishedAt: new Date(nowMs - 600 * DAY_MS).toISOString(),
+          hasTodayAiringSchedule: false,
+          hasTodayWeeklyRecurrence: false,
+        },
+        nowMs,
+      ),
     ];
 
-    const scored = scoreAndDeduplicateHeroCandidates(rows, [], nowMs);
+    const trendingItems: SlimAnime[] = [
+      makeTrendingSlim({
+        id: "5081",
+        anilistId: 5081,
+        titles: { romaji: "Bakemonogatari", english: "Bakemonogatari", native: "" },
+        status: "FINISHED",
+        hasEpisode: true,
+      }),
+    ];
+
+    const scored = scoreAndDeduplicateHeroCandidates(rows, trendingItems, nowMs);
     assert.deepEqual(
-      scored.map((s) => s.anime.id),
-      ["5081"],
+      scored.map((s) => s.anime.id).sort(),
+      ["5081", "910003"],
     );
+    assert.equal(scored.some((s) => s.anime.id === "910001"), false);
+
+    const byId = new Map(scored.map((s) => [s.anime.id, s]));
+    assert.equal(byId.get("910003")?.isCalendarToday, true);
+    assert.equal(byId.get("910003")?.isEmAlta, false);
+    assert.equal(byId.get("5081")?.isEmAlta, true);
+    assert.equal(byId.get("5081")?.isCalendarToday, false);
 
     const heroServerSource = readFileSync(
       resolve(process.cwd(), "src/lib/home-hero.server.ts"),
       "utf8",
     );
-    assert.equal(heroServerSource.includes("airing_stats"), false);
-    assert.equal(heroServerSource.includes("recurrence_stats"), false);
+    assert.equal(heroServerSource.includes("airing_stats"), true);
+    assert.equal(heroServerSource.includes("recurrence_stats"), true);
+    assert.equal(heroServerSource.includes("CALENDAR_TIMEZONE"), true);
     assert.equal(heroServerSource.includes("recent_engagement_ids"), false);
     assert.equal(heroServerSource.includes("user_anime_tracking"), false);
     assert.equal(heroServerSource.includes("queryAudienceMetricsFromNeon"), false);
   });
 
-  it("5. excludes hidden, archived, and +18/Hentai candidates even if present in trendingItems", () => {
+  it("5. excludes hidden, archived, and +18/Hentai candidates even if in Calendar or stale trendingItems", () => {
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
     const rows: HeroCatalogAnimeCandidateRow[] = [
-      makeCandidateRow({ id: "101", hidden: true }, nowMs),
-      makeCandidateRow({ id: "102", genres: ["Action", "Hentai"] }, nowMs),
-      makeCandidateRow({ id: "103", archivedAt: new Date(nowMs - DAY_MS).toISOString() }, nowMs),
-      makeCandidateRow({ id: "bad/id", anilistId: null, malId: null, kitsuId: null }, nowMs),
-      makeCandidateRow({ id: "104", title: "Valid Anime", titleRomaji: "Valid Anime" }, nowMs),
+      makeCandidateRow({ id: "101", hidden: true, hasTodayAiringSchedule: true }, nowMs),
+      makeCandidateRow({ id: "102", genres: ["Action", "Hentai"], hasTodayAiringSchedule: true }, nowMs),
+      makeCandidateRow(
+        { id: "103", archivedAt: new Date(nowMs - DAY_MS).toISOString(), hasTodayWeeklyRecurrence: true },
+        nowMs,
+      ),
+      makeCandidateRow(
+        { id: "bad/id", anilistId: null, malId: null, kitsuId: null, hasTodayAiringSchedule: true },
+        nowMs,
+      ),
+      makeCandidateRow(
+        { id: "104", title: "Valid Anime", titleRomaji: "Valid Anime", hasTodayAiringSchedule: true },
+        nowMs,
+      ),
     ];
 
     // Simula snapshot antigo de Em Alta contendo itens hidden, archived e Hentai
@@ -433,10 +539,10 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
     );
   });
 
-  it("6. rotates position [0] across consecutive 15-minute windows without Bakemonogatari locking slot 0 (both distinct-banner and single-distinct + cover-only)", () => {
+  it("6. rotates position [0] across consecutive 15-minute windows without locking slot 0 and balances Calendar + Em Alta", () => {
     const t0 = Date.UTC(2026, 4, 15, 12, 0, 0);
 
-    // Caso A: Bakemonogatari é o ÚNICO com banner horizontal distinto (Grupo 2) e Em Alta tem animes apenas com cover
+    // Caso A: Bakemonogatari (Calendário) é o ÚNICO com banner horizontal distinto e Em Alta tem animes apenas com cover
     const singleDistinctRows: HeroCatalogAnimeCandidateRow[] = [
       makeCandidateRow(
         {
@@ -445,6 +551,7 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
           titleRomaji: "Bakemonogatari",
           banner: "https://cdn.example.com/banner-5081.jpg",
           cover: "https://cdn.example.com/cover-5081.jpg",
+          hasTodayAiringSchedule: true,
         },
         t0,
       ),
@@ -492,16 +599,26 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
     assert.ok(firstIdsA.includes("5081"));
     assert.ok(firstIdsA.includes("700001"));
 
-    // Caso B: 6 banners distintos (4 Em Alta + 2 Episódios publicados) + 6 cover-only -> banners distintos ficam à frente dos cover-only e [0] gira entre todos os 6
+    // Caso B: 6 banners distintos (4 Em Alta + 2 Calendário) + 6 cover-only -> banners distintos ficam à frente dos cover-only e [0] gira entre todos os 6
     const mixedRows: HeroCatalogAnimeCandidateRow[] = [
-      ...Array.from({ length: 6 }, (_, i) =>
+      ...Array.from({ length: 4 }, (_, i) =>
         makeCandidateRow({ id: String(800101 + i) }, t0),
+      ),
+      ...Array.from({ length: 2 }, (_, i) =>
+        makeCandidateRow(
+          {
+            id: String(800105 + i),
+            hasTodayWeeklyRecurrence: true,
+          },
+          t0,
+        ),
       ),
       ...Array.from({ length: 6 }, (_, i) =>
         makeCandidateRow(
           {
             id: String(800001 + i),
             banner: i % 2 === 0 ? null : `https://cdn.example.com/cover-${800001 + i}.jpg`,
+            hasTodayAiringSchedule: true,
           },
           t0,
         ),
@@ -513,6 +630,8 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
       t0,
     );
     const poolB = buildHeroBannerPool(scoredB, t0);
+    assert.ok(poolB.items.some((item) => item.bucket === "em_alta"));
+    assert.ok(poolB.items.some((item) => item.bucket === "calendario"));
 
     const firstIdsB: string[] = [];
     for (let w = 0; w < 6; w++) {
@@ -530,14 +649,51 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
       }
     }
     assert.equal(new Set(firstIdsB).size, 6);
+
+    // Caso C: Equilíbrio justo quando ambas as fontes têm >= 15 candidatos (12 Em Alta + 12 Calendário = 24)
+    const balancedRows: HeroCatalogAnimeCandidateRow[] = [
+      ...Array.from({ length: 15 }, (_, i) =>
+        makeCandidateRow({ id: String(810001 + i) }, t0),
+      ),
+      ...Array.from({ length: 15 }, (_, i) =>
+        makeCandidateRow(
+          { id: String(820001 + i), hasTodayAiringSchedule: true },
+          t0,
+        ),
+      ),
+    ];
+    const balancedTrending = Array.from({ length: 15 }, (_, i) =>
+      makeTrendingSlim({ id: String(810001 + i), anilistId: 810001 + i }),
+    );
+    const balancedPool = buildHeroBannerPool(
+      scoreAndDeduplicateHeroCandidates(balancedRows, balancedTrending, t0),
+      t0,
+    );
+    assert.equal(balancedPool.items.length, MAX_HERO_POOL_SIZE);
+    assert.equal(
+      balancedPool.items.filter((item) => item.bucket === "em_alta").length,
+      12,
+    );
+    assert.equal(
+      balancedPool.items.filter((item) => item.bucket === "calendario").length,
+      12,
+    );
   });
 
-  it("7. keeps 1 static slide without fabricating animes when only 1 valid candidate exists across both groups", async () => {
+  it("7. keeps 1 static slide without fabricating animes when only 1 valid candidate exists across both sources", async () => {
     const t0 = Date.UTC(2026, 4, 15, 12, 0, 0);
     const singleValidRows: HeroCatalogAnimeCandidateRow[] = [
-      makeCandidateRow({ id: "5081", title: "Bakemonogatari", titleRomaji: "Bakemonogatari" }, t0),
+      makeCandidateRow(
+        {
+          id: "5081",
+          title: "Bakemonogatari",
+          titleRomaji: "Bakemonogatari",
+          hasTodayAiringSchedule: true,
+        },
+        t0,
+      ),
       makeCandidateRow({ id: "930001", publishedEpisodeCount: 0, ep1Sources: [], epSources: [] }, t0),
-      makeCandidateRow({ id: "930002", publishedEpisodeCount: 0, ep1Sources: [], epSources: [] }, t0),
+      makeCandidateRow({ id: "930002", publishedEpisodeCount: 1, ep1Sources: [{ videoUrl: "https://cdn.example.com/ep1.mp4" }] }, t0),
     ];
 
     const deps: HomeHeroDeps = {
@@ -555,10 +711,10 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
     assert.deepEqual(items2.map((x) => x.id), ["5081"]);
   });
 
-  it("8. avoids getHomeTrendingItems and queryCatalog calls on RAM and Redis cache hits", async () => {
+  it("8. avoids getHomeTrendingItems and queryCatalog calls on RAM and Redis cache hits, and refreshes on America/Sao_Paulo day rollover", async () => {
     const t0 = Date.UTC(2026, 4, 15, 12, 0, 0);
     const rows = Array.from({ length: 12 }, (_, i) =>
-      makeCandidateRow({ id: String(400001 + i) }, t0),
+      makeCandidateRow({ id: String(400001 + i), hasTodayAiringSchedule: true }, t0),
     );
     const mockRedis = new MockHeroRedis();
     let catalogQueries = 0;
@@ -606,12 +762,67 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
     assert.equal(catalogQueries, 1);
     assert.equal(trendingCalls, 1);
     assert.notDeepEqual(nextWindowSlides.map((a) => a.id), firstWindowSlides.map((a) => a.id));
+
+    // Virada de dia em America/Sao_Paulo (23:55 BRT -> 00:05 BRT):
+    // 2026-05-15 23:55 BRT = 2026-05-16T02:55:00Z
+    // 2026-05-16 00:05 BRT = 2026-05-16T03:05:00Z
+    resetHomeHeroTestState();
+    const rolloverRedis = new MockHeroRedis();
+    const day1Ms = Date.UTC(2026, 4, 16, 2, 55, 0);
+    const day2Ms = Date.UTC(2026, 4, 16, 3, 5, 0);
+    const bgWrites: Promise<unknown>[] = [];
+
+    const dayDeps: HomeHeroDeps = {
+      getRedisPool: () => getRedisHeroBannerPoolWithFence(rolloverRedis),
+      setRedisPool: (payload, fence) => setRedisHeroBannerPool(payload, fence, rolloverRedis),
+      scheduleWrite: (promise) => {
+        bgWrites.push(promise);
+      },
+      getTrendingItems: async () => [],
+      queryCatalog: async (_trending, requestedNowMs = Date.now()) => {
+        if (requestedNowMs < day2Ms) {
+          return [
+            makeCandidateRow({ id: "510001", title: "Dia 1 Sexta", hasTodayAiringSchedule: true }, requestedNowMs),
+          ];
+        }
+        return [
+          makeCandidateRow({ id: "520001", title: "Dia 2 Sabado", hasTodayAiringSchedule: true }, requestedNowMs),
+        ];
+      },
+    };
+
+    const day1Slides = await getHomeHeroItemsWithDeps(dayDeps, day1Ms);
+    await Promise.all(bgWrites.splice(0));
+    assert.deepEqual(day1Slides.map((a) => a.id), ["510001"]);
+
+    // Mesmo com RAM quente (10 min < 20 min TTL Redis) e Redis populado, virada de dia em SP atualiza o Hero
+    const day2RamBypassSlides = await getHomeHeroItemsWithDeps(dayDeps, day2Ms);
+    await Promise.all(bgWrites.splice(0));
+    assert.deepEqual(day2RamBypassSlides.map((a) => a.id), ["520001"]);
+
+    // Mesmo se a RAM estiver limpa e apenas o Redis tiver o pool do dia anterior, Redis miss por dia é respeitado
+    await setRedisHeroBannerPool(
+      buildHeroBannerPool(
+        scoreAndDeduplicateHeroCandidates(
+          [makeCandidateRow({ id: "510001", hasTodayAiringSchedule: true }, day1Ms)],
+          [],
+          day1Ms,
+        ),
+        day1Ms,
+      ),
+      "0",
+      rolloverRedis,
+    );
+    invalidateHomeHeroLocalCache();
+    const day2RedisBypassSlides = await getHomeHeroItemsWithDeps(dayDeps, day2Ms);
+    await Promise.all(bgWrites.splice(0));
+    assert.deepEqual(day2RedisBypassSlides.map((a) => a.id), ["520001"]);
   });
 
   it("9. explicit invalidation clears ramHeroPool, staleHeroPool, and Redis Hero/Em Alta keys+generations (and fails open on Redis error)", async () => {
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
     const rows = Array.from({ length: 8 }, (_, i) =>
-      makeCandidateRow({ id: String(600001 + i) }, nowMs),
+      makeCandidateRow({ id: String(600001 + i), hasTodayAiringSchedule: true }, nowMs),
     );
 
     // 9a. preserveStale=true preserves staleHeroPool for DB+Redis outage fallback
@@ -670,11 +881,21 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
     );
     assert.deepEqual(afterExplicitInvalidation, []);
 
-    // 9c. Fail-open when Redis throws during async invalidation
+    // 9c. Em Alta invalidation also invalidates Hero cache
+    mockRedis.store.set(getHeroRedisKey("development"), JSON.stringify({ v: HERO_BANNER_PAYLOAD_VERSION }));
+    mockRedis.store.set(getHomeTrendingRedisKey("development"), JSON.stringify({ v: HOME_TRENDING_PAYLOAD_VERSION }));
+    await invalidateHomeTrendingCacheAsync(mockRedis);
+    assert.equal(mockRedis.store.has(getHeroRedisKey("development")), false);
+    assert.equal(mockRedis.store.get(getHeroGenKey("development")), "4");
+    assert.equal(mockRedis.store.has(getHomeTrendingRedisKey("development")), false);
+    assert.equal(mockRedis.store.get(getHomeTrendingGenKey("development")), "7");
+
+    // 9d. Fail-open when Redis throws during async invalidation
     mockRedis.shouldThrow = true;
     await assert.doesNotReject(async () => {
       await invalidateHomeHeroCacheAsync(mockRedis);
       await invalidateHomePublicEpisodesCacheAsync({ redisOverride: mockRedis });
+      await invalidateHomeTrendingCacheAsync(mockRedis);
     });
   });
 
@@ -710,7 +931,9 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
     assert.equal(mockRedis.store.get(getHeroGenKey("development")), "1");
 
     // Agora a query antiga termina
-    resolveInFlightCatalog([makeCandidateRow({ id: "5081", title: "Old Inflight" }, nowMs)]);
+    resolveInFlightCatalog([
+      makeCandidateRow({ id: "5081", title: "Old Inflight", hasTodayAiringSchedule: true }, nowMs),
+    ]);
     await inflightPromise;
     await Promise.all(bgWrites.splice(0));
 
@@ -751,7 +974,7 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
             cover: "https://cdn.example.com/cover.jpg",
             hasEpisode: true,
           }),
-          bucket: "episodios_publicados",
+          bucket: "calendario",
           score: 80,
           hasDistinctBanner: true,
           titleKey: "solo leveling",
@@ -828,7 +1051,7 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
       assert.equal(getHomeTrendingRedisKey("preview"), "hikari:preview:home:trending:v3");
       assert.equal(getHomeTrendingRedisKey("production"), "hikari:production:home:trending:v3");
 
-      const validAnimeRow = makeCandidateRow({ id: "960001" }, nowMs);
+      const validAnimeRow = makeCandidateRow({ id: "960001", hasTodayAiringSchedule: true }, nowMs);
       const sampleItem = buildHeroBannerPool(
         scoreAndDeduplicateHeroCandidates([validAnimeRow], [], nowMs),
         nowMs,
@@ -905,7 +1128,7 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
       invalidateHomeTrendingLocalCache();
 
       let prodDbCalls = 0;
-      const prodRow = makeCandidateRow({ id: "960002" }, nowMs);
+      const prodRow = makeCandidateRow({ id: "960002", hasTodayAiringSchedule: true }, nowMs);
       const prodItems = await getHomeHeroItemsWithDeps(
         {
           getRedisPool: () => getRedisHeroBannerPoolWithFence(mockRedis),
@@ -924,44 +1147,52 @@ describe("home-hero unified 2-group selection, first-slide rotation & cache inva
     });
   });
 
-  it("preserves temporal decay for published episodes and safe pickHeroItems fallback", () => {
+  it("13. preserves Calendar scoring neutrality toward registration age, temporal score helpers, and safe pickHeroItems fallback", () => {
     const nowMs = Date.UTC(2026, 4, 15, 12, 0, 0);
-    const rows: HeroCatalogAnimeCandidateRow[] = [
-      makeCandidateRow(
-        {
-          id: "900001",
-          createdAt: new Date(nowMs - 180 * DAY_MS).toISOString(),
-          updatedAt: new Date(nowMs - 10 * 60 * 1000).toISOString(),
-          firstEpisodePublishedAt: new Date(nowMs - 170 * DAY_MS).toISOString(),
-          latestEpisodePublishedAt: new Date(nowMs - 60 * DAY_MS).toISOString(),
-        },
-        nowMs,
-      ),
-      makeCandidateRow(
-        {
-          id: "900002",
-          createdAt: new Date(nowMs - 180 * DAY_MS).toISOString(),
-          firstEpisodePublishedAt: new Date(nowMs - 170 * DAY_MS).toISOString(),
-          latestEpisodePublishedAt: new Date(nowMs - 2 * HOUR_MS).toISOString(),
-        },
-        nowMs,
-      ),
-      makeCandidateRow(
-        {
-          id: "900003",
-          createdAt: new Date(nowMs - 180 * DAY_MS).toISOString(),
-          firstEpisodePublishedAt: new Date(nowMs - 170 * DAY_MS).toISOString(),
-          latestEpisodePublishedAt: new Date(nowMs - 8 * DAY_MS).toISOString(),
-        },
-        nowMs,
-      ),
-    ];
 
-    const scored = scoreAndDeduplicateHeroCandidates(rows, [], nowMs);
-    const byId = new Map(scored.map((c) => [c.anime.id, c]));
-    assert.equal(byId.get("900001")!.noveltyScore, 0);
-    assert.equal(byId.get("900001")!.newEpisodeScore, 0);
-    assert.ok(byId.get("900002")!.newEpisodeScore > byId.get("900003")!.newEpisodeScore);
+    // Helpers temporais continuam preservados sem erro
+    assert.equal(
+      computeNoveltyScore({
+        firstEpisodePublishedAtMs: nowMs - 170 * DAY_MS,
+        publishedEpisodeCount: 6,
+        nowMs,
+      }),
+      0,
+    );
+    assert.ok(
+      computeNewEpisodeScore({
+        latestEpisodePublishedAtMs: nowMs - 2 * HOUR_MS,
+        status: "RELEASING",
+        score: 82,
+        nowMs,
+      }) >
+        computeNewEpisodeScore({
+          latestEpisodePublishedAtMs: nowMs - 8 * DAY_MS,
+          status: "RELEASING",
+          score: 82,
+          nowMs,
+        }),
+    );
+
+    // computeCalendarScore não favorece animes apenas por criação recente
+    const scoreA = computeCalendarScore({
+      hasTodayAiringSchedule: true,
+      hasTodayWeeklyRecurrence: false,
+      hasPublishedEpisode: false,
+      score: 80,
+      popularity: 10000,
+    });
+    assert.ok(scoreA > 0);
+    assert.equal(
+      computeCalendarScore({
+        hasTodayAiringSchedule: false,
+        hasTodayWeeklyRecurrence: false,
+        hasPublishedEpisode: true,
+        score: 95,
+        popularity: 200000,
+      }),
+      0,
+    );
 
     const noEpisodeResult = pickHeroItems(
       [makeTrendingSlim({ id: "1", banner: "https://cdn.example.com/b-1.jpg" }), makeTrendingSlim({ id: "2", banner: "https://cdn.example.com/b-2.jpg" })],

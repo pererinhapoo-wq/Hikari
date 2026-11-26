@@ -75,7 +75,7 @@ export function invalidateHomePublicEpisodesCache(): void {
     .then((m) => m.invalidateHomeHeroCache())
     .catch(() => {});
   import("@/lib/home-trending.server")
-    .then((m) => m.invalidateHomeTrendingCache())
+    .then((m) => m.invalidateHomeTrendingCache({ skipHero: true }))
     .catch(() => {});
 }
 
@@ -97,7 +97,9 @@ export async function invalidateHomePublicEpisodesCacheAsync(options?: {
             m.invalidateHomeHeroCacheAsync(options?.redisOverride),
           ),
           import("@/lib/home-trending.server").then((m) =>
-            m.invalidateHomeTrendingCacheAsync(options?.redisOverride),
+            m.invalidateHomeTrendingCacheAsync(options?.redisOverride, {
+              skipHero: true,
+            }),
           ),
         ]),
   ]);
