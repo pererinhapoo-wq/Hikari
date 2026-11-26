@@ -4,7 +4,7 @@ import {
   getTodayRangeSaoPaulo,
   getWeekdaySaoPaulo,
 } from "@/lib/calendar-timezone";
-import { getSql } from "@/lib/db";
+import { getSql, type Sql } from "@/lib/db";
 import { buildHikariPlayerEpisodeUrl } from "@/lib/hikari-player";
 import { getHomeTrendingItems } from "@/lib/home-trending.server";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
@@ -1385,11 +1385,12 @@ export function resetHomeHeroTestState(): void {
   heroPoolInFlight = null;
 }
 
-async function queryCatalogCandidatesFromNeon(
+export async function queryCatalogCandidatesFromNeon(
   trendingItems: SlimAnime[] = [],
   nowMs = Date.now(),
+  sqlOverride?: Sql,
 ): Promise<HeroCatalogAnimeCandidateRow[]> {
-  const sql = await getSql();
+  const sql = sqlOverride ?? (await getSql());
   const todayRange = getTodayRangeSaoPaulo(new Date(nowMs));
   const todayWeekday = getWeekdaySaoPaulo(todayRange.todayKey);
 

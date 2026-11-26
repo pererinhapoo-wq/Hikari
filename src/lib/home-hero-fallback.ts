@@ -38,16 +38,41 @@ export function pickHeroItems(
   const withEpisodeCoverOnly = withEpisode.filter((item) => !hasDistinctHeroBanner(item));
   const orderedWithEpisode = [...withEpisodeDistinct, ...withEpisodeCoverOnly];
 
-  if (orderedWithEpisode.length >= 2) {
-    return orderedWithEpisode.slice(0, MAX_HERO_FALLBACK_ITEMS);
-  }
-
   const withoutEpisode = catalog.filter((item) => item.hasEpisode !== true);
   const withoutEpisodeToday = withoutEpisode.filter((item) => Boolean(item.todayEpisode));
   const withoutEpisodeTodayDistinct = withoutEpisodeToday.filter(hasDistinctHeroBanner);
   const withoutEpisodeTodayCoverOnly = withoutEpisodeToday.filter(
     (item) => !hasDistinctHeroBanner(item),
   );
+  const orderedWithoutEpisodeToday = [
+    ...withoutEpisodeTodayDistinct,
+    ...withoutEpisodeTodayCoverOnly,
+  ];
+
+  if (orderedWithEpisode.length >= 2) {
+    if (orderedWithoutEpisodeToday.length === 0) {
+      return orderedWithEpisode.slice(0, MAX_HERO_FALLBACK_ITEMS);
+    }
+    const withEpisodeTodayCount = orderedWithEpisode.filter((item) =>
+      Boolean(item.todayEpisode),
+    ).length;
+    const reservedTodaySlots = Math.max(
+      0,
+      Math.min(2 - withEpisodeTodayCount, orderedWithoutEpisodeToday.length),
+    );
+    if (reservedTodaySlots === 0) {
+      return orderedWithEpisode.slice(0, MAX_HERO_FALLBACK_ITEMS);
+    }
+    const keepWithEpisodeCount = Math.max(
+      2,
+      MAX_HERO_FALLBACK_ITEMS - reservedTodaySlots,
+    );
+    return [
+      ...orderedWithEpisode.slice(0, keepWithEpisodeCount),
+      ...orderedWithoutEpisodeToday.slice(0, reservedTodaySlots),
+    ].slice(0, MAX_HERO_FALLBACK_ITEMS);
+  }
+
   const withoutEpisodeOther = withoutEpisode.filter((item) => !item.todayEpisode);
   const withoutEpisodeOtherDistinct = withoutEpisodeOther.filter(hasDistinctHeroBanner);
   const withoutEpisodeOtherCoverOnly = withoutEpisodeOther.filter(
@@ -56,8 +81,7 @@ export function pickHeroItems(
 
   return [
     ...orderedWithEpisode,
-    ...withoutEpisodeTodayDistinct,
-    ...withoutEpisodeTodayCoverOnly,
+    ...orderedWithoutEpisodeToday,
     ...withoutEpisodeOtherDistinct,
     ...withoutEpisodeOtherCoverOnly,
   ].slice(0, MAX_HERO_FALLBACK_ITEMS);

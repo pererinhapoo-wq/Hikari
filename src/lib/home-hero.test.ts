@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { PGlite } from "@electric-sql/pglite";
+import type { Sql } from "@/lib/db";
 import {
   buildHeroBannerPool,
   computeCalendarScore,
@@ -13,6 +15,7 @@ import {
   MAX_HERO_POOL_SIZE,
   MAX_HERO_SLIDES,
   HERO_ROTATION_WINDOW_MS,
+  queryCatalogCandidatesFromNeon,
   resetHomeHeroTestState,
   scoreAndDeduplicateHeroCandidates,
   selectHeroSlidesForWindow,
@@ -1392,6 +1395,206 @@ describe("home-hero Calendar + Em Alta composition, daily rollover, rotation & c
     assert.equal(slides14c.length, MAX_HERO_SLIDES);
     assert.ok(slides14c.some((s) => s.id === "995001" || s.id === "995002"));
     assert.ok(slides14c.some((s) => s.id.startsWith("9900")));
+  });
+
+  it("15. executes real SQL against catalog_airing_schedule and catalog_weekly_recurrence in America/Sao_Paulo, excludes other days and newly-published non-Calendar animes, and updates on midnight rollover", async () => {
+    const pg = new PGlite();
+    try {
+      await pg.exec(`
+        CREATE TABLE "catalog_anime" (
+          "id" text PRIMARY KEY,
+          "title" text NOT NULL,
+          "anilistId" integer,
+          "malId" integer,
+          "kitsuId" integer,
+          "titleRomaji" text,
+          "titleEnglish" text,
+          "titleNative" text,
+          "cover" text,
+          "banner" text,
+          "synopsis" text,
+          "format" text,
+          "status" text,
+          "episodesCount" integer,
+          "year" integer,
+          "season" text,
+          "genres" text[],
+          "trailerId" text,
+          "hidden" boolean DEFAULT false,
+          "archived_at" timestamptz,
+          "score" integer,
+          "popularity" integer,
+          "trending" integer,
+          "createdAt" timestamptz DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" timestamptz DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE "catalog_episode" (
+          "id" text PRIMARY KEY,
+          "animeId" text NOT NULL,
+          "seasonNumber" integer DEFAULT 1,
+          "number" integer NOT NULL,
+          "videoUrl" text,
+          "videoUrl2" text,
+          "videoUrl3" text,
+          "videoUrl4" text,
+          "videoUrl5" text,
+          "hikari_player_episode_id" text,
+          "published" boolean DEFAULT true,
+          "publishedAt" timestamptz,
+          "createdAt" timestamptz DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE "catalog_airing_schedule" (
+          "id" text PRIMARY KEY,
+          "anilistId" integer NOT NULL,
+          "animeId" text NOT NULL,
+          "episode" integer NOT NULL,
+          "airingAt" timestamptz NOT NULL,
+          "timeUntilAiring" integer
+        );
+        CREATE TABLE "catalog_weekly_recurrence" (
+          "id" text PRIMARY KEY,
+          "animeId" text NOT NULL,
+          "dayOfWeek" smallint NOT NULL,
+          "timezone" text NOT NULL DEFAULT 'America/Sao_Paulo',
+          "active" boolean NOT NULL DEFAULT true
+        );
+      `);
+
+      const sqlAdapter = Object.assign(
+        async () => [],
+        {
+          query: async <T = Record<string, unknown>>(text: string, params: unknown[] = []) => {
+            const res = await pg.query<T>(text, params);
+            return res.rows;
+          },
+        },
+      ) as unknown as Sql;
+
+      // 2026-05-15 23:55 BRT = 2026-05-16T02:55:00Z (Sexta-feira, dayOfWeek = 4)
+      // 2026-05-16 00:05 BRT = 2026-05-16T03:05:00Z (Sabado, dayOfWeek = 5)
+      const fridayLateMs = Date.UTC(2026, 4, 16, 2, 55, 0);
+      const saturdayEarlyMs = Date.UTC(2026, 4, 16, 3, 5, 0);
+
+      await pg.query(
+        `INSERT INTO "catalog_anime" ("id", "title", "anilistId", "titleRomaji", "cover", "banner", "status", "score", "popularity")
+         VALUES
+           ('cal-fri-sched', 'Sexta Grade Sem Ep', 701001, 'Sexta Grade Sem Ep', 'https://cdn.example.com/c1.jpg', 'https://cdn.example.com/b1.jpg', 'RELEASING', 84, 40000),
+           ('cal-fri-rec', 'Sexta Recorrente Sem Ep', 701002, 'Sexta Recorrente Sem Ep', 'https://cdn.example.com/c2.jpg', NULL, 'RELEASING', 80, 25000),
+           ('cal-sat-sched', 'Sabado Grade Sem Ep', 701003, 'Sabado Grade Sem Ep', 'https://cdn.example.com/c3.jpg', 'https://cdn.example.com/b3.jpg', 'RELEASING', 86, 55000),
+           ('cal-sat-rec', 'Sabado Recorrente', 701004, 'Sabado Recorrente', 'https://cdn.example.com/c4.jpg', NULL, 'RELEASING', 79, 20000),
+           ('cal-sun-other', 'Domingo Outro Dia', 701005, 'Domingo Outro Dia', 'https://cdn.example.com/c5.jpg', 'https://cdn.example.com/b5.jpg', 'RELEASING', 90, 90000),
+           ('recent-pub-only', 'Recem Publicado Fora', 701006, 'Recem Publicado Fora', 'https://cdn.example.com/c6.jpg', 'https://cdn.example.com/b6.jpg', 'RELEASING', 95, 180000),
+           ('em-alta-pop', 'Em Alta Popular', 701007, 'Em Alta Popular', 'https://cdn.example.com/c7.jpg', 'https://cdn.example.com/b7.jpg', 'FINISHED', 89, 220000);`,
+      );
+
+      // Somente recent-pub-only e em-alta-pop possuem episodio publicado; animes de Calendario tem 0 episodios
+      await pg.query(
+        `INSERT INTO "catalog_episode" ("id", "animeId", "seasonNumber", "number", "videoUrl", "published", "publishedAt")
+         VALUES
+           ('ep-recent-1', 'recent-pub-only', 1, 1, 'https://cdn.example.com/recent.mp4', true, $1),
+           ('ep-emalta-1', 'em-alta-pop', 1, 1, 'https://cdn.example.com/emalta.mp4', true, $2);`,
+        [new Date(fridayLateMs - 2 * 60 * 1000).toISOString(), new Date(fridayLateMs - 90 * DAY_MS).toISOString()],
+      );
+
+      // Grade especifica: sexta (23:30 BRT), sabado (00:30 BRT) e domingo (12:00 BRT)
+      await pg.query(
+        `INSERT INTO "catalog_airing_schedule" ("id", "anilistId", "animeId", "episode", "airingAt")
+         VALUES
+           ('sched-fri', 701001, 'cal-fri-sched', 3, $1),
+           ('sched-sat', 701003, 'cal-sat-sched', 4, $2),
+           ('sched-sun', 701005, 'cal-sun-other', 5, $3);`,
+        [
+          new Date(Date.UTC(2026, 4, 16, 2, 30, 0)).toISOString(), // Sexta 23:30 BRT
+          new Date(Date.UTC(2026, 4, 16, 3, 30, 0)).toISOString(), // Sabado 00:30 BRT
+          new Date(Date.UTC(2026, 4, 17, 15, 0, 0)).toISOString(), // Domingo 12:00 BRT
+        ],
+      );
+
+      await pg.query(
+        `INSERT INTO "catalog_weekly_recurrence" ("id", "animeId", "dayOfWeek", "timezone", "active")
+         VALUES
+           ('rec-fri', 'cal-fri-rec', 4, 'America/Sao_Paulo', true),
+           ('rec-sat', 'cal-sat-rec', 5, 'America/Sao_Paulo', true),
+           ('rec-inactive', 'cal-sun-other', 4, 'America/Sao_Paulo', false);`,
+      );
+
+      const emAltaTrending = [
+        makeTrendingSlim({
+          id: "701007",
+          anilistId: 701007,
+          titles: { romaji: "Em Alta Popular", english: "Em Alta Popular", native: "" },
+          banner: "https://cdn.example.com/b7.jpg",
+          hasEpisode: true,
+        }),
+      ];
+
+      const makeSqlHeroDeps = (): HomeHeroDeps => ({
+        getRedisPool: async () => ({ status: "unavailable", payload: null, fence: null }),
+        setRedisPool: async () => "unavailable",
+        scheduleWrite: () => {},
+        getTrendingItems: async () => emAltaTrending,
+        queryCatalog: (trending, requestedNow) =>
+          queryCatalogCandidatesFromNeon(trending, requestedNow, sqlAdapter),
+      });
+
+      const fridaySlides = await getHomeHeroItemsWithDeps(makeSqlHeroDeps(), fridayLateMs);
+      const fridayIds = fridaySlides.map((s) => s.id);
+      assert.ok(fridayIds.includes("701001"), "Friday airing schedule without episode must appear in Friday slides");
+      assert.ok(fridayIds.includes("701002"), "Friday weekly recurrence without episode must appear in Friday slides");
+      assert.ok(fridayIds.includes("701007"), "Em Alta must remain present alongside Friday Calendar");
+      assert.ok(!fridayIds.includes("701003"), "Saturday schedule must NOT appear on Friday");
+      assert.ok(!fridayIds.includes("701004"), "Saturday recurrence must NOT appear on Friday");
+      assert.ok(!fridayIds.includes("701005"), "Sunday/inactive schedule must NOT appear on Friday");
+      assert.ok(!fridayIds.includes("701006"), "Newly published non-Calendar anime must NOT appear");
+
+      // Virada de dia em America/Sao_Paulo -> atualiza automaticamente para Sabado sem reiniciar
+      const saturdaySlides = await getHomeHeroItemsWithDeps(makeSqlHeroDeps(), saturdayEarlyMs);
+      const saturdayIds = saturdaySlides.map((s) => s.id);
+      assert.ok(saturdayIds.includes("701003"), "Saturday airing schedule without episode must appear after BRT midnight rollover");
+      assert.ok(saturdayIds.includes("701004"), "Saturday weekly recurrence must appear after BRT midnight rollover");
+      assert.ok(saturdayIds.includes("701007"), "Em Alta must remain present alongside Saturday Calendar");
+      assert.ok(!saturdayIds.includes("701001"), "Friday schedule must leave slides after BRT midnight rollover");
+      assert.ok(!saturdayIds.includes("701002"), "Friday recurrence must leave slides after BRT midnight rollover");
+      assert.ok(!saturdayIds.includes("701005"), "Sunday schedule must NOT appear on Saturday");
+      assert.ok(!saturdayIds.includes("701006"), "Newly published non-Calendar anime must NOT appear on Saturday");
+    } finally {
+      await pg.close();
+    }
+  });
+
+  it("16. pickHeroItems fallback preserves today's Calendar animes without published episodes alongside Em Alta", () => {
+    const trendingWithEp = Array.from({ length: 8 }, (_, i) =>
+      makeTrendingSlim({
+        id: String(610001 + i),
+        banner: `https://cdn.example.com/banner-${610001 + i}.jpg`,
+        hasEpisode: true,
+      }),
+    );
+    const todayWithoutEp: SlimAnime[] = [
+      {
+        ...makeTrendingSlim({
+          id: "620001",
+          banner: "https://cdn.example.com/banner-620001.jpg",
+          hasEpisode: false,
+        }),
+        todayEpisode: { number: 1, airingAt: 1778868000 },
+      },
+      {
+        ...makeTrendingSlim({
+          id: "620002",
+          banner: "",
+          cover: "https://cdn.example.com/cover-620002.jpg",
+          hasEpisode: false,
+        }),
+        todayEpisode: { number: 0, airingAt: 1778868000 },
+      },
+    ];
+
+    const fallbackSlides = pickHeroItems(trendingWithEp, [], todayWithoutEp);
+    assert.equal(fallbackSlides.length, MAX_HERO_SLIDES);
+    assert.ok(fallbackSlides.some((s) => s.id === "620001"));
+    assert.ok(fallbackSlides.some((s) => s.id === "620002"));
+    assert.ok(fallbackSlides.some((s) => s.id === "610001"));
   });
 });
 
