@@ -128,11 +128,11 @@ function DmcaPage() {
 
         <div className="pt-2">
           <a
-            href="mailto:dmca@hikari.app?subject=DMCA%20Takedown%20Notice%20-%20Hikari"
+            href="mailto:hikaritv209@gmail.com?subject=DMCA%20Takedown%20Notice%20-%20Hikari"
             className="inline-flex items-center gap-2 rounded-xl bg-[#a855f7] px-5 py-3 text-sm font-semibold text-white shadow transition-all hover:bg-[#9333ea] hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] !no-underline"
           >
             <Mail className="size-4" />
-            <span>dmca@hikari.app</span>
+            <span>hikaritv209@gmail.com</span>
           </a>
         </div>
       </section>

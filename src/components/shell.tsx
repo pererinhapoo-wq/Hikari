@@ -135,17 +135,11 @@ function useDrawerPresence(open: boolean, exitMs = 200) {
   useEffect(() => {
     if (open) {
       setMounted(true);
-      let secondFrameId: number | null = null;
-      const firstFrameId = window.requestAnimationFrame(() => {
-        secondFrameId = window.requestAnimationFrame(() => {
-          setVisible(true);
-        });
+      const frameId = window.requestAnimationFrame(() => {
+        setVisible(true);
       });
       return () => {
-        window.cancelAnimationFrame(firstFrameId);
-        if (secondFrameId !== null) {
-          window.cancelAnimationFrame(secondFrameId);
-        }
+        window.cancelAnimationFrame(frameId);
       };
     }
 
@@ -1991,7 +1985,7 @@ export function Shell() {
             aria-modal="true"
             aria-label="Menu de navegação"
             className={cn(
-              "fixed inset-y-0 left-0 z-[60] flex w-[min(84vw,20.5rem)] flex-col overflow-hidden border-r border-purple-500/20 bg-gradient-to-b from-[#0e0b1a] via-[#090811] to-[#06050a] text-zinc-100 shadow-[20px_0_60px_rgba(0,0,0,0.85)] backdrop-blur-2xl",
+              "fixed inset-y-0 left-0 z-[60] flex w-[min(84vw,20.5rem)] flex-col overflow-hidden border-r border-purple-500/20 bg-gradient-to-b from-[#0e0b1a] via-[#090811] to-[#06050a] text-zinc-100 shadow-[20px_0_60px_rgba(0,0,0,0.85)] backdrop-blur-md",
               "motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
               drawerPanel.visible
                 ? "translate-x-0"
@@ -2041,11 +2035,11 @@ export function Shell() {
                     onClick={() => setMenuOpen(false)}
                     className={cn(
                       "group relative flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border px-3 py-2.5 text-[15px] tracking-[-0.01em]",
-                      "motion-safe:transition-[background-color,border-color,color,box-shadow] motion-safe:duration-150 motion-reduce:transition-none",
+                      "motion-safe:transition-[background-color,border-color,color,box-shadow,transform] motion-safe:duration-150 motion-reduce:transition-none active:scale-[0.98]",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
                       pathname === "/"
-                        ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)]"
-                        : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/[0.06]",
+                        ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)] active:bg-purple-500/25"
+                        : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/10 active:text-white",
                     )}
                   >
                     <span
@@ -2071,11 +2065,11 @@ export function Shell() {
                       onClick={() => setMenuOpen(false)}
                       className={cn(
                         "group relative flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border px-3 py-2.5 text-[15px] tracking-[-0.01em]",
-                        "motion-safe:transition-[background-color,border-color,color,box-shadow] motion-safe:duration-150 motion-reduce:transition-none",
+                        "motion-safe:transition-[background-color,border-color,color,box-shadow,transform] motion-safe:duration-150 motion-reduce:transition-none active:scale-[0.98]",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
                         pathname.startsWith("/calendar")
-                          ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)]"
-                          : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/[0.06]",
+                          ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)] active:bg-purple-500/25"
+                          : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/10 active:text-white",
                       )}
                     >
                       <span
@@ -2105,11 +2099,11 @@ export function Shell() {
                         onClick={() => setMenuOpen(false)}
                         className={cn(
                           "group relative flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border px-3 py-2.5 text-[15px] tracking-[-0.01em]",
-                          "motion-safe:transition-[background-color,border-color,color,box-shadow] motion-safe:duration-150 motion-reduce:transition-none",
+                          "motion-safe:transition-[background-color,border-color,color,box-shadow,transform] motion-safe:duration-150 motion-reduce:transition-none active:scale-[0.98]",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
                           pathname.startsWith("/admin")
-                            ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)]"
-                            : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/[0.06]",
+                            ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)] active:bg-purple-500/25"
+                            : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/10 active:text-white",
                         )}
                       >
                         <span
@@ -2141,11 +2135,11 @@ export function Shell() {
                     onClick={() => setMenuOpen(false)}
                     className={cn(
                       "group relative flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border px-3 py-2.5 text-[15px] tracking-[-0.01em]",
-                      "motion-safe:transition-[background-color,border-color,color,box-shadow] motion-safe:duration-150 motion-reduce:transition-none",
+                      "motion-safe:transition-[background-color,border-color,color,box-shadow,transform] motion-safe:duration-150 motion-reduce:transition-none active:scale-[0.98]",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
                       isOnSeasonRoute
-                        ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)]"
-                        : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/[0.06]",
+                        ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)] active:bg-purple-500/25"
+                        : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/10 active:text-white",
                     )}
                   >
                     <span
@@ -2171,11 +2165,11 @@ export function Shell() {
                     onClick={() => setMenuOpen(false)}
                     className={cn(
                       "group relative flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border px-3 py-2.5 text-[15px] tracking-[-0.01em]",
-                      "motion-safe:transition-[background-color,border-color,color,box-shadow] motion-safe:duration-150 motion-reduce:transition-none",
+                      "motion-safe:transition-[background-color,border-color,color,box-shadow,transform] motion-safe:duration-150 motion-reduce:transition-none active:scale-[0.98]",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
                       pathname.startsWith("/browse/genres")
-                        ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)]"
-                        : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/[0.06]",
+                        ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)] active:bg-purple-500/25"
+                        : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/10 active:text-white",
                     )}
                   >
                     <span
@@ -2200,11 +2194,11 @@ export function Shell() {
                     onClick={() => setMenuOpen(false)}
                     className={cn(
                       "group relative flex w-full min-h-[46px] items-center gap-3.5 rounded-xl border px-3 py-2.5 text-[15px] tracking-[-0.01em]",
-                      "motion-safe:transition-[background-color,border-color,color,box-shadow] motion-safe:duration-150 motion-reduce:transition-none",
+                      "motion-safe:transition-[background-color,border-color,color,box-shadow,transform] motion-safe:duration-150 motion-reduce:transition-none active:scale-[0.98]",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
                       pathname.startsWith("/feedback")
-                        ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)]"
-                        : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/[0.06]",
+                        ? "border-purple-400/30 bg-gradient-to-r from-purple-500/18 via-purple-500/10 to-transparent font-semibold text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_18px_rgba(168,85,247,0.12)] active:bg-purple-500/25"
+                        : "border-transparent font-medium text-zinc-300 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/20 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-white/[0.045] [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:bg-white/10 active:text-white",
                     )}
                   >
                     <span

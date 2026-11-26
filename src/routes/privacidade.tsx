@@ -153,10 +153,10 @@ function PrivacidadePage() {
             Para exercer qualquer um dos seus direitos, solicitar relatórios de dados ou requerer a exclusão completa de sua conta, basta enviar uma solicitação ao nosso canal de privacidade:
           </p>
           <a
-            href="mailto:privacidade@hikari.app?subject=Solicitacao%20de%20Direitos%20LGPD%20-%20Hikari"
+            href="mailto:hikaritv209@gmail.com?subject=Solicitacao%20de%20Direitos%20LGPD%20-%20Hikari"
             className="inline-flex items-center gap-2 rounded-xl bg-[#a855f7] px-4 py-2 text-sm font-semibold text-white shadow transition-all hover:bg-[#9333ea] !no-underline"
           >
-            <span>privacidade@hikari.app</span>
+            <span>hikaritv209@gmail.com</span>
           </a>
           <p className="text-xs text-subtle">
             Atendimento gratuito, com resposta formal fornecida em até 15 dias corridos, conforme preconiza a legislação brasileira.
