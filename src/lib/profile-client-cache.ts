@@ -50,6 +50,13 @@ export function setKnownViewerId(viewerId: string | null): void {
   if (!isBrowser()) return;
   const normalized = viewerId && viewerId.trim() ? viewerId.trim() : null;
   if (knownViewerId !== normalized) {
+    if (knownViewerId) {
+      try {
+        sessionStorage.removeItem(`hikari:profile-meta:${knownViewerId}`);
+      } catch {
+        // ignore
+      }
+    }
     // Isola sessão anterior em memória ao trocar ou encerrar conta
     accountProfileBundleCache.clear();
     profileMetaCache.clear();
@@ -175,19 +182,44 @@ export function invalidateAccountProfileCache(userId?: string): void {
   if (userId) {
     accountProfileBundleCache.delete(userId);
     profileMetaCache.delete(userId);
+    try {
+      sessionStorage.removeItem(`hikari:profile-meta:${userId}`);
+    } catch {
+      // ignore
+    }
     return;
   }
   accountProfileBundleCache.clear();
+  profileMetaCache.clear();
 }
 
 export function getCachedProfileMeta(
   userId: string,
 ): { image: string | null; nick: string | null } | null {
   if (!isBrowser() || !userId) return null;
-  const entry = profileMetaCache.get(userId);
+  let entry = profileMetaCache.get(userId);
+  if (!entry) {
+    try {
+      const stored = sessionStorage.getItem(`hikari:profile-meta:${userId}`);
+      if (stored) {
+        const parsed = JSON.parse(stored) as { image: string | null; nick: string | null; timestamp: number };
+        if (parsed && typeof parsed.timestamp === 'number' && Date.now() - parsed.timestamp < PROFILE_CACHE_TTL_MS) {
+          entry = { image: parsed.image ?? null, nick: parsed.nick ?? null, timestamp: parsed.timestamp };
+          profileMetaCache.set(userId, entry);
+        } else {
+          sessionStorage.removeItem(`hikari:profile-meta:${userId}`);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
   if (!entry) return null;
   if (Date.now() - entry.timestamp >= PROFILE_CACHE_TTL_MS) {
     profileMetaCache.delete(userId);
+    try { sessionStorage.removeItem(`hikari:profile-meta:${userId}`); } catch {
+      // ignore
+    }
     return null;
   }
   return { image: entry.image, nick: entry.nick };
@@ -198,11 +230,17 @@ export function setCachedProfileMeta(
   meta: { image: string | null; nick: string | null },
 ): void {
   if (!isBrowser() || !userId) return;
-  profileMetaCache.set(userId, {
+  const entry = {
     image: meta.image ?? null,
     nick: meta.nick ?? null,
     timestamp: Date.now(),
-  });
+  };
+  profileMetaCache.set(userId, entry);
+  try {
+    sessionStorage.setItem(`hikari:profile-meta:${userId}`, JSON.stringify(entry));
+  } catch {
+    // ignore
+  }
 }
 
 export async function fetchProfileMetaOnce(
@@ -238,6 +276,13 @@ export function invalidateAllProfileCaches(): void {
   if (!isBrowser()) return;
   publicProfileBundleCache.clear();
   accountProfileBundleCache.clear();
+  if (knownViewerId) {
+    try {
+      sessionStorage.removeItem(`hikari:profile-meta:${knownViewerId}`);
+    } catch {
+      // ignore
+    }
+  }
   profileMetaCache.clear();
   inFlightProfileMeta.clear();
   clearAllAnimeUserClientCache();

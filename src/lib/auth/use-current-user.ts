@@ -1,5 +1,6 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
 import { authClient, authEnabled } from "./client";
+import { getCachedProfileMeta } from "@/lib/profile-client-cache";
 
 /** Normalized user shape used across the app, auth on or off. */
 export type AppUser = {
@@ -115,16 +116,18 @@ export function useCurrentUserState(): CurrentUserState {
   const user = data?.user;
   if (user) {
     const matchesInitial = initialSessionUser?.id === user.id;
+    const cachedMeta = getCachedProfileMeta(user.id);
     return {
       user: {
         id: user.id,
-        displayName: user.name ?? (matchesInitial ? initialSessionUser.displayName : null) ?? null,
+        displayName: user.name ?? (matchesInitial ? initialSessionUser.displayName : null) ?? cachedMeta?.nick ?? null,
         primaryEmail: user.email ?? null,
         profileImageUrl:
           (matchesInitial && initialSessionUser.profileImageUrl) ||
+          cachedMeta?.image ||
           user.image ||
           null,
-        profileNick: matchesInitial ? (initialSessionUser.profileNick ?? null) : null,
+        profileNick: matchesInitial ? (initialSessionUser.profileNick ?? null) : (cachedMeta?.nick ?? null),
         isAdmin: matchesInitial ? initialSessionUser.isAdmin : undefined,
         isDevFallback: false,
       },

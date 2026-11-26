@@ -186,6 +186,11 @@ export function ProfileDropdownMenu({ user, onOpenChange }: ProfileDropdownMenuP
   }, [open]);
 
   const avatarSrc = !imgError ? customAvatar || user.profileImageUrl || null : null;
+
+  useEffect(() => {
+    setImgError(false);
+  }, [customAvatar, user.profileImageUrl]);
+
   const displayName = user.displayName || customNick || "Membro";
   const initial = (user.displayName || customNick || user.primaryEmail || "U")
     .trim()

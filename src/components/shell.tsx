@@ -1768,8 +1768,8 @@ export function Shell() {
               </button>
             )}
 
-            {/* NOTIFICAÇÕES (APENAS PARA USUÁRIOS AUTENTICADOS) */}
-            {user && (
+            {/* NOTIFICAÇÕES (APENAS PARA USUÁRIOS AUTENTICADOS OU PENDENTES) */}
+            {user ? (
               <button
                 type="button"
                 onClick={() => {
@@ -1798,17 +1798,21 @@ export function Shell() {
                 )}
                 <Bell className="size-4 sm:size-4.5 text-purple-300 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-white transition-colors motion-reduce:transition-none" />
 
-                {notificationsPresentationReady && unreadCount > 0 && (
+                {unreadCount > 0 && (
                   <span className="absolute -right-0.5 -top-0.5 flex min-w-4 h-4 sm:min-w-5 sm:h-5 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-rose-600 px-1 text-[9px] sm:text-[10px] font-bold leading-none text-white ring-2 ring-[#08070d] shadow-md tabular-nums animate-pulse">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
               </button>
-            )}
+            ) : authPending ? (
+              <div className="flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full bg-white/[0.04] ring-1 ring-purple-500/30 animate-pulse" aria-hidden="true" />
+            ) : null}
 
-            {/* PERFIL (QUANDO AUTENTICADO) OU BOTÃO DE CONTA (QUANDO VISITANTE) */}
+            {/* PERFIL (QUANDO AUTENTICADO), PLACEHOLDER (QUANDO PENDENTE) OU BOTÃO DE CONTA (QUANDO VISITANTE) */}
             {user ? (
               <ProfileDropdownMenu user={user} onOpenChange={setProfileMenuOpen} />
+            ) : authPending ? (
+              <div className="flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full bg-white/[0.04] ring-1 ring-purple-500/30 animate-pulse" aria-hidden="true" />
             ) : (
               <VisitorDropdownMenu onOpenLogin={handleOpenLogin} onOpenChange={setVisitorMenuOpen} />
             )}
