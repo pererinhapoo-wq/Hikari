@@ -439,6 +439,80 @@ const LOGO_DEFINITIONS: Record<
       /生徒会にも穴はある/,
     ],
   },
+  "fool-night": {
+    src: "/assets/anime-logos/fool-night.png",
+    alt: "Fool Night",
+    sizeClasses:
+      "h-14 sm:h-18 md:h-22 w-auto max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
+    aspectRatioHint: "wide",
+    width: 800,
+    height: 200,
+    webpSrcSet:
+      "/assets/anime-logos/fool-night-sm.webp 450w, /assets/anime-logos/fool-night.webp 800w",
+    sizes: "(min-width: 768px) 400px, (min-width: 640px) 340px, 260px",
+    aniListIds: [213457],
+    malIds: [64459],
+    titlePatterns: [
+      /\bfool\s*night\b/i,
+      /フールナイト/,
+    ],
+  },
+  "fx-fighter-kurumi-chan": {
+    src: "/assets/anime-logos/fx-fighter-kurumi-chan.png",
+    alt: "FX Fighter Kurumi-chan",
+    sizeClasses:
+      "h-14 sm:h-18 md:h-22 w-auto max-w-[280px] sm:max-w-[360px] md:max-w-[440px]",
+    aspectRatioHint: "wide",
+    width: 860,
+    height: 200,
+    webpSrcSet:
+      "/assets/anime-logos/fx-fighter-kurumi-chan-sm.webp 480w, /assets/anime-logos/fx-fighter-kurumi-chan.webp 860w",
+    sizes: "(min-width: 768px) 430px, (min-width: 640px) 360px, 280px",
+    aniListIds: [206401],
+    malIds: [63337],
+    titlePatterns: [
+      /\bfx\s*fighter\s*kurumi[- ]?chan\b/i,
+      /\bfx\s*senshi\s*kurumi[- ]?chan\b/i,
+      /FX戦士くるみちゃん/,
+    ],
+  },
+  "the-iceblade-sorcerer-shall-rule-the-world-ii": {
+    src: "/assets/anime-logos/the-iceblade-sorcerer-shall-rule-the-world-ii.png",
+    alt: "The Iceblade Sorcerer Shall Rule the World II",
+    sizeClasses:
+      "h-14 sm:h-18 md:h-22 w-auto max-w-[290px] sm:max-w-[380px] md:max-w-[460px]",
+    aspectRatioHint: "wide",
+    width: 980,
+    height: 200,
+    webpSrcSet:
+      "/assets/anime-logos/the-iceblade-sorcerer-shall-rule-the-world-ii-sm.webp 500w, /assets/anime-logos/the-iceblade-sorcerer-shall-rule-the-world-ii.webp 980w",
+    sizes: "(min-width: 768px) 490px, (min-width: 640px) 380px, 290px",
+    aniListIds: [212503],
+    malIds: [64254],
+    titlePatterns: [
+      /\biceblade\s*sorcerer.*ii\b/i,
+      /\bhyouken\s*no\s*majutsushi.*ii\b/i,
+      /冰剣の魔術師.*Ⅱ/,
+    ],
+  },
+  "tetsuryo-meet-with-tetsudou-musume": {
+    src: "/assets/anime-logos/tetsuryo-meet-with-tetsudou-musume.png",
+    alt: "TETSURYO! Meet With Tetsudou Musume",
+    sizeClasses:
+      "h-14 sm:h-18 md:h-22 w-auto max-w-[280px] sm:max-w-[360px] md:max-w-[440px]",
+    aspectRatioHint: "wide",
+    width: 920,
+    height: 200,
+    webpSrcSet:
+      "/assets/anime-logos/tetsuryo-meet-with-tetsudou-musume-sm.webp 480w, /assets/anime-logos/tetsuryo-meet-with-tetsudou-musume.webp 920w",
+    sizes: "(min-width: 768px) 460px, (min-width: 640px) 360px, 280px",
+    aniListIds: [199594],
+    malIds: [62615],
+    titlePatterns: [
+      /\btetsuryo.*meet\s*with.*tetsudou\s*musume\b/i,
+      /てつりょー.*鉄道むすめ/,
+    ],
+  },
 };
 
 function toAnimeLogoConfig(
