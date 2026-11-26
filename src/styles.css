@@ -129,6 +129,7 @@ html[data-theme="light"] {
     -moz-osx-font-smoothing: grayscale;
     background: var(--color-bg);
     color: var(--color-fg);
+    overflow-x: hidden;
   }
 
   body {
@@ -136,6 +137,7 @@ html[data-theme="light"] {
     background: var(--color-bg);
     color: var(--color-fg);
     font-family: var(--font-sans);
+    overflow-x: hidden;
   }
 
   button:not(:disabled),
@@ -968,11 +970,15 @@ textarea:focus {
 }
 
 /* Previne zoom e saltos de escala involuntários em dispositivos de toque (mobile) */
-@media (hover: none) {
+@media (hover: none), (pointer: coarse) {
   button:active,
   a:active,
-  [role="button"]:active {
+  [role="button"]:active,
+  .hero-btn-action:active,
+  [class*="active:scale"]:active,
+  [class*="scale-"]:active {
     transform: none !important;
+    scale: 1 !important;
   }
 }
 
