@@ -1,6 +1,7 @@
 import {
   areAnimeRecentBadgesEqual,
   normalizeAnimeRecentBadges,
+  normalizeEpisodeAudio,
   type LocalAnime,
   type Season,
 } from "@/lib/types";
@@ -32,6 +33,7 @@ export interface ServerEpisodeSnapshot {
   id: string;
   seasonNumber?: number;
   number: number;
+  audio?: string | null;
   openingStartSeconds?: number | null;
   openingEndSeconds?: number | null;
   badgeLancamento?: boolean;
@@ -133,6 +135,8 @@ export function reconcileDirtyEpisodeIdsAfterFormPopulation(
       const openingEndDiffers =
         (ep.openingEndSeconds ?? null) !== (matchedServer.openingEndSeconds ?? null);
       const publishDiffers = Boolean(ep.published) !== Boolean(matchedServer.published);
+      const audioDiffers =
+        normalizeEpisodeAudio(ep.audio) !== normalizeEpisodeAudio(matchedServer.audio);
       const serverBadges = normalizeAnimeRecentBadges({
         lancamento: matchedServer.badgeLancamento,
         novo: matchedServer.badgeNovo,
@@ -141,7 +145,7 @@ export function reconcileDirtyEpisodeIdsAfterFormPopulation(
       const localBadges = normalizeAnimeRecentBadges(ep.recentBadges);
       const badgesDiffer = !areAnimeRecentBadgesEqual(localBadges, serverBadges);
 
-      if (openingStartDiffers || openingEndDiffers || publishDiffers || badgesDiffer) {
+      if (openingStartDiffers || openingEndDiffers || publishDiffers || audioDiffers || badgesDiffer) {
         dirtyEpisodeIds.add(ep.id);
       } else {
         dirtyEpisodeIds.delete(ep.id);

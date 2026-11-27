@@ -9,6 +9,7 @@ import {
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
+import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
 import {
   deleteEpisodeSourcesForEpisode,
@@ -23,10 +24,16 @@ import {
 } from "@/lib/anitube22";
 import {
   episodePostSchema,
+  resolveEpisodeAudioPatch,
   resolveEpisodeBadgesPatch,
   resolveOpeningTimestampsPatch,
 } from "@/lib/episode-writer";
-import { normalizeAnimeRecentBadges, type AnimeRecentBadges } from "@/lib/types";
+import {
+  normalizeAnimeRecentBadges,
+  normalizeEpisodeAudio,
+  type AnimeRecentBadges,
+  type EpisodeAudio,
+} from "@/lib/types";
 import {
   findCanonicalCatalogAnime,
   getAllAliasIdsForCanonical,
@@ -110,6 +117,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             videoUrl4: string | null;
             videoUrl5: string | null;
             hikariPlayerEpisodeId: string | null;
+            audio: string | null;
             openingStartSeconds: number | null;
             openingEndSeconds: number | null;
             badgeLancamento: boolean;
@@ -125,6 +133,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
               `SELECT "id", "animeId", "seasonNumber", "number", "title", "thumbnail",
                       "duration", "synopsis", "videoUrl", "videoUrl2", "videoUrl3",
                       "videoUrl4", "videoUrl5", "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+                      "audio",
                       "opening_start_seconds" AS "openingStartSeconds",
                       "opening_end_seconds" AS "openingEndSeconds",
                       COALESCE("badge_lancamento", false) AS "badgeLancamento",
@@ -139,6 +148,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
               `SELECT "id", "animeId", "seasonNumber", "number", "title", "thumbnail",
                       "duration", "synopsis", "videoUrl", "videoUrl2", "videoUrl3",
                       "videoUrl4", "videoUrl5", "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+                      "audio",
                       "opening_start_seconds" AS "openingStartSeconds",
                       "opening_end_seconds" AS "openingEndSeconds",
                       COALESCE("badge_lancamento", false) AS "badgeLancamento",
@@ -344,12 +354,17 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             { recentBadges: data.recentBadges },
             existingRow,
           );
+          const audioPatch = resolveEpisodeAudioPatch(
+            { audio: data.audio },
+            existingRow,
+          );
 
           const upsertResult = await sql.query<{
             id: string;
             published: boolean;
             publishedAt: string | null;
             hikariPlayerEpisodeId: string | null;
+            audio: string | null;
             openingStartSeconds: number | null;
             openingEndSeconds: number | null;
             badgeLancamento: boolean;
@@ -361,7 +376,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                "id", "animeId", "seasonNumber", "number",
                "title", "thumbnail", "duration", "synopsis",
                "videoUrl", "videoUrl2", "videoUrl3", "videoUrl4", "videoUrl5",
-               "hikari_player_episode_id",
+               "hikari_player_episode_id", "audio",
                "opening_start_seconds", "opening_end_seconds",
                "badge_lancamento", "badge_novo", "badge_final",
                "authorId",
@@ -371,7 +386,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                $1, $2, $3, $4,
                $5, $6, $7, $8,
                $9, $10, $11, $12, $13,
-               $17,
+               $17, $30,
                $19, $20,
                $23, $24, $25,
                $29,
@@ -413,6 +428,10 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                  WHEN $18 = true THEN EXCLUDED."hikari_player_episode_id"
                  ELSE "catalog_episode"."hikari_player_episode_id"
                END,
+               "audio" = CASE
+                 WHEN $31 = true THEN EXCLUDED."audio"
+                 ELSE "catalog_episode"."audio"
+               END,
                "opening_start_seconds" = CASE
                  WHEN $21 = true THEN EXCLUDED."opening_start_seconds"
                  ELSE "catalog_episode"."opening_start_seconds"
@@ -441,7 +460,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                  ELSE "catalog_episode"."publishedAt"
                END,
                "updatedAt" = CURRENT_TIMESTAMP
-             RETURNING "id", "published", "publishedAt", "hikari_player_episode_id" AS "hikariPlayerEpisodeId", "opening_start_seconds" AS "openingStartSeconds", "opening_end_seconds" AS "openingEndSeconds", "badge_lancamento" AS "badgeLancamento", "badge_novo" AS "badgeNovo", "badge_final" AS "badgeFinal", "authorId";`,
+             RETURNING "id", "published", "publishedAt", "hikari_player_episode_id" AS "hikariPlayerEpisodeId", "audio", "opening_start_seconds" AS "openingStartSeconds", "opening_end_seconds" AS "openingEndSeconds", "badge_lancamento" AS "badgeLancamento", "badge_novo" AS "badgeNovo", "badge_final" AS "badgeFinal", "authorId";`,
             [
               canonicalId,
               canonicalAnimeId,
@@ -472,6 +491,8 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
               badgesPatch.hasNovoField,
               badgesPatch.hasFinalField,
               existingRow?.authorId ?? adminId,
+              audioPatch.audio,
+              audioPatch.hasAudioField,
             ],
           );
 
@@ -482,6 +503,9 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           const finalHikariPlayerEpisodeId = savedRow
             ? savedRow.hikariPlayerEpisodeId
             : hikariPlayerEpisodeId;
+          const finalAudio: EpisodeAudio | null = savedRow
+            ? normalizeEpisodeAudio(savedRow.audio)
+            : audioPatch.audio;
           const finalOpeningStartSeconds = savedRow
             ? savedRow.openingStartSeconds
             : openingStartSeconds;
@@ -507,7 +531,11 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
               { url: v4, priority: 3 },
               { url: v5, priority: 4 },
             ],
-            { replaceAnitube22: Boolean(data.replaceSources), skipProbe: true },
+            {
+              replaceAnitube22: Boolean(data.replaceSources),
+              skipProbe: true,
+              episodeAudio: finalAudio,
+            },
           );
           if (Array.isArray(data.sources) && data.sources.length > 0) {
             for (const src of data.sources) {
@@ -554,15 +582,22 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             }
           }
 
-          // Invalida cache em memória e Redis do anime (todos os aliases) e da Home
+          // Invalida cache em memória e Redis do anime (todos os aliases), catálogo e Home
           await invalidateCatalogEpisodesCacheAsync(...cacheAliasIds);
           await invalidateHomePublicEpisodesCacheAsync();
+          await invalidateServerCatalogCachesAsync(canonicalAnimeId, {
+            anilistId: matchedAnime?.anilistId,
+            malId: matchedAnime?.malId,
+            kitsuId: matchedAnime?.kitsuId,
+            extraIds: candidateAnimeIds,
+          });
 
           return Response.json({
             ok: true,
             published: finalPublished,
             publishedAt: finalPublishedAt,
             hikariPlayerEpisodeId: finalHikariPlayerEpisodeId,
+            audio: finalAudio,
             openingStartSeconds: finalOpeningStartSeconds,
             openingEndSeconds: finalOpeningEndSeconds,
             recentBadges: finalRecentBadges,
@@ -665,17 +700,21 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           }
           await deleteEpisodeSourcesForEpisode(episodeId);
           const targetAnimeId = animeId || deleted?.animeId;
+          let matchedDelAnime: Awaited<ReturnType<typeof findCanonicalCatalogAnime>>["row"] = null;
+          let delCanonicalId: string | undefined;
+          let delAliases: string[] = [];
           if (targetAnimeId) {
             const lookup = await findCanonicalCatalogAnime(sql, { id: targetAnimeId });
-            const matchedDelAnime = lookup.row;
-            const extraAliases = lookup.canonicalId
+            matchedDelAnime = lookup.row;
+            delCanonicalId = lookup.canonicalId ?? undefined;
+            delAliases = lookup.canonicalId
               ? await getAllAliasIdsForCanonical(sql, lookup.canonicalId)
               : [];
             await invalidateCatalogEpisodesCacheAsync(
               targetAnimeId,
               deleted?.animeId,
               matchedDelAnime?.id,
-              ...extraAliases,
+              ...delAliases,
               matchedDelAnime?.anilistId ? String(matchedDelAnime.anilistId) : undefined,
               matchedDelAnime?.malId ? `mal-${matchedDelAnime.malId}` : undefined,
               matchedDelAnime?.kitsuId ? `kitsu-${matchedDelAnime.kitsuId}` : undefined,
@@ -683,6 +722,12 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           }
           if (deleted) {
             await invalidateHomePublicEpisodesCacheAsync();
+            await invalidateServerCatalogCachesAsync(delCanonicalId || targetAnimeId, {
+              anilistId: matchedDelAnime?.anilistId,
+              malId: matchedDelAnime?.malId,
+              kitsuId: matchedDelAnime?.kitsuId,
+              extraIds: [targetAnimeId, deleted.animeId, ...delAliases].filter(Boolean) as string[],
+            });
           }
 
           return Response.json({

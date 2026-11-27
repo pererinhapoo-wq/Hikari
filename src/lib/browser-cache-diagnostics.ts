@@ -124,7 +124,7 @@ export const SERVER_CACHE_AND_REDIS_SPECS: StaticCacheLayerSpec[] = [
     id: "srv-catalog-index",
     layer: "redis_shared",
     name: "Índice Global do Catálogo",
-    keyOrRoute: "hikari:catalog:index:v1",
+    keyOrRoute: "hikari:catalog:index:v2",
     ttlOrPolicy: "Redis TTL 15 min (900s) • RAM instância 3 min (180s)",
     invalidationMechanism: "invalidateCatalogIndex() + DEL Redis",
     runtimeVisibility: "Conteúdo/contagem NÃO VERIFICADO (sem KEYS/SCAN)",
@@ -143,7 +143,7 @@ export const SERVER_CACHE_AND_REDIS_SPECS: StaticCacheLayerSpec[] = [
     layer: "redis_shared",
     name: "Episódios por Anime & Home Pública",
     keyOrRoute:
-      "hikari:catalog:episodes:<id>:v2 • hikari:home:episodes:v2 • hikari:catalog:episodes:public:v2",
+      "hikari:catalog:episodes:<id>:v3 • hikari:home:episodes:v3 • hikari:catalog:episodes:public:v3",
     ttlOrPolicy: "Redis TTL 3 min (180s) • RAM instância 180s (máx. 300 animes)",
     invalidationMechanism: "Token de geração (fence) atômico + DEL",
     runtimeVisibility: "Ocupação real NÃO VERIFICADA (sem KEYS/SCAN)",

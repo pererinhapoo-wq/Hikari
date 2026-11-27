@@ -697,11 +697,15 @@ export async function invalidateServerCatalogCachesAsync(
   applyLocalServerCatalogInvalidation(animeId, externalIds);
   const canIncrCalendarRedis =
     !redisOverride || typeof (redisOverride as { incr?: unknown }).incr === "function";
+  const redisMod = !redisOverride ? await import("@/lib/redis").catch(() => null) : null;
   await Promise.allSettled([
     invalidateRedisAnimeDetail(animeId, externalIds, redisOverride),
     invalidateRedisAnimeCredits(animeId, externalIds, redisOverride),
     invalidateRedisAnimeJikanEpisodes(animeId, externalIds, redisOverride),
     ...(canIncrCalendarRedis ? [invalidateRedisCalendar()] : []),
+    ...(redisMod
+      ? [redisMod.invalidateRedisCatalogIndex(), redisMod.invalidateRedisCatalogSearch()]
+      : []),
     invalidateRedisHeroBannerPool(redisOverride),
     invalidateRedisHomeTrending(redisOverride),
   ]);

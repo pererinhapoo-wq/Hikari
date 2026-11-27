@@ -2,7 +2,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { adminMiddleware, bearerForwardMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
-import { normalizeAnimeRecentBadges, type Episode, type Season } from "@/lib/types";
+import {
+  normalizeAnimeRecentBadges,
+  normalizeEpisodeAudio,
+  type Episode,
+  type Season,
+} from "@/lib/types";
 import {
   getRedisCatalogEpisodes,
   setRedisCatalogEpisodes,
@@ -57,6 +62,8 @@ export interface CatalogEpisodeItem {
   videoUrl4: string | null;
   videoUrl5: string | null;
   hikariPlayerEpisodeId?: string | null;
+  audio?: string | null;
+  hasValidDubSource?: boolean;
   openingStartSeconds?: number | null;
   openingEndSeconds?: number | null;
   published: boolean;
@@ -311,6 +318,14 @@ export async function executeGetCatalogEpisodes(
              "videoUrl4",
              "videoUrl5",
              "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+             "audio",
+             EXISTS (
+               SELECT 1
+               FROM "episode_sources" es
+               WHERE es."episode_id" = "catalog_episode"."id"
+                 AND es."lang" = 'dub'
+                 AND COALESCE(es."status", 'active') NOT IN ('broken', 'incomplete')
+             ) AS "hasValidDubSource",
              "opening_start_seconds" AS "openingStartSeconds",
              "opening_end_seconds" AS "openingEndSeconds",
              COALESCE("badge_lancamento", false) AS "badgeLancamento",
@@ -439,6 +454,8 @@ export interface PublicEpisodeRow {
   videoUrl4: string | null;
   videoUrl5: string | null;
   hikariPlayerEpisodeId?: string | null;
+  audio?: string | null;
+  hasValidDubSource?: boolean;
   openingStartSeconds?: number | null;
   openingEndSeconds?: number | null;
   published: boolean;
@@ -550,6 +567,14 @@ async function queryPublicCatalogEpisodesFromDb(
          e."videoUrl4",
          e."videoUrl5",
          e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+         e."audio",
+         EXISTS (
+           SELECT 1
+           FROM "episode_sources" es
+           WHERE es."episode_id" = e."id"
+             AND es."lang" = 'dub'
+             AND COALESCE(es."status", 'active') NOT IN ('broken', 'incomplete')
+         ) AS "hasValidDubSource",
          e."opening_start_seconds" AS "openingStartSeconds",
          e."opening_end_seconds" AS "openingEndSeconds",
          e."published",
@@ -585,6 +610,8 @@ async function queryPublicCatalogEpisodesFromDb(
 
     const episodes = (Array.isArray(rows) ? rows : []).map((row) => ({
       ...row,
+      audio: row.audio ?? null,
+      hasValidDubSource: Boolean(row.hasValidDubSource),
       badgeLancamento: Boolean(row.badgeLancamento),
       badgeNovo: Boolean(row.badgeNovo),
       badgeFinal: Boolean(row.badgeFinal),
@@ -1007,6 +1034,14 @@ export async function executeGetPaginatedPublicCatalogEpisodes(
         e."videoUrl4",
         e."videoUrl5",
         e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+        e."audio",
+        EXISTS (
+          SELECT 1
+          FROM "episode_sources" es
+          WHERE es."episode_id" = e."id"
+            AND es."lang" = 'dub'
+            AND COALESCE(es."status", 'active') NOT IN ('broken', 'incomplete')
+        ) AS "hasValidDubSource",
         e."opening_start_seconds" AS "openingStartSeconds",
         e."opening_end_seconds" AS "openingEndSeconds",
         e."published",
@@ -1085,6 +1120,8 @@ export async function executeGetPaginatedPublicCatalogEpisodes(
 
     const episodes = verifiedRows.map((row) => ({
       ...row,
+      audio: row.audio ?? null,
+      hasValidDubSource: Boolean(row.hasValidDubSource),
       badgeLancamento: Boolean(row.badgeLancamento),
       badgeNovo: Boolean(row.badgeNovo),
       badgeFinal: Boolean(row.badgeFinal),
@@ -1449,6 +1486,13 @@ export function buildResolvedSeasons(
               : rep.videoUrl5?.trim() || sanitizePlayableVideoUrl(lep.videoUrl5) || undefined,
             hikariPlayerEpisodeId:
               normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ?? undefined,
+            audio:
+              rep.audio !== undefined
+                ? (normalizeEpisodeAudio(rep.audio) ?? undefined)
+                : (normalizeEpisodeAudio(lep.audio) ?? undefined),
+            ...(rep.hasValidDubSource !== undefined
+              ? { hasValidDubSource: Boolean(rep.hasValidDubSource) }
+              : {}),
             openingStartSeconds:
               typeof rep.openingStartSeconds === "number" ? rep.openingStartSeconds : null,
             openingEndSeconds:
@@ -1481,6 +1525,13 @@ export function buildResolvedSeasons(
           videoUrl5: rep.videoUrl5?.trim() || localByIdMatch?.videoUrl5?.trim() || undefined,
           hikariPlayerEpisodeId:
             normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ?? undefined,
+          audio:
+            rep.audio !== undefined
+              ? (normalizeEpisodeAudio(rep.audio) ?? undefined)
+              : (normalizeEpisodeAudio(localByIdMatch?.audio) ?? undefined),
+          ...(rep.hasValidDubSource !== undefined
+            ? { hasValidDubSource: Boolean(rep.hasValidDubSource) }
+            : {}),
           openingStartSeconds:
             typeof rep.openingStartSeconds === "number" ? rep.openingStartSeconds : null,
           openingEndSeconds:
@@ -1658,6 +1709,10 @@ export function catalogItemToEpisode(item: CatalogEpisodeItem): Episode {
     videoUrl5: item.videoUrl5?.trim() || undefined,
     hikariPlayerEpisodeId:
       normalizeHikariPlayerEpisodeId(item.hikariPlayerEpisodeId) ?? undefined,
+    audio: normalizeEpisodeAudio(item.audio) ?? undefined,
+    ...(item.hasValidDubSource !== undefined
+      ? { hasValidDubSource: Boolean(item.hasValidDubSource) }
+      : {}),
     openingStartSeconds:
       typeof item.openingStartSeconds === "number" ? item.openingStartSeconds : null,
     openingEndSeconds:

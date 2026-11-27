@@ -185,6 +185,12 @@ export function mergeSeasonsWithRemote(
             normalizeHikariPlayerEpisodeId(lep.hikariPlayerEpisodeId) ??
             normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ??
             undefined,
+          ...(lep.audio !== undefined || rep.audio !== undefined
+            ? {
+                audio:
+                  lep.audio !== undefined ? (lep.audio ?? undefined) : (rep.audio ?? undefined),
+              }
+            : {}),
           ...(lep.openingStartSeconds !== undefined || rep.openingStartSeconds !== undefined
             ? {
                 openingStartSeconds:
@@ -268,6 +274,8 @@ export function sanitizeRemoteEpisodeForAdmin(rep: Episode): Episode {
     videoUrl4: v4,
     videoUrl5: v5,
     hikariPlayerEpisodeId: normalizedHikariId,
+    ...(rep.audio !== undefined ? { audio: rep.audio ?? undefined } : {}),
+    ...(rep.audioVersion ? { audioVersion: rep.audioVersion } : {}),
     ...(rep.openingStartSeconds !== undefined
       ? { openingStartSeconds: rep.openingStartSeconds }
       : {}),
@@ -362,7 +370,13 @@ export function mergeSeasonsWithRemoteForAdmin(
             normalizeHikariPlayerEpisodeId(lep.hikariPlayerEpisodeId) ??
             normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ??
             undefined,
-          ...(lep.openingStartSeconds !== undefined || rep.openingStartSeconds !== undefined
+          ...(lep.audio !== undefined || rep.audio !== undefined
+            ? {
+                audio:
+                  lep.audio !== undefined ? (lep.audio ?? undefined) : (rep.audio ?? undefined),
+              }
+            : {}),
+          ...(lep.openingStartSeconds !== undefined || rep.openingEndSeconds !== undefined
             ? {
                 openingStartSeconds:
                   lep.openingStartSeconds !== undefined

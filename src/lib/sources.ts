@@ -104,6 +104,7 @@ function mapSourceRow(row: RawEpisodeSourceRow): EpisodeSourceItem {
 async function getEpisodeLanguageHintFromDb(episodeId: string): Promise<SourceLang | null> {
   const sql = await getSql();
   const rows = await sql.query<{
+    episodeAudio: string | null;
     episodeTitle: string | null;
     seasonTitle: string | null;
     animeTitle: string | null;
@@ -111,6 +112,7 @@ async function getEpisodeLanguageHintFromDb(episodeId: string): Promise<SourceLa
     animeTitleNative: string | null;
   }>(
     `SELECT
+       e."audio" AS "episodeAudio",
        e."title" AS "episodeTitle",
        s."title" AS "seasonTitle",
        a."title" AS "animeTitle",
@@ -128,6 +130,13 @@ async function getEpisodeLanguageHintFromDb(episodeId: string): Promise<SourceLa
 
   const row = rows[0];
   if (!row) return null;
+
+  const explicitAudio = parseExplicitSourceLang(
+    typeof row.episodeAudio === "string" ? row.episodeAudio : null,
+  );
+  if (explicitAudio) {
+    return explicitAudio;
+  }
 
   return detectEpisodeLanguageHint([
     row.episodeTitle,
@@ -322,12 +331,48 @@ export async function syncCatalogEpisodeSlotsToSources(
     lang?: SourceLang | string | null;
     quality?: string | null;
   }>,
-  options?: { replaceAnitube22?: boolean; fetchImpl?: typeof fetch; skipProbe?: boolean },
+  options?: {
+    replaceAnitube22?: boolean;
+    fetchImpl?: typeof fetch;
+    skipProbe?: boolean;
+    episodeAudio?: SourceLang | string | null;
+  },
 ): Promise<EpisodeSourceItem[]> {
   const cleanEpId = episodeId?.trim();
   if (!cleanEpId) return [];
 
+  const sql = await getSql();
+  const existingRows = await sql.query<{
+    id: string;
+    url_path: string | null;
+    lang: string | null;
+  }>(
+    `SELECT "id", "url_path", "lang"
+     FROM "episode_sources"
+     WHERE "episode_id" = $1 AND "provider" = $2;`,
+    [cleanEpId, ANITUBE22_PROVIDER],
+  );
+
+  const existingLangsByUrl = new Map<string, SourceLang[]>();
+  let hasExistingDubSource = false;
+  for (const row of existingRows) {
+    const normalizedRowLang = normalizeSourceLang(row.lang);
+    if (normalizedRowLang === "dub") {
+      hasExistingDubSource = true;
+    }
+    const urlKey = row.url_path?.trim() || "";
+    if (!urlKey) continue;
+    const list = existingLangsByUrl.get(urlKey) ?? [];
+    list.push(normalizedRowLang);
+    existingLangsByUrl.set(urlKey, list);
+  }
+
+  const explicitEpisodeLang = parseExplicitSourceLang(
+    typeof options?.episodeAudio === "string" ? options.episodeAudio : null,
+  );
+
   const desiredKeys = new Set<string>();
+  const replacedLangs = new Set<SourceLang>();
   const saved: EpisodeSourceItem[] = [];
   let cachedHint: SourceLang | null | undefined = undefined;
 
@@ -343,7 +388,26 @@ export async function syncCatalogEpisodeSlotsToSources(
     const explicitLang = parseExplicitSourceLang(
       typeof slot.lang === "string" ? slot.lang : null,
     );
-    const lang = explicitLang ?? cachedHint ?? "sub";
+    const existingForUrl = existingLangsByUrl.get(parsed.urlPath) ?? [];
+    const preservedExistingLang: SourceLang | null =
+      existingForUrl.includes("dub") && explicitLang !== "sub" && explicitEpisodeLang !== "sub"
+        ? "dub"
+        : existingForUrl.length === 1
+          ? existingForUrl[0]
+          : null;
+
+    const effectiveHint = explicitEpisodeLang ?? cachedHint ?? null;
+    const lang: SourceLang =
+      explicitLang ??
+      (preservedExistingLang === "dub" && !explicitEpisodeLang
+        ? "dub"
+        : explicitEpisodeLang ?? preservedExistingLang ?? effectiveHint ?? "sub");
+
+    if (explicitLang) {
+      replacedLangs.add(explicitLang);
+    } else if (explicitEpisodeLang) {
+      replacedLangs.add(explicitEpisodeLang);
+    }
 
     desiredKeys.add(`${lang}:${parsed.urlPath}`);
     try {
@@ -360,7 +424,7 @@ export async function syncCatalogEpisodeSlotsToSources(
         {
           fetchImpl: options?.fetchImpl,
           skipProbe: options?.skipProbe,
-          expectedLangHint: cachedHint,
+          expectedLangHint: explicitLang ?? explicitEpisodeLang ?? cachedHint,
         },
       );
       if (row) saved.push(row);
@@ -370,22 +434,26 @@ export async function syncCatalogEpisodeSlotsToSources(
   }
 
   if (options?.replaceAnitube22 && desiredKeys.size > 0) {
-    const sql = await getSql();
-    const existingRows = await sql.query<{
-      id: string;
-      url_path: string | null;
-      lang: string | null;
-    }>(
-      `SELECT "id", "url_path", "lang"
-       FROM "episode_sources"
-       WHERE "episode_id" = $1 AND "provider" = $2;`,
-      [cleanEpId, ANITUBE22_PROVIDER],
-    );
+    const canPruneUnclassifiedSubOnly =
+      replacedLangs.size === 0 &&
+      !hasExistingDubSource &&
+      cachedHint !== "dub";
 
     const staleIds: string[] = [];
     for (const row of existingRows) {
-      const key = `${normalizeSourceLang(row.lang)}:${row.url_path || ""}`;
-      if (!desiredKeys.has(key)) {
+      const rowLang = normalizeSourceLang(row.lang);
+      const key = `${rowLang}:${row.url_path || ""}`;
+      if (desiredKeys.has(key)) continue;
+
+      if (rowLang === "dub") {
+        // Nunca apagar fonte 'dub' existente a menos que uma substituição explícita de 'dub' tenha sido solicitada
+        if (replacedLangs.has("dub")) {
+          staleIds.push(row.id);
+        }
+        continue;
+      }
+
+      if (replacedLangs.has("sub") || canPruneUnclassifiedSubOnly) {
         staleIds.push(row.id);
       }
     }

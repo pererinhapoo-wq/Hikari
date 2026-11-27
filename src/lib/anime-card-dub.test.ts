@@ -282,11 +282,21 @@ describe("Selo DUB nos cards do catálogo e consistência de dados", () => {
           "seasonNumber" integer NOT NULL,
           "number" integer NOT NULL,
           "title" text,
+          "audio" text,
           "published" boolean NOT NULL
+        );
+        CREATE TABLE "episode_sources" (
+          "id" text PRIMARY KEY,
+          "episode_id" text NOT NULL,
+          "lang" text NOT NULL,
+          "status" text DEFAULT 'active'
         );
 
         INSERT INTO "catalog_anime" ("id", "title", "titleRomaji", "titleEnglish", "titleNative") VALUES
           ('ep-dub', 'Frieren', 'Sousou no Frieren', 'Frieren', NULL),
+          ('explicit-audio-dub', 'Frieren Neutro', 'Frieren Neutro', 'Frieren Neutro', NULL),
+          ('explicit-audio-sub-override', 'Naruto Dublado', 'Naruto Dublado', NULL, NULL),
+          ('source-dub', 'One Piece Neutro', 'One Piece Neutro', NULL, NULL),
           ('season-dub', 'Dandadan', 'Dandadan', 'Dandadan', NULL),
           ('title-dub-ep-sub', 'Solo Leveling Dublado', 'Solo Leveling Dublado', NULL, NULL),
           ('sub-only', 'Blue Lock', 'Blue Lock', NULL, NULL),
@@ -294,18 +304,27 @@ describe("Selo DUB nos cards do catálogo e consistência de dados", () => {
 
         INSERT INTO "catalog_season" ("animeId", "number", "title") VALUES
           ('ep-dub', 1, 'Temporada 1'),
+          ('explicit-audio-dub', 1, 'Temporada 1'),
+          ('explicit-audio-sub-override', 1, 'Temporada 1'),
+          ('source-dub', 1, 'Temporada 1'),
           ('season-dub', 1, '1ª Temporada (Dublado)'),
           ('title-dub-ep-sub', 1, 'Temporada 1'),
           ('sub-only', 1, 'Temporada 1'),
           ('no-published', 1, 'Temporada 1 (Dublado)');
 
-        INSERT INTO "catalog_episode" ("id", "animeId", "seasonNumber", "number", "title", "published") VALUES
-          ('e1', 'ep-dub', 1, 1, 'Episódio 1 (Legendado)', true),
-          ('e2', 'ep-dub', 1, 2, 'Episódio 2 (Dublado)', true),
-          ('e3', 'season-dub', 1, 1, 'Episódio 1', true),
-          ('e4', 'title-dub-ep-sub', 1, 1, 'Episódio 1 (Legendado)', true),
-          ('e5', 'sub-only', 1, 1, 'Episódio 1', true),
-          ('e6', 'no-published', 1, 1, 'Episódio 1 (Dublado)', false);
+        INSERT INTO "catalog_episode" ("id", "animeId", "seasonNumber", "number", "title", "audio", "published") VALUES
+          ('e1', 'ep-dub', 1, 1, 'Episódio 1 (Legendado)', NULL, true),
+          ('e2', 'ep-dub', 1, 2, 'Episódio 2 (Dublado)', NULL, true),
+          ('e3', 'season-dub', 1, 1, 'Episódio 1', NULL, true),
+          ('e4', 'title-dub-ep-sub', 1, 1, 'Episódio 1 (Legendado)', NULL, true),
+          ('e5', 'sub-only', 1, 1, 'Episódio 1', NULL, true),
+          ('e6', 'no-published', 1, 1, 'Episódio 1 (Dublado)', 'dub', false),
+          ('e7', 'explicit-audio-dub', 1, 1, 'Episódio 1', 'dub', true),
+          ('e8', 'explicit-audio-sub-override', 1, 1, 'Episódio 1', 'sub', true),
+          ('e9', 'source-dub', 1, 1, 'Episódio 1', NULL, true);
+
+        INSERT INTO "episode_sources" ("id", "episode_id", "lang", "status") VALUES
+          ('s1', 'e9', 'dub', 'active');
       `);
 
       const result = await db.query<{
@@ -334,6 +353,9 @@ describe("Selo DUB nos cards do catálogo e consistência de dados", () => {
 
       const byId = new Map(result.rows.map((r) => [r.id, r]));
       assert.deepEqual(byId.get("ep-dub"), { id: "ep-dub", hasEpisode: true, hasDubbedEpisode: true });
+      assert.deepEqual(byId.get("explicit-audio-dub"), { id: "explicit-audio-dub", hasEpisode: true, hasDubbedEpisode: true });
+      assert.deepEqual(byId.get("explicit-audio-sub-override"), { id: "explicit-audio-sub-override", hasEpisode: true, hasDubbedEpisode: false });
+      assert.deepEqual(byId.get("source-dub"), { id: "source-dub", hasEpisode: true, hasDubbedEpisode: true });
       assert.deepEqual(byId.get("season-dub"), { id: "season-dub", hasEpisode: true, hasDubbedEpisode: true });
       assert.deepEqual(byId.get("title-dub-ep-sub"), { id: "title-dub-ep-sub", hasEpisode: true, hasDubbedEpisode: false });
       assert.deepEqual(byId.get("sub-only"), { id: "sub-only", hasEpisode: true, hasDubbedEpisode: false });

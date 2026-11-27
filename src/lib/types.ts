@@ -6,6 +6,25 @@ export type AnimeRecentBadges = {
   final: boolean;
 };
 
+export type EpisodeAudio = "sub" | "dub";
+
+export function normalizeEpisodeAudio(value: unknown): EpisodeAudio | null {
+  if (typeof value !== "string") return null;
+  const clean = value.trim().toLowerCase();
+  if (!clean) return null;
+  if (clean === "sub" || clean === "legendado" || clean === "leg") return "sub";
+  if (clean === "dub" || clean === "dublado" || clean === "pt-br dub" || clean === "pt-br") {
+    return "dub";
+  }
+  if (/\b(?:dub|dublado|dublada|pt-br\s*dub)\b/i.test(clean) && !/\b(?:sub|legendado|legendada)\b/i.test(clean)) {
+    return "dub";
+  }
+  if (/\b(?:sub|legendado|legendada)\b/i.test(clean) && !/\b(?:dub|dublado|dublada)\b/i.test(clean)) {
+    return "sub";
+  }
+  return null;
+}
+
 export type Episode = {
   id: string;
   number: number;
@@ -21,8 +40,9 @@ export type Episode = {
   aired?: string;
   published?: boolean;
   hikariPlayerEpisodeId?: string;
-  audio?: string;
+  audio?: EpisodeAudio | string | null;
   audioVersion?: string;
+  hasValidDubSource?: boolean;
   openingStartSeconds?: number | null;
   openingEndSeconds?: number | null;
   recentBadges?: AnimeRecentBadges;

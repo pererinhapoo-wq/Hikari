@@ -68,6 +68,7 @@ import {
   detectEpisodeLanguageHint,
   isLegacyAnitube22Ref,
   parseAnitube22PlayerUrl,
+  parseExplicitSourceLang,
   stripTimeQueryParam,
   validateAnitube22PlayerUrl,
   type EpisodeSourceItem,
@@ -75,6 +76,7 @@ import {
 } from "@/lib/anitube22";
 import {
   normalizeAnimeRecentBadges,
+  normalizeEpisodeAudio,
   type Episode,
   type Season,
 } from "@/lib/types";
@@ -1433,7 +1435,7 @@ const EpisodeCard = memo(function EpisodeCard({
           />
         </Field>
 
-        <Field label="Título do Episódio" className="sm:col-span-6 lg:col-span-6">
+        <Field label="Título do Episódio" className="sm:col-span-5 lg:col-span-5">
           <Input
             value={ep.title}
             onChange={(e) =>
@@ -1446,7 +1448,25 @@ const EpisodeCard = memo(function EpisodeCard({
           />
         </Field>
 
-        <Field label="Duração" className="sm:col-span-3 lg:col-span-4">
+        <Field label="Áudio" className="sm:col-span-2 lg:col-span-2">
+          <select
+            value={normalizeEpisodeAudio(ep.audio) ?? ""}
+            onChange={(e) => {
+              const nextVal = e.target.value;
+              onPatchEpisode(seasonId, ep.id, {
+                audio: nextVal === "sub" || nextVal === "dub" ? nextVal : null,
+              });
+            }}
+            aria-label="Áudio do episódio"
+            className="h-10 w-full rounded-md border border-white/10 bg-[var(--studio-panel)] px-2.5 text-sm text-[var(--color-fg)] outline-none focus:border-violet-500"
+          >
+            <option value="">Sem classificação</option>
+            <option value="sub">Legendado</option>
+            <option value="dub">Dublado</option>
+          </select>
+        </Field>
+
+        <Field label="Duração" className="sm:col-span-2 lg:col-span-3">
           <Input
             value={ep.duration ?? ""}
             onChange={(e) =>
@@ -2449,11 +2469,15 @@ const EpisodeSourcesManager = memo(function EpisodeSourcesManager({
       return;
     }
 
-    const expectedLang = detectEpisodeLanguageHint([
-      episode.title,
-      seasonTitle,
-      ...animeTitles,
-    ]);
+    const expectedLang =
+      parseExplicitSourceLang(
+        typeof episode.audio === "string" ? episode.audio : null,
+      ) ??
+      detectEpisodeLanguageHint([
+        episode.title,
+        seasonTitle,
+        ...animeTitles,
+      ]);
     if (expectedLang && expectedLang !== langInput) {
       setFormError(ANITUBE22_WRONG_LANG_ERROR);
       toast.error(ANITUBE22_WRONG_LANG_ERROR);

@@ -13,6 +13,7 @@ import {
 import {
   isCustomImageUrl,
   normalizeAnimeRecentBadges,
+  normalizeEpisodeAudio,
   type Anime,
   type HomeCatalog,
   type Season,
@@ -547,6 +548,8 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
       videoUrl4: string | null;
       videoUrl5: string | null;
       hikariPlayerEpisodeId: string | null;
+      audio: string | null;
+      hasValidDubSource: boolean;
       published: boolean;
       publishedAt: string | null;
       badgeLancamento: boolean;
@@ -558,6 +561,14 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
          "duration", "synopsis", "videoUrl", "videoUrl2",
          "videoUrl3", "videoUrl4", "videoUrl5",
          "hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+         "audio",
+         EXISTS (
+           SELECT 1
+           FROM "episode_sources" es
+           WHERE es."episode_id" = "catalog_episode"."id"
+             AND es."lang" = 'dub'
+             AND COALESCE(es."status", 'active') NOT IN ('broken', 'incomplete')
+         ) AS "hasValidDubSource",
          "published", "publishedAt",
          COALESCE("badge_lancamento", false) AS "badgeLancamento",
          COALESCE("badge_novo", false) AS "badgeNovo",
@@ -602,6 +613,8 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
         videoUrl4: ep.videoUrl4 || undefined,
         videoUrl5: ep.videoUrl5 || undefined,
         hikariPlayerEpisodeId: ep.hikariPlayerEpisodeId?.trim() || undefined,
+        audio: normalizeEpisodeAudio(ep.audio) ?? undefined,
+        ...(ep.hasValidDubSource ? { hasValidDubSource: true } : {}),
         published: ep.published,
         recentBadges: normalizeAnimeRecentBadges({
           lancamento: ep.badgeLancamento,

@@ -26,6 +26,8 @@ export interface HomeEpisodeRow {
   videoUrl4: null;
   videoUrl5: null;
   hikariPlayerEpisodeId?: string | null;
+  audio?: string | null;
+  hasValidDubSource?: boolean;
   published: boolean;
   publishedAt: string | null;
   createdAt: string;
@@ -127,6 +129,14 @@ async function queryHomePublicEpisodesFromDb(
          NULL AS "videoUrl4",
          NULL AS "videoUrl5",
          e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+         e."audio",
+         EXISTS (
+           SELECT 1
+           FROM "episode_sources" es
+           WHERE es."episode_id" = e."id"
+             AND es."lang" = 'dub'
+             AND COALESCE(es."status", 'active') NOT IN ('broken', 'incomplete')
+         ) AS "hasValidDubSource",
          e."published",
          e."publishedAt",
          e."createdAt",
@@ -160,6 +170,8 @@ async function queryHomePublicEpisodesFromDb(
 
     const episodes = (Array.isArray(rows) ? rows : []).map((row) => ({
       ...row,
+      audio: row.audio ?? null,
+      hasValidDubSource: Boolean(row.hasValidDubSource),
       badgeLancamento: Boolean(row.badgeLancamento),
       badgeNovo: Boolean(row.badgeNovo),
       badgeFinal: Boolean(row.badgeFinal),

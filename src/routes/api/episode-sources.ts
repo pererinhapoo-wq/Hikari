@@ -16,7 +16,60 @@ import {
   SourceValidationError,
   upsertEpisodeSource,
 } from "@/lib/sources";
-import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { getSql } from "@/lib/db";
+import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
+import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
+import { invalidateServerCatalogCachesAsync } from "@/lib/api";
+import { findCanonicalCatalogAnime, getAllAliasIdsForCanonical } from "@/lib/anime-identity";
+
+async function invalidateCachesForEpisodeSource(
+  episodeId?: string | null,
+  explicitAnimeId?: string | null,
+): Promise<void> {
+  try {
+    const sql = await getSql();
+    let resolvedAnimeId = explicitAnimeId?.trim() || "";
+    if (!resolvedAnimeId && episodeId?.trim()) {
+      const epRows = await sql.query<{ animeId: string }>(
+        `SELECT "animeId" FROM "catalog_episode" WHERE "id" = $1 LIMIT 1;`,
+        [episodeId.trim()],
+      );
+      resolvedAnimeId = epRows[0]?.animeId?.trim() || "";
+    }
+
+    if (resolvedAnimeId) {
+      const lookup = await findCanonicalCatalogAnime(sql, { id: resolvedAnimeId });
+      const matched = lookup.row;
+      const canonicalId = lookup.canonicalId || resolvedAnimeId;
+      const aliases = await getAllAliasIdsForCanonical(sql, canonicalId);
+      const allIds = Array.from(
+        new Set([
+          resolvedAnimeId,
+          canonicalId,
+          matched?.id,
+          ...aliases,
+          matched?.anilistId ? String(matched.anilistId) : undefined,
+          matched?.malId ? `mal-${matched.malId}` : undefined,
+          matched?.kitsuId ? `kitsu-${matched.kitsuId}` : undefined,
+        ].filter((v): v is string => Boolean(v))),
+      );
+
+      await invalidateCatalogEpisodesCacheAsync(...allIds);
+      await invalidateHomePublicEpisodesCacheAsync();
+      await invalidateServerCatalogCachesAsync(canonicalId, {
+        anilistId: matched?.anilistId,
+        malId: matched?.malId,
+        kitsuId: matched?.kitsuId,
+        extraIds: allIds,
+      });
+      return;
+    }
+
+    await invalidateHomePublicEpisodesCacheAsync();
+  } catch (err) {
+    console.warn("[api/episode-sources] Falha ao invalidar cache após alteração de fonte:", err);
+  }
+}
 
 const checkSchema = z
   .object({
@@ -150,7 +203,7 @@ export const Route = createFileRoute("/api/episode-sources")({
 
           await requireAdminUser(request);
 
-          if (payload.action === "upsert") {
+            if (payload.action === "upsert") {
             const source = await upsertEpisodeSource({
               episodeId: payload.episodeId,
               provider: payload.provider,
@@ -165,16 +218,25 @@ export const Route = createFileRoute("/api/episode-sources")({
                 { status: 400 },
               );
             }
-            if (payload.animeId) {
-              invalidateCatalogEpisodesCache(payload.animeId);
-            }
+            await invalidateCachesForEpisodeSource(payload.episodeId, payload.animeId);
             return Response.json({ ok: true, source });
           }
 
           if (payload.action === "delete") {
+            let lookupEpisodeId: string | null = null;
+            try {
+              const sql = await getSql();
+              const existing = await sql.query<{ episode_id: string }>(
+                `SELECT "episode_id" FROM "episode_sources" WHERE "id" = $1 LIMIT 1;`,
+                [payload.sourceId.trim()],
+              );
+              lookupEpisodeId = existing[0]?.episode_id ?? null;
+            } catch {
+              // ignore lookup failure
+            }
             const deleted = await deleteEpisodeSourceById(payload.sourceId);
-            if (payload.animeId) {
-              invalidateCatalogEpisodesCache(payload.animeId);
+            if (deleted || payload.animeId || lookupEpisodeId) {
+              await invalidateCachesForEpisodeSource(lookupEpisodeId, payload.animeId);
             }
             return Response.json({ ok: true, deleted });
           }

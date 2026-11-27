@@ -222,7 +222,7 @@ export function scheduleRedisBackgroundWrite(
   }
 }
 
-const CATALOG_REDIS_KEY = "hikari:catalog:index:v1";
+const CATALOG_REDIS_KEY = "hikari:catalog:index:v2";
 const CATALOG_REDIS_TTL_SEC = 900; // 15 minutos
 
 export async function getRedisCatalogIndex(): Promise<DbCatalogAnimeRow[] | null> {
@@ -316,7 +316,7 @@ const EPISODES_REDIS_TTL_SEC = 180; // 180 segundos (3 minutos)
 
 export async function getRedisCatalogEpisodes(animeId: string): Promise<CatalogEpisodesResult | null> {
   if (!redisClient || typeof window !== "undefined" || !animeId) return null;
-  const key = `${EPISODES_REDIS_KEY_PREFIX}${animeId.trim()}:v2`;
+  const key = `${EPISODES_REDIS_KEY_PREFIX}${animeId.trim()}:v3`;
   try {
     const data = await withRedisTimeout(
       redisClient.get<CatalogEpisodesResult>(key),
@@ -334,7 +334,7 @@ export async function getRedisCatalogEpisodes(animeId: string): Promise<CatalogE
 
 export async function setRedisCatalogEpisodes(animeId: string, data: CatalogEpisodesResult): Promise<void> {
   if (!redisClient || typeof window !== "undefined" || !animeId || !data) return;
-  const key = `${EPISODES_REDIS_KEY_PREFIX}${animeId.trim()}:v2`;
+  const key = `${EPISODES_REDIS_KEY_PREFIX}${animeId.trim()}:v3`;
   try {
     await withRedisTimeout(
       redisClient.set(key, data, { ex: EPISODES_REDIS_TTL_SEC }),
@@ -350,7 +350,7 @@ export async function invalidateRedisCatalogEpisodes(animeId?: string): Promise<
   try {
     const cleanId = animeId?.trim();
     if (cleanId) {
-      const key = `${EPISODES_REDIS_KEY_PREFIX}${cleanId}:v2`;
+      const key = `${EPISODES_REDIS_KEY_PREFIX}${cleanId}:v3`;
       await withRedisTimeout(
         redisClient.del(key),
         "invalidateRedisCatalogEpisodes",
@@ -1560,12 +1560,12 @@ export async function setRedisHomeSeason(
   }
 }
 
-const HOME_EPISODES_REDIS_KEY = "hikari:home:episodes:v2";
-const HOME_EPISODES_GEN_KEY = "hikari:home:episodes:gen:v2";
+const HOME_EPISODES_REDIS_KEY = "hikari:home:episodes:v3";
+const HOME_EPISODES_GEN_KEY = "hikari:home:episodes:gen:v3";
 const HOME_EPISODES_REDIS_TTL_SEC = 180; // 180 segundos
 
-const PUBLIC_CATALOG_EPISODES_REDIS_KEY = "hikari:catalog:episodes:public:v2";
-const PUBLIC_CATALOG_EPISODES_GEN_KEY = "hikari:catalog:episodes:public:gen:v2";
+const PUBLIC_CATALOG_EPISODES_REDIS_KEY = "hikari:catalog:episodes:public:v3";
+const PUBLIC_CATALOG_EPISODES_GEN_KEY = "hikari:catalog:episodes:public:gen:v3";
 const PUBLIC_CATALOG_EPISODES_REDIS_TTL_SEC = 180; // 180 segundos
 
 const PUBLIC_EPISODES_ENVELOPE_PREFIX = "v1|";
@@ -1666,6 +1666,10 @@ function decodePublicEpisodesEnvelope<T>(raw: string): T | null {
 export function isValidPublicEpisodeShape(ep: unknown): boolean {
   if (!ep || typeof ep !== "object") return false;
   const row = ep as Record<string, unknown>;
+  const hasValidOptionalAudio =
+    row.audio === undefined || row.audio === null || typeof row.audio === "string";
+  const hasValidOptionalDubFlag =
+    row.hasValidDubSource === undefined || typeof row.hasValidDubSource === "boolean";
   return (
     typeof row.id === "string" &&
     row.id.length > 0 &&
@@ -1678,7 +1682,9 @@ export function isValidPublicEpisodeShape(ep: unknown): boolean {
     row.published === true &&
     typeof row.badgeLancamento === "boolean" &&
     typeof row.badgeNovo === "boolean" &&
-    typeof row.badgeFinal === "boolean"
+    typeof row.badgeFinal === "boolean" &&
+    hasValidOptionalAudio &&
+    hasValidOptionalDubFlag
   );
 }
 

@@ -50,6 +50,7 @@ export type PublishedEpisode = {
   recentBadges?: AnimeRecentBadges;
   audio?: string;
   audioVersion?: string;
+  hasValidDubSource?: boolean;
 };
 
 export function resolvePrimaryBadgeFromRecentBadges(
@@ -74,12 +75,19 @@ const EPISODE_DUB_TEXT_REGEX =
 /**
  * Classifica se o episódio efetivamente exibido é dublado sem confundir
  * animes dublados com episódios legendados (ou vice-versa).
- * Prioridade: campos explícitos de áudio -> título do episódio -> título da temporada -> títulos do anime.
+ * Prioridade: campos explícitos de áudio -> fonte ativa 'dub' em episode_sources ->
+ * título do episódio -> título da temporada -> títulos do anime.
  */
 export function isPublishedEpisodeDubbed(
   episode: Pick<
     PublishedEpisode,
-    "episodeTitle" | "seasonTitle" | "animeTitle" | "animeAltTitles" | "audio" | "audioVersion"
+    | "episodeTitle"
+    | "seasonTitle"
+    | "animeTitle"
+    | "animeAltTitles"
+    | "audio"
+    | "audioVersion"
+    | "hasValidDubSource"
   >,
 ): boolean {
   const audioText = [episode.audio, episode.audioVersion]
@@ -89,6 +97,10 @@ export function isPublishedEpisodeDubbed(
   if (audioText) {
     if (EXPLICIT_SUB_AUDIO_REGEX.test(audioText)) return false;
     if (EXPLICIT_DUB_AUDIO_REGEX.test(audioText)) return true;
+  }
+
+  if (episode.hasValidDubSource === true) {
+    return true;
   }
 
   const epTitle = episode.episodeTitle?.trim() || "";
@@ -124,8 +136,8 @@ function escapeSqlSingleQuotedLiteral(value: string): string {
 
 /**
  * Gera a expressão SQL PostgreSQL equivalente a `isPublishedEpisodeDubbed`
- * (sem campos de áudio em memória), para identificar se uma linha de episódio
- * publicada é dublada diretamente nas consultas em lote do catálogo.
+ * (considerando e."audio", fontes válidas 'dub' em episode_sources e fallback em títulos),
+ * para identificar se uma linha de episódio publicada é dublada diretamente nas consultas em lote.
  */
 export function buildEpisodeDubbedSqlCondition(
   episodeAlias = "e",
@@ -138,6 +150,15 @@ export function buildEpisodeDubbedSqlCondition(
 
   return `(
     CASE
+      WHEN LOWER(BTRIM(COALESCE(${episodeAlias}."audio", ''))) = 'sub' THEN false
+      WHEN LOWER(BTRIM(COALESCE(${episodeAlias}."audio", ''))) = 'dub' THEN true
+      WHEN EXISTS (
+        SELECT 1
+        FROM "episode_sources" es
+        WHERE es."episode_id" = ${episodeAlias}."id"
+          AND es."lang" = 'dub'
+          AND COALESCE(es."status", 'active') NOT IN ('broken', 'incomplete')
+      ) THEN true
       WHEN COALESCE(${episodeAlias}."title", '') ~* '${subPattern}' THEN false
       WHEN COALESCE(${episodeAlias}."title", '') ~* '${dubPattern}' THEN true
       WHEN COALESCE(${seasonAlias}."title", '') ~* '${subPattern}' THEN false
@@ -177,8 +198,9 @@ export function isAnimeDubbed(
         number?: number;
         title?: string;
         published?: boolean;
-        audio?: string;
+        audio?: string | null;
         audioVersion?: string;
+        hasValidDubSource?: boolean;
         videoUrl?: string;
         videoUrl2?: string;
         videoUrl3?: string;
@@ -227,8 +249,9 @@ export function isAnimeDubbed(
             seasonTitle: season.title || "",
             animeTitle: canonicalTitle,
             animeAltTitles: altTitles,
-            audio: ep.audio,
+            audio: ep.audio ?? undefined,
             audioVersion: ep.audioVersion,
+            hasValidDubSource: ep.hasValidDubSource,
           })
         ) {
           return true;
@@ -1454,6 +1477,18 @@ export function resolvePublicEpisodes(
             })
           : serverEpBadges;
 
+    const pendingAudio = pendingUpsert?.payload?.audio;
+    const resolvedAudio =
+      pendingAudio !== undefined
+        ? (typeof pendingAudio === "string" && pendingAudio.trim()
+            ? pendingAudio.trim()
+            : undefined)
+        : (typeof row.audio === "string" && row.audio.trim()
+            ? row.audio.trim()
+            : typeof localEp?.audio === "string" && localEp.audio.trim()
+              ? localEp.audio.trim()
+              : undefined);
+
     result.push({
       animeId: row.animeId,
       animeTitle,
@@ -1477,8 +1512,11 @@ export function resolvePublicEpisodes(
       publishedTimestamp: realPublishedMs,
       badge: resolvePrimaryBadgeFromRecentBadges(resolvedBadges),
       recentBadges: resolvedBadges,
-      ...(localEp?.audio ? { audio: localEp.audio } : {}),
+      ...(resolvedAudio ? { audio: resolvedAudio } : {}),
       ...(localEp?.audioVersion ? { audioVersion: localEp.audioVersion } : {}),
+      ...(row.hasValidDubSource !== undefined
+        ? { hasValidDubSource: Boolean(row.hasValidDubSource) }
+        : {}),
     });
 
     processedSlots.add(slotKey);
@@ -1590,7 +1628,7 @@ export function resolvePublicEpisodes(
           ),
           badge: epPrimaryBadge,
           recentBadges: epBadges,
-          ...(ep.audio ? { audio: ep.audio } : {}),
+          ...(typeof ep.audio === "string" && ep.audio.trim() ? { audio: ep.audio.trim() } : {}),
           ...(ep.audioVersion ? { audioVersion: ep.audioVersion } : {}),
         });
 

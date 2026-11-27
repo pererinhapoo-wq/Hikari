@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
   normalizeAnimeRecentBadges,
+  normalizeEpisodeAudio,
   type AnimeRecentBadges,
   type Episode,
+  type EpisodeAudio,
 } from "@/lib/types";
 import { getBearerToken } from "@/lib/auth/client";
 import { addTombstone, clearTombstone } from "@/lib/catalog-storage";
@@ -47,6 +49,7 @@ export interface EpisodePayload {
   videoUrl4?: string | null;
   videoUrl5?: string | null;
   hikariPlayerEpisodeId?: string | null;
+  audio?: EpisodeAudio | null;
   openingStartSeconds?: number | null;
   openingEndSeconds?: number | null;
   recentBadges?: Partial<AnimeRecentBadges> | null;
@@ -72,6 +75,14 @@ export const episodePostSchema = z
     videoUrl4: z.string().max(2048).optional().nullable(),
     videoUrl5: z.string().max(2048).optional().nullable(),
     hikariPlayerEpisodeId: z.string().max(255).optional().nullable(),
+    audio: z
+      .preprocess((val) => {
+        if (val === undefined) return undefined;
+        if (val === null) return null;
+        if (typeof val === "string" && val.trim() === "") return null;
+        return normalizeEpisodeAudio(val) ?? val;
+      }, z.enum(["sub", "dub"]).nullable())
+      .optional(),
     openingStartSeconds: z
       .number()
       .int()
@@ -232,6 +243,28 @@ export function resolveEpisodeBadgesPatch(
   };
 }
 
+export function resolveEpisodeAudioPatch(
+  incoming?: {
+    audio?: unknown;
+  } | null,
+  existing?: {
+    audio?: string | null;
+  } | null,
+): {
+  hasAudioField: boolean;
+  audio: EpisodeAudio | null;
+} {
+  const hasAudioField =
+    incoming !== undefined && incoming !== null && incoming.audio !== undefined;
+  const audio = hasAudioField
+    ? normalizeEpisodeAudio(incoming.audio)
+    : normalizeEpisodeAudio(existing?.audio);
+  return {
+    hasAudioField,
+    audio,
+  };
+}
+
 export interface OutboxOperation {
   id: string;
   type: "upsert" | "delete";
@@ -263,6 +296,7 @@ export interface PersistEpisodeResult {
   published?: boolean;
   publishedAt?: string | null;
   hikariPlayerEpisodeId?: string | null;
+  audio?: EpisodeAudio | null;
   openingStartSeconds?: number | null;
   openingEndSeconds?: number | null;
   recentBadges?: AnimeRecentBadges;
@@ -861,6 +895,9 @@ export async function persistEpisode(
       : hasValidUrlSource
         ? null
         : normalizeHikariPlayerEpisodeId(episode.hikariPlayerEpisodeId),
+    ...(episode.audio !== undefined
+      ? { audio: normalizeEpisodeAudio(episode.audio) }
+      : {}),
     ...(episode.openingStartSeconds !== undefined
       ? { openingStartSeconds: episode.openingStartSeconds }
       : {}),
@@ -889,6 +926,7 @@ export async function persistEpisode(
       let serverPublished: boolean = isPublished;
       let serverPublishedAt: string | null = null;
       let serverHikariPlayerEpisodeId: string | null | undefined = undefined;
+      let serverAudio: EpisodeAudio | null | undefined = undefined;
       let serverOpeningStartSeconds: number | null | undefined = undefined;
       let serverOpeningEndSeconds: number | null | undefined = undefined;
       let serverRecentBadges: AnimeRecentBadges | undefined = undefined;
@@ -907,6 +945,9 @@ export async function persistEpisode(
           serverHikariPlayerEpisodeId = normalizeHikariPlayerEpisodeId(
             j.hikariPlayerEpisodeId,
           );
+        }
+        if (j?.audio !== undefined) {
+          serverAudio = normalizeEpisodeAudio(j.audio);
         }
         if (j?.openingStartSeconds !== undefined) {
           serverOpeningStartSeconds = j.openingStartSeconds;
@@ -946,6 +987,7 @@ export async function persistEpisode(
         published: serverPublished,
         publishedAt: serverPublishedAt,
         hikariPlayerEpisodeId: serverHikariPlayerEpisodeId,
+        audio: serverAudio,
         openingStartSeconds: serverOpeningStartSeconds,
         openingEndSeconds: serverOpeningEndSeconds,
         recentBadges: serverRecentBadges,

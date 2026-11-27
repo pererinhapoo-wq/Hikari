@@ -11,7 +11,8 @@ import { syncCatalogEpisodeSlotsToSources } from "@/lib/sources";
 import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
 import { parseAnitube22PlayerUrl } from "@/lib/anitube22";
 import { SOURCE_SYNC_CONCURRENCY, runWithConcurrency } from "@/lib/concurrency";
-import { resolveEpisodeBadgesPatch } from "@/lib/episode-writer";
+import { resolveEpisodeAudioPatch, resolveEpisodeBadgesPatch } from "@/lib/episode-writer";
+import { normalizeEpisodeAudio, type EpisodeAudio } from "@/lib/types";
 import {
   discoverMatchingOrphanIdsFromUserTables,
   findMatchingTombstoneAliases,
@@ -45,6 +46,14 @@ const episodeImportSchema = z.object({
   videoUrl4: z.string().max(2048).optional().nullable(),
   videoUrl5: z.string().max(2048).optional().nullable(),
   hikariPlayerEpisodeId: z.string().max(255).optional().nullable(),
+  audio: z
+    .preprocess((val) => {
+      if (val === undefined) return undefined;
+      if (val === null) return null;
+      if (typeof val === "string" && val.trim() === "") return null;
+      return normalizeEpisodeAudio(val) ?? val;
+    }, z.enum(["sub", "dub"]).nullable())
+    .optional(),
   recentBadges: z
     .object({
       lancamento: z.boolean().optional(),
@@ -126,6 +135,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
           const affectedAnimeIds = new Set<string>();
           const importedEpisodeSources: Array<{
             episodeId: string;
+            episodeAudio: EpisodeAudio | null;
             slots: Array<{ url: string | null; priority: number }>;
           }> = [];
 
@@ -401,13 +411,16 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   const badgesPatch = resolveEpisodeBadgesPatch({
                     recentBadges: ep.recentBadges,
                   });
+                  const audioPatch = resolveEpisodeAudioPatch({
+                    audio: ep.audio,
+                  });
 
                   await tx.query(
                     `INSERT INTO "catalog_episode" (
                        "id", "animeId", "seasonNumber", "number",
                        "title", "thumbnail", "duration", "synopsis",
                        "videoUrl", "videoUrl2", "videoUrl3", "videoUrl4", "videoUrl5",
-                       "hikari_player_episode_id",
+                       "hikari_player_episode_id", "audio",
                        "badge_lancamento", "badge_novo", "badge_final",
                        "authorId",
                        "published", "publishedAt", "createdAt", "updatedAt"
@@ -416,7 +429,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                        $1, $2, $3, $4,
                        $5, $6, $7, $8,
                        $9, $10, $11, $12, $13,
-                       $15,
+                       $15, $24,
                        $17, $18, $19,
                        $23,
                        $14,
@@ -440,6 +453,10 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                        "hikari_player_episode_id" = CASE
                          WHEN $16 = true THEN EXCLUDED."hikari_player_episode_id"
                          ELSE "catalog_episode"."hikari_player_episode_id"
+                       END,
+                       "audio" = CASE
+                         WHEN $25 = true THEN EXCLUDED."audio"
+                         ELSE "catalog_episode"."audio"
                        END,
                        "badge_lancamento" = CASE
                          WHEN $20 = true THEN EXCLUDED."badge_lancamento"
@@ -485,6 +502,8 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                       badgesPatch.hasNovoField,
                       badgesPatch.hasFinalField,
                       adminId,
+                      audioPatch.audio,
+                      audioPatch.hasAudioField,
                     ],
                   );
                   const candidateSlots = [
@@ -497,6 +516,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   if (candidateSlots.some((slot) => Boolean(slot.url && parseAnitube22PlayerUrl(slot.url)))) {
                     importedEpisodeSources.push({
                       episodeId: ep.id,
+                      episodeAudio: audioPatch.audio,
                       slots: candidateSlots,
                     });
                   }
@@ -532,6 +552,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                 syncCatalogEpisodeSlotsToSources(item.episodeId, item.slots, {
                   replaceAnitube22: true,
                   skipProbe: true,
+                  episodeAudio: item.episodeAudio,
                 }),
               ),
               SOURCE_SYNC_CONCURRENCY,

@@ -438,6 +438,7 @@ function AdminIndex() {
         duration: e.duration,
         thumbnail: e.thumbnail,
         synopsis: e.synopsis,
+        audio: "dub" as const,
         videoUrl: "",
         videoUrl2: "",
         videoUrl3: "",

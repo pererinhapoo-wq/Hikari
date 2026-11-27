@@ -15,6 +15,7 @@ import {
   areAnimeRecentBadgesEqual,
   isCustomImageUrl,
   normalizeAnimeRecentBadges,
+  normalizeEpisodeAudio,
   type Episode,
   type LocalAnime,
   type ResolvedMobileBannerInfo,
@@ -1318,6 +1319,7 @@ function AdminEditor() {
         duration: e.duration,
         thumbnail: e.thumbnail,
         synopsis: e.synopsis,
+        audio: "dub" as const,
         videoUrl: "",
         videoUrl2: "",
         videoUrl3: "",
@@ -1745,11 +1747,18 @@ function AdminEditor() {
                 ? normalizeAnimeRecentBadges(match.recentBadges)
                 : ep.recentBadges;
 
+            const currentNormalizedAudio = normalizeEpisodeAudio(ep.audio);
+            const nextAudio =
+              match.audio !== undefined
+                ? normalizeEpisodeAudio(match.audio)
+                : currentNormalizedAudio;
+
             if (
               nextId !== ep.id ||
               nextPublished !== Boolean(ep.published) ||
               nextAired !== ep.aired ||
               nextHikariPlayerEpisodeId !== ep.hikariPlayerEpisodeId ||
+              nextAudio !== currentNormalizedAudio ||
               !areAnimeRecentBadgesEqual(nextRecentBadges, ep.recentBadges)
             ) {
               anyEpisodeChanged = true;
@@ -1759,6 +1768,7 @@ function AdminEditor() {
                 published: nextPublished,
                 aired: nextAired,
                 hikariPlayerEpisodeId: nextHikariPlayerEpisodeId,
+                audio: nextAudio,
                 recentBadges: nextRecentBadges,
               };
             }
