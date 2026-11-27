@@ -678,6 +678,95 @@ export function enqueue(input: OutboxOperationInput): OutboxOperation | null {
 }
 
 /**
+ * Consolida o anime pai (caso possua ID temporário local "local-...") no servidor
+ * antes de enviar as operações de episódios associados. Atualiza a Outbox com o ID definitivo.
+ */
+export async function consolidateAnimeParent(animeId: string): Promise<string> {
+  if (!animeId || !animeId.startsWith("local-") || typeof window === "undefined") {
+    return animeId;
+  }
+
+  const localAnimes = useHikariStore.getState().animes || [];
+  const targetAnime = localAnimes.find((a) => a.id === animeId);
+  if (!targetAnime) {
+    return animeId;
+  }
+
+  const payload = {
+    id: targetAnime.id,
+    titleRomaji: targetAnime.titleRomaji,
+    titleEnglish: targetAnime.titleEnglish,
+    titleNative: targetAnime.titleNative,
+    cover: targetAnime.cover,
+    banner: targetAnime.banner,
+    coverExplicitlyEdited: Boolean(targetAnime.cover),
+    bannerExplicitlyEdited: Boolean(targetAnime.banner),
+    synopsis: targetAnime.synopsis,
+    score: targetAnime.score,
+    genres: targetAnime.genres,
+    format: targetAnime.format,
+    status: targetAnime.status,
+    episodesCount: targetAnime.episodesCount,
+    season: targetAnime.season,
+    year: targetAnime.year,
+    trailerId: targetAnime.trailerId,
+    hidden: targetAnime.hidden,
+    anilistId: targetAnime.anilistId,
+    malId: targetAnime.malId,
+    kitsuId: targetAnime.kitsuId,
+    countryOfOrigin: targetAnime.countryOfOrigin ?? null,
+    duplicateOfId: targetAnime.duplicateOfId ?? null,
+    seasons: targetAnime.seasons.map((s) => ({
+      number: s.number,
+      title: s.title,
+    })),
+    badgesExplicitlyEdited: false,
+  };
+
+  try {
+    const res = await fetch("/api/admin/catalog-anime", {
+      method: "POST",
+      headers: buildAdminRequestHeaders(),
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Falha ao consolidar anime pai (${res.status})`);
+    }
+
+    const data = await res.json();
+    const definitiveId = data?.animeId || data?.id;
+    if (definitiveId && definitiveId !== animeId) {
+      const ops = readOutbox();
+      let updated = false;
+      const newOps = ops.map((op) => {
+        if (op.animeId === animeId) {
+          updated = true;
+          return {
+            ...op,
+            animeId: definitiveId,
+            ...(op.type === "upsert" && op.payload
+              ? { payload: { ...op.payload, animeId: definitiveId } }
+              : {}),
+          };
+        }
+        return op;
+      });
+      if (updated) {
+        writeOutbox(newOps);
+      }
+      return definitiveId;
+    }
+
+    return animeId;
+  } catch (err) {
+    console.error("[episode-writer] Erro ao consolidar anime pai:", err);
+    throw err;
+  }
+}
+
+/**
  * Executa o reenvio sequencial de todas as operações pendentes no Outbox.
  * Protegido contra execuções concorrentes e loops infinitos em erros de conflito.
  */
@@ -701,13 +790,26 @@ export async function flushOutbox(options?: {
     return { processed: 0, remaining: 0 };
   }
 
+  // Consolidar animes pai com ID local antes de processar as operações de episódios
+  const uniqueAnimeIds = Array.from(new Set(ops.map((o) => o.animeId)));
+  for (const aId of uniqueAnimeIds) {
+    if (aId.startsWith("local-")) {
+      try {
+        await consolidateAnimeParent(aId);
+      } catch {
+        console.warn(`[episode-writer] Falha ao consolidar anime ${aId} durante flush. Pulando sincronização deste lote.`);
+      }
+    }
+  }
+
+  const refreshedOps = readOutbox();
   isFlushing = true;
   let processedCount = 0;
-  const remainingOps = [...ops];
+  const remainingOps = [...refreshedOps];
 
   try {
-    for (let i = 0; i < ops.length; i++) {
-      const op = ops[i];
+    for (let i = 0; i < refreshedOps.length; i++) {
+      const op = refreshedOps[i];
 
       // Erros permanentes/conflitos não devem entrar em ciclo infinito de tentativas automáticas
       if (op.status === "conflict" && !options?.forceConflicts) {
@@ -844,9 +946,49 @@ export async function persistEpisode(
   animeTitle?: string,
   options?: { replaceThumbnail?: boolean },
 ): Promise<PersistEpisodeResult> {
+  let effectiveAnimeId = animeId;
+  try {
+    effectiveAnimeId = await consolidateAnimeParent(animeId);
+  } catch {
+    const op = enqueue({
+      type: "upsert",
+      episodeId: episode.id,
+      animeId,
+      seasonNumber,
+      episodeNumber: episode.number,
+      payload: {
+        id: episode.id,
+        animeId,
+        seasonNumber,
+        number: episode.number,
+        title: episode.title,
+        thumbnail: episode.thumbnail || null,
+        duration: episode.duration || null,
+        synopsis: episode.synopsis || null,
+        videoUrl: episode.videoUrl || null,
+        videoUrl2: episode.videoUrl2 || null,
+        videoUrl3: episode.videoUrl3 || null,
+        videoUrl4: episode.videoUrl4 || null,
+        videoUrl5: episode.videoUrl5 || null,
+        hikariPlayerEpisodeId: episode.hikariPlayerEpisodeId || null,
+        audio: episode.audio ? normalizeEpisodeAudio(episode.audio) : null,
+        openingStartSeconds: episode.openingStartSeconds ?? null,
+        openingEndSeconds: episode.openingEndSeconds ?? null,
+        recentBadges: episode.recentBadges ?? null,
+        published: episode.published ?? false,
+      },
+    });
+    return {
+      confirmed: false,
+      queued: true,
+      status: "pending",
+      error: "Falha ao consolidar cadastro do anime no servidor. Alterações mantidas na fila local.",
+    };
+  }
+
   // Limpa tombstone do episódio na republicação ou salvamento
   clearTombstone(episode.id, {
-    animeId,
+    animeId: effectiveAnimeId,
     seasonNumber,
     episodeNumber: episode.number,
   });
@@ -884,7 +1026,7 @@ export async function persistEpisode(
 
   const payload: EpisodePayload = {
     id: episode.id,
-    animeId,
+    animeId: effectiveAnimeId,
     seasonNumber,
     number: episode.number,
     title: episode.title,
