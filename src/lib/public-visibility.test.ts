@@ -20,7 +20,7 @@ import {
   invalidatePublicVisibilityCache,
   isServerPubliclyBlockedAnime,
   isServerPubliclyBlockedId,
-} from "@/lib/public-visibility.server";
+} from "@/lib/public-visibility-server";
 import {
   executeAdminArchiveCatalogAnime,
   executeAdminUpsertCatalogAnime,
@@ -87,10 +87,12 @@ import {
   runCountryOfOriginBackfill,
 } from "../../scripts/backfill-country-of-origin.mjs";
 
-const EXPECTED_22_BLOCKED_IDS = [
+const EXPECTED_41_BLOCKED_IDS = [
   212308, 165159, 146004, 202851, 209709, 966, 8687, 168085, 218011, 213298,
   204269, 185646, 202957, 216860, 206523, 217787, 213356, 155723, 216557,
-  214968, 214260, 137683,
+  214968, 214260, 137683, 2406, 118123, 215835, 209032, 217782, 218217,
+  214593, 137653, 218532, 218938, 213188, 218008, 204656, 214974, 220079,
+  217624, 218942, 217577, 212144,
 ] as const;
 
 function makeSlim(
@@ -197,12 +199,12 @@ function makeFullAnime(
   };
 }
 
-describe("Regra centralizada de visibilidade pública (Donghua CN + 22 IDs AniList)", () => {
-  it("1. Contém exatamente os 22 IDs AniList obrigatórios e normaliza todos os formatos de ID", () => {
-    assert.deepEqual(Array.from(BLOCKED_ANILIST_IDS), Array.from(EXPECTED_22_BLOCKED_IDS));
-    assert.equal(BLOCKED_ANILIST_IDS.length, 22);
+describe("Regra centralizada de visibilidade pública (Donghua CN + 41 IDs AniList)", () => {
+  it("1. Contém exatamente os 41 IDs AniList obrigatórios e normaliza todos os formatos de ID", () => {
+    assert.deepEqual(Array.from(BLOCKED_ANILIST_IDS), Array.from(EXPECTED_41_BLOCKED_IDS));
+    assert.equal(BLOCKED_ANILIST_IDS.length, 41);
 
-    for (const blockedId of EXPECTED_22_BLOCKED_IDS) {
+    for (const blockedId of EXPECTED_41_BLOCKED_IDS) {
       assert.equal(isPubliclyBlockedId(blockedId), true, `Numérico ${blockedId} deve bloquear`);
       assert.equal(isPubliclyBlockedId(String(blockedId)), true, `String ${blockedId} deve bloquear`);
       assert.equal(

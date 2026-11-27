@@ -6,7 +6,7 @@ import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { resolveCatalogAnimeMediaWrite } from "@/lib/types";
 import { deleteAnimeRecentBadgesFromDb } from "@/lib/catalog-badges";
-import { invalidatePublicVisibilityCache } from "@/lib/public-visibility.server";
+import { invalidatePublicVisibilityCache } from "@/lib/public-visibility-server";
 import { normalizeCountryOfOrigin } from "@/lib/public-visibility";
 import type { RedisEvalClient } from "@/lib/redis";
 import {

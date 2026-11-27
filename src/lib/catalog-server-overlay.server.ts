@@ -44,7 +44,7 @@ import {
   getServerPublicVisibilityContext,
   isServerPubliclyBlockedAnime,
   isServerPubliclyBlockedId,
-} from "@/lib/public-visibility.server";
+} from "@/lib/public-visibility-server";
 
 export interface DbCatalogAnimeRow {
   id: string;

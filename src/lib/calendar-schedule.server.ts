@@ -28,7 +28,7 @@ import {
   normalizeCountryOfOrigin,
   type VisibilityIndexContext,
 } from "@/lib/public-visibility";
-import { getServerPublicVisibilityContext } from "@/lib/public-visibility.server";
+import { getServerPublicVisibilityContext } from "@/lib/public-visibility-server";
 
 export interface DbTodayScheduleRow {
   anilistId: number;

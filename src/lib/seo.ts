@@ -196,8 +196,9 @@ async function resolveSafeSitemapVisibilityContext(): Promise<VisibilityIndexCon
     return EMPTY_PUBLIC_VISIBILITY_CONTEXT;
   }
   try {
+    const modName = "@/lib/public-visibility-server";
     const { getServerPublicVisibilityContext } = await import(
-      "@/lib/public-visibility.server"
+      /* @vite-ignore */ modName
     );
     return await getServerPublicVisibilityContext();
   } catch {

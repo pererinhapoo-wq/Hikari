@@ -13,7 +13,7 @@ import { parseAnitube22PlayerUrl } from "@/lib/anitube22";
 import { SOURCE_SYNC_CONCURRENCY, runWithConcurrency } from "@/lib/concurrency";
 import { resolveEpisodeAudioPatch, resolveEpisodeBadgesPatch } from "@/lib/episode-writer";
 import { normalizeCountryOfOrigin } from "@/lib/public-visibility";
-import { invalidatePublicVisibilityCache } from "@/lib/public-visibility.server";
+import { invalidatePublicVisibilityCache } from "@/lib/public-visibility-server";
 import { normalizeEpisodeAudio, type EpisodeAudio } from "@/lib/types";
 import {
   discoverMatchingOrphanIdsFromUserTables,

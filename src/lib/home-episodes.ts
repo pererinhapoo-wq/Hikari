@@ -145,7 +145,7 @@ async function queryHomePublicEpisodesFromDb(
   try {
     const sql = await getSql();
     const { getServerPublicVisibilityContext } = await import(
-      "@/lib/public-visibility.server"
+      "@/lib/public-visibility-server"
     );
     const visCtx = await getServerPublicVisibilityContext(sql);
 
@@ -365,7 +365,7 @@ export async function executeGetHomePublicEpisodes(options?: {
   }
 
   const { getServerPublicVisibilityContext } = await import(
-    "@/lib/public-visibility.server"
+    "@/lib/public-visibility-server"
   );
 
   const now = Date.now();

@@ -257,7 +257,7 @@ export async function executeGetCatalogEpisodes(
 
   if (!wantUnpublished) {
     const { getServerPublicVisibilityContext } = await import(
-      "@/lib/public-visibility.server"
+      "@/lib/public-visibility-server"
     );
     const visCtx = await getServerPublicVisibilityContext();
     if (isPubliclyBlockedId(cleanId, visCtx)) {
@@ -291,7 +291,7 @@ export async function executeGetCatalogEpisodes(
     if (!wantUnpublished) {
       try {
         const [{ getServerPublicVisibilityContext }, cached] = await Promise.all([
-          import("@/lib/public-visibility.server"),
+          import("@/lib/public-visibility-server"),
           getRedisCatalogEpisodes(cleanId),
         ]);
         const visCtx = await getServerPublicVisibilityContext();
@@ -329,7 +329,7 @@ export async function executeGetCatalogEpisodes(
 
       if (!wantUnpublished) {
         const { getServerPublicVisibilityContext } = await import(
-          "@/lib/public-visibility.server"
+          "@/lib/public-visibility-server"
         );
         const visCtx = await getServerPublicVisibilityContext(sql);
         if (candidateIds.some((cid) => isPubliclyBlockedId(cid, visCtx))) {
@@ -650,7 +650,7 @@ async function queryPublicCatalogEpisodesFromDb(
   try {
     const sql = await getSql();
     const { getServerPublicVisibilityContext } = await import(
-      "@/lib/public-visibility.server"
+      "@/lib/public-visibility-server"
     );
     const visCtx = await getServerPublicVisibilityContext(sql);
 
@@ -789,7 +789,7 @@ export async function executeGetPublicCatalogEpisodes(options?: {
   const cacheKey = limit === 10000 && offset === 0 ? "default" : `${limit}:${offset}`;
 
   const { getServerPublicVisibilityContext } = await import(
-    "@/lib/public-visibility.server"
+    "@/lib/public-visibility-server"
   );
 
   // 1. Primeira camada: cache local em memória (180s)
@@ -1181,7 +1181,7 @@ export async function executeGetPaginatedPublicCatalogEpisodes(
   try {
     const sql = await getSql();
     const { getServerPublicVisibilityContext } = await import(
-      "@/lib/public-visibility.server"
+      "@/lib/public-visibility-server"
     );
     const visCtx = await getServerPublicVisibilityContext(sql);
 
@@ -1393,7 +1393,7 @@ export async function executeGetPublicCatalogAnimeOptions(): Promise<
   PublicCatalogAnimeOption[]
 > {
   const { getServerPublicVisibilityContext } = await import(
-    "@/lib/public-visibility.server"
+    "@/lib/public-visibility-server"
   );
 
   const now = Date.now();

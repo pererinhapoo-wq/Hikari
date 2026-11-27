@@ -6,7 +6,7 @@ import {
   isPubliclyBlockedAnime,
   type VisibilityIndexContext,
 } from "@/lib/public-visibility";
-import { getServerPublicVisibilityContext } from "@/lib/public-visibility.server";
+import { getServerPublicVisibilityContext } from "@/lib/public-visibility-server";
 
 const ANILIST_GRAPHQL_URL = "https://graphql.anilist.co";
 const TIMEOUT_MS = 10000; // Timeout de 10 segundos para chamadas externas

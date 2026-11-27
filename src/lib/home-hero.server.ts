@@ -29,7 +29,7 @@ import {
   normalizeCountryOfOrigin,
   type VisibilityIndexContext,
 } from "@/lib/public-visibility";
-import { getServerPublicVisibilityContext } from "@/lib/public-visibility.server";
+import { getServerPublicVisibilityContext } from "@/lib/public-visibility-server";
 import type { SlimAnime } from "@/lib/types";
 
 export const MAX_HERO_SLIDES = 8;

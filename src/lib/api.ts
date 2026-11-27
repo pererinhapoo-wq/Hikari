@@ -93,7 +93,7 @@ const KITSU = "https://kitsu.io/api/edge";
 async function getSafePublicVisibilityCtx(): Promise<VisibilityIndexContext> {
   try {
     const { getServerPublicVisibilityContext } = await import(
-      "@/lib/public-visibility.server"
+      "@/lib/public-visibility-server"
     );
     return await getServerPublicVisibilityContext();
   } catch {
