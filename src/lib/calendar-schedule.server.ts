@@ -19,6 +19,8 @@ import {
   setRedisCalendarToday,
 } from "@/lib/redis";
 import type { SlimAnime } from "@/lib/types";
+import { rowIsDubbed } from "@/lib/anime-identity";
+import { buildEpisodeDubbedSqlCondition } from "@/lib/published-episodes";
 
 export interface DbTodayScheduleRow {
   anilistId: number;
@@ -44,6 +46,7 @@ export interface DbTodayScheduleRow {
   trailerId: string | null;
   updatedAt: string | Date | null;
   hasEpisode: boolean;
+  hasDubbedEpisode?: boolean;
 }
 
 export interface DbWeeklyScheduleRow {
@@ -62,6 +65,8 @@ export interface DbWeeklyScheduleRow {
   format: string | null;
   status: string | null;
   genres: string[] | null;
+  hasEpisode?: boolean;
+  hasDubbedEpisode?: boolean;
 }
 
 export interface DbWeeklyRecurrenceJoinedRow {
@@ -92,6 +97,7 @@ export interface DbWeeklyRecurrenceJoinedRow {
   trailerId: string | null;
   animeUpdatedAt: string | Date | null;
   hasEpisode: boolean;
+  hasDubbedEpisode?: boolean;
 }
 
 export interface WeeklyScheduleMedia {
@@ -114,6 +120,8 @@ export interface WeeklyScheduleMedia {
   bannerImage?: string | null;
   genres?: string[] | null;
   status?: string | null;
+  hasEpisode?: boolean;
+  isDubbed?: boolean;
 }
 
 export interface WeeklyScheduleItem {
@@ -226,6 +234,21 @@ function computeRecurringItemNumericId(recurrenceId: string, dateKey: string): n
   return -(unsigned + 1);
 }
 
+function resolveScheduleRowIsDubbed(row: {
+  hasEpisode?: boolean;
+  hasDubbedEpisode?: boolean;
+  title?: string | null;
+  titleRomaji?: string | null;
+  titleEnglish?: string | null;
+  titleNative?: string | null;
+}): boolean {
+  if (!row.hasEpisode) return false;
+  if (typeof row.hasDubbedEpisode === "boolean") {
+    return row.hasDubbedEpisode;
+  }
+  return rowIsDubbed(row);
+}
+
 export function mapTodayScheduleRowsToSlimAnime(
   rows: DbTodayScheduleRow[],
   todayKey: string,
@@ -269,6 +292,9 @@ export function mapTodayScheduleRowsToSlimAnime(
       if (row.hasEpisode && !existing.row.hasEpisode) {
         existing.row = { ...existing.row, hasEpisode: true };
       }
+      if (row.hasDubbedEpisode && !existing.row.hasDubbedEpisode) {
+        existing.row = { ...existing.row, hasDubbedEpisode: true };
+      }
     } else {
       grouped.set(groupKey, {
         row,
@@ -311,6 +337,7 @@ export function mapTodayScheduleRowsToSlimAnime(
       source: "local",
       catalogUpdatedAt: toTimestampMs(row.updatedAt),
       hasEpisode: Boolean(row.hasEpisode),
+      isDubbed: resolveScheduleRowIsDubbed(row),
     });
   }
 
@@ -361,6 +388,7 @@ export function mapTodayScheduleRowsToSlimAnime(
       source: "local",
       catalogUpdatedAt: toTimestampMs(rec.animeUpdatedAt),
       hasEpisode: Boolean(rec.hasEpisode),
+      isDubbed: resolveScheduleRowIsDubbed(rec),
     });
   }
 
@@ -419,6 +447,8 @@ export function mapWeeklyScheduleRowsAndRecurrences(params: {
         },
         bannerImage: r.banner,
         genres: r.genres || [],
+        hasEpisode: Boolean(r.hasEpisode),
+        isDubbed: resolveScheduleRowIsDubbed(r),
       },
     });
   }
@@ -472,6 +502,8 @@ export function mapWeeklyScheduleRowsAndRecurrences(params: {
           },
           bannerImage: rec.banner,
           genres: rec.genres || [],
+          hasEpisode: Boolean(rec.hasEpisode),
+          isDubbed: resolveScheduleRowIsDubbed(rec),
         },
       });
     }
@@ -556,7 +588,17 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
          FROM "catalog_episode" e
          WHERE e."animeId" = a."id"
            AND e."published" = true
-       ) AS "hasEpisode"
+       ) AS "hasEpisode",
+       EXISTS (
+         SELECT 1
+         FROM "catalog_episode" e
+         LEFT JOIN "catalog_season" cs
+           ON cs."animeId" = e."animeId"
+          AND cs."number" = e."seasonNumber"
+         WHERE e."animeId" = a."id"
+           AND e."published" = true
+           AND ${buildEpisodeDubbedSqlCondition("e", "cs", "a")}
+       ) AS "hasDubbedEpisode"
      FROM "catalog_airing_schedule" s
      JOIN "catalog_anime" a ON s."animeId" = a."id"
      WHERE s."airingAt" >= to_timestamp($1)
@@ -598,7 +640,17 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
          FROM "catalog_episode" e
          WHERE e."animeId" = a."id"
            AND e."published" = true
-       ) AS "hasEpisode"
+       ) AS "hasEpisode",
+       EXISTS (
+         SELECT 1
+         FROM "catalog_episode" e
+         LEFT JOIN "catalog_season" cs
+           ON cs."animeId" = e."animeId"
+          AND cs."number" = e."seasonNumber"
+         WHERE e."animeId" = a."id"
+           AND e."published" = true
+           AND ${buildEpisodeDubbedSqlCondition("e", "cs", "a")}
+       ) AS "hasDubbedEpisode"
      FROM "catalog_weekly_recurrence" r
      JOIN "catalog_anime" a ON r."animeId" = a."id"
      WHERE r."active" = true
@@ -644,6 +696,7 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
         trailerId: row.trailerId,
         animeUpdatedAt: row.updatedAt,
         hasEpisode: Boolean(row.hasEpisode),
+        hasDubbedEpisode: Boolean(row.hasDubbedEpisode),
       });
     } else {
       rows.push(row);
@@ -717,6 +770,8 @@ export async function getWeeklyScheduleFromDbAndRedis(
     format: string | null;
     status: string | null;
     genres: string[] | null;
+    hasEpisode: boolean;
+    hasDubbedEpisode: boolean;
   };
 
   const combinedRows = await sql.query<CombinedWeeklyRow>(
@@ -740,7 +795,23 @@ export async function getWeeklyScheduleFromDbAndRedis(
        a."banner",
        a."format",
        a."status",
-       a."genres"
+       a."genres",
+       EXISTS (
+         SELECT 1
+         FROM "catalog_episode" e
+         WHERE e."animeId" = a."id"
+           AND e."published" = true
+       ) AS "hasEpisode",
+       EXISTS (
+         SELECT 1
+         FROM "catalog_episode" e
+         LEFT JOIN "catalog_season" cs
+           ON cs."animeId" = e."animeId"
+          AND cs."number" = e."seasonNumber"
+         WHERE e."animeId" = a."id"
+           AND e."published" = true
+           AND ${buildEpisodeDubbedSqlCondition("e", "cs", "a")}
+       ) AS "hasDubbedEpisode"
      FROM "catalog_airing_schedule" s
      JOIN "catalog_anime" a ON s."animeId" = a."id"
      WHERE s."airingAt" >= to_timestamp($1)
@@ -769,7 +840,23 @@ export async function getWeeklyScheduleFromDbAndRedis(
        a."banner",
        a."format",
        a."status",
-       a."genres"
+       a."genres",
+       EXISTS (
+         SELECT 1
+         FROM "catalog_episode" e
+         WHERE e."animeId" = a."id"
+           AND e."published" = true
+       ) AS "hasEpisode",
+       EXISTS (
+         SELECT 1
+         FROM "catalog_episode" e
+         LEFT JOIN "catalog_season" cs
+           ON cs."animeId" = e."animeId"
+          AND cs."number" = e."seasonNumber"
+         WHERE e."animeId" = a."id"
+           AND e."published" = true
+           AND ${buildEpisodeDubbedSqlCondition("e", "cs", "a")}
+       ) AS "hasDubbedEpisode"
      FROM "catalog_weekly_recurrence" r
      JOIN "catalog_anime" a ON r."animeId" = a."id"
      WHERE r."active" = true
@@ -813,7 +900,8 @@ export async function getWeeklyScheduleFromDbAndRedis(
         year: null,
         trailerId: null,
         animeUpdatedAt: null,
-        hasEpisode: false,
+        hasEpisode: Boolean(r.hasEpisode),
+        hasDubbedEpisode: Boolean(r.hasDubbedEpisode),
       });
     } else if (r.scheduleId && typeof r.anilistId === "number") {
       scheduleRows.push({
@@ -832,6 +920,8 @@ export async function getWeeklyScheduleFromDbAndRedis(
         format: r.format,
         status: r.status,
         genres: r.genres,
+        hasEpisode: Boolean(r.hasEpisode),
+        hasDubbedEpisode: Boolean(r.hasDubbedEpisode),
       });
     }
   }

@@ -88,11 +88,7 @@ export const AnimeCard = memo(function AnimeCard({
       : "";
   const yearText = anime.year ? String(anime.year) : "";
 
-  const isDub = useMemo(() => {
-    if (typeof anime.isDubbed === "boolean") return anime.isDubbed;
-    if (typeof (anime as any).is_dubbed === "boolean") return (anime as any).is_dubbed;
-    return Boolean(inferIsDubbedFromTitles(anime) || rowIsDubbed(anime));
-  }, [anime]);
+  const isDub = useMemo(() => isAnimeDubbed(anime), [anime]);
 
   return (
     <article className={cn("group relative flex flex-col min-w-0 shrink-0 [contain:layout_paint]", width)}>

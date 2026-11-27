@@ -29,7 +29,9 @@ import {
   resolveAnimeCandidateIdsFromDb,
   getAllAliasIdsForCanonical,
   extractIdentityFromSnapshot,
+  rowIsDubbed,
 } from "@/lib/anime-identity";
+import { buildEpisodeDubbedSqlCondition } from "@/lib/published-episodes";
 
 export interface DbCatalogAnimeRow {
   id: string;
@@ -54,6 +56,7 @@ export interface DbCatalogAnimeRow {
   score: number | null;
   updatedAt: string | Date | null;
   hasEpisode?: boolean;
+  hasDubbedEpisode?: boolean;
   is_dubbed?: boolean;
 }
 
@@ -189,15 +192,25 @@ export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
            a."hidden",
            a."score",
            a."updatedAt",
-           EXISTS (
-             SELECT 1
-             FROM "catalog_episode" e
-             WHERE e."animeId" = a."id"
-               AND e."published" = true
-           ) AS "hasEpisode"
-         FROM "catalog_anime" a
-         WHERE a."archived_at" IS NULL
-         ORDER BY a."updatedAt" DESC;`,
+            EXISTS (
+              SELECT 1
+              FROM "catalog_episode" e
+              WHERE e."animeId" = a."id"
+                AND e."published" = true
+            ) AS "hasEpisode",
+            EXISTS (
+              SELECT 1
+              FROM "catalog_episode" e
+              LEFT JOIN "catalog_season" cs
+                ON cs."animeId" = e."animeId"
+               AND cs."number" = e."seasonNumber"
+              WHERE e."animeId" = a."id"
+                AND e."published" = true
+                AND ${buildEpisodeDubbedSqlCondition("e", "cs", "a")}
+            ) AS "hasDubbedEpisode"
+          FROM "catalog_anime" a
+          WHERE a."archived_at" IS NULL
+          ORDER BY a."updatedAt" DESC;`,
       );
 
       if (!rows || rows.length === 0) {
@@ -317,7 +330,20 @@ export async function resolveCatalogDetailAliasesForId(
   return Array.from(aliases);
 }
 
-function mergeRowIntoSlim(item: SlimAnime, row: DbCatalogAnimeRow): SlimAnime {
+export function resolveCatalogRowIsDubbed(row: DbCatalogAnimeRow): boolean {
+  if (!row.hasEpisode) {
+    return false;
+  }
+  if (typeof row.hasDubbedEpisode === "boolean") {
+    return row.hasDubbedEpisode;
+  }
+  if (typeof row.is_dubbed === "boolean") {
+    return row.is_dubbed;
+  }
+  return rowIsDubbed(row);
+}
+
+export function mergeRowIntoSlim(item: SlimAnime, row: DbCatalogAnimeRow): SlimAnime {
   const cleanCover = stripCatalogImageVersion(row.cover);
   const cleanBanner = stripCatalogImageVersion(row.banner);
   const updatedAtMs = toTimestampMs(row.updatedAt);
@@ -334,6 +360,7 @@ function mergeRowIntoSlim(item: SlimAnime, row: DbCatalogAnimeRow): SlimAnime {
   const nextNative = row.titleNative?.trim() || item.titles.native;
 
   const hasGenres = Array.isArray(row.genres) && row.genres.length > 0;
+  const hasEpisode = Boolean(row.hasEpisode);
 
   return {
     ...item,
@@ -355,8 +382,8 @@ function mergeRowIntoSlim(item: SlimAnime, row: DbCatalogAnimeRow): SlimAnime {
     score: row.score ?? item.score,
     catalogUpdatedAt: updatedAtMs || item.catalogUpdatedAt,
     serverCatalogId: row.id,
-    hasEpisode: Boolean(row.hasEpisode),
-    isDubbed: Boolean(row.is_dubbed) || rowIsDubbed(row),
+    hasEpisode,
+    isDubbed: resolveCatalogRowIsDubbed(row),
   };
 }
 
@@ -369,7 +396,9 @@ export async function applyDbCatalogOverlayToSlimList(
   const index = await loadCatalogIndex();
   if (!index) {
     return items.map((item) =>
-      item.hasEpisode === false ? item : { ...item, hasEpisode: false },
+      item.hasEpisode === false && item.isDubbed === false
+        ? item
+        : { ...item, hasEpisode: false, isDubbed: false },
     );
   }
 
@@ -377,11 +406,11 @@ export async function applyDbCatalogOverlayToSlimList(
   const next = items.map((item) => {
     const match = findMatchingRow(index, item);
     if (!match) {
-      if (item.hasEpisode === false) {
+      if (item.hasEpisode === false && item.isDubbed === false) {
         return item;
       }
       changed = true;
-      return { ...item, hasEpisode: false };
+      return { ...item, hasEpisode: false, isDubbed: false };
     }
     changed = true;
     return mergeRowIntoSlim(item, match);
@@ -400,7 +429,7 @@ export async function applyDbCatalogOverlayToHome(
       const match = index ? findMatchingRow(index, item) : undefined;
       return match
         ? mergeRowIntoSlim(item, match)
-        : { ...item, hasEpisode: false };
+        : { ...item, hasEpisode: false, isDubbed: false };
     });
 
   const todaySchedule = enrichList(catalog.todaySchedule);
@@ -668,7 +697,7 @@ export async function applyDbCatalogOverlayToDetail(
           const recMatch = index ? findMatchingRow(index, rec) : undefined;
           return recMatch
             ? mergeRowIntoSlim(rec, recMatch)
-            : { ...rec, hasEpisode: false };
+            : { ...rec, hasEpisode: false, isDubbed: false };
         }),
       )
     : [];
@@ -677,6 +706,7 @@ export async function applyDbCatalogOverlayToDetail(
     return {
       ...detail,
       hasEpisode: false,
+      isDubbed: false,
       resolvedAliasIds:
         resolvedAliasIds.length > 0 ? resolvedAliasIds : detail.resolvedAliasIds,
       recommendations: mappedRecommendations,
@@ -802,7 +832,17 @@ export async function searchLocalCatalogAnime(
              FROM "catalog_episode" e
              WHERE e."animeId" = c."id"
                AND e."published" = true
-           ) AS "hasEpisode"
+           ) AS "hasEpisode",
+           EXISTS (
+             SELECT 1
+             FROM "catalog_episode" e
+             LEFT JOIN "catalog_season" cs
+               ON cs."animeId" = e."animeId"
+              AND cs."number" = e."seasonNumber"
+             WHERE e."animeId" = c."id"
+               AND e."published" = true
+               AND ${buildEpisodeDubbedSqlCondition("e", "cs", "c")}
+           ) AS "hasDubbedEpisode"
          FROM "catalog_anime" c
          LEFT JOIN "anime_alias" a ON a."anime_id" = c."id"
          WHERE c."hidden" = false
@@ -844,6 +884,7 @@ export async function searchLocalCatalogAnime(
               catalogUpdatedAt: toTimestampMs(row.updatedAt),
               serverCatalogId: row.id,
               hasEpisode: Boolean(row.hasEpisode),
+              isDubbed: resolveCatalogRowIsDubbed(row),
               source: "local" as const,
             }));
 

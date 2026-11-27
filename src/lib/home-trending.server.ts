@@ -8,7 +8,10 @@ import { currentAnimeSeason } from "@/lib/utils";
 import type { AnimeRecentBadgesLookup } from "@/lib/catalog-badges";
 import { buildHikariPlayerEpisodeUrl } from "@/lib/hikari-player";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
-import { hasEpisodePlayableSource } from "@/lib/published-episodes";
+import {
+  buildEpisodeDubbedSqlCondition,
+  hasEpisodePlayableSource,
+} from "@/lib/published-episodes";
 import {
   getRedisHomeTrendingWithFence,
   HOME_TRENDING_PAYLOAD_VERSION,
@@ -90,6 +93,7 @@ export interface TrendingCatalogAnimeCandidateRow {
   trending?: number | null;
   updatedAt: string | Date | null;
   publishedEpisodeCount: number;
+  hasDubbedEpisode?: boolean | null;
   latestEpisodePublishedAt: string | Date | null;
   epSources: TrendingEpisodeSourceRow[] | null;
   hasTodayAiringSchedule?: boolean | null;
@@ -585,6 +589,11 @@ export function scoreAndRankHomeTrending(
       catalogUpdatedAt: updatedAtMs || latestEpisodePublishedAtMs || undefined,
       serverCatalogId: row.id,
       hasEpisode: hasPublishedPlayable,
+      isDubbed: hasPublishedPlayable
+        ? typeof row.hasDubbedEpisode === "boolean"
+          ? row.hasDubbedEpisode
+          : isDubbedTrendingRow(row)
+        : false,
     };
 
     const rankRes = computeTrendingRankScore({
@@ -1016,8 +1025,13 @@ async function queryTrendingCatalogCandidatesFromNeon(): Promise<
        SELECT
          e."animeId",
          COUNT(*)::int AS "publishedEpisodeCount",
-         MAX(COALESCE(e."publishedAt", e."createdAt")) AS "latestEpisodePublishedAt"
+         MAX(COALESCE(e."publishedAt", e."createdAt")) AS "latestEpisodePublishedAt",
+         BOOL_OR(${buildEpisodeDubbedSqlCondition("e", "cs", "a")}) AS "hasDubbedEpisode"
        FROM "catalog_episode" e
+       JOIN "catalog_anime" a ON a."id" = e."animeId"
+       LEFT JOIN "catalog_season" cs
+         ON cs."animeId" = e."animeId"
+        AND cs."number" = e."seasonNumber"
        WHERE e."published" = true
          AND (
            (e."videoUrl" IS NOT NULL AND BTRIM(e."videoUrl") <> '' AND BTRIM(e."videoUrl") <> '#')
@@ -1086,6 +1100,7 @@ async function queryTrendingCatalogCandidatesFromNeon(): Promise<
        a."trending",
        a."updatedAt",
        COALESCE(ep_stats."publishedEpisodeCount", 0)::int AS "publishedEpisodeCount",
+       COALESCE(ep_stats."hasDubbedEpisode", false) AS "hasDubbedEpisode",
        ep_stats."latestEpisodePublishedAt",
        ep_sample."epSources",
        COALESCE(airing_stats."hasTodayAiringSchedule", false) AS "hasTodayAiringSchedule",

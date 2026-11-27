@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
-import type { LocalAnime, SlimAnime } from "@/lib/types";
+import {
+  hasLocalPublishedEpisodes,
+  type LocalAnime,
+  type SlimAnime,
+} from "@/lib/types";
 import { flushAnimes, loadAnimes, markCatalogPersistedRef, scheduleSave } from "@/lib/catalog-storage";
 import { pruneProgressKeys, withQuotaRetry } from "@/lib/storage-prune";
 import { setAnimeUserClientCacheOwner } from "@/lib/anime-user-client-cache";
@@ -43,6 +47,8 @@ export function slimSnapshot(anime: SlimAnime): SlimAnime {
     trailerId: null,
     color: anime.color,
     source: "cache",
+    ...(typeof anime.hasEpisode === "boolean" ? { hasEpisode: anime.hasEpisode } : {}),
+    ...(typeof anime.isDubbed === "boolean" ? { isDubbed: anime.isDubbed } : {}),
   };
 }
 
@@ -1261,13 +1267,19 @@ export function overlaySlim<
       const direct = locals.find((a) => !a.hidden && a.id === r.id);
       if (direct) {
         usedLocalIds.add(direct.id);
-        const rawItem = toLocalItem(direct) as T & { hasEpisode?: boolean };
+        const rawItem = toLocalItem(direct) as T & { hasEpisode?: boolean; isDubbed?: boolean };
         const remoteHasEp = (r as T & { hasEpisode?: boolean }).hasEpisode;
+        const remoteIsDubbed = (r as T & { isDubbed?: boolean }).isDubbed;
+        const preserveRemoteDubbed =
+          !hasLocalPublishedEpisodes(direct.seasons) &&
+          typeof remoteIsDubbed === "boolean" &&
+          typeof rawItem.isDubbed !== "boolean";
         const item = {
           ...rawItem,
           ...(typeof remoteHasEp === "boolean" || typeof rawItem.hasEpisode === "boolean"
             ? { hasEpisode: Boolean(remoteHasEp || rawItem.hasEpisode) }
             : {}),
+          ...(preserveRemoteDubbed ? { isDubbed: remoteIsDubbed } : {}),
         } as T;
         return mapMatched ? mapMatched(item, r, direct) : item;
       }
@@ -1291,13 +1303,19 @@ export function overlaySlim<
 
         if (aniLocal) {
           usedLocalIds.add(aniLocal.id);
-          const rawItem = toLocalItem(aniLocal) as T & { hasEpisode?: boolean };
+          const rawItem = toLocalItem(aniLocal) as T & { hasEpisode?: boolean; isDubbed?: boolean };
           const remoteHasEp = (r as T & { hasEpisode?: boolean }).hasEpisode;
+          const remoteIsDubbed = (r as T & { isDubbed?: boolean }).isDubbed;
+          const preserveRemoteDubbed =
+            !hasLocalPublishedEpisodes(aniLocal.seasons) &&
+            typeof remoteIsDubbed === "boolean" &&
+            typeof rawItem.isDubbed !== "boolean";
           const item = {
             ...rawItem,
             ...(typeof remoteHasEp === "boolean" || typeof rawItem.hasEpisode === "boolean"
               ? { hasEpisode: Boolean(remoteHasEp || rawItem.hasEpisode) }
               : {}),
+            ...(preserveRemoteDubbed ? { isDubbed: remoteIsDubbed } : {}),
           } as T;
           return mapMatched ? mapMatched(item, r, aniLocal) : item;
         }

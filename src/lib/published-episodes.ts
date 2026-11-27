@@ -118,6 +118,37 @@ export function isPublishedEpisodeDubbed(
   return false;
 }
 
+function escapeSqlSingleQuotedLiteral(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+/**
+ * Gera a expressão SQL PostgreSQL equivalente a `isPublishedEpisodeDubbed`
+ * (sem campos de áudio em memória), para identificar se uma linha de episódio
+ * publicada é dublada diretamente nas consultas em lote do catálogo.
+ */
+export function buildEpisodeDubbedSqlCondition(
+  episodeAlias = "e",
+  seasonAlias = "s",
+  animeAlias = "a",
+): string {
+  const subPattern = escapeSqlSingleQuotedLiteral(EPISODE_SUB_TEXT_REGEX.source);
+  const dubPattern = escapeSqlSingleQuotedLiteral(EPISODE_DUB_TEXT_REGEX.source);
+  const animeTitlesExpr = `CONCAT_WS(' ', ${animeAlias}."title", ${animeAlias}."titleRomaji", ${animeAlias}."titleEnglish", ${animeAlias}."titleNative")`;
+
+  return `(
+    CASE
+      WHEN COALESCE(${episodeAlias}."title", '') ~* '${subPattern}' THEN false
+      WHEN COALESCE(${episodeAlias}."title", '') ~* '${dubPattern}' THEN true
+      WHEN COALESCE(${seasonAlias}."title", '') ~* '${subPattern}' THEN false
+      WHEN COALESCE(${seasonAlias}."title", '') ~* '${dubPattern}' THEN true
+      WHEN ${animeTitlesExpr} ~* '${subPattern}' THEN false
+      WHEN ${animeTitlesExpr} ~* '${dubPattern}' THEN true
+      ELSE false
+    END
+  )`;
+}
+
 /**
  * Determina se um anime deve exibir o selo DUB nos cards do catálogo:
  * - Anime com pelo menos um episódio identificado como dublado: exibir DUB.

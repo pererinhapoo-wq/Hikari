@@ -15,6 +15,7 @@ import {
 import { HikariImage } from "@/components/ui/hikari-image";
 import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
+import { isAnimeDubbed } from "@/lib/published-episodes";
 
 /* =========================================================
    TIPOS DE DADOS DO CALENDÁRIO
@@ -40,6 +41,8 @@ export type AiringMedia = {
   bannerImage?: string | null;
   genres?: string[] | null;
   status?: string | null;
+  hasEpisode?: boolean;
+  isDubbed?: boolean;
 };
 
 export type AiringScheduleItem = {
@@ -157,6 +160,16 @@ function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
     item.media.id > 0
       ? String(item.media.id)
       : item.media.animeId || String(item.media.id);
+  const isDub = useMemo(
+    () =>
+      isAnimeDubbed({
+        id: item.media.animeId || String(item.media.id),
+        titles: item.media.title,
+        hasEpisode: item.media.hasEpisode,
+        isDubbed: item.media.isDubbed,
+      }),
+    [item.media],
+  );
 
   return (
     <Link
@@ -180,6 +193,18 @@ function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
           loading="lazy"
           decoding="async"
         />
+
+        {/* Selo DUB sobre a imagem do anime */}
+        {isDub && (
+          <div className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 flex items-center z-10 select-none pointer-events-none">
+            <span
+              data-badge="dub"
+              className="inline-flex items-center justify-center h-4 sm:h-[18px] px-1.5 rounded bg-emerald-600/95 border border-emerald-300/50 text-[8px] sm:text-[9px] font-bold tracking-wider text-white shadow-sm leading-none uppercase"
+            >
+              DUB
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Informações do Anime */}
