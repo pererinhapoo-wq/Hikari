@@ -21,6 +21,14 @@ import {
 import type { SlimAnime } from "@/lib/types";
 import { rowIsDubbed } from "@/lib/anime-identity";
 import { buildEpisodeDubbedSqlCondition } from "@/lib/published-episodes";
+import {
+  EMPTY_PUBLIC_VISIBILITY_CONTEXT,
+  filterPublicAnimes,
+  isPubliclyBlockedAnime,
+  normalizeCountryOfOrigin,
+  type VisibilityIndexContext,
+} from "@/lib/public-visibility";
+import { getServerPublicVisibilityContext } from "@/lib/public-visibility.server";
 
 export interface DbTodayScheduleRow {
   anilistId: number;
@@ -45,6 +53,8 @@ export interface DbTodayScheduleRow {
   year: number | null;
   trailerId: string | null;
   updatedAt: string | Date | null;
+  countryOfOrigin?: string | null;
+  duplicateOfId?: string | null;
   hasEpisode: boolean;
   hasDubbedEpisode?: boolean;
 }
@@ -65,6 +75,8 @@ export interface DbWeeklyScheduleRow {
   format: string | null;
   status: string | null;
   genres: string[] | null;
+  countryOfOrigin?: string | null;
+  duplicateOfId?: string | null;
   hasEpisode?: boolean;
   hasDubbedEpisode?: boolean;
 }
@@ -96,6 +108,8 @@ export interface DbWeeklyRecurrenceJoinedRow {
   year: number | null;
   trailerId: string | null;
   animeUpdatedAt: string | Date | null;
+  countryOfOrigin?: string | null;
+  duplicateOfId?: string | null;
   hasEpisode: boolean;
   hasDubbedEpisode?: boolean;
 }
@@ -120,6 +134,8 @@ export interface WeeklyScheduleMedia {
   bannerImage?: string | null;
   genres?: string[] | null;
   status?: string | null;
+  countryOfOrigin?: string | null;
+  duplicateOfId?: string | null;
   hasEpisode?: boolean;
   isDubbed?: boolean;
 }
@@ -332,6 +348,8 @@ export function mapTodayScheduleRowsToSlimAnime(
       season: row.season ?? null,
       year: row.year ?? null,
       trailerId: row.trailerId ?? null,
+      countryOfOrigin: normalizeCountryOfOrigin(row.countryOfOrigin),
+      duplicateOfId: row.duplicateOfId ?? null,
       todayEpisode: firstEp,
       todayUpcomingEpisodes: episodes,
       source: "local",
@@ -383,6 +401,8 @@ export function mapTodayScheduleRowsToSlimAnime(
       season: rec.season ?? null,
       year: rec.year ?? null,
       trailerId: rec.trailerId ?? null,
+      countryOfOrigin: normalizeCountryOfOrigin(rec.countryOfOrigin),
+      duplicateOfId: rec.duplicateOfId ?? null,
       todayEpisode: anchorEpisode,
       todayUpcomingEpisodes: [anchorEpisode],
       source: "local",
@@ -447,6 +467,8 @@ export function mapWeeklyScheduleRowsAndRecurrences(params: {
         },
         bannerImage: r.banner,
         genres: r.genres || [],
+        countryOfOrigin: normalizeCountryOfOrigin(r.countryOfOrigin),
+        duplicateOfId: r.duplicateOfId ?? null,
         hasEpisode: Boolean(r.hasEpisode),
         isDubbed: resolveScheduleRowIsDubbed(r),
       },
@@ -502,6 +524,8 @@ export function mapWeeklyScheduleRowsAndRecurrences(params: {
           },
           bannerImage: rec.banner,
           genres: rec.genres || [],
+          countryOfOrigin: normalizeCountryOfOrigin(rec.countryOfOrigin),
+          duplicateOfId: rec.duplicateOfId ?? null,
           hasEpisode: Boolean(rec.hasEpisode),
           isDubbed: resolveScheduleRowIsDubbed(rec),
         },
@@ -511,6 +535,36 @@ export function mapWeeklyScheduleRowsAndRecurrences(params: {
 
   items.sort((a, b) => a.airingAt - b.airingAt || a.episode - b.episode);
   return items;
+}
+
+async function resolveSafeScheduleVisibilityContext(
+  sqlOverride?: Sql,
+): Promise<VisibilityIndexContext> {
+  try {
+    return await getServerPublicVisibilityContext(sqlOverride);
+  } catch {
+    return EMPTY_PUBLIC_VISIBILITY_CONTEXT;
+  }
+}
+
+function filterWeeklyScheduleItems(
+  items: ReadonlyArray<WeeklyScheduleItem>,
+  visCtx: VisibilityIndexContext,
+): WeeklyScheduleItem[] {
+  return items.filter(
+    (item) =>
+      !isPubliclyBlockedAnime(
+        {
+          id: item.media.animeId || item.media.id,
+          animeId: item.media.animeId,
+          anilistId: item.media.id > 0 ? item.media.id : undefined,
+          idMal: item.media.idMal ?? undefined,
+          countryOfOrigin: item.media.countryOfOrigin,
+          duplicateOfId: item.media.duplicateOfId,
+        },
+        visCtx,
+      ),
+  );
 }
 
 export async function getTodayScheduleFromDbAndRedis(deps?: {
@@ -527,7 +581,8 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
   if (useLocalCache) {
     const cached = localTodayCache.get(todayKey);
     if (cached && Date.now() - cached.at <= LOCAL_TODAY_CACHE_TTL_MS) {
-      return cached.data;
+      const visCtx = await resolveSafeScheduleVisibilityContext();
+      return filterPublicAnimes(cached.data, visCtx);
     }
   }
 
@@ -536,7 +591,8 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
 
   const redisHit = await readRedis(todayKey).catch(() => null);
   if (Array.isArray(redisHit)) {
-    const sortedHit = sortByHasEpisodeFirst(redisHit);
+    const visCtx = await resolveSafeScheduleVisibilityContext(deps?.sql);
+    const sortedHit = filterPublicAnimes(sortByHasEpisodeFirst(redisHit), visCtx);
     if (useLocalCache) {
       localTodayCache.set(todayKey, { at: Date.now(), data: sortedHit });
     }
@@ -545,6 +601,7 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
 
   const epochBeforeDb = localTodayCacheEpoch;
   const sql = deps?.sql ?? (await getSql());
+  const visCtx = await resolveSafeScheduleVisibilityContext(sql);
 
   type CombinedTodayRow = DbTodayScheduleRow & {
     entryType: "specific" | "recurring";
@@ -554,8 +611,7 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
     active: boolean;
   };
 
-  const combinedRows = await sql.query<CombinedTodayRow>(
-    `SELECT
+  const buildTodayQuery = (includeOriginCols: boolean) => `SELECT
        'specific'::text AS "entryType",
        NULL::text AS "recurrenceId",
        NULL::smallint AS "dayOfWeek",
@@ -583,6 +639,13 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
        a."year",
        a."trailerId",
        a."updatedAt",
+       ${
+         includeOriginCols
+           ? `a."country_of_origin" AS "countryOfOrigin",
+       a."duplicate_of_id" AS "duplicateOfId",`
+           : `NULL::text AS "countryOfOrigin",
+       NULL::text AS "duplicateOfId",`
+       }
        EXISTS (
          SELECT 1
          FROM "catalog_episode" e
@@ -635,6 +698,13 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
        a."year",
        a."trailerId",
        a."updatedAt",
+       ${
+         includeOriginCols
+           ? `a."country_of_origin" AS "countryOfOrigin",
+       a."duplicate_of_id" AS "duplicateOfId",`
+           : `NULL::text AS "countryOfOrigin",
+       NULL::text AS "duplicateOfId",`
+       }
        EXISTS (
          SELECT 1
          FROM "catalog_episode" e
@@ -659,9 +729,28 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
        AND (a."hidden" IS NOT TRUE)
        AND (a."archived_at" IS NULL)
        AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])))
-     ORDER BY "entryType" DESC, "airingAtEpoch" ASC, "episode" ASC, "title" ASC;`,
-    [startTimestamp, endTimestamp, todayWeekday, CALENDAR_TIMEZONE],
-  );
+     ORDER BY "entryType" DESC, "airingAtEpoch" ASC, "episode" ASC, "title" ASC;`;
+
+  let combinedRows: CombinedTodayRow[];
+  try {
+    combinedRows = await sql.query<CombinedTodayRow>(buildTodayQuery(true), [
+      startTimestamp,
+      endTimestamp,
+      todayWeekday,
+      CALENDAR_TIMEZONE,
+    ]);
+  } catch (err: unknown) {
+    if ((err as { code?: string } | null)?.code === "42703") {
+      combinedRows = await sql.query<CombinedTodayRow>(buildTodayQuery(false), [
+        startTimestamp,
+        endTimestamp,
+        todayWeekday,
+        CALENDAR_TIMEZONE,
+      ]);
+    } else {
+      throw err;
+    }
+  }
 
   const rows: DbTodayScheduleRow[] = [];
   const recurringRows: DbWeeklyRecurrenceJoinedRow[] = [];
@@ -695,6 +784,8 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
         year: row.year,
         trailerId: row.trailerId,
         animeUpdatedAt: row.updatedAt,
+        countryOfOrigin: row.countryOfOrigin ?? null,
+        duplicateOfId: row.duplicateOfId ?? null,
         hasEpisode: Boolean(row.hasEpisode),
         hasDubbedEpisode: Boolean(row.hasDubbedEpisode),
       });
@@ -703,7 +794,10 @@ export async function getTodayScheduleFromDbAndRedis(deps?: {
     }
   }
 
-  const items = mapTodayScheduleRowsToSlimAnime(rows, todayKey, recurringRows);
+  const items = filterPublicAnimes(
+    mapTodayScheduleRowsToSlimAnime(rows, todayKey, recurringRows),
+    visCtx,
+  );
 
   if (epochBeforeDb === localTodayCacheEpoch) {
     if (useLocalCache) {
@@ -743,11 +837,13 @@ export async function getWeeklyScheduleFromDbAndRedis(
 
   const cachedRedis = await readRedis(effectiveWeekKey).catch(() => null);
   if (Array.isArray(cachedRedis)) {
-    return cachedRedis;
+    const visCtx = await resolveSafeScheduleVisibilityContext(deps?.sql);
+    return filterWeeklyScheduleItems(cachedRedis, visCtx);
   }
 
   const epochBeforeDb = localTodayCacheEpoch;
   const sql = deps?.sql ?? (await getSql());
+  const visCtx = await resolveSafeScheduleVisibilityContext(sql);
 
   type CombinedWeeklyRow = {
     entryType: "specific" | "recurring";
@@ -770,12 +866,13 @@ export async function getWeeklyScheduleFromDbAndRedis(
     format: string | null;
     status: string | null;
     genres: string[] | null;
+    countryOfOrigin: string | null;
+    duplicateOfId: string | null;
     hasEpisode: boolean;
     hasDubbedEpisode: boolean;
   };
 
-  const combinedRows = await sql.query<CombinedWeeklyRow>(
-    `SELECT
+  const buildWeeklyQuery = (includeOriginCols: boolean) => `SELECT
        'specific'::text AS "entryType",
        s."id" AS "scheduleId",
        NULL::text AS "recurrenceId",
@@ -796,6 +893,13 @@ export async function getWeeklyScheduleFromDbAndRedis(
        a."format",
        a."status",
        a."genres",
+       ${
+         includeOriginCols
+           ? `a."country_of_origin" AS "countryOfOrigin",
+       a."duplicate_of_id" AS "duplicateOfId",`
+           : `NULL::text AS "countryOfOrigin",
+       NULL::text AS "duplicateOfId",`
+       }
        EXISTS (
          SELECT 1
          FROM "catalog_episode" e
@@ -841,6 +945,13 @@ export async function getWeeklyScheduleFromDbAndRedis(
        a."format",
        a."status",
        a."genres",
+       ${
+         includeOriginCols
+           ? `a."country_of_origin" AS "countryOfOrigin",
+       a."duplicate_of_id" AS "duplicateOfId",`
+           : `NULL::text AS "countryOfOrigin",
+       NULL::text AS "duplicateOfId",`
+       }
        EXISTS (
          SELECT 1
          FROM "catalog_episode" e
@@ -864,9 +975,26 @@ export async function getWeeklyScheduleFromDbAndRedis(
        AND (a."hidden" IS NOT TRUE)
        AND (a."archived_at" IS NULL)
        AND NOT ('Hentai' = ANY(COALESCE(a."genres", '{}'::text[])))
-     ORDER BY "entryType" DESC, "airingAtEpoch" ASC, "episode" ASC, "dayOfWeek" ASC, "title" ASC;`,
-    [startTimestamp, endTimestamp, CALENDAR_TIMEZONE],
-  );
+     ORDER BY "entryType" DESC, "airingAtEpoch" ASC, "episode" ASC, "dayOfWeek" ASC, "title" ASC;`;
+
+  let combinedRows: CombinedWeeklyRow[];
+  try {
+    combinedRows = await sql.query<CombinedWeeklyRow>(buildWeeklyQuery(true), [
+      startTimestamp,
+      endTimestamp,
+      CALENDAR_TIMEZONE,
+    ]);
+  } catch (err: unknown) {
+    if ((err as { code?: string } | null)?.code === "42703") {
+      combinedRows = await sql.query<CombinedWeeklyRow>(buildWeeklyQuery(false), [
+        startTimestamp,
+        endTimestamp,
+        CALENDAR_TIMEZONE,
+      ]);
+    } else {
+      throw err;
+    }
+  }
 
   const scheduleRows: DbWeeklyScheduleRow[] = [];
   const recurrenceRows: DbWeeklyRecurrenceJoinedRow[] = [];
@@ -900,6 +1028,8 @@ export async function getWeeklyScheduleFromDbAndRedis(
         year: null,
         trailerId: null,
         animeUpdatedAt: null,
+        countryOfOrigin: r.countryOfOrigin ?? null,
+        duplicateOfId: r.duplicateOfId ?? null,
         hasEpisode: Boolean(r.hasEpisode),
         hasDubbedEpisode: Boolean(r.hasDubbedEpisode),
       });
@@ -920,6 +1050,8 @@ export async function getWeeklyScheduleFromDbAndRedis(
         format: r.format,
         status: r.status,
         genres: r.genres,
+        countryOfOrigin: r.countryOfOrigin ?? null,
+        duplicateOfId: r.duplicateOfId ?? null,
         hasEpisode: Boolean(r.hasEpisode),
         hasDubbedEpisode: Boolean(r.hasDubbedEpisode),
       });
@@ -931,11 +1063,14 @@ export async function getWeeklyScheduleFromDbAndRedis(
       ? params.days
       : getWeekDaysFromRangeSaoPaulo(startTimestamp, weekKey);
 
-  const combined = mapWeeklyScheduleRowsAndRecurrences({
-    scheduleRows: Array.isArray(scheduleRows) ? scheduleRows : [],
-    recurrenceRows: Array.isArray(recurrenceRows) ? recurrenceRows : [],
-    weekDays,
-  });
+  const combined = filterWeeklyScheduleItems(
+    mapWeeklyScheduleRowsAndRecurrences({
+      scheduleRows: Array.isArray(scheduleRows) ? scheduleRows : [],
+      recurrenceRows: Array.isArray(recurrenceRows) ? recurrenceRows : [],
+      weekDays,
+    }),
+    visCtx,
+  );
 
   if (epochBeforeDb === localTodayCacheEpoch) {
     await writeRedis(effectiveWeekKey, combined).catch(() => {});

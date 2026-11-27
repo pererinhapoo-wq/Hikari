@@ -17,6 +17,12 @@ import {
   localToAnime,
   type SlimAnime,
 } from "@/lib/types";
+import {
+  buildClientVisibilityContext,
+  filterPublicAnimes,
+  isPubliclyBlockedAnime,
+  isPubliclyBlockedId,
+} from "@/lib/public-visibility";
 
 import { getAnimeLogo } from "@/lib/anime-logos";
 import {
@@ -289,6 +295,11 @@ function Home() {
   const locals = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
 
+  const visCtx = useMemo(
+    () => buildClientVisibilityContext(locals),
+    [locals],
+  );
+
   const rawTrending = useMemo(
     () => overlayList(data.trending, locals, { includeExtras: false }),
     [data.trending, locals],
@@ -328,6 +339,7 @@ function Home() {
     const visibleLocals = locals.filter(
       (a) =>
         !a.hidden &&
+        !isPubliclyBlockedAnime(a, visCtx) &&
         (a.hasEpisode === true || hasLocalPublishedEpisodes(a.seasons)),
     );
     const withValidCreatedAt = visibleLocals.filter(
@@ -345,7 +357,7 @@ function Home() {
       )
       .slice(0, 18)
       .map(localToAnime);
-  }, [locals]);
+  }, [locals, visCtx]);
 
   const homeWithEpisodeCount = useMemo(
     () =>
@@ -371,9 +383,9 @@ function Home() {
                 ? { ...mappedItem, id: remoteItem.id }
                 : mappedItem,
           })
-        : items;
+        : filterPublicAnimes(items, visCtx);
     return base.slice(0, 18);
-  }, [data.emAltaItems, locals]);
+  }, [data.emAltaItems, locals, visCtx]);
 
   const emAltaItems = useMemo(
     () => (Array.isArray(data.emAltaItems) ? dynamicEmAltaItems : []),
@@ -402,9 +414,9 @@ function Home() {
                 : {}),
             }),
           })
-        : items;
+        : filterPublicAnimes(items, visCtx);
     return base.slice(0, 8);
-  }, [data.heroItems, locals]);
+  }, [data.heroItems, locals, visCtx]);
 
   const featuredItems = useMemo(
     () =>
@@ -422,7 +434,11 @@ function Home() {
   // Prioriza os 18 itens resolvidos no loader (evitando serializar milhares de linhas no HTML SSR)
   // e mescla com o catálogo local apenas quando houver registros locais no navegador
   const recentEpisodes = useMemo(() => {
-    const base = data.publicRecentEpisodes ?? [];
+    const base = (data.publicRecentEpisodes ?? []).filter(
+      (ep) =>
+        !isPubliclyBlockedId(ep.animeId, visCtx) &&
+        !isPubliclyBlockedAnime({ id: ep.animeId }, visCtx),
+    );
     if (locals.length === 0) return base;
     const localRecent = getRecentEpisodesSection(locals);
     if (localRecent.length === 0) return base;
@@ -436,7 +452,7 @@ function Home() {
     }
     merged.sort((a, b) => b.publishedAt - a.publishedAt);
     return merged.slice(0, 18);
-  }, [data.publicRecentEpisodes, locals]);
+  }, [data.publicRecentEpisodes, locals, visCtx]);
 
   return (
     <div className="space-y-8 pb-12 sm:space-y-11 md:space-y-14">

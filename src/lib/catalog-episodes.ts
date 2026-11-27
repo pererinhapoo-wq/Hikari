@@ -39,6 +39,13 @@ import {
   normalizeHikariPlayerEpisodeId,
 } from "@/lib/hikari-player";
 import { resolveAnimeCandidateIdsFromDb } from "@/lib/anime-identity";
+import {
+  EMPTY_PUBLIC_VISIBILITY_CONTEXT,
+  isPubliclyBlockedAnime,
+  isPubliclyBlockedId,
+  normalizeCountryOfOrigin,
+  type VisibilityIndexContext,
+} from "@/lib/public-visibility";
 
 export const getCatalogEpisodesSchema = z.object({
   animeId: z.string().min(1, "animeId é obrigatório"),
@@ -249,11 +256,25 @@ export async function executeGetCatalogEpisodes(
   const wantUnpublished = Boolean(options?.includeUnpublished);
 
   if (!wantUnpublished) {
+    const { getServerPublicVisibilityContext } = await import(
+      "@/lib/public-visibility.server"
+    );
+    const visCtx = await getServerPublicVisibilityContext();
+    if (isPubliclyBlockedId(cleanId, visCtx)) {
+      return { animeId: cleanId, seasons: [], episodes: [] };
+    }
+
     const cachedRam = serverCatalogEpisodesCache.get(cleanId);
     if (
       cachedRam &&
       Date.now() - cachedRam.timestamp < SERVER_CATALOG_EPISODES_TTL_MS
     ) {
+      if (
+        cachedRam.candidateIds.some((cid) => isPubliclyBlockedId(cid, visCtx)) ||
+        cachedRam.data.episodes.some((ep) => isPubliclyBlockedId(ep.animeId, visCtx))
+      ) {
+        return { animeId: cleanId, seasons: [], episodes: [] };
+      }
       return cachedRam.data;
     }
 
@@ -269,8 +290,18 @@ export async function executeGetCatalogEpisodes(
     // 1. Tentar consultar no Upstash Redis (cache compartilhado) se for consulta pública
     if (!wantUnpublished) {
       try {
-        const cached = await getRedisCatalogEpisodes(cleanId);
+        const [{ getServerPublicVisibilityContext }, cached] = await Promise.all([
+          import("@/lib/public-visibility.server"),
+          getRedisCatalogEpisodes(cleanId),
+        ]);
+        const visCtx = await getServerPublicVisibilityContext();
+        if (isPubliclyBlockedId(cleanId, visCtx)) {
+          return { animeId: cleanId, seasons: [], episodes: [] };
+        }
         if (cached && typeof cached === "object" && Array.isArray(cached.episodes)) {
+          if (cached.episodes.some((ep) => isPubliclyBlockedId(ep.animeId, visCtx))) {
+            return { animeId: cleanId, seasons: [], episodes: [] };
+          }
           if (requestEpoch === serverCatalogEpisodesCacheEpoch) {
             setServerCatalogEpisodesRamCache(cleanId, cached, [cleanId]);
           }
@@ -294,6 +325,16 @@ export async function executeGetCatalogEpisodes(
         }
       } catch {
         // ignore
+      }
+
+      if (!wantUnpublished) {
+        const { getServerPublicVisibilityContext } = await import(
+          "@/lib/public-visibility.server"
+        );
+        const visCtx = await getServerPublicVisibilityContext(sql);
+        if (candidateIds.some((cid) => isPubliclyBlockedId(cid, visCtx))) {
+          return { animeId: cleanId, seasons: [], episodes: [] };
+        }
       }
 
       const whereClause = wantUnpublished
@@ -478,6 +519,8 @@ export interface PublicEpisodeRow {
   animeAnilistId?: number | null;
   animeMalId?: number | null;
   animeKitsuId?: number | null;
+  animeCountryOfOrigin?: string | null;
+  animeDuplicateOfId?: string | null;
   seasonTitle: string | null;
 }
 
@@ -545,77 +588,169 @@ function setPublicCatalogEpisodesRamCache(
   });
 }
 
+function filterPublicEpisodeRows(
+  rows: ReadonlyArray<PublicEpisodeRow>,
+  visCtx: VisibilityIndexContext,
+): PublicEpisodeRow[] {
+  return rows.filter(
+    (row) =>
+      !isPubliclyBlockedAnime(
+        {
+          id: row.animeId,
+          animeId: row.animeId,
+          animeAnilistId: row.animeAnilistId,
+          animeMalId: row.animeMalId,
+          animeKitsuId: row.animeKitsuId,
+          animeCountryOfOrigin: row.animeCountryOfOrigin,
+          duplicateOfId: row.animeDuplicateOfId,
+        },
+        visCtx,
+      ),
+  );
+}
+
+function buildPublicEpisodeVisibilitySqlConditions(
+  visCtx: VisibilityIndexContext,
+  params: unknown[],
+  includeOriginCol = true,
+): string[] {
+  const conds: string[] = [];
+  if (includeOriginCol) {
+    conds.push(`COALESCE(UPPER(BTRIM(a."country_of_origin")), '') <> 'CN'`);
+  }
+  if (visCtx.blockedCatalogIds.size > 0) {
+    params.push(Array.from(visCtx.blockedCatalogIds));
+    conds.push(`NOT (e."animeId" = ANY($${params.length}::text[]))`);
+  }
+  if (visCtx.blockedAnilistIds.size > 0) {
+    params.push(Array.from(visCtx.blockedAnilistIds));
+    conds.push(
+      `(a."anilistId" IS NULL OR NOT (a."anilistId" = ANY($${params.length}::integer[])))`,
+    );
+  }
+  if (visCtx.blockedMalIds.size > 0) {
+    params.push(Array.from(visCtx.blockedMalIds));
+    conds.push(
+      `(a."malId" IS NULL OR NOT (a."malId" = ANY($${params.length}::integer[])))`,
+    );
+  }
+  if (visCtx.blockedKitsuIds.size > 0) {
+    params.push(Array.from(visCtx.blockedKitsuIds));
+    conds.push(
+      `(a."kitsuId" IS NULL OR NOT (a."kitsuId" = ANY($${params.length}::integer[])))`,
+    );
+  }
+  return conds;
+}
+
 async function queryPublicCatalogEpisodesFromDb(
   limit: number,
   offset: number,
 ): Promise<PublicEpisodesResult> {
   try {
     const sql = await getSql();
-    const rows = await sql.query<PublicEpisodeRow>(
-      `SELECT
-         e."id",
-         e."animeId",
-         e."seasonNumber",
-         e."number",
-         e."title",
-         e."thumbnail",
-         e."duration",
-         e."synopsis",
-         e."videoUrl",
-         e."videoUrl2",
-         e."videoUrl3",
-         e."videoUrl4",
-         e."videoUrl5",
-         e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
-         e."audio",
-         EXISTS (
-           SELECT 1
-           FROM "episode_sources" es
-           WHERE es."episode_id" = e."id"
-             AND es."lang" = 'dub'
-             AND COALESCE(es."status", 'active') NOT IN ('broken', 'incomplete')
-         ) AS "hasValidDubSource",
-         e."opening_start_seconds" AS "openingStartSeconds",
-         e."opening_end_seconds" AS "openingEndSeconds",
-         e."published",
-         e."publishedAt",
-         e."createdAt",
-         e."updatedAt",
-         COALESCE(e."badge_lancamento", false) AS "badgeLancamento",
-         COALESCE(e."badge_novo", false) AS "badgeNovo",
-         COALESCE(e."badge_final", false) AS "badgeFinal",
-         COALESCE(NULLIF(a."title", ''), a."titleRomaji", a."titleEnglish", 'Anime') AS "animeTitle",
-         a."titleRomaji" AS "animeTitleRomaji",
-         a."titleEnglish" AS "animeTitleEnglish",
-         a."titleNative" AS "animeTitleNative",
-         a."cover" AS "animeCover",
-         a."banner" AS "animeBanner",
-         a."status" AS "animeStatus",
-         a."episodesCount" AS "animeEpisodesCount",
-         a."createdAt" AS "animeCreatedAt",
-         a."updatedAt" AS "animeUpdatedAt",
-         a."anilistId" AS "animeAnilistId",
-         a."malId" AS "animeMalId",
-         a."kitsuId" AS "animeKitsuId",
-         s."title" AS "seasonTitle"
-       FROM "catalog_episode" e
-       LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
-       LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
-       WHERE e."published" = true
-         AND (a."id" IS NULL OR a."archived_at" IS NULL)
-       ORDER BY e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."seasonNumber" DESC, e."number" DESC
-       LIMIT $1 OFFSET $2;`,
-      [limit, offset],
+    const { getServerPublicVisibilityContext } = await import(
+      "@/lib/public-visibility.server"
     );
+    const visCtx = await getServerPublicVisibilityContext(sql);
 
-    const episodes = (Array.isArray(rows) ? rows : []).map((row) => ({
+    const runQuery = async (includeOriginCol: boolean) => {
+      const params: unknown[] = [limit, offset];
+      const visConds = buildPublicEpisodeVisibilitySqlConditions(
+        visCtx,
+        params,
+        includeOriginCol,
+      );
+      const visSql = visConds.length > 0 ? `AND ${visConds.join(" AND ")}` : "";
+      return sql.query<PublicEpisodeRow>(
+        `SELECT
+           e."id",
+           e."animeId",
+           e."seasonNumber",
+           e."number",
+           e."title",
+           e."thumbnail",
+           e."duration",
+           e."synopsis",
+           e."videoUrl",
+           e."videoUrl2",
+           e."videoUrl3",
+           e."videoUrl4",
+           e."videoUrl5",
+           e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+           e."audio",
+           EXISTS (
+             SELECT 1
+             FROM "episode_sources" es
+             WHERE es."episode_id" = e."id"
+               AND es."lang" = 'dub'
+               AND COALESCE(es."status", 'active') NOT IN ('broken', 'incomplete')
+           ) AS "hasValidDubSource",
+           e."opening_start_seconds" AS "openingStartSeconds",
+           e."opening_end_seconds" AS "openingEndSeconds",
+           e."published",
+           e."publishedAt",
+           e."createdAt",
+           e."updatedAt",
+           COALESCE(e."badge_lancamento", false) AS "badgeLancamento",
+           COALESCE(e."badge_novo", false) AS "badgeNovo",
+           COALESCE(e."badge_final", false) AS "badgeFinal",
+           COALESCE(NULLIF(a."title", ''), a."titleRomaji", a."titleEnglish", 'Anime') AS "animeTitle",
+           a."titleRomaji" AS "animeTitleRomaji",
+           a."titleEnglish" AS "animeTitleEnglish",
+           a."titleNative" AS "animeTitleNative",
+           a."cover" AS "animeCover",
+           a."banner" AS "animeBanner",
+           a."status" AS "animeStatus",
+           a."episodesCount" AS "animeEpisodesCount",
+           a."createdAt" AS "animeCreatedAt",
+           a."updatedAt" AS "animeUpdatedAt",
+           a."anilistId" AS "animeAnilistId",
+           a."malId" AS "animeMalId",
+           a."kitsuId" AS "animeKitsuId",
+           ${
+             includeOriginCol
+               ? `a."country_of_origin" AS "animeCountryOfOrigin",
+           a."duplicate_of_id" AS "animeDuplicateOfId",`
+               : `NULL::text AS "animeCountryOfOrigin",
+           NULL::text AS "animeDuplicateOfId",`
+           }
+           s."title" AS "seasonTitle"
+         FROM "catalog_episode" e
+         LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
+         LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
+         WHERE e."published" = true
+           AND (a."id" IS NULL OR a."archived_at" IS NULL)
+           ${visSql}
+         ORDER BY e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."seasonNumber" DESC, e."number" DESC
+         LIMIT $1 OFFSET $2;`,
+        params,
+      );
+    };
+
+    let rows: PublicEpisodeRow[];
+    try {
+      rows = await runQuery(true);
+    } catch (err: unknown) {
+      if ((err as { code?: string } | null)?.code === "42703") {
+        rows = await runQuery(false);
+      } else {
+        throw err;
+      }
+    }
+
+    const mapped = (Array.isArray(rows) ? rows : []).map((row) => ({
       ...row,
       audio: row.audio ?? null,
+      animeCountryOfOrigin: normalizeCountryOfOrigin(row.animeCountryOfOrigin),
+      animeDuplicateOfId: row.animeDuplicateOfId ?? null,
       hasValidDubSource: Boolean(row.hasValidDubSource),
       badgeLancamento: Boolean(row.badgeLancamento),
       badgeNovo: Boolean(row.badgeNovo),
       badgeFinal: Boolean(row.badgeFinal),
     }));
+
+    const episodes = filterPublicEpisodeRows(mapped, visCtx);
 
     return {
       status: episodes.length > 0 ? "success" : "empty",
@@ -633,19 +768,6 @@ async function queryPublicCatalogEpisodesFromDb(
   }
 }
 
-/**
- * Consulta server-side direta dos episódios publicados no PostgreSQL para exibição pública
- * na Home e na página /episodes.
- * 
- * Regras da Etapa 4 + Etapa 7:
- * 1. Recupera apenas episódios marcados com published = true.
- * 2. Exclui rascunhos.
- * 3. Une metadados de anime e temporada canônicos.
- * 4. Ordena temporalmente de forma decrescente (mais recentes primeiro).
- * 5. Não executa escritas, mutações ou exclusões no banco de dados (leitura pura).
- * 6. Em caso de falha de conexão, retorna status = "error" com erro detalhado.
- * 7. Utiliza cache em RAM (180s) + singleflight + cache compartilhado Redis (180s) com fence.
- */
 export async function executeGetPublicCatalogEpisodes(options?: {
   limit?: number;
   offset?: number;
@@ -666,6 +788,10 @@ export async function executeGetPublicCatalogEpisodes(options?: {
 
   const cacheKey = limit === 10000 && offset === 0 ? "default" : `${limit}:${offset}`;
 
+  const { getServerPublicVisibilityContext } = await import(
+    "@/lib/public-visibility.server"
+  );
+
   // 1. Primeira camada: cache local em memória (180s)
   const now = Date.now();
   const cached = publicCatalogEpisodesCache.get(cacheKey);
@@ -673,7 +799,17 @@ export async function executeGetPublicCatalogEpisodes(options?: {
     cached &&
     now - cached.timestamp < PUBLIC_CATALOG_EPISODES_CACHE_TTL_MS
   ) {
-    return cached.data;
+    const visCtx = await getServerPublicVisibilityContext();
+    const filtered = filterPublicEpisodeRows(cached.data.episodes, visCtx);
+    if (filtered.length === cached.data.episodes.length) {
+      return cached.data;
+    }
+    return {
+      ...cached.data,
+      status: filtered.length > 0 ? "success" : cached.data.status === "error" ? "error" : "empty",
+      episodes: filtered,
+      total: filtered.length,
+    };
   }
 
   // Deduplicação singleflight por chave (limit/offset)
@@ -692,10 +828,26 @@ export async function executeGetPublicCatalogEpisodes(options?: {
         offset,
       );
       if (redisRead.status === "hit" && redisRead.data) {
+        const visCtx = await getServerPublicVisibilityContext();
+        const filtered = filterPublicEpisodeRows(redisRead.data.episodes, visCtx);
+        const normalizedHit: PublicEpisodesResult =
+          filtered.length === redisRead.data.episodes.length
+            ? redisRead.data
+            : {
+                ...redisRead.data,
+                status:
+                  filtered.length > 0
+                    ? "success"
+                    : redisRead.data.status === "error"
+                      ? "error"
+                      : "empty",
+                episodes: filtered,
+                total: filtered.length,
+              };
         if (requestEpoch === publicCatalogEpisodesCacheEpoch) {
-          setPublicCatalogEpisodesRamCache(cacheKey, redisRead.data);
+          setPublicCatalogEpisodesRamCache(cacheKey, normalizedHit);
         }
-        return redisRead.data;
+        return normalizedHit;
       }
 
       // 3. Terceira camada: PostgreSQL em miss de RAM + Redis
@@ -926,16 +1078,22 @@ export function parsePublicEpisodeSearchQuery(
 export function buildPaginatedPublicEpisodesWhereClause(filters?: {
   animeId?: string | null;
   q?: string | null;
+  visibilityCtx?: VisibilityIndexContext;
+  includeOriginCol?: boolean;
 }): {
   whereClause: string;
   params: unknown[];
 } {
+  const visCtx = filters?.visibilityCtx ?? EMPTY_PUBLIC_VISIBILITY_CONTEXT;
+  const includeOriginCol = filters?.includeOriginCol !== false;
+  const params: unknown[] = [];
+
   const conditions: string[] = [
     `e."published" = true`,
     PLAYABLE_EPISODE_SQL_CONDITION,
     `(a."id" IS NULL OR a."archived_at" IS NULL)`,
+    ...buildPublicEpisodeVisibilitySqlConditions(visCtx, params, includeOriginCol),
   ];
-  const params: unknown[] = [];
 
   const cleanAnimeId =
     typeof filters?.animeId === "string" ? filters.animeId.trim() : "";
@@ -1022,89 +1180,133 @@ export async function executeGetPaginatedPublicCatalogEpisodes(
 
   try {
     const sql = await getSql();
+    const { getServerPublicVisibilityContext } = await import(
+      "@/lib/public-visibility.server"
+    );
+    const visCtx = await getServerPublicVisibilityContext(sql);
 
-    const { whereClause, params } = buildPaginatedPublicEpisodesWhereClause({
-      animeId: options?.animeId,
-      q: options?.q,
-    });
+    const runPaginatedQuery = async (includeOriginCol: boolean) => {
+      const { whereClause, params } = buildPaginatedPublicEpisodesWhereClause({
+        animeId: options?.animeId,
+        q: options?.q,
+        visibilityCtx: visCtx,
+        includeOriginCol,
+      });
 
-    const countSql = `
-      SELECT COUNT(*)::integer AS "totalCount"
-      FROM "catalog_episode" e
-      LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
-      WHERE ${whereClause};
-    `;
+      const countSql = `
+        SELECT COUNT(*)::integer AS "totalCount"
+        FROM "catalog_episode" e
+        LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
+        WHERE ${whereClause};
+      `;
 
-    const limitParamIdx = params.length + 1;
-    const offsetParamIdx = params.length + 2;
-    const listSql = `
-      SELECT
-        e."id",
-        e."animeId",
-        e."seasonNumber",
-        e."number",
-        e."title",
-        e."thumbnail",
-        e."duration",
-        e."synopsis",
-        e."videoUrl",
-        e."videoUrl2",
-        e."videoUrl3",
-        e."videoUrl4",
-        e."videoUrl5",
-        e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
-        e."audio",
-        EXISTS (
-          SELECT 1
-          FROM "episode_sources" es
-          WHERE es."episode_id" = e."id"
-            AND es."lang" = 'dub'
-            AND COALESCE(es."status", 'active') NOT IN ('broken', 'incomplete')
-        ) AS "hasValidDubSource",
-        e."opening_start_seconds" AS "openingStartSeconds",
-        e."opening_end_seconds" AS "openingEndSeconds",
-        e."published",
-        e."publishedAt",
-        e."createdAt",
-        e."updatedAt",
-        COALESCE(e."badge_lancamento", false) AS "badgeLancamento",
-        COALESCE(e."badge_novo", false) AS "badgeNovo",
-        COALESCE(e."badge_final", false) AS "badgeFinal",
-        COALESCE(NULLIF(a."title", ''), a."titleRomaji", a."titleEnglish", 'Anime') AS "animeTitle",
-        a."titleRomaji" AS "animeTitleRomaji",
-        a."titleEnglish" AS "animeTitleEnglish",
-        a."titleNative" AS "animeTitleNative",
-        a."cover" AS "animeCover",
-        a."banner" AS "animeBanner",
-        a."status" AS "animeStatus",
-        a."episodesCount" AS "animeEpisodesCount",
-        a."createdAt" AS "animeCreatedAt",
-        a."updatedAt" AS "animeUpdatedAt",
-        a."anilistId" AS "animeAnilistId",
-        a."malId" AS "animeMalId",
-        a."kitsuId" AS "animeKitsuId",
-        s."title" AS "seasonTitle"
-      FROM "catalog_episode" e
-      LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
-      LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
-      WHERE ${whereClause}
-      ORDER BY e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."seasonNumber" DESC, e."number" DESC, e."id" DESC
-      LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx};
-    `;
+      const limitParamIdx = params.length + 1;
+      const offsetParamIdx = params.length + 2;
+      const listSql = `
+        SELECT
+          e."id",
+          e."animeId",
+          e."seasonNumber",
+          e."number",
+          e."title",
+          e."thumbnail",
+          e."duration",
+          e."synopsis",
+          e."videoUrl",
+          e."videoUrl2",
+          e."videoUrl3",
+          e."videoUrl4",
+          e."videoUrl5",
+          e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+          e."audio",
+          EXISTS (
+            SELECT 1
+            FROM "episode_sources" es
+            WHERE es."episode_id" = e."id"
+              AND es."lang" = 'dub'
+              AND COALESCE(es."status", 'active') NOT IN ('broken', 'incomplete')
+          ) AS "hasValidDubSource",
+          e."opening_start_seconds" AS "openingStartSeconds",
+          e."opening_end_seconds" AS "openingEndSeconds",
+          e."published",
+          e."publishedAt",
+          e."createdAt",
+          e."updatedAt",
+          COALESCE(e."badge_lancamento", false) AS "badgeLancamento",
+          COALESCE(e."badge_novo", false) AS "badgeNovo",
+          COALESCE(e."badge_final", false) AS "badgeFinal",
+          COALESCE(NULLIF(a."title", ''), a."titleRomaji", a."titleEnglish", 'Anime') AS "animeTitle",
+          a."titleRomaji" AS "animeTitleRomaji",
+          a."titleEnglish" AS "animeTitleEnglish",
+          a."titleNative" AS "animeTitleNative",
+          a."cover" AS "animeCover",
+          a."banner" AS "animeBanner",
+          a."status" AS "animeStatus",
+          a."episodesCount" AS "animeEpisodesCount",
+          a."createdAt" AS "animeCreatedAt",
+          a."updatedAt" AS "animeUpdatedAt",
+          a."anilistId" AS "animeAnilistId",
+          a."malId" AS "animeMalId",
+          a."kitsuId" AS "animeKitsuId",
+          ${
+            includeOriginCol
+              ? `a."country_of_origin" AS "animeCountryOfOrigin",
+          a."duplicate_of_id" AS "animeDuplicateOfId",`
+              : `NULL::text AS "animeCountryOfOrigin",
+          NULL::text AS "animeDuplicateOfId",`
+          }
+          s."title" AS "seasonTitle"
+        FROM "catalog_episode" e
+        LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
+        LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
+        WHERE ${whereClause}
+        ORDER BY e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."seasonNumber" DESC, e."number" DESC, e."id" DESC
+        LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx};
+      `;
 
-    const [countRows, rawRows] = await Promise.all([
-      sql.query<{ totalCount: number }>(countSql, params),
-      sql.query<PublicEpisodeRow>(listSql, [...params, pageSize, offset]),
-    ]);
+      const [countRows, rawRows] = await Promise.all([
+        sql.query<{ totalCount: number }>(countSql, params),
+        sql.query<PublicEpisodeRow>(listSql, [...params, pageSize, offset]),
+      ]);
 
+      return { countRows, rawRows, listSql, params };
+    };
+
+    let queryResult: Awaited<ReturnType<typeof runPaginatedQuery>>;
+    try {
+      queryResult = await runPaginatedQuery(true);
+    } catch (err: unknown) {
+      if ((err as { code?: string } | null)?.code === "42703") {
+        queryResult = await runPaginatedQuery(false);
+      } else {
+        throw err;
+      }
+    }
+
+    const { countRows, rawRows, listSql, params } = queryResult;
     const totalCount = Math.max(0, Number(countRows?.[0]?.totalCount ?? 0));
     const totalPages = totalCount > 0 ? Math.ceil(totalCount / pageSize) : 0;
 
+    const isAllowedRow = (row: PublicEpisodeRow): boolean =>
+      hasAnyPlayableSlot(row) &&
+      !isPubliclyBlockedAnime(
+        {
+          id: row.animeId,
+          animeId: row.animeId,
+          animeAnilistId: row.animeAnilistId,
+          animeMalId: row.animeMalId,
+          animeKitsuId: row.animeKitsuId,
+          animeCountryOfOrigin: row.animeCountryOfOrigin,
+          duplicateOfId: row.animeDuplicateOfId,
+        },
+        visCtx,
+      );
+
     // Verificação dupla em JS para garantir aderência absoluta a `isHikariPlayableUrl`
-    // mesmo em casos de sintaxe de URL que escapem da regex SQL.
+    // e à regra centralizada de visibilidade pública.
     const verifiedRows: PublicEpisodeRow[] = [];
     for (const row of Array.isArray(rawRows) ? rawRows : []) {
-      if (hasAnyPlayableSlot(row)) {
+      if (isAllowedRow(row)) {
         verifiedRows.push(row);
       }
     }
@@ -1130,7 +1332,7 @@ export async function executeGetPaginatedPublicCatalogEpisodes(
       nextLookaheadOffset += lastBatchLength;
       if (lastBatchLength === 0) break;
       for (const row of extraRows) {
-        if (hasAnyPlayableSlot(row)) {
+        if (isAllowedRow(row)) {
           verifiedRows.push(row);
         }
       }
@@ -1140,6 +1342,8 @@ export async function executeGetPaginatedPublicCatalogEpisodes(
     const episodes = verifiedRows.map((row) => ({
       ...row,
       audio: row.audio ?? null,
+      animeCountryOfOrigin: normalizeCountryOfOrigin(row.animeCountryOfOrigin),
+      animeDuplicateOfId: row.animeDuplicateOfId ?? null,
       hasValidDubSource: Boolean(row.hasValidDubSource),
       badgeLancamento: Boolean(row.badgeLancamento),
       badgeNovo: Boolean(row.badgeNovo),
@@ -1188,13 +1392,20 @@ let publicCatalogAnimeOptionsCacheEpoch = 0;
 export async function executeGetPublicCatalogAnimeOptions(): Promise<
   PublicCatalogAnimeOption[]
 > {
+  const { getServerPublicVisibilityContext } = await import(
+    "@/lib/public-visibility.server"
+  );
+
   const now = Date.now();
   if (
     cachedPublicCatalogAnimeOptions &&
     now - cachedPublicCatalogAnimeOptions.timestamp <
       PUBLIC_CATALOG_ANIME_OPTIONS_CACHE_TTL_MS
   ) {
-    return cachedPublicCatalogAnimeOptions.data;
+    const visCtx = await getServerPublicVisibilityContext();
+    return cachedPublicCatalogAnimeOptions.data.filter(
+      (opt) => !isPubliclyBlockedId(opt.id, visCtx),
+    );
   }
 
   if (publicCatalogAnimeOptionsInFlight) {
@@ -1208,47 +1419,97 @@ export async function executeGetPublicCatalogAnimeOptions(): Promise<
     try {
       const redisRead = await getRedisPublicCatalogAnimeOptionsWithFence();
       if (redisRead.status === "hit" && redisRead.data) {
+        const visCtx = await getServerPublicVisibilityContext();
+        const filteredRedis = redisRead.data.filter(
+          (opt) => !isPubliclyBlockedId(opt.id, visCtx),
+        );
         if (requestEpoch === publicCatalogAnimeOptionsCacheEpoch) {
           cachedPublicCatalogAnimeOptions = {
-            data: redisRead.data,
+            data: filteredRedis,
             timestamp: Date.now(),
           };
         }
-        return redisRead.data;
+        return filteredRedis;
       }
 
       const fetchStartedAt = Date.now();
       const sql = await getSql();
-      const rows = await sql.query<PublicCatalogAnimeOption>(
-        `SELECT
-           a."id",
-           COALESCE(
-             NULLIF(BTRIM(a."title"), ''),
-             NULLIF(BTRIM(a."titleRomaji"), ''),
-             NULLIF(BTRIM(a."titleEnglish"), ''),
-             NULLIF(BTRIM(a."titleNative"), ''),
-             'Anime'
-           ) AS "title"
-         FROM "catalog_anime" a
-         WHERE a."archived_at" IS NULL
-           AND EXISTS (
-           SELECT 1
-           FROM "catalog_episode" e
-           WHERE e."animeId" = a."id"
-             AND e."published" = true
-             AND ${PLAYABLE_EPISODE_SQL_CONDITION}
-         )
-         ORDER BY LOWER(
-           COALESCE(
-             NULLIF(BTRIM(a."title"), ''),
-             NULLIF(BTRIM(a."titleRomaji"), ''),
-             NULLIF(BTRIM(a."titleEnglish"), ''),
-             NULLIF(BTRIM(a."titleNative"), ''),
-             'Anime'
+      const visCtx = await getServerPublicVisibilityContext(sql);
+
+      const runOptionsQuery = async (includeOriginCol: boolean) => {
+        const params: unknown[] = [];
+        const conds: string[] = [`a."archived_at" IS NULL`];
+        if (includeOriginCol) {
+          conds.push(`COALESCE(UPPER(BTRIM(a."country_of_origin")), '') <> 'CN'`);
+        }
+        if (visCtx.blockedCatalogIds.size > 0) {
+          params.push(Array.from(visCtx.blockedCatalogIds));
+          conds.push(`NOT (a."id" = ANY($${params.length}::text[]))`);
+        }
+        if (visCtx.blockedAnilistIds.size > 0) {
+          params.push(Array.from(visCtx.blockedAnilistIds));
+          conds.push(
+            `(a."anilistId" IS NULL OR NOT (a."anilistId" = ANY($${params.length}::integer[])))`,
+          );
+        }
+        if (visCtx.blockedMalIds.size > 0) {
+          params.push(Array.from(visCtx.blockedMalIds));
+          conds.push(
+            `(a."malId" IS NULL OR NOT (a."malId" = ANY($${params.length}::integer[])))`,
+          );
+        }
+        if (visCtx.blockedKitsuIds.size > 0) {
+          params.push(Array.from(visCtx.blockedKitsuIds));
+          conds.push(
+            `(a."kitsuId" IS NULL OR NOT (a."kitsuId" = ANY($${params.length}::integer[])))`,
+          );
+        }
+        return sql.query<PublicCatalogAnimeOption>(
+          `SELECT
+             a."id",
+             COALESCE(
+               NULLIF(BTRIM(a."title"), ''),
+               NULLIF(BTRIM(a."titleRomaji"), ''),
+               NULLIF(BTRIM(a."titleEnglish"), ''),
+               NULLIF(BTRIM(a."titleNative"), ''),
+               'Anime'
+             ) AS "title"
+           FROM "catalog_anime" a
+           WHERE ${conds.join(" AND ")}
+             AND EXISTS (
+             SELECT 1
+             FROM "catalog_episode" e
+             WHERE e."animeId" = a."id"
+               AND e."published" = true
+               AND ${PLAYABLE_EPISODE_SQL_CONDITION}
            )
-         ) ASC, a."id" ASC;`,
+           ORDER BY LOWER(
+             COALESCE(
+               NULLIF(BTRIM(a."title"), ''),
+               NULLIF(BTRIM(a."titleRomaji"), ''),
+               NULLIF(BTRIM(a."titleEnglish"), ''),
+               NULLIF(BTRIM(a."titleNative"), ''),
+               'Anime'
+             )
+           ) ASC, a."id" ASC;`,
+          params,
+        );
+      };
+
+      let rows: PublicCatalogAnimeOption[];
+      try {
+        rows = await runOptionsQuery(true);
+      } catch (err: unknown) {
+        if ((err as { code?: string } | null)?.code === "42703") {
+          rows = await runOptionsQuery(false);
+        } else {
+          throw err;
+        }
+      }
+
+      const validRows = (Array.isArray(rows) ? rows : []).filter(
+        (opt) => !isPubliclyBlockedId(opt.id, visCtx),
       );
-      const validRows = Array.isArray(rows) ? rows : [];
       if (requestEpoch === publicCatalogAnimeOptionsCacheEpoch) {
         cachedPublicCatalogAnimeOptions = {
           data: validRows,

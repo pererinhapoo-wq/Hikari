@@ -13,6 +13,11 @@ import {
   formatEpisodeRelativeTime,
   getNextEpisodeRelativeTickMs,
 } from "@/lib/relative-published-time";
+import {
+  buildClientVisibilityContext,
+  isPubliclyBlockedAnime,
+  isPubliclyBlockedId,
+} from "@/lib/public-visibility";
 
 const FOCUS_REFRESH_THROTTLE_MS = 180_000;
 
@@ -202,7 +207,12 @@ export function RecentEpisodesSection({
       return resolvePublicRecentEpisodes(liveServerResult, animes);
     }
     if (initialEpisodes && initialEpisodes.length > 0) {
-      return initialEpisodes;
+      const visCtx = buildClientVisibilityContext(animes);
+      return initialEpisodes.filter(
+        (ep) =>
+          !isPubliclyBlockedId(ep.animeId, visCtx) &&
+          !isPubliclyBlockedAnime({ id: ep.animeId }, visCtx),
+      );
     }
     if (effectiveServerResult !== undefined) {
       return resolvePublicRecentEpisodes(effectiveServerResult, animes);

@@ -1,5 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { withCache } from "@/lib/api";
+import {
+  EMPTY_PUBLIC_VISIBILITY_CONTEXT,
+  isConfirmedDonghuaOrigin,
+  isPubliclyBlockedAnime,
+  type VisibilityIndexContext,
+} from "@/lib/public-visibility";
+import { getServerPublicVisibilityContext } from "@/lib/public-visibility.server";
 
 const ANILIST_GRAPHQL_URL = "https://graphql.anilist.co";
 const TIMEOUT_MS = 10000; // Timeout de 10 segundos para chamadas externas
@@ -172,6 +179,588 @@ export type ProxyResult = {
   hasErrors: boolean;
 };
 
+async function resolveSafeProxyVisibilityContext(): Promise<VisibilityIndexContext> {
+  try {
+    return await getServerPublicVisibilityContext();
+  } catch {
+    return EMPTY_PUBLIC_VISIBILITY_CONTEXT;
+  }
+}
+
+const MEDIA_ANCESTOR_KEYS = new Set([
+  "media",
+  "Media",
+  "relations",
+  "characterMedia",
+  "staffMedia",
+  "mediaRecommendation",
+]);
+
+function extractOpeningFieldContext(header: string): {
+  fieldName: string | null;
+  isMediaFragment: boolean;
+} {
+  const clean = header.trim();
+  if (!clean) {
+    return { fieldName: null, isMediaFragment: false };
+  }
+
+  if (/\bon\s+Media\s*$/i.test(clean)) {
+    return { fieldName: "Media", isMediaFragment: true };
+  }
+
+  // Remove trailing arguments `(...)` and directives `@...` while scanning from end
+  let idx = clean.length - 1;
+  while (idx >= 0) {
+    while (idx >= 0 && /\s/.test(clean[idx])) idx--;
+    if (idx < 0) break;
+
+    if (clean[idx] === ")") {
+      let parenDepth = 1;
+      idx--;
+      let inStr = false;
+      while (idx >= 0 && parenDepth > 0) {
+        const ch = clean[idx];
+        if (ch === '"' && clean[idx - 1] !== "\\") {
+          inStr = !inStr;
+        } else if (!inStr) {
+          if (ch === ")") parenDepth++;
+          else if (ch === "(") parenDepth--;
+        }
+        idx--;
+      }
+      continue;
+    }
+
+    // Check if preceded by a directive `@dirName`
+    const beforeDirective = clean.slice(0, idx + 1);
+    const dirMatch = /@[A-Za-z_][A-Za-z0-9_]*$/.exec(beforeDirective);
+    if (dirMatch) {
+      idx -= dirMatch[0].length;
+      continue;
+    }
+
+    break;
+  }
+
+  const head = clean.slice(0, idx + 1).trim();
+  const nameMatch = /([A-Za-z_][A-Za-z0-9_]*)$/.exec(head);
+  return {
+    fieldName: nameMatch ? nameMatch[1] : null,
+    isMediaFragment: false,
+  };
+}
+
+function getDirectChildFieldNames(blockContent: string): Set<string> {
+  const names = new Set<string>();
+  let depth = 0;
+  let i = 0;
+  let expectingField = true;
+
+  while (i < blockContent.length) {
+    const ch = blockContent[i];
+    if (ch === "#") {
+      while (i < blockContent.length && blockContent[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === '"') {
+      if (blockContent.slice(i, i + 3) === '"""') {
+        i += 3;
+        while (i < blockContent.length && blockContent.slice(i, i + 3) !== '"""') {
+          if (blockContent[i] === "\\") i += 2;
+          else i++;
+        }
+        i += 3;
+      } else {
+        i++;
+        while (i < blockContent.length && blockContent[i] !== '"') {
+          if (blockContent[i] === "\\") i += 2;
+          else i++;
+        }
+        i++;
+      }
+      continue;
+    }
+    if (ch === "(") {
+      let pDepth = 1;
+      i++;
+      while (i < blockContent.length && pDepth > 0) {
+        if (blockContent[i] === '"') {
+          i++;
+          while (i < blockContent.length && blockContent[i] !== '"') {
+            if (blockContent[i] === "\\") i += 2;
+            else i++;
+          }
+          i++;
+          continue;
+        }
+        if (blockContent[i] === "(") pDepth++;
+        else if (blockContent[i] === ")") pDepth--;
+        i++;
+      }
+      expectingField = false;
+      continue;
+    }
+    if (ch === "{") {
+      depth++;
+      expectingField = false;
+      i++;
+      continue;
+    }
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) expectingField = true;
+      i++;
+      continue;
+    }
+
+    if (depth === 0) {
+      if (/\s|,/.test(ch)) {
+        expectingField = true;
+        i++;
+        continue;
+      }
+      if (ch === "@") {
+        i++;
+        while (i < blockContent.length && /[A-Za-z0-9_]/.test(blockContent[i])) {
+          i++;
+        }
+        expectingField = false;
+        continue;
+      }
+      if (ch === "." && blockContent.slice(i, i + 3) === "...") {
+        i += 3;
+        while (i < blockContent.length && /\s/.test(blockContent[i])) i++;
+        if (blockContent.slice(i, i + 2) === "on" && /\s/.test(blockContent[i + 2] ?? "")) {
+          i += 2;
+          while (i < blockContent.length && /\s/.test(blockContent[i])) i++;
+          while (i < blockContent.length && /[A-Za-z0-9_]/.test(blockContent[i])) i++;
+        } else {
+          while (i < blockContent.length && /[A-Za-z0-9_]/.test(blockContent[i])) i++;
+        }
+        expectingField = false;
+        continue;
+      }
+      if (/[A-Za-z_]/.test(ch)) {
+        const start = i;
+        while (i < blockContent.length && /[A-Za-z0-9_]/.test(blockContent[i])) {
+          i++;
+        }
+        const ident = blockContent.slice(start, i);
+        // Check if followed by `:` (alias)
+        let j = i;
+        while (j < blockContent.length && /\s/.test(blockContent[j])) j++;
+        if (blockContent[j] === ":") {
+          i = j + 1;
+          expectingField = true;
+          continue;
+        }
+        if (expectingField) {
+          names.add(ident);
+          expectingField = false;
+        }
+        continue;
+      }
+      if (ch === ":") {
+        expectingField = true;
+      }
+    }
+    i++;
+  }
+
+  return names;
+}
+
+function findMatchingBraceEnd(source: string, openIdx: number): number {
+  let depth = 1;
+  let i = openIdx + 1;
+  while (i < source.length && depth > 0) {
+    const ch = source[i];
+    if (ch === "#") {
+      while (i < source.length && source[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === '"') {
+      if (source.slice(i, i + 3) === '"""') {
+        i += 3;
+        while (i < source.length && source.slice(i, i + 3) !== '"""') {
+          if (source[i] === "\\") i += 2;
+          else i++;
+        }
+        i += 3;
+      } else {
+        i++;
+        while (i < source.length && source[i] !== '"') {
+          if (source[i] === "\\") i += 2;
+          else i++;
+        }
+        i++;
+      }
+      continue;
+    }
+    if (ch === "{") depth++;
+    else if (ch === "}") depth--;
+    i++;
+  }
+  return i - 1;
+}
+
+/**
+ * Injeta `countryOfOrigin` em selection sets GraphQL de `Media` / `media` / `mediaRecommendation`
+ * e `node`/`nodes` de conexões de mídia para que o proxy possa detectar Donghua ("CN") mesmo
+ * quando o cliente não solicitou o campo explicitamente.
+ */
+export function injectCountryOfOriginIntoAnilistQuery(query: string): string {
+  if (typeof query !== "string" || !query.trim()) return query;
+  const trimmedLower = query.trim().toLowerCase();
+  if (
+    trimmedLower.startsWith("mutation") ||
+    /\bviewer\b/i.test(query)
+  ) {
+    return query;
+  }
+
+  const insertions: number[] = [];
+  const stack: Array<{ fieldName: string | null }> = [];
+  let tokenStart = 0;
+  let i = 0;
+
+  while (i < query.length) {
+    const ch = query[i];
+    if (ch === "#") {
+      while (i < query.length && query[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === '"') {
+      if (query.slice(i, i + 3) === '"""') {
+        i += 3;
+        while (i < query.length && query.slice(i, i + 3) !== '"""') {
+          if (query[i] === "\\") i += 2;
+          else i++;
+        }
+        i += 3;
+      } else {
+        i++;
+        while (i < query.length && query[i] !== '"') {
+          if (query[i] === "\\") i += 2;
+          else i++;
+        }
+        i++;
+      }
+      continue;
+    }
+    if (ch === "(") {
+      let pDepth = 1;
+      i++;
+      while (i < query.length && pDepth > 0) {
+        if (query[i] === '"') {
+          i++;
+          while (i < query.length && query[i] !== '"') {
+            if (query[i] === "\\") i += 2;
+            else i++;
+          }
+          i++;
+          continue;
+        }
+        if (query[i] === "(") pDepth++;
+        else if (query[i] === ")") pDepth--;
+        i++;
+      }
+      continue;
+    }
+    if (ch === "{") {
+      const header = query.slice(tokenStart, i);
+      const { fieldName, isMediaFragment } = extractOpeningFieldContext(header);
+      const parentField = stack.length > 0 ? stack[stack.length - 1].fieldName : null;
+      const grandParentField = stack.length > 1 ? stack[stack.length - 2].fieldName : null;
+
+      const isMediaTargetField =
+        isMediaFragment ||
+        fieldName === "Media" ||
+        fieldName === "media" ||
+        fieldName === "mediaRecommendation" ||
+        (fieldName === "nodes" && Boolean(parentField && MEDIA_ANCESTOR_KEYS.has(parentField))) ||
+        (fieldName === "node" &&
+          parentField === "edges" &&
+          Boolean(grandParentField && MEDIA_ANCESTOR_KEYS.has(grandParentField)));
+
+      if (isMediaTargetField) {
+        const closeIdx = findMatchingBraceEnd(query, i);
+        if (closeIdx > i) {
+          const inner = query.slice(i + 1, closeIdx);
+          const directFields = getDirectChildFieldNames(inner);
+          const isConnectionBlock =
+            directFields.has("edges") ||
+            directFields.has("nodes") ||
+            directFields.has("pageInfo");
+          if (!isConnectionBlock && !directFields.has("countryOfOrigin")) {
+            insertions.push(i + 1);
+          }
+        }
+      }
+
+      stack.push({ fieldName });
+      tokenStart = i + 1;
+      i++;
+      continue;
+    }
+    if (ch === "}") {
+      stack.pop();
+      tokenStart = i + 1;
+      i++;
+      continue;
+    }
+    if (ch === "\n" || ch === ",") {
+      tokenStart = i + 1;
+    }
+    i++;
+  }
+
+  if (insertions.length === 0) return query;
+
+  let out = "";
+  let prev = 0;
+  for (const pos of insertions) {
+    out += query.slice(prev, pos) + " countryOfOrigin ";
+    prev = pos;
+  }
+  out += query.slice(prev);
+  return out;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isMediaObjectCandidate(
+  obj: Record<string, unknown>,
+  keyHint?: string,
+): boolean {
+  if ("edges" in obj || "nodes" in obj || "pageInfo" in obj) return false;
+  if ("airingSchedules" in obj || "media" in obj) return false;
+  if (
+    "countryOfOrigin" in obj ||
+    "idMal" in obj ||
+    "title" in obj ||
+    "coverImage" in obj ||
+    "format" in obj ||
+    "episodes" in obj ||
+    "seasonYear" in obj ||
+    "bannerImage" in obj
+  ) {
+    return true;
+  }
+  return (
+    keyHint === "Media" ||
+    keyHint === "media" ||
+    keyHint === "mediaRecommendation"
+  );
+}
+
+function isBlockedAniListMedia(
+  media: unknown,
+  visCtx: VisibilityIndexContext,
+): boolean {
+  if (!isPlainObject(media)) return false;
+  if (isConfirmedDonghuaOrigin(media.countryOfOrigin)) {
+    return true;
+  }
+  const rawId =
+    typeof media.id === "number" || typeof media.id === "string"
+      ? media.id
+      : undefined;
+  const rawIdMal =
+    typeof media.idMal === "number" ? media.idMal : undefined;
+
+  if (rawId === undefined && rawIdMal === undefined) {
+    return false;
+  }
+
+  return isPubliclyBlockedAnime(
+    {
+      id: rawId,
+      anilistId: typeof media.id === "number" ? media.id : undefined,
+      idMal: rawIdMal,
+      countryOfOrigin:
+        typeof media.countryOfOrigin === "string"
+          ? media.countryOfOrigin
+          : null,
+    },
+    visCtx,
+  );
+}
+
+function sanitizeMediaConnection(
+  conn: unknown,
+  visCtx: VisibilityIndexContext,
+): unknown {
+  if (!isPlainObject(conn)) return conn;
+  const next: Record<string, unknown> = { ...conn };
+  if (Array.isArray(next.nodes)) {
+    next.nodes = next.nodes
+      .filter((node) => !isBlockedAniListMedia(node, visCtx))
+      .map((node) => sanitizeAniListValue(node, visCtx, "media"));
+  }
+  if (Array.isArray(next.edges)) {
+    next.edges = next.edges
+      .filter((edge) => {
+        if (!isPlainObject(edge)) return true;
+        return !isBlockedAniListMedia(edge.node, visCtx);
+      })
+      .map((edge) => {
+        if (!isPlainObject(edge)) return edge;
+        return {
+          ...edge,
+          node: sanitizeAniListValue(edge.node, visCtx, "media"),
+        };
+      });
+  }
+  return next;
+}
+
+function sanitizeRecommendationsContainer(
+  rec: unknown,
+  visCtx: VisibilityIndexContext,
+): unknown {
+  if (!isPlainObject(rec)) return rec;
+  const next: Record<string, unknown> = { ...rec };
+  if (Array.isArray(next.nodes)) {
+    next.nodes = next.nodes
+      .filter((item) => {
+        if (!isPlainObject(item)) return true;
+        if (isBlockedAniListMedia(item.mediaRecommendation, visCtx)) return false;
+        if (isBlockedAniListMedia(item.media, visCtx)) return false;
+        return true;
+      })
+      .map((item) => sanitizeAniListValue(item, visCtx));
+  }
+  if (Array.isArray(next.edges)) {
+    next.edges = next.edges
+      .filter((edge) => {
+        if (!isPlainObject(edge) || !isPlainObject(edge.node)) return true;
+        if (isBlockedAniListMedia(edge.node.mediaRecommendation, visCtx)) {
+          return false;
+        }
+        if (isBlockedAniListMedia(edge.node.media, visCtx)) return false;
+        return true;
+      })
+      .map((edge) => sanitizeAniListValue(edge, visCtx));
+  }
+  return next;
+}
+
+function sanitizeAniListValue(
+  value: unknown,
+  visCtx: VisibilityIndexContext,
+  keyHint?: string,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeAniListValue(item, visCtx, keyHint));
+  }
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  const next: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (k === "media" && Array.isArray(v)) {
+      next[k] = v
+        .filter((item) => !isBlockedAniListMedia(item, visCtx))
+        .map((item) => sanitizeAniListValue(item, visCtx, "media"));
+      continue;
+    }
+
+    if (k === "airingSchedules" && Array.isArray(v)) {
+      next[k] = v
+        .filter((entry) => {
+          if (!isPlainObject(entry)) return true;
+          return !isBlockedAniListMedia(entry.media, visCtx);
+        })
+        .map((entry) => sanitizeAniListValue(entry, visCtx));
+      continue;
+    }
+
+    if (
+      (k === "relations" ||
+        k === "characterMedia" ||
+        k === "staffMedia" ||
+        (k === "media" && isPlainObject(v) && ("nodes" in v || "edges" in v))) &&
+      isPlainObject(v)
+    ) {
+      next[k] = sanitizeMediaConnection(v, visCtx);
+      continue;
+    }
+
+    if (k === "recommendations" && isPlainObject(v)) {
+      next[k] = sanitizeRecommendationsContainer(v, visCtx);
+      continue;
+    }
+
+    if (
+      (k === "media" || k === "mediaRecommendation" || k === "Media") &&
+      isPlainObject(v) &&
+      isMediaObjectCandidate(v, k)
+    ) {
+      if (isBlockedAniListMedia(v, visCtx)) {
+        next[k] = null;
+      } else {
+        next[k] = sanitizeAniListValue(v, visCtx, k);
+      }
+      continue;
+    }
+
+    if (
+      keyHint === "data" &&
+      isPlainObject(v) &&
+      isMediaObjectCandidate(v, k)
+    ) {
+      if (isBlockedAniListMedia(v, visCtx)) {
+        next[k] = null;
+      } else {
+        next[k] = sanitizeAniListValue(v, visCtx, k);
+      }
+      continue;
+    }
+
+    next[k] = sanitizeAniListValue(v, visCtx, k);
+  }
+
+  return next;
+}
+
+/**
+ * Remove qualquer anime bloqueado (CN ou um dos 22 IDs AniList, além de aliases/duplicatas
+ * resolvidos no catálogo local) de respostas do proxy `/api-anilist`.
+ */
+export function filterAnilistProxyPayload(
+  payload: unknown,
+  visCtx: VisibilityIndexContext = EMPTY_PUBLIC_VISIBILITY_CONTEXT,
+): unknown {
+  if (!isPlainObject(payload)) return payload;
+  if (!("data" in payload) || payload.data == null) return payload;
+  return {
+    ...payload,
+    data: sanitizeAniListValue(payload.data, visCtx, "data"),
+  };
+}
+
+function filterProxyResultBody(
+  result: ProxyResult,
+  visCtx: VisibilityIndexContext,
+): ProxyResult {
+  if (!result.body || result.status >= 400) return result;
+  try {
+    const parsed = JSON.parse(result.body);
+    const filtered = filterAnilistProxyPayload(parsed, visCtx);
+    return {
+      ...result,
+      body: JSON.stringify(filtered),
+    };
+  } catch {
+    return result;
+  }
+}
+
 /**
  * Executa a chamada externa ao AniList com proteção de concorrência e timeout de 10s.
  */
@@ -281,31 +870,48 @@ export async function handleProxyRequest(
   try {
     if (!canCache) {
       // Consulta privada ou mutação: bypass de cache com controle de concorrência e timeout
-      const result = await executeAniListFetch(queryPayload, authHeader);
-      return new Response(result.body, {
-        status: result.status,
+      const isPublicBypass = !authHeader || authHeader.trim().length === 0;
+      const effectiveQuery = isPublicBypass
+        ? injectCountryOfOriginIntoAnilistQuery(query)
+        : queryPayload.query;
+      const result = await executeAniListFetch(
+        { ...queryPayload, query: effectiveQuery },
+        authHeader,
+      );
+      const finalResult = isPublicBypass
+        ? filterProxyResultBody(result, await resolveSafeProxyVisibilityContext())
+        : result;
+      return new Response(finalResult.body, {
+        status: finalResult.status,
         headers: {
-          "Content-Type": result.contentType,
+          "Content-Type": finalResult.contentType,
           "Cache-Control": "no-store, no-cache, must-revalidate",
         },
       });
     }
 
+    const effectiveQuery = injectCountryOfOriginIntoAnilistQuery(query);
+    const effectivePayload = {
+      ...queryPayload,
+      query: effectiveQuery,
+    };
+
     // Consulta pública: utiliza cache integrado da Etapa 1A (Singleflight, SWR, LRU)
-    const isCalendar = query.includes("airingSchedules");
+    const isCalendar = effectiveQuery.includes("airingSchedules");
     const prefix = isCalendar ? "calendar:proxy" : "proxy-anilist";
-    const cacheKey = `${prefix}:${hashQuery(query, queryPayload.variables)}`;
+    const cacheKey = `${prefix}:${hashQuery(effectiveQuery, queryPayload.variables)}`;
 
     const result = await withCache<ProxyResult>(
       cacheKey,
       async () => {
-        const fresh = await executeAniListFetch(queryPayload, authHeader);
+        const fresh = await executeAniListFetch(effectivePayload, authHeader);
         if (fresh.hasErrors || fresh.status >= 400) {
           throw new Error(
             `AniList retornou status ${fresh.status} com erros`,
           );
         }
-        return fresh;
+        const visCtx = await resolveSafeProxyVisibilityContext();
+        return filterProxyResultBody(fresh, visCtx);
       },
       {
         freshTtl: isCalendar ? 15 * 60 * 1000 : 5 * 60 * 1000,
@@ -320,10 +926,13 @@ export async function handleProxyRequest(
       },
     );
 
-    return new Response(result.body, {
-      status: result.status,
+    const liveVisCtx = await resolveSafeProxyVisibilityContext();
+    const filteredResult = filterProxyResultBody(result, liveVisCtx);
+
+    return new Response(filteredResult.body, {
+      status: filteredResult.status,
       headers: {
-        "Content-Type": result.contentType,
+        "Content-Type": filteredResult.contentType,
         "Cache-Control": isCalendar
           ? "public, max-age=900, s-maxage=900, stale-while-revalidate=10800"
           : "public, max-age=300, s-maxage=300, stale-while-revalidate=3600",

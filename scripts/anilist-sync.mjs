@@ -188,6 +188,11 @@ export function resolveCatalogAnimeFields(media, existingRow = null) {
     typeof media.trending === "number" ? media.trending : null;
   const genres = Array.isArray(media.genres) ? media.genres.filter(Boolean) : [];
   const trailerId = media.trailer?.id || null;
+  const rawOrigin =
+    typeof media.countryOfOrigin === "string"
+      ? media.countryOfOrigin.trim().toUpperCase()
+      : "";
+  const incomingOrigin = /^[A-Z]{2,3}$/.test(rawOrigin) ? rawOrigin : null;
 
   if (!existingRow) {
     const titleNorm = computeTitleNorm(incomingTitle);
@@ -218,6 +223,7 @@ export function resolveCatalogAnimeFields(media, existingRow = null) {
       trending,
       genres,
       trailerId,
+      countryOfOrigin: incomingOrigin,
       titleNorm,
       searchBlob,
     };
@@ -293,6 +299,12 @@ export function resolveCatalogAnimeFields(media, existingRow = null) {
     trending,
     genres,
     trailerId,
+    countryOfOrigin:
+      incomingOrigin ??
+      (typeof existingRow.country_of_origin === "string" &&
+      /^[A-Z]{2,3}$/.test(existingRow.country_of_origin.trim().toUpperCase())
+        ? existingRow.country_of_origin.trim().toUpperCase()
+        : null),
     titleNorm,
     searchBlob,
   };
@@ -323,6 +335,7 @@ query MediaListQuery($page: Int, $perPage: Int, $sort: [MediaSort]) {
       }
       bannerImage
       description(asHtml: false)
+      countryOfOrigin
       format
       status
       episodes
@@ -374,6 +387,7 @@ query SeasonQuery($season: MediaSeason, $year: Int, $page: Int, $perPage: Int) {
       }
       bannerImage
       description(asHtml: false)
+      countryOfOrigin
       format
       status
       episodes
@@ -409,6 +423,7 @@ query AiringScheduleQuery($start: Int, $end: Int, $page: Int, $perPage: Int) {
         id
         idMal
         updatedAt
+        countryOfOrigin
         format
         status
         episodes
@@ -466,6 +481,7 @@ query AnnouncedMediaQuery($page: Int, $perPage: Int, $sort: [MediaSort]) {
       }
       bannerImage
       description(asHtml: false)
+      countryOfOrigin
       format
       status
       episodes
@@ -864,12 +880,13 @@ export async function runSync(options = {}) {
     let hasPopularityCol = true;
     let hasTrendingCol = true;
     let hasManualFieldsCol = true;
+    let hasCountryOfOriginCol = true;
     try {
       const colRes = await client.query(
         `SELECT "column_name"
          FROM "information_schema"."columns"
          WHERE "table_name" = 'catalog_anime'
-           AND "column_name" IN ('title_norm', 'search_blob', 'popularity', 'trending', 'manual_fields');`
+           AND "column_name" IN ('title_norm', 'search_blob', 'popularity', 'trending', 'manual_fields', 'country_of_origin');`
       );
       if (colRes.rows.length > 0) {
         const present = new Set(colRes.rows.map((r) => r.column_name));
@@ -878,6 +895,7 @@ export async function runSync(options = {}) {
         hasPopularityCol = present.has("popularity");
         hasTrendingCol = present.has("trending");
         hasManualFieldsCol = present.has("manual_fields");
+        hasCountryOfOriginCol = present.has("country_of_origin");
         if (!hasPopularityCol || !hasTrendingCol) {
           console.warn(
             "[anilist-sync] Aviso: Colunas 'popularity' e/ou 'trending' ausentes em catalog_anime (migration 0037 ainda não aplicada). Rankings serão ignorados até a migration."
@@ -971,6 +989,7 @@ export async function runSync(options = {}) {
         `"anilistId"`,
         `"malId"`,
         ...(hasManualFieldsCol ? [`"manual_fields"`] : []),
+        ...(hasCountryOfOriginCol ? [`"country_of_origin"`] : []),
       ].join(", ");
 
       const existingRes = await client.query(
@@ -1033,6 +1052,7 @@ export async function runSync(options = {}) {
           ...(hasSearchBlobCol ? [`"search_blob"`] : []),
           ...(hasPopularityCol ? [`"popularity"`] : []),
           ...(hasTrendingCol ? [`"trending"`] : []),
+          ...(hasCountryOfOriginCol ? [`"country_of_origin"`] : []),
         ];
         const params = [
           targetId,
@@ -1060,6 +1080,7 @@ export async function runSync(options = {}) {
           else if (col === `"search_blob"`) params.push(resolved.searchBlob);
           else if (col === `"popularity"`) params.push(resolved.popularity);
           else if (col === `"trending"`) params.push(resolved.trending);
+          else if (col === `"country_of_origin"`) params.push(resolved.countryOfOrigin);
           extraPlaceholders.push(`$${params.length}`);
         }
 
@@ -1117,6 +1138,12 @@ export async function runSync(options = {}) {
         if (hasTrendingCol) {
           params.push(resolved.trending);
           extraUpdates.push(`"trending" = COALESCE($${params.length}, "trending")`);
+        }
+        if (hasCountryOfOriginCol) {
+          params.push(resolved.countryOfOrigin);
+          extraUpdates.push(
+            `"country_of_origin" = COALESCE(NULLIF($${params.length}, ''), "country_of_origin")`,
+          );
         }
 
         const extraUpdateSql =

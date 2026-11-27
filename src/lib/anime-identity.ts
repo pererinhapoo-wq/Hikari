@@ -26,6 +26,8 @@ export type CatalogAnimeIdentityRow = {
   hidden?: boolean | null;
   archived_at?: string | null;
   episode_history?: unknown;
+  country_of_origin?: string | null;
+  duplicate_of_id?: string | null;
 };
 
 export type CatalogAnimeIdAliasRow = {
@@ -447,7 +449,8 @@ export async function resolveAliasChainTarget(
       SELECT "id", "title", "anilistId", "malId", "kitsuId",
              "titleRomaji", "titleEnglish", "titleNative",
              "cover", "banner", "synopsis", "format", "status",
-             "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+             "episodesCount", "year", "season", "hidden", "archived_at", "episode_history",
+             "country_of_origin", "duplicate_of_id"
       FROM "catalog_anime"
       WHERE "id" = ${cursor}
         AND "archived_at" IS NULL
@@ -689,7 +692,8 @@ async function matchActiveCatalogByTitleAndAttributes(
     SELECT "id", "title", "anilistId", "malId", "kitsuId",
            "titleRomaji", "titleEnglish", "titleNative",
            "cover", "banner", "synopsis", "format", "status",
-           "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+           "episodesCount", "year", "season", "hidden", "archived_at", "episode_history",
+             "country_of_origin", "duplicate_of_id"
     FROM "catalog_anime"
     WHERE "archived_at" IS NULL
   `;
@@ -899,7 +903,8 @@ export async function findCanonicalCatalogAnime(
       SELECT "id", "title", "anilistId", "malId", "kitsuId",
              "titleRomaji", "titleEnglish", "titleNative",
              "cover", "banner", "synopsis", "format", "status",
-             "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+             "episodesCount", "year", "season", "hidden", "archived_at", "episode_history",
+             "country_of_origin", "duplicate_of_id"
       FROM "catalog_anime"
       WHERE "id" = ${lookupId}
         AND "archived_at" IS NULL
@@ -962,7 +967,8 @@ export async function findCanonicalCatalogAnime(
         SELECT "id", "title", "anilistId", "malId", "kitsuId",
                "titleRomaji", "titleEnglish", "titleNative",
                "cover", "banner", "synopsis", "format", "status",
-               "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+               "episodesCount", "year", "season", "hidden", "archived_at", "episode_history",
+             "country_of_origin", "duplicate_of_id"
         FROM "catalog_anime"
         WHERE "id" = ${rawId}
           AND "archived_at" IS NOT NULL
@@ -1042,7 +1048,8 @@ export async function findCanonicalCatalogAnime(
       SELECT "id", "title", "anilistId", "malId", "kitsuId",
              "titleRomaji", "titleEnglish", "titleNative",
              "cover", "banner", "synopsis", "format", "status",
-             "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+             "episodesCount", "year", "season", "hidden", "archived_at", "episode_history",
+             "country_of_origin", "duplicate_of_id"
       FROM "catalog_anime"
       WHERE "archived_at" IS NULL
         AND (
@@ -1353,7 +1360,8 @@ export async function resolveReregistrationTargetId(
       SELECT "id", "title", "anilistId", "malId", "kitsuId",
              "titleRomaji", "titleEnglish", "titleNative",
              "cover", "banner", "synopsis", "format", "status",
-             "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+             "episodesCount", "year", "season", "hidden", "archived_at", "episode_history",
+             "country_of_origin", "duplicate_of_id"
       FROM "catalog_anime"
       WHERE "id" = ${requestedId}
         AND "archived_at" IS NULL
@@ -1404,7 +1412,8 @@ export async function resolveReregistrationTargetId(
     SELECT "id", "title", "anilistId", "malId", "kitsuId",
            "titleRomaji", "titleEnglish", "titleNative",
            "cover", "banner", "synopsis", "format", "status",
-           "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+           "episodesCount", "year", "season", "hidden", "archived_at", "episode_history",
+             "country_of_origin", "duplicate_of_id"
     FROM "catalog_anime"
     WHERE "archived_at" IS NOT NULL
     ORDER BY "archived_at" DESC
@@ -2560,7 +2569,8 @@ export async function resolveCatalogMetadataMap(
     SELECT "id", "title", "anilistId", "malId", "kitsuId",
            "titleRomaji", "titleEnglish", "titleNative",
            "cover", "banner", "synopsis", "format", "status",
-           "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+           "episodesCount", "year", "season", "hidden", "archived_at", "episode_history",
+             "country_of_origin", "duplicate_of_id"
     FROM "catalog_anime"
     WHERE "id" = ANY(${uniqueIds})
   `;
@@ -2636,7 +2646,8 @@ export async function resolveCatalogMetadataMap(
         SELECT "id", "title", "anilistId", "malId", "kitsuId",
                "titleRomaji", "titleEnglish", "titleNative",
                "cover", "banner", "synopsis", "format", "status",
-               "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+               "episodesCount", "year", "season", "hidden", "archived_at", "episode_history",
+             "country_of_origin", "duplicate_of_id"
         FROM "catalog_anime"
         WHERE "id" = ANY(${missingTerminalIds})
       `;
@@ -2688,7 +2699,8 @@ export async function resolveCatalogMetadataMap(
         SELECT "id", "title", "anilistId", "malId", "kitsuId",
                "titleRomaji", "titleEnglish", "titleNative",
                "cover", "banner", "synopsis", "format", "status",
-               "episodesCount", "year", "season", "hidden", "archived_at", "episode_history"
+               "episodesCount", "year", "season", "hidden", "archived_at", "episode_history",
+             "country_of_origin", "duplicate_of_id"
         FROM "catalog_anime"
         WHERE "archived_at" IS NULL
           AND (

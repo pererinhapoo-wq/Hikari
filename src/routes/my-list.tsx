@@ -3,6 +3,10 @@ import { Bookmark } from "lucide-react";
 
 import { useHikariStore } from "@/lib/store";
 import { localToAnime } from "@/lib/types";
+import {
+  buildClientVisibilityContext,
+  filterPublicAnimes,
+} from "@/lib/public-visibility";
 import { AnimeCard } from "@/components/anime-card";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { RedirectToSignIn } from "@/lib/auth/gates";
@@ -26,15 +30,19 @@ function MyListPage() {
     return <RedirectToSignIn to="/login" />;
   }
 
-  const items = myList
-    .map((id) => {
-      if (snapshots[id]) return snapshots[id];
+  const visCtx = buildClientVisibilityContext(animes);
+  const items = filterPublicAnimes(
+    myList
+      .map((id) => {
+        if (snapshots[id]) return snapshots[id];
 
-      const local = animes.find((a) => a.id === id);
+        const local = animes.find((a) => a.id === id);
 
-      return local ? localToAnime(local) : null;
-    })
-    .filter((a): a is NonNullable<typeof a> => Boolean(a));
+        return local ? localToAnime(local) : null;
+      })
+      .filter((a): a is NonNullable<typeof a> => Boolean(a)),
+    visCtx,
+  );
 
   return (
     <div className="space-y-6 pt-6">

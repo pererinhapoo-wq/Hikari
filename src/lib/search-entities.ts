@@ -1,6 +1,12 @@
 import { useHikariStore } from "@/lib/store";
 import { overlayList } from "@/lib/overlay";
 import { type LocalAnime } from "@/lib/types";
+import {
+  buildClientVisibilityContext,
+  filterPublicAnimes,
+  isConfirmedDonghuaOrigin,
+  isPubliclyBlockedId,
+} from "@/lib/public-visibility";
 
 const ANILIST_ENDPOINT = "https://graphql.anilist.co";
 export const ENTITY_SEARCH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
@@ -102,9 +108,10 @@ const CHARACTERS_QUERY = `
           large
           medium
         }
-        media(sort: POPULARITY_DESC, perPage: 1) {
+        media(sort: POPULARITY_DESC, perPage: 5) {
           nodes {
             id
+            countryOfOrigin
             title {
               romaji
               english
@@ -173,6 +180,7 @@ export async function searchCharacters(
               media?: {
                 nodes?: Array<{
                   id: number;
+                  countryOfOrigin?: string | null;
                   title?: { romaji?: string; english?: string; userPreferred?: string };
                 }>;
               };
@@ -183,9 +191,16 @@ export async function searchCharacters(
 
       const rawList = json.data?.Page?.characters ?? [];
       const hasNext = Boolean(json.data?.Page?.pageInfo?.hasNextPage);
+      const localAnimes = useHikariStore.getState().animes ?? [];
+      const visCtx = buildClientVisibilityContext(localAnimes);
 
       const items: SearchCharacterItem[] = rawList.map((c) => {
-        const bestMedia = c.media?.nodes?.[0];
+        const bestMedia = (c.media?.nodes ?? []).find(
+          (node) =>
+            node?.id &&
+            !isConfirmedDonghuaOrigin(node.countryOfOrigin) &&
+            !isPubliclyBlockedId(node.id, visCtx),
+        );
         const mediaTitle =
           bestMedia?.title?.userPreferred ||
           bestMedia?.title?.romaji ||
@@ -253,9 +268,10 @@ function getLocalCharacters(query: string): SearchCharacterItem[] {
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
 
+    const visCtx = buildClientVisibilityContext(localAnimes);
     const results: SearchCharacterItem[] = [];
 
-    for (const anime of overlayList([], localAnimes)) {
+    for (const anime of filterPublicAnimes(overlayList([], localAnimes), visCtx)) {
       if (!anime.characters || !Array.isArray(anime.characters)) continue;
       for (const char of anime.characters) {
         const nameFull = (char.name?.full || "").toLowerCase();
@@ -324,11 +340,12 @@ const STAFF_QUERY = `
           medium
         }
         primaryOccupations
-        staffMedia(sort: POPULARITY_DESC, perPage: 1) {
+        staffMedia(sort: POPULARITY_DESC, perPage: 5) {
           edges {
             staffRole
             node {
               id
+              countryOfOrigin
               title {
                 romaji
                 english
@@ -337,10 +354,11 @@ const STAFF_QUERY = `
             }
           }
         }
-        characterMedia(sort: POPULARITY_DESC, perPage: 1) {
+        characterMedia(sort: POPULARITY_DESC, perPage: 5) {
           edges {
             node {
               id
+              countryOfOrigin
               title {
                 romaji
                 english
@@ -413,6 +431,7 @@ export async function searchPeople(
                   staffRole?: string;
                   node?: {
                     id: number;
+                    countryOfOrigin?: string | null;
                     title?: { romaji?: string; english?: string; userPreferred?: string };
                   };
                 }>;
@@ -421,6 +440,7 @@ export async function searchPeople(
                 edges?: Array<{
                   node?: {
                     id: number;
+                    countryOfOrigin?: string | null;
                     title?: { romaji?: string; english?: string; userPreferred?: string };
                   };
                 }>;
@@ -432,10 +452,22 @@ export async function searchPeople(
 
       const rawList = json.data?.Page?.staff ?? [];
       const hasNext = Boolean(json.data?.Page?.pageInfo?.hasNextPage);
+      const localAnimes = useHikariStore.getState().animes ?? [];
+      const visCtx = buildClientVisibilityContext(localAnimes);
 
       const items: SearchPersonItem[] = rawList.map((s) => {
-        const topStaffEdge = s.staffMedia?.edges?.[0];
-        const topCharEdge = s.characterMedia?.edges?.[0];
+        const topStaffEdge = (s.staffMedia?.edges ?? []).find(
+          (edge) =>
+            edge?.node?.id &&
+            !isConfirmedDonghuaOrigin(edge.node.countryOfOrigin) &&
+            !isPubliclyBlockedId(edge.node.id, visCtx),
+        );
+        const topCharEdge = (s.characterMedia?.edges ?? []).find(
+          (edge) =>
+            edge?.node?.id &&
+            !isConfirmedDonghuaOrigin(edge.node.countryOfOrigin) &&
+            !isPubliclyBlockedId(edge.node.id, visCtx),
+        );
         const bestMedia = topStaffEdge?.node || topCharEdge?.node;
         const mediaTitle =
           bestMedia?.title?.userPreferred ||
@@ -507,9 +539,10 @@ function getLocalPeople(query: string): SearchPersonItem[] {
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
 
+    const visCtx = buildClientVisibilityContext(localAnimes);
     const results: SearchPersonItem[] = [];
 
-    for (const anime of overlayList([], localAnimes)) {
+    for (const anime of filterPublicAnimes(overlayList([], localAnimes), visCtx)) {
       if (!anime.staff || !Array.isArray(anime.staff)) continue;
       for (const st of anime.staff) {
         const nameLower = (st.name || "").toLowerCase();

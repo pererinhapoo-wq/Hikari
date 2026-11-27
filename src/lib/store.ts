@@ -49,6 +49,8 @@ export function slimSnapshot(anime: SlimAnime): SlimAnime {
     source: "cache",
     ...(typeof anime.hasEpisode === "boolean" ? { hasEpisode: anime.hasEpisode } : {}),
     ...(typeof anime.isDubbed === "boolean" ? { isDubbed: anime.isDubbed } : {}),
+    ...(anime.countryOfOrigin ? { countryOfOrigin: anime.countryOfOrigin } : {}),
+    ...(anime.duplicateOfId ? { duplicateOfId: anime.duplicateOfId } : {}),
   };
 }
 

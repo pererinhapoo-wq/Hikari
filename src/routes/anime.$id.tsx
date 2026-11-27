@@ -146,6 +146,11 @@ import {
   type SlimAnime,
 } from "@/lib/types";
 import {
+  buildClientVisibilityContext,
+  isPubliclyBlockedAnime,
+  isPubliclyBlockedId,
+} from "@/lib/public-visibility";
+import {
   getKnownViewerId,
   invalidateAccountProfileCache,
   invalidatePublicProfileCacheByUserId,
@@ -355,10 +360,23 @@ export const Route = createFileRoute("/anime/$id")({
   staleTime: 1000 * 60 * 5,
   gcTime: 1000 * 60 * 15,
   loader: async ({ params }) => {
+    if (isPubliclyBlockedId(params.id)) {
+      return {
+        remote: null,
+        catalogEpisodes: null,
+        initialUserStatus: null,
+        initialStateRequestId: undefined,
+      };
+    }
+
     const detailKey = `detail:v7:${params.id}`;
-    const cachedRemote = fromCache<Anime | null>(detailKey, () =>
+    const rawCachedRemote = fromCache<Anime | null>(detailKey, () =>
       fetchAnimeDetail({ data: { id: params.id } }),
     );
+    const cachedRemote =
+      rawCachedRemote && !isPubliclyBlockedAnime(rawCachedRemote)
+        ? rawCachedRemote
+        : null;
     const cachedClientEpisodes =
       typeof window !== "undefined" ? getCachedCatalogEpisodes(params.id) : null;
 
@@ -366,6 +384,9 @@ export const Route = createFileRoute("/anime/$id")({
       cachedRemote
         ? Promise.resolve(cachedRemote)
         : fetchAnimeDetail({ data: { id: params.id } }).then((fetched) => {
+            if (fetched && isPubliclyBlockedAnime(fetched)) {
+              return null;
+            }
             if (fetched) {
               toCache(detailKey, fetched);
               if (fetched.id && fetched.id !== params.id) {
@@ -383,7 +404,7 @@ export const Route = createFileRoute("/anime/$id")({
     ]);
 
     const remote = resolvedRemote;
-    let catalogEpisodes = initialCatalogEpisodes;
+    let catalogEpisodes = remote ? initialCatalogEpisodes : null;
     if (
       remote?.serverCatalogId &&
       remote.serverCatalogId !== params.id &&
@@ -395,7 +416,7 @@ export const Route = createFileRoute("/anime/$id")({
       ).catch(() => catalogEpisodes);
     }
 
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && remote) {
       void import("@/lib/anime-banner-warmup").then((m) =>
         m.warmAnimeBannerOnClient(params.id, remote),
       );
@@ -498,7 +519,11 @@ export const Route = createFileRoute("/anime/$id")({
   },
   head: ({ loaderData, params }) => {
     const remote = loaderData?.remote ?? null;
-    if (!remote) {
+    if (
+      !remote ||
+      isPubliclyBlockedId(params.id) ||
+      isPubliclyBlockedAnime(remote)
+    ) {
       return {};
     }
 
@@ -952,9 +977,21 @@ function AnimePageContent({
 
   const locals = useHikariStore((s) => s.animes);
 
+  const visCtx = useMemo(
+    () => buildClientVisibilityContext(locals),
+    [locals],
+  );
+
+  const isBlockedRoute = useMemo(
+    () =>
+      isPubliclyBlockedId(id, visCtx) ||
+      (remote ? isPubliclyBlockedAnime(remote, visCtx) : false),
+    [id, remote, visCtx],
+  );
+
   const baseAnime = useMemo(
-    () => mergeDetail(remote, id, locals),
-    [remote, id, locals],
+    () => (isBlockedRoute ? null : mergeDetail(remote, id, locals)),
+    [isBlockedRoute, remote, id, locals],
   );
 
   const matchedLocalForIds = useMemo(
@@ -2941,34 +2978,41 @@ function AnimePageContent({
   /*
    * TEMPORADAS
    */
-  const initialSeasonNavigation = useMemo(
-    () =>
+  const initialSeasonNavigation = useMemo(() => {
+    const rawItems =
       (
         remote as unknown as {
           seasonNavigation?: {
             items?: Array<{ id: string; label?: string; title?: string }>;
           };
         }
-      )?.seasonNavigation?.items ?? [],
-    [remote],
-  );
+      )?.seasonNavigation?.items ?? [];
+    return rawItems.filter((item) => !isPubliclyBlockedId(item.id, visCtx));
+  }, [remote, visCtx]);
 
   const [extraSeasonNavigation, setExtraSeasonNavigation] = useState<{
     forId: string;
     items: Array<{ id: string; label?: string; title?: string }>;
   } | null>(() => {
-    if (!id) return null;
+    if (!id || isBlockedRoute) return null;
     const cached = clientSeasonNavCache.get(id);
-    return cached ? { forId: id, items: cached } : null;
+    return cached
+      ? {
+          forId: id,
+          items: cached.filter((item) => !isPubliclyBlockedId(item.id, visCtx)),
+        }
+      : null;
   });
 
   useEffect(() => {
-    if (!id || id.startsWith("local-") || id.startsWith("kitsu-")) {
+    if (isBlockedRoute || !id || id.startsWith("local-") || id.startsWith("kitsu-")) {
       return;
     }
 
     if (clientSeasonNavCache.has(id)) {
-      const cached = clientSeasonNavCache.get(id)!;
+      const cached = clientSeasonNavCache
+        .get(id)!
+        .filter((item) => !isPubliclyBlockedId(item.id, visCtx));
       if (extraSeasonNavigation?.forId !== id) {
         setExtraSeasonNavigation({ forId: id, items: cached });
       }
@@ -2987,14 +3031,17 @@ function AnimePageContent({
     })
       .then((res) => {
         if (!res?.items || res.items.length === 0) return;
-        setCappedClientMap(clientSeasonNavCache, id, res.items);
+        const filteredItems = res.items.filter(
+          (item) => !isPubliclyBlockedId(item.id, visCtx),
+        );
+        setCappedClientMap(clientSeasonNavCache, id, filteredItems);
 
         if (cancelled || activeAnimeIdRef.current !== id) return;
 
         const areSame =
-          initialSeasonNavigation.length === res.items.length &&
+          initialSeasonNavigation.length === filteredItems.length &&
           initialSeasonNavigation.every(
-            (item, index) => item.id === res.items[index]?.id,
+            (item, index) => item.id === filteredItems[index]?.id,
           );
 
         if (areSame) return;
@@ -3002,7 +3049,7 @@ function AnimePageContent({
         startTransition(() => {
           setExtraSeasonNavigation({
             forId: id,
-            items: res.items,
+            items: filteredItems,
           });
         });
       })
@@ -3016,18 +3063,18 @@ function AnimePageContent({
     return () => {
       cancelled = true;
     };
-  }, [id, initialSeasonNavigation, extraSeasonNavigation?.forId]);
+  }, [id, isBlockedRoute, visCtx, initialSeasonNavigation, extraSeasonNavigation?.forId]);
 
   const seasonNavigation = useMemo(() => {
-    if (
+    if (isBlockedRoute) return [];
+    const items =
       extraSeasonNavigation &&
       extraSeasonNavigation.forId === id &&
       extraSeasonNavigation.items.length > 0
-    ) {
-      return extraSeasonNavigation.items;
-    }
-    return initialSeasonNavigation;
-  }, [extraSeasonNavigation, id, initialSeasonNavigation]);
+        ? extraSeasonNavigation.items
+        : initialSeasonNavigation;
+    return items.filter((item) => !isPubliclyBlockedId(item.id, visCtx));
+  }, [isBlockedRoute, extraSeasonNavigation, id, initialSeasonNavigation, visCtx]);
 
   const seasons = anime?.seasons ?? [];
 
@@ -3338,7 +3385,7 @@ function AnimePageContent({
     );
   }
 
-  if (!anime && !hydrated) {
+  if (!anime && !hydrated && !isBlockedRoute) {
     return null;
   }
 

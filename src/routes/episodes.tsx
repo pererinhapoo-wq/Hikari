@@ -24,6 +24,10 @@ import {
   formatEpisodeRelativeTime,
   getNextEpisodeRelativeTickMs,
 } from "@/lib/relative-published-time";
+import {
+  buildClientVisibilityContext,
+  isPubliclyBlockedId,
+} from "@/lib/public-visibility";
 
 export interface EpisodesSearch {
   page?: number;
@@ -323,7 +327,12 @@ function AllEpisodesPage() {
   }, [searchParams.q]);
 
   const paginatedResult = loaderData?.paginatedResult;
-  const animeOptions = loaderData?.animeOptions ?? [];
+  const animeOptions = useMemo(() => {
+    const rawOptions = loaderData?.animeOptions ?? [];
+    if (rawOptions.length === 0) return rawOptions;
+    const visCtx = buildClientVisibilityContext(animes);
+    return rawOptions.filter((opt) => !isPubliclyBlockedId(opt.id, visCtx));
+  }, [loaderData?.animeOptions, animes]);
   const selectedAnime = searchParams.animeId ?? "all";
 
   // Resolve episódios publicados paginados com fallback local seguro

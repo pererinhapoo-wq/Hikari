@@ -12,6 +12,8 @@ import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
 import { parseAnitube22PlayerUrl } from "@/lib/anitube22";
 import { SOURCE_SYNC_CONCURRENCY, runWithConcurrency } from "@/lib/concurrency";
 import { resolveEpisodeAudioPatch, resolveEpisodeBadgesPatch } from "@/lib/episode-writer";
+import { normalizeCountryOfOrigin } from "@/lib/public-visibility";
+import { invalidatePublicVisibilityCache } from "@/lib/public-visibility.server";
 import { normalizeEpisodeAudio, type EpisodeAudio } from "@/lib/types";
 import {
   discoverMatchingOrphanIdsFromUserTables,
@@ -90,6 +92,8 @@ const animeImportSchema = z.object({
   year: z.number().int().optional().nullable(),
   trailerId: z.string().max(255).optional().nullable(),
   hidden: z.boolean().default(false),
+  countryOfOrigin: z.string().max(16).optional().nullable(),
+  duplicateOfId: z.string().max(128).optional().nullable(),
   seasons: z.array(seasonImportSchema).default([]),
 });
 
@@ -227,6 +231,15 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
               }
               const normTitle = normalizeIdentityTitle(animeTitle);
 
+              const normalizedOrigin = normalizeCountryOfOrigin(
+                anime.countryOfOrigin,
+              );
+              const cleanDuplicateOfId =
+                typeof anime.duplicateOfId === "string" &&
+                anime.duplicateOfId.trim()
+                  ? anime.duplicateOfId.trim()
+                  : null;
+
               // 3.1 Upsert do anime em catalog_anime (limpando archived_at)
               await tx.query(
                 `INSERT INTO "catalog_anime" (
@@ -235,6 +248,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                    "format", "status", "episodesCount", "season",
                    "year", "genres", "trailerId",
                    "hidden", "score", "title_norm", "archived_at", "episode_history",
+                   "country_of_origin", "duplicate_of_id",
                    "createdAt", "updatedAt"
                  )
                  VALUES (
@@ -243,6 +257,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                    $8, $9, $10, $11,
                    $12, $13, $14,
                    $15, $16, $17, NULL, $18::jsonb,
+                   $19, $20,
                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                  )
                  ON CONFLICT ("id") DO UPDATE
@@ -268,6 +283,8 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                    "title_norm" = COALESCE(NULLIF(EXCLUDED."title_norm", ''), "catalog_anime"."title_norm"),
                    "archived_at" = NULL,
                    "episode_history" = EXCLUDED."episode_history",
+                   "country_of_origin" = COALESCE(NULLIF(EXCLUDED."country_of_origin", ''), "catalog_anime"."country_of_origin"),
+                   "duplicate_of_id" = COALESCE(NULLIF(EXCLUDED."duplicate_of_id", ''), "catalog_anime"."duplicate_of_id"),
                    "updatedAt" = CURRENT_TIMESTAMP;`,
                 [
                   targetAnimeId,
@@ -288,6 +305,8 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   anime.score ?? null,
                   normTitle || null,
                   JSON.stringify(mergedHistory),
+                  normalizedOrigin,
+                  cleanDuplicateOfId,
                 ],
               );
 
@@ -560,6 +579,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
           }
 
           // Invalida cache de episódios e catálogo dos animes afetados
+          invalidatePublicVisibilityCache();
           await invalidateCatalogEpisodesCacheAsync(...Array.from(affectedAnimeIds));
           await invalidateHomePublicEpisodesCacheAsync({ skipHeroAndTrending: true });
           await invalidateServerCatalogCachesAsync();

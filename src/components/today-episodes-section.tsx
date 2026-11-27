@@ -22,6 +22,10 @@ import {
   localToAnime,
   type SlimAnime,
 } from "@/lib/types";
+import {
+  buildClientVisibilityContext,
+  isPubliclyBlockedAnime,
+} from "@/lib/public-visibility";
 
 const DRAG_THRESHOLD_PX = 6;
 
@@ -85,6 +89,8 @@ export const TodayEpisodesSection = memo(
   const activeItems = useMemo(() => {
     if (scheduleSource.length === 0) return [];
 
+    const visCtx = buildClientVisibilityContext(locals);
+
     const hiddenAnilist = new Set(
       locals
         .filter((a) => a.hidden && a.anilistId)
@@ -101,6 +107,9 @@ export const TodayEpisodesSection = memo(
 
     for (const item of scheduleSource) {
       if (item.anilistId && hiddenAnilist.has(item.anilistId)) {
+        continue;
+      }
+      if (isPubliclyBlockedAnime(item, visCtx)) {
         continue;
       }
 
@@ -129,6 +138,9 @@ export const TodayEpisodesSection = memo(
       const localOverride = item.anilistId
         ? localByAnilist.get(item.anilistId)
         : undefined;
+      if (localOverride && isPubliclyBlockedAnime(localOverride, visCtx)) {
+        continue;
+      }
 
       const hasEpisodes =
         item.hasEpisode === true ||

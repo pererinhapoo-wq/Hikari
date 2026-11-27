@@ -333,3 +333,45 @@ export const getAdminCatalogSyncMeta = createServerFn({
       return [];
     }
   });
+
+const adminSearchSchema = z.object({
+  q: z.string().optional(),
+  genre: z.string().optional(),
+  year: z.string().optional(),
+  format: z.string().optional(),
+  status: z.string().optional(),
+  sort: z.string().optional(),
+  page: z.number().optional(),
+  adult: z.boolean().optional(),
+});
+
+const adminDetailIdSchema = z.object({
+  id: z.string(),
+});
+
+/**
+ * Busca administrativa sem filtro de visibilidade pública para permitir
+ * consultar, editar e restaurar donghuas ("CN") e os 22 IDs bloqueados.
+ */
+export const searchAdminCatalog = createServerFn({
+  method: "GET",
+})
+  .middleware([adminMiddleware])
+  .validator(adminSearchSchema)
+  .handler(async ({ data }) => {
+    const { executeSearchCatalog } = await import("@/lib/api");
+    return await executeSearchCatalog(data, { allowBlocked: true });
+  });
+
+/**
+ * Detalhes administrativos sem filtro de visibilidade pública.
+ */
+export const fetchAdminAnimeDetail = createServerFn({
+  method: "GET",
+})
+  .middleware([adminMiddleware])
+  .validator(adminDetailIdSchema)
+  .handler(async ({ data }) => {
+    const { executeFetchAnimeDetail } = await import("@/lib/api");
+    return await executeFetchAnimeDetail(data.id, { allowBlocked: true });
+  });

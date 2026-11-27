@@ -1,3 +1,8 @@
+import {
+  isConfirmedDonghuaOrigin,
+  isPubliclyBlockedId,
+} from "@/lib/public-visibility";
+
 const ANILIST_ENDPOINT = "https://graphql.anilist.co";
 
 export interface StudioWorkAnime {
@@ -56,6 +61,7 @@ const STUDIO_QUERY = `
       media(sort: [POPULARITY_DESC, START_DATE_DESC], perPage: 30) {
         nodes {
           id
+          countryOfOrigin
           title {
             romaji
             english
@@ -93,6 +99,7 @@ const PERSON_WORKS_QUERY = `
         edges {
           node {
             id
+            countryOfOrigin
             title {
               romaji
               english
@@ -121,6 +128,7 @@ const PERSON_WORKS_QUERY = `
           staffRole
           node {
             id
+            countryOfOrigin
             title {
               romaji
               english
@@ -177,13 +185,20 @@ export async function getStudioWorks(
     const studio = json?.data?.Studio;
     const mediaNodes: any[] = studio?.media?.nodes ?? [];
 
-    const studioAnimes: StudioWorkAnime[] = mediaNodes.map((m: any) => ({
-      id: String(m.id),
-      title: m.title?.romaji || m.title?.userPreferred || m.title?.english || "Anime",
-      cover: m.coverImage?.large || m.coverImage?.extraLarge || null,
-      format: m.format || "TV",
-      year: m.startDate?.year ?? null,
-    }));
+    const studioAnimes: StudioWorkAnime[] = mediaNodes
+      .filter(
+        (m: any) =>
+          m?.id &&
+          !isConfirmedDonghuaOrigin(m.countryOfOrigin) &&
+          !isPubliclyBlockedId(m.id),
+      )
+      .map((m: any) => ({
+        id: String(m.id),
+        title: m.title?.romaji || m.title?.userPreferred || m.title?.english || "Anime",
+        cover: m.coverImage?.large || m.coverImage?.extraLarge || null,
+        format: m.format || "TV",
+        year: m.startDate?.year ?? null,
+      }));
 
     const result: EntityWorksData = {
       kind: "studio",
@@ -250,6 +265,12 @@ export async function getPersonWorks(
       const edge = charEdges[i];
       const node = edge?.node;
       if (!node) continue;
+      if (
+        isConfirmedDonghuaOrigin(node.countryOfOrigin) ||
+        isPubliclyBlockedId(node.id)
+      ) {
+        continue;
+      }
       const char = edge?.characters?.[0];
       dubladorWorks.push({
         id: `${node.id}-${char?.id || i}`,
@@ -272,6 +293,12 @@ export async function getPersonWorks(
       const edge = staffEdges[i];
       const node = edge?.node;
       if (!node) continue;
+      if (
+        isConfirmedDonghuaOrigin(node.countryOfOrigin) ||
+        isPubliclyBlockedId(node.id)
+      ) {
+        continue;
+      }
       staffWorks.push({
         id: `${node.id}-${i}`,
         roleLabel: edge.staffRole || "Equipe técnica",

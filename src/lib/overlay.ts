@@ -25,13 +25,24 @@ import {
   buildHikariPlayerEpisodeUrl,
   normalizeHikariPlayerEpisodeId,
 } from "@/lib/hikari-player";
+import {
+  buildClientVisibilityContext,
+  filterPublicAnimes,
+  isPubliclyBlockedAnime,
+  isPubliclyBlockedId,
+  normalizeCountryOfOrigin,
+} from "@/lib/public-visibility";
 
 export function overlayList(
   remote: SlimAnime[],
   locals: LocalAnime[],
   options?: OverlaySlimOptions<SlimAnime>,
 ): SlimAnime[] {
-  return overlaySlim(remote, locals, (l) => localToAnime(l), options);
+  const visCtx = buildClientVisibilityContext(locals);
+  return filterPublicAnimes(
+    overlaySlim(remote, locals, (l) => localToAnime(l), options),
+    visCtx,
+  );
 }
 
 export function doesLocalAnimeMatchSeason(
@@ -67,17 +78,21 @@ export function overlaySeasonList(
   targetSeason: OfficialAnimeSeason,
   targetYear: number,
 ): SlimAnime[] {
-  return overlaySlim(remote, locals, (l) => localToAnime(l), {
-    includeExtras: (local) =>
-      doesLocalAnimeMatchSeason(local, targetSeason, targetYear, {
-        allowRemoteLinked: remote.length === 0,
+  const visCtx = buildClientVisibilityContext(locals);
+  return filterPublicAnimes(
+    overlaySlim(remote, locals, (l) => localToAnime(l), {
+      includeExtras: (local) =>
+        doesLocalAnimeMatchSeason(local, targetSeason, targetYear, {
+          allowRemoteLinked: remote.length === 0,
+        }),
+      mapMatched: (mappedItem, remoteItem) => ({
+        ...mappedItem,
+        season: mappedItem.season || remoteItem.season,
+        year: mappedItem.year ?? remoteItem.year,
       }),
-    mapMatched: (mappedItem, remoteItem) => ({
-      ...mappedItem,
-      season: mappedItem.season || remoteItem.season,
-      year: mappedItem.year ?? remoteItem.year,
     }),
-  });
+    visCtx,
+  );
 }
 
 function filterPublishedSeasons(seasons: Season[]): Season[] {
@@ -560,6 +575,8 @@ export interface CatalogAnimeSavePayload {
   anilistId?: number;
   malId?: number;
   kitsuId?: number;
+  countryOfOrigin?: string | null;
+  duplicateOfId?: string | null;
   recentBadges?: AnimeRecentBadges;
   badgesExplicitlyEdited: boolean;
   seasons: Array<{ id: string; number: number; title: string }>;
@@ -600,6 +617,12 @@ export function buildAdminCatalogAnimeSavePayload(
     anilistId: effectiveAnime.anilistId,
     malId: effectiveAnime.malId,
     kitsuId: effectiveAnime.kitsuId,
+    ...(effectiveAnime.countryOfOrigin !== undefined
+      ? { countryOfOrigin: normalizeCountryOfOrigin(effectiveAnime.countryOfOrigin) }
+      : {}),
+    ...(effectiveAnime.duplicateOfId !== undefined
+      ? { duplicateOfId: effectiveAnime.duplicateOfId ?? null }
+      : {}),
     ...(shouldSendBadges
       ? { recentBadges: normalizeAnimeRecentBadges(effectiveAnime.recentBadges) }
       : {}),
@@ -729,6 +752,11 @@ export function resolveAdminAnimeWithRemote(
     episodesCount: storedMatch.episodesCount ?? remote.episodesCount,
     season: storedMatch.season ?? remote.season,
     year: storedMatch.year ?? remote.year,
+    countryOfOrigin:
+      normalizeCountryOfOrigin(storedMatch.countryOfOrigin) ??
+      normalizeCountryOfOrigin(remote.countryOfOrigin) ??
+      null,
+    duplicateOfId: storedMatch.duplicateOfId ?? remote.duplicateOfId ?? null,
     trailerId: storedMatch.trailerId ?? remote.trailerId,
     seasons: mergedSeasons.length > 0 ? mergedSeasons : storedMatch.seasons,
     updatedAt:
@@ -743,6 +771,14 @@ export function resolveAdminAnimeWithRemote(
 }
 
 export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime[]): Anime | null {
+  const visCtx = buildClientVisibilityContext(locals);
+  if (isPubliclyBlockedId(id, visCtx)) {
+    return null;
+  }
+  if (remote && isPubliclyBlockedAnime(remote, visCtx)) {
+    return null;
+  }
+
   const numericId = Number(id);
   const malIdFromRoute = id.startsWith("mal-") ? Number(id.slice(4)) : NaN;
   const kitsuIdFromRoute = id.startsWith("kitsu-") ? Number(id.slice(6)) : NaN;
@@ -800,6 +836,9 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
   }
 
   if (byId) {
+    if (isPubliclyBlockedAnime(byId, visCtx)) {
+      return null;
+    }
     const local = localToAnime(byId);
     const resolvedSeasons = mergeSeasonsWithRemote(local.seasons, remote?.seasons);
 
@@ -811,6 +850,7 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
         studios: local.studios ?? [],
         characters: local.characters ?? [],
         staff: local.staff ?? [],
+        recommendations: filterPublicAnimes(local.recommendations, visCtx),
       };
     }
 
@@ -856,6 +896,11 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       serverCatalogId: resolvedServerCatalogId,
       resolvedFromAliasId: remote.resolvedFromAliasId,
       resolvedAliasIds: remote.resolvedAliasIds,
+      countryOfOrigin:
+        normalizeCountryOfOrigin(local.countryOfOrigin) ??
+        normalizeCountryOfOrigin(remote.countryOfOrigin) ??
+        null,
+      duplicateOfId: local.duplicateOfId ?? remote.duplicateOfId ?? null,
       titles: local.titles,
       cover: preferRemoteKitsuCover ? remote.cover : local.cover || remote.cover,
       banner: preferRemoteKitsuBanner ? remote.banner : local.banner || remote.banner,
@@ -863,7 +908,9 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       seasons: resolvedSeasons,
       trailerId: local.trailerId || remote.trailerId,
       genres: localGenres.length > 0 ? localGenres : remoteGenres,
-      recommendations: Array.isArray(remote.recommendations) ? remote.recommendations : [],
+      recommendations: Array.isArray(remote.recommendations)
+        ? filterPublicAnimes(remote.recommendations, visCtx)
+        : [],
       streamingEpisodes: Array.isArray(remote.streamingEpisodes) ? remote.streamingEpisodes : [],
       studios: mergedStudios,
       characters: mergedCharacters,
@@ -887,6 +934,9 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
         : undefined;
 
   if (byAni) {
+    if (isPubliclyBlockedAnime(byAni, visCtx)) {
+      return null;
+    }
     const local = localToAnime(byAni);
     const resolvedSeasons = mergeSeasonsWithRemote(local.seasons, remote.seasons);
     const preserveExternalId = !isLocalRequestedId && !remote.id.startsWith("local-");
@@ -928,12 +978,19 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       ...local,
       id: resolvedId,
       serverCatalogId: resolvedServerCatalogId,
+      countryOfOrigin:
+        normalizeCountryOfOrigin(local.countryOfOrigin) ??
+        normalizeCountryOfOrigin(remote.countryOfOrigin) ??
+        null,
+      duplicateOfId: local.duplicateOfId ?? remote.duplicateOfId ?? null,
       cover: preferRemoteKitsuCover ? remote.cover : local.cover || remote.cover,
       banner: preferRemoteKitsuBanner ? remote.banner : local.banner || remote.banner,
       seasons: resolvedSeasons,
       trailerId: local.trailerId || remote.trailerId,
       genres: localGenres.length > 0 ? localGenres : remoteGenres,
-      recommendations: Array.isArray(remote.recommendations) ? remote.recommendations : [],
+      recommendations: Array.isArray(remote.recommendations)
+        ? filterPublicAnimes(remote.recommendations, visCtx)
+        : [],
       streamingEpisodes: Array.isArray(remote.streamingEpisodes) ? remote.streamingEpisodes : [],
       studios: mergedStudios,
       characters: mergedCharacters,
@@ -949,13 +1006,18 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
     remote.seasons.every((s) => Boolean(s && Array.isArray(s.episodes)));
 
   if (hasNormalizedGenres && hasNormalizedRecommendations && hasNormalizedSeasons) {
-    return remote;
+    return {
+      ...remote,
+      recommendations: filterPublicAnimes(remote.recommendations, visCtx),
+    };
   }
 
   return {
     ...remote,
     genres: hasNormalizedGenres ? remote.genres : [],
-    recommendations: hasNormalizedRecommendations ? remote.recommendations : [],
+    recommendations: hasNormalizedRecommendations
+      ? filterPublicAnimes(remote.recommendations, visCtx)
+      : [],
     seasons: Array.isArray(remote.seasons)
       ? remote.seasons
           .filter((s): s is Season => Boolean(s && typeof s === "object"))
@@ -965,11 +1027,15 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
 }
 
 export function findLocalCover(id: string, locals: LocalAnime[], list: SlimAnime[]): SlimAnime | undefined {
+  const visCtx = buildClientVisibilityContext(locals);
+  if (isPubliclyBlockedId(id, visCtx)) {
+    return undefined;
+  }
   return (
-    list.find((a) => a.id === id) ||
-    locals
-      .filter((a) => !a.hidden)
-      .map(localToAnime)
-      .find((a) => a.id === id)
+    filterPublicAnimes(list, visCtx).find((a) => a.id === id) ||
+    filterPublicAnimes(
+      locals.filter((a) => !a.hidden).map(localToAnime),
+      visCtx,
+    ).find((a) => a.id === id)
   );
 }

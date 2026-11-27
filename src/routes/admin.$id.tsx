@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { toast } from "sonner";
-import { fetchAnimeDetail } from "@/lib/api";
+import { fetchAdminAnimeDetail } from "@/lib/admin-dashboard.functions";
 import {
   areAnimeRecentBadgesEqual,
   isCustomImageUrl,
@@ -119,7 +119,7 @@ export const Route = createFileRoute("/admin/$id")({
 
     if (params.id && params.id !== "new") {
       const [primaryRes, episodesRes] = await Promise.all([
-        fetchAnimeDetail({ data: { id: params.id } }).catch(() => null),
+        fetchAdminAnimeDetail({ data: { id: params.id } }).catch(() => null),
         getAdminCatalogEpisodes({ data: { animeId: params.id } }).catch(() => null),
       ]);
       primary = primaryRes;
@@ -147,7 +147,7 @@ export const Route = createFileRoute("/admin/$id")({
     if (!primary) {
       if (deps.importId) {
         try {
-          remote = await fetchAnimeDetail({ data: { id: deps.importId } });
+          remote = await fetchAdminAnimeDetail({ data: { id: deps.importId } });
         } catch {
           remote = null;
         }
@@ -159,7 +159,7 @@ export const Route = createFileRoute("/admin/$id")({
       (!primaryHasRemoteSeasons || (deps.importId && deps.importId !== params.id))
     ) {
       try {
-        const canonicalRemote = await fetchAnimeDetail({
+        const canonicalRemote = await fetchAdminAnimeDetail({
           data: { id: externalFallbackId },
         });
         if (canonicalRemote) {
@@ -1334,6 +1334,8 @@ function AdminEditor() {
     const duplicated: LocalAnime = {
       ...currentForm,
       id: newId,
+      countryOfOrigin: currentForm.countryOfOrigin ?? null,
+      duplicateOfId: currentForm.serverCatalogId || currentForm.id,
       titleRomaji: baseTitleRomaji || currentForm.titleRomaji,
       titleEnglish: baseTitleEnglish || currentForm.titleEnglish,
       seasons:

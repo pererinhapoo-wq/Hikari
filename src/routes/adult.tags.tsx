@@ -18,6 +18,10 @@ import {
 import { fetchAdultTags } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
+import {
+  buildClientVisibilityContext,
+  isPubliclyBlockedId,
+} from "@/lib/public-visibility";
 
 const MAIN_ADULT_TAGS = [
   { name: "Anal", aliases: ["Anal"] },
@@ -151,8 +155,20 @@ function AdultTagsPage() {
     locals,
   );
 
+  const visCtx = buildClientVisibilityContext(locals);
+  const sanitizedTags = (data.tags ?? []).map((t) => {
+    const filteredIds = t.animeIds.filter(
+      (aid) => !isPubliclyBlockedId(aid, visCtx),
+    );
+    return {
+      ...t,
+      animeIds: filteredIds,
+      count: filteredIds.length,
+    };
+  });
+
   const displayedTags = MAIN_ADULT_TAGS.map((mainTag) => {
-    const found = data.tags.find((item) =>
+    const found = sanitizedTags.find((item) =>
       mainTag.aliases.some(
         (alias) =>
           normalizeAdultTag(alias) ===
@@ -169,13 +185,6 @@ function AdultTagsPage() {
     );
   });
 
-  const normalizeTag = (
-    value: string,
-  ) =>
-    value.trim().toLocaleLowerCase(
-      "pt-BR",
-    );
-
   const selectedMainTag = tag
     ? MAIN_ADULT_TAGS.find(
         (mainTag) =>
@@ -190,7 +199,7 @@ function AdultTagsPage() {
     : undefined;
 
   const selectedTag = selectedMainTag
-    ? data.tags.find((item) =>
+    ? sanitizedTags.find((item) =>
         selectedMainTag.aliases.some(
           (alias) =>
             normalizeAdultTag(alias) ===

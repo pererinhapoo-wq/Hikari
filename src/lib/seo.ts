@@ -1,5 +1,12 @@
 import { FALLBACK_ANIMES } from "@/lib/fallback-catalog";
 import { stripHtml } from "@/lib/utils";
+import {
+  EMPTY_PUBLIC_VISIBILITY_CONTEXT,
+  isConfirmedDonghuaOrigin,
+  isPubliclyBlockedAnime,
+  isPubliclyBlockedId,
+  type VisibilityIndexContext,
+} from "@/lib/public-visibility";
 
 export const CANONICAL_DOMAIN = "https://hikaritv.cc.cd";
 export const DEFAULT_OG_IMAGE = `${CANONICAL_DOMAIN}/og.jpg`;
@@ -184,17 +191,35 @@ let sitemapCache: {
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas (revalidação diária)
 
+async function resolveSafeSitemapVisibilityContext(): Promise<VisibilityIndexContext> {
+  if (typeof window !== "undefined") {
+    return EMPTY_PUBLIC_VISIBILITY_CONTEXT;
+  }
+  try {
+    const { getServerPublicVisibilityContext } = await import(
+      "@/lib/public-visibility.server"
+    );
+    return await getServerPublicVisibilityContext();
+  } catch {
+    return EMPTY_PUBLIC_VISIBILITY_CONTEXT;
+  }
+}
+
 export async function getSitemapAnimeCatalog(): Promise<SitemapAnimeItem[]> {
+  const visCtx = await resolveSafeSitemapVisibilityContext();
   const now = Date.now();
   if (sitemapCache && now - sitemapCache.timestamp < CACHE_TTL_MS) {
-    return sitemapCache.animes;
+    return sitemapCache.animes.filter((item) => !isPubliclyBlockedId(item.id, visCtx));
   }
 
   const itemsMap = new Map<string, SitemapAnimeItem>();
   const todayIso = new Date().toISOString().split("T")[0];
 
-  // Adiciona catálogo de fallback embutido
+  // Adiciona catálogo de fallback embutido (respeitando visibilidade pública)
   for (const fallback of FALLBACK_ANIMES) {
+    if (isPubliclyBlockedAnime(fallback, visCtx)) {
+      continue;
+    }
     itemsMap.set(fallback.id, {
       id: fallback.id,
       episodesCount: Math.max(1, fallback.episodesCount || 12),
@@ -212,6 +237,7 @@ export async function getSitemapAnimeCatalog(): Promise<SitemapAnimeItem[]> {
           }
           media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
             id
+            countryOfOrigin
             episodes
             updatedAt
           }
@@ -242,6 +268,7 @@ export async function getSitemapAnimeCatalog(): Promise<SitemapAnimeItem[]> {
             Page?: {
               media?: Array<{
                 id: number;
+                countryOfOrigin?: string | null;
                 episodes?: number | null;
                 updatedAt?: number | null;
               }>;
@@ -257,6 +284,8 @@ export async function getSitemapAnimeCatalog(): Promise<SitemapAnimeItem[]> {
       if (result.status === "fulfilled" && Array.isArray(result.value)) {
         for (const m of result.value) {
           if (!m?.id) continue;
+          if (isConfirmedDonghuaOrigin(m.countryOfOrigin)) continue;
+          if (isPubliclyBlockedId(m.id, visCtx)) continue;
           const idStr = String(m.id);
           const lastmod = m.updatedAt
             ? new Date(m.updatedAt * 1000).toISOString().split("T")[0]
@@ -273,7 +302,9 @@ export async function getSitemapAnimeCatalog(): Promise<SitemapAnimeItem[]> {
     console.warn("[sitemap] Falha ao consultar AniList em lote, usando catálogo local:", err);
   }
 
-  const animes = Array.from(itemsMap.values());
+  const animes = Array.from(itemsMap.values()).filter(
+    (item) => !isPubliclyBlockedId(item.id, visCtx),
+  );
   sitemapCache = {
     timestamp: now,
     animes,

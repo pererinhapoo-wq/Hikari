@@ -239,6 +239,11 @@ async function main() {
       const season = anime.season?.trim() || null;
       const trailerId = anime.trailerId?.trim() || null;
       const genres = Array.isArray(anime.genres) ? anime.genres.map((g) => String(g).trim()).filter(Boolean) : [];
+      const rawCountry = typeof anime.countryOfOrigin === "string" ? anime.countryOfOrigin.trim().toUpperCase() : "";
+      const countryOfOrigin = /^[A-Z]{2,3}$/.test(rawCountry) ? rawCountry : null;
+      const duplicateOfId = typeof anime.duplicateOfId === "string" && anime.duplicateOfId.trim()
+        ? anime.duplicateOfId.trim()
+        : null;
 
       // 1. Inserir ou atualizar catalog_anime
       await client.query(
@@ -246,9 +251,10 @@ async function main() {
            "id", "title", "anilistId", "malId", "kitsuId",
            "titleRomaji", "titleEnglish", "titleNative", "cover", "banner",
            "synopsis", "format", "status", "episodesCount", "year", "season",
-           "genres", "trailerId", "createdAt", "updatedAt"
+           "genres", "trailerId", "country_of_origin", "duplicate_of_id",
+           "createdAt", "updatedAt"
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
          ON CONFLICT ("id") DO UPDATE
          SET
            "title" = EXCLUDED."title",
@@ -268,12 +274,14 @@ async function main() {
            "season" = COALESCE(EXCLUDED."season", "catalog_anime"."season"),
            "genres" = CASE WHEN array_length(EXCLUDED."genres", 1) > 0 THEN EXCLUDED."genres" ELSE "catalog_anime"."genres" END,
            "trailerId" = COALESCE(EXCLUDED."trailerId", "catalog_anime"."trailerId"),
+           "country_of_origin" = COALESCE(NULLIF(EXCLUDED."country_of_origin", ''), "catalog_anime"."country_of_origin"),
+           "duplicate_of_id" = COALESCE(NULLIF(EXCLUDED."duplicate_of_id", ''), "catalog_anime"."duplicate_of_id"),
            "updatedAt" = CURRENT_TIMESTAMP;`,
         [
           id, title, anilistId, malId, kitsuId,
           titleRomaji, titleEnglish, titleNative, cover, banner,
           synopsis, format, status, episodesCount, year, season,
-          genres, trailerId,
+          genres, trailerId, countryOfOrigin, duplicateOfId,
         ],
       );
 

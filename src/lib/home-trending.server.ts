@@ -24,6 +24,14 @@ import {
   type RedisHomeTrendingReadResult,
   type RedisScopedWriteStatus,
 } from "@/lib/redis";
+import {
+  EMPTY_PUBLIC_VISIBILITY_CONTEXT,
+  filterPublicAnimes,
+  isPubliclyBlockedAnime,
+  normalizeCountryOfOrigin,
+  type VisibilityIndexContext,
+} from "@/lib/public-visibility";
+import { getServerPublicVisibilityContext } from "@/lib/public-visibility.server";
 import type { SlimAnime } from "@/lib/types";
 
 export const MAX_HOME_TRENDING_ITEMS = 18;
@@ -87,6 +95,8 @@ export interface TrendingCatalogAnimeCandidateRow {
   year: number | null;
   season: string | null;
   genres: string[] | null;
+  countryOfOrigin?: string | null;
+  duplicateOfId?: string | null;
   hidden: boolean | null;
   score: number | null;
   popularity: number | null;
@@ -497,6 +507,7 @@ export function scoreAndRankHomeTrending(
   _badgesLookup: AnimeRecentBadgesLookup,
   signals: TrendingUserAnimeSignalRow[],
   nowMs = Date.now(),
+  visibilityCtx: VisibilityIndexContext = EMPTY_PUBLIC_VISIBILITY_CONTEXT,
 ): ScoredTrendingItem[] {
   const parsedCandidates: ParsedTrendingCandidate[] = [];
   const audioTaggedRowsForAliasResolution: Array<{
@@ -510,6 +521,7 @@ export function scoreAndRankHomeTrending(
   for (const row of rows) {
     if (!row || row.hidden === true) continue;
     if (isAdultTrendingCandidate(row.genres)) continue;
+    if (isPubliclyBlockedAnime(row, visibilityCtx)) continue;
     if (!isNonStubTrendingTitle(row)) continue;
 
     const publishedCount = Number(row.publishedEpisodeCount ?? 0) || 0;
@@ -584,6 +596,8 @@ export function scoreAndRankHomeTrending(
         : (row.episodesCount ?? null),
       season: row.season?.trim() || null,
       year: row.year ?? null,
+      countryOfOrigin: normalizeCountryOfOrigin(row.countryOfOrigin),
+      duplicateOfId: row.duplicateOfId ?? null,
       trailerId: null,
       source: "local",
       catalogUpdatedAt: updatedAtMs || latestEpisodePublishedAtMs || undefined,
@@ -1020,7 +1034,7 @@ async function queryTrendingCatalogCandidatesFromNeon(): Promise<
   const weekEndSec = todayRange.endTimestamp + 6 * 86400;
   const currentSeason = currentAnimeSeason();
 
-  const rows = await sql.query<TrendingCatalogAnimeCandidateRow>(
+  const buildQuery = (includeVisibilityCols: boolean) =>
     `WITH ep_stats AS (
        SELECT
          e."animeId",
@@ -1094,6 +1108,13 @@ async function queryTrendingCatalogCandidatesFromNeon(): Promise<
        a."year",
        a."season",
        a."genres",
+       ${
+         includeVisibilityCols
+           ? `a."country_of_origin" AS "countryOfOrigin",
+       a."duplicate_of_id" AS "duplicateOfId",`
+           : `NULL::text AS "countryOfOrigin",
+       NULL::text AS "duplicateOfId",`
+       }
        COALESCE(a."hidden", false) AS "hidden",
        a."score",
        a."popularity",
@@ -1170,18 +1191,35 @@ async function queryTrendingCatalogCandidatesFromNeon(): Promise<
              OR (a."malId" IS NOT NULL AND re."animeId" = ('mal-' || a."malId"::text))
              OR (a."kitsuId" IS NOT NULL AND re."animeId" = ('kitsu-' || a."kitsuId"::text))
          )
-       );`,
-    [
-      todayRange.startTimestamp,
-      todayRange.endTimestamp,
-      weekStartSec,
-      weekEndSec,
-      todayWeekday,
-      CALENDAR_TIMEZONE,
-      currentSeason.season.toUpperCase(),
-      currentSeason.year,
-    ],
-  );
+       );`;
+
+  const params = [
+    todayRange.startTimestamp,
+    todayRange.endTimestamp,
+    weekStartSec,
+    weekEndSec,
+    todayWeekday,
+    CALENDAR_TIMEZONE,
+    currentSeason.season.toUpperCase(),
+    currentSeason.year,
+  ];
+
+  let rows: TrendingCatalogAnimeCandidateRow[] = [];
+  try {
+    rows = await sql.query<TrendingCatalogAnimeCandidateRow>(
+      buildQuery(true),
+      params,
+    );
+  } catch (err: unknown) {
+    if ((err as { code?: string } | null)?.code === "42703") {
+      rows = await sql.query<TrendingCatalogAnimeCandidateRow>(
+        buildQuery(false),
+        params,
+      );
+    } else {
+      throw err;
+    }
+  }
 
   return Array.isArray(rows) ? rows : [];
 }
@@ -1280,6 +1318,14 @@ export interface HomeTrendingResult {
   items: SlimAnime[];
 }
 
+async function resolveSafeTrendingVisibilityContext(): Promise<VisibilityIndexContext> {
+  try {
+    return await getServerPublicVisibilityContext();
+  } catch {
+    return EMPTY_PUBLIC_VISIBILITY_CONTEXT;
+  }
+}
+
 export async function getHomeTrendingPayloadWithDeps(
   deps: HomeTrendingDeps = defaultHomeTrendingDeps,
   nowMs = Date.now(),
@@ -1295,7 +1341,11 @@ export async function getHomeTrendingPayloadWithDeps(
     getTodayRangeSaoPaulo(new Date(ramTrendingPayload.payload.generatedAt)).todayKey ===
       currentDayKey
   ) {
-    return ramTrendingPayload.payload;
+    const visCtx = await resolveSafeTrendingVisibilityContext();
+    return {
+      ...ramTrendingPayload.payload,
+      items: filterPublicAnimes(ramTrendingPayload.payload.items, visCtx),
+    };
   }
 
   if (trendingInFlight) {
@@ -1307,6 +1357,7 @@ export async function getHomeTrendingPayloadWithDeps(
 
   const currentFlight = (async (): Promise<HomeTrendingPayload | null> => {
     try {
+      const visCtx = await resolveSafeTrendingVisibilityContext();
       const redisRead = await deps.getRedisTrending();
       if (
         redisRead.status === "hit" &&
@@ -1317,14 +1368,18 @@ export async function getHomeTrendingPayloadWithDeps(
         getTodayRangeSaoPaulo(new Date(redisRead.payload.generatedAt)).todayKey ===
           currentDayKey
       ) {
+        const filteredRedisPayload: HomeTrendingPayload = {
+          ...redisRead.payload,
+          items: filterPublicAnimes(redisRead.payload.items, visCtx),
+        };
         if (requestEpoch === trendingEpoch) {
-          staleTrendingPayload = redisRead.payload;
+          staleTrendingPayload = filteredRedisPayload;
           ramTrendingPayload = {
-            payload: redisRead.payload,
+            payload: filteredRedisPayload,
             timestamp: Date.now(),
           };
         }
-        return redisRead.payload;
+        return filteredRedisPayload;
       }
 
       const activeFence =
@@ -1352,6 +1407,7 @@ export async function getHomeTrendingPayloadWithDeps(
         badgesLookup,
         audienceSignals,
         nowMs,
+        visCtx,
       );
 
       if (scored.length === 0) {
@@ -1396,7 +1452,12 @@ export async function getHomeTrendingPayloadWithDeps(
         "[home-trending] Falha segura ao montar ranking Em Alta (usando reserva stale se disponível):",
         err instanceof Error ? err.message : err,
       );
-      return staleTrendingPayload;
+      if (!staleTrendingPayload) return null;
+      const visCtx = await resolveSafeTrendingVisibilityContext();
+      return {
+        ...staleTrendingPayload,
+        items: filterPublicAnimes(staleTrendingPayload.items, visCtx),
+      };
     } finally {
       if (trendingInFlight === flightRef) {
         trendingInFlight = null;

@@ -16,6 +16,12 @@ import { HikariImage } from "@/components/ui/hikari-image";
 import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
 import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { isAnimeDubbed } from "@/lib/published-episodes";
+import { useHikariStore } from "@/lib/store";
+import {
+  buildClientVisibilityContext,
+  isPubliclyBlockedAnime,
+  isPubliclyBlockedId,
+} from "@/lib/public-visibility";
 
 /* =========================================================
    TIPOS DE DADOS DO CALENDÁRIO
@@ -341,6 +347,28 @@ function CalendarPage() {
     void loadScheduleData(newOffset);
   };
 
+  const locals = useHikariStore((s) => s.animes);
+  const visibleSchedules = useMemo(() => {
+    const visCtx = buildClientVisibilityContext(locals);
+    return schedules.filter((item) => {
+      const candidateId = item.media.animeId || String(item.media.id);
+      if (isPubliclyBlockedId(candidateId, visCtx)) {
+        return false;
+      }
+      return !isPubliclyBlockedAnime(
+        {
+          id: candidateId,
+          anilistId: item.media.id > 0 ? item.media.id : null,
+          malId: item.media.idMal ?? null,
+          countryOfOrigin:
+            (item.media as { countryOfOrigin?: string | null })
+              .countryOfOrigin ?? null,
+        },
+        visCtx,
+      );
+    });
+  }, [schedules, locals]);
+
   // Agrupa os animes por dia da semana no fuso horário America/Sao_Paulo
   const episodesByDay = useMemo(() => {
     const map = new Map<string, AiringScheduleItem[]>();
@@ -349,7 +377,7 @@ function CalendarPage() {
       map.set(day.dateKey, []);
     }
 
-    for (const item of schedules) {
+    for (const item of visibleSchedules) {
       const localKey = getDayKeySaoPaulo(item.airingAt);
       const list = map.get(localKey);
       if (list) {
@@ -363,7 +391,7 @@ function CalendarPage() {
     }
 
     return map;
-  }, [schedules, weekInfo.days]);
+  }, [visibleSchedules, weekInfo.days]);
 
   // Total de animes na semana
   const totalWeekEpisodes = useMemo(() => {

@@ -33,6 +33,18 @@ import {
   rowIsDubbed,
 } from "@/lib/anime-identity";
 import { buildEpisodeDubbedSqlCondition } from "@/lib/published-episodes";
+import {
+  filterPublicAnimes,
+  isPubliclyBlockedAnime,
+  isPubliclyBlockedId,
+  normalizeCountryOfOrigin,
+} from "@/lib/public-visibility";
+import {
+  filterServerPublicAnimes,
+  getServerPublicVisibilityContext,
+  isServerPubliclyBlockedAnime,
+  isServerPubliclyBlockedId,
+} from "@/lib/public-visibility.server";
 
 export interface DbCatalogAnimeRow {
   id: string;
@@ -56,6 +68,10 @@ export interface DbCatalogAnimeRow {
   hidden: boolean;
   score: number | null;
   updatedAt: string | Date | null;
+  countryOfOrigin?: string | null;
+  duplicateOfId?: string | null;
+  country_of_origin?: string | null;
+  duplicate_of_id?: string | null;
   hasEpisode?: boolean;
   hasDubbedEpisode?: boolean;
   is_dubbed?: boolean;
@@ -159,7 +175,9 @@ export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
       if (
         Array.isArray(redisRows) &&
         redisRows.length > 0 &&
-        redisRows.every((r) => typeof r.hasEpisode === "boolean")
+        redisRows.every(
+          (r) => typeof r.hasEpisode === "boolean" && "countryOfOrigin" in r,
+        )
       ) {
         const index = buildCatalogIndexFromRows(redisRows);
         if (requestEpoch === catalogIndexCacheEpoch) {
@@ -170,8 +188,7 @@ export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
 
       // 2. Se miss no Redis, consultar o PostgreSQL
       const sql = await getSql();
-      const rows = await sql.query<DbCatalogAnimeRow>(
-        `SELECT
+      const buildCatalogIndexQuery = (includeOriginCols: boolean) => `SELECT
            a."id",
            a."title",
            a."anilistId",
@@ -193,6 +210,13 @@ export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
            a."hidden",
            a."score",
            a."updatedAt",
+           ${
+             includeOriginCols
+               ? `a."country_of_origin" AS "countryOfOrigin",
+           a."duplicate_of_id" AS "duplicateOfId",`
+               : `NULL::text AS "countryOfOrigin",
+           NULL::text AS "duplicateOfId",`
+           }
             EXISTS (
               SELECT 1
               FROM "catalog_episode" e
@@ -211,8 +235,18 @@ export async function loadCatalogIndex(): Promise<CatalogIndex | null> {
             ) AS "hasDubbedEpisode"
           FROM "catalog_anime" a
           WHERE a."archived_at" IS NULL
-          ORDER BY a."updatedAt" DESC;`,
-      );
+          ORDER BY a."updatedAt" DESC;`;
+
+      let rows: DbCatalogAnimeRow[];
+      try {
+        rows = await sql.query<DbCatalogAnimeRow>(buildCatalogIndexQuery(true));
+      } catch (err: unknown) {
+        if ((err as { code?: string } | null)?.code === "42703") {
+          rows = await sql.query<DbCatalogAnimeRow>(buildCatalogIndexQuery(false));
+        } else {
+          throw err;
+        }
+      }
 
       if (!rows || rows.length === 0) {
         return null;
@@ -363,6 +397,13 @@ export function mergeRowIntoSlim(item: SlimAnime, row: DbCatalogAnimeRow): SlimA
   const hasGenres = Array.isArray(row.genres) && row.genres.length > 0;
   const hasEpisode = Boolean(row.hasEpisode);
 
+  const resolvedOrigin =
+    normalizeCountryOfOrigin(row.countryOfOrigin ?? row.country_of_origin) ??
+    normalizeCountryOfOrigin(item.countryOfOrigin) ??
+    null;
+  const resolvedDuplicateOfId =
+    row.duplicateOfId ?? row.duplicate_of_id ?? item.duplicateOfId ?? null;
+
   return {
     ...item,
     cover: cleanCover || item.cover,
@@ -381,6 +422,8 @@ export function mergeRowIntoSlim(item: SlimAnime, row: DbCatalogAnimeRow): SlimA
     year: row.year ?? item.year,
     trailerId: row.trailerId?.trim() || item.trailerId,
     score: row.score ?? item.score,
+    countryOfOrigin: resolvedOrigin,
+    duplicateOfId: resolvedDuplicateOfId,
     catalogUpdatedAt: updatedAtMs || item.catalogUpdatedAt,
     serverCatalogId: row.id,
     hasEpisode,
@@ -390,48 +433,59 @@ export function mergeRowIntoSlim(item: SlimAnime, row: DbCatalogAnimeRow): SlimA
 
 export async function applyDbCatalogOverlayToSlimList(
   items: SlimAnime[],
+  options?: { includeBlocked?: boolean },
 ): Promise<SlimAnime[]> {
   if (!Array.isArray(items) || items.length === 0) {
     return items;
   }
-  const index = await loadCatalogIndex();
+  const includeBlocked = Boolean(options?.includeBlocked);
+  const [index, visCtx] = await Promise.all([
+    loadCatalogIndex(),
+    includeBlocked
+      ? Promise.resolve(null)
+      : getServerPublicVisibilityContext(),
+  ]);
   if (!index) {
-    return items.map((item) =>
+    const mapped = items.map((item) =>
       item.hasEpisode === false && item.isDubbed === false
         ? item
         : { ...item, hasEpisode: false, isDubbed: false },
     );
+    return visCtx ? filterPublicAnimes(mapped, visCtx) : mapped;
   }
 
-  let changed = false;
   const next = items.map((item) => {
     const match = findMatchingRow(index, item);
     if (!match) {
       if (item.hasEpisode === false && item.isDubbed === false) {
         return item;
       }
-      changed = true;
       return { ...item, hasEpisode: false, isDubbed: false };
     }
-    changed = true;
     return mergeRowIntoSlim(item, match);
   });
 
-  return changed ? next : items;
+  return visCtx ? filterPublicAnimes(next, visCtx) : next;
 }
 
 export async function applyDbCatalogOverlayToHome(
   catalog: HomeCatalog,
 ): Promise<HomeCatalog> {
-  const index = await loadCatalogIndex();
+  const [index, visCtx] = await Promise.all([
+    loadCatalogIndex(),
+    getServerPublicVisibilityContext(),
+  ]);
 
   const enrichList = (list: SlimAnime[]): SlimAnime[] =>
-    list.map((item) => {
-      const match = index ? findMatchingRow(index, item) : undefined;
-      return match
-        ? mergeRowIntoSlim(item, match)
-        : { ...item, hasEpisode: false, isDubbed: false };
-    });
+    filterPublicAnimes(
+      list.map((item) => {
+        const match = index ? findMatchingRow(index, item) : undefined;
+        return match
+          ? mergeRowIntoSlim(item, match)
+          : { ...item, hasEpisode: false, isDubbed: false };
+      }),
+      visCtx,
+    );
 
   const todaySchedule = enrichList(catalog.todaySchedule);
   const trending = enrichList(catalog.trending);
@@ -463,8 +517,16 @@ export async function applyDbCatalogOverlayToHome(
   };
 }
 
-export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | null> {
+export async function buildLocalAnimeFromDb(
+  animeId: string,
+  options?: { includeBlocked?: boolean },
+): Promise<Anime | null> {
   try {
+    const includeBlocked = Boolean(options?.includeBlocked);
+    if (!includeBlocked && (await isServerPubliclyBlockedId(animeId))) {
+      return null;
+    }
+
     const sql = await getSql();
     const candidateLookup = await resolveAnimeCandidateIdsFromDb(sql, animeId);
     let resolvedCanonicalId = candidateLookup.canonicalId || animeId;
@@ -473,19 +535,31 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
 
     let row = candidateLookup.row as DbCatalogAnimeRow | null;
     if (!row) {
-      const rows = await sql.query<DbCatalogAnimeRow>(
-        `SELECT
+      const buildRowQuery = (includeOriginCols: boolean) => `SELECT
            "id", "title", "anilistId", "malId", "kitsuId",
            "titleRomaji", "titleEnglish", "titleNative",
            "cover", "banner", "synopsis", "format", "status",
            "episodesCount", "year", "season", "genres", "trailerId",
            "hidden", "score",
+           ${
+             includeOriginCols
+               ? `"country_of_origin" AS "countryOfOrigin", "duplicate_of_id" AS "duplicateOfId",`
+               : `NULL::text AS "countryOfOrigin", NULL::text AS "duplicateOfId",`
+           }
            "updatedAt"
          FROM "catalog_anime"
          WHERE "id" = $1 AND "archived_at" IS NULL
-         LIMIT 1;`,
-        [resolvedCanonicalId],
-      );
+         LIMIT 1;`;
+      let rows: DbCatalogAnimeRow[];
+      try {
+        rows = await sql.query<DbCatalogAnimeRow>(buildRowQuery(true), [resolvedCanonicalId]);
+      } catch (err: unknown) {
+        if ((err as { code?: string } | null)?.code === "42703") {
+          rows = await sql.query<DbCatalogAnimeRow>(buildRowQuery(false), [resolvedCanonicalId]);
+        } else {
+          throw err;
+        }
+      }
       row = rows[0] ?? null;
     }
 
@@ -521,6 +595,25 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
     }
 
     if (!row) return null;
+
+    if (
+      !includeBlocked &&
+      (await isServerPubliclyBlockedAnime(
+        {
+          id: row.id,
+          resolvedFromAliasId: resolvedFromAliasId ?? animeId,
+          resolvedAliasIds: knownAliasIds,
+          anilistId: row.anilistId,
+          malId: row.malId,
+          kitsuId: row.kitsuId,
+          countryOfOrigin: row.countryOfOrigin ?? row.country_of_origin,
+          duplicateOfId: row.duplicateOfId ?? row.duplicate_of_id,
+        },
+        sql,
+      ))
+    ) {
+      return null;
+    }
 
     const seasonRows = await sql.query<{
       number: number;
@@ -651,6 +744,10 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
       season: row.season?.trim() || null,
       year: row.year ?? null,
       trailerId: row.trailerId?.trim() || null,
+      countryOfOrigin: normalizeCountryOfOrigin(
+        row.countryOfOrigin ?? row.country_of_origin,
+      ),
+      duplicateOfId: row.duplicateOfId ?? row.duplicate_of_id ?? null,
       source: "local",
       studios: [],
       streamingEpisodes: [],
@@ -673,9 +770,22 @@ export async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | nu
 export async function applyDbCatalogOverlayToDetail(
   detail: Anime | null,
   requestedId: string,
+  options?: { includeBlocked?: boolean },
 ): Promise<Anime | null> {
+  const includeBlocked = Boolean(options?.includeBlocked);
+  const visCtx = includeBlocked
+    ? null
+    : await getServerPublicVisibilityContext();
+  if (visCtx && isPubliclyBlockedId(requestedId, visCtx)) {
+    return null;
+  }
+
   if (!detail) {
-    return buildLocalAnimeFromDb(requestedId);
+    return buildLocalAnimeFromDb(requestedId, options);
+  }
+
+  if (visCtx && isPubliclyBlockedAnime(detail, visCtx)) {
+    return null;
   }
 
   const index = await loadCatalogIndex();
@@ -704,7 +814,25 @@ export async function applyDbCatalogOverlayToDetail(
     }
   }
 
-  const mappedRecommendations = Array.isArray(detail.recommendations)
+  const effectiveCandidate = {
+    id: match?.id ?? detail.id,
+    serverCatalogId: match?.id ?? detail.serverCatalogId,
+    anilistId: match?.anilistId ?? detail.anilistId,
+    malId: match?.malId ?? detail.malId,
+    kitsuId: match?.kitsuId ?? detail.kitsuId,
+    countryOfOrigin:
+      match?.countryOfOrigin ?? match?.country_of_origin ?? detail.countryOfOrigin,
+    duplicateOfId:
+      match?.duplicateOfId ?? match?.duplicate_of_id ?? detail.duplicateOfId,
+    resolvedFromAliasId: requestedId || detail.resolvedFromAliasId,
+    resolvedAliasIds:
+      resolvedAliasIds.length > 0 ? resolvedAliasIds : detail.resolvedAliasIds,
+  };
+  if (visCtx && isPubliclyBlockedAnime(effectiveCandidate, visCtx)) {
+    return null;
+  }
+
+  const mappedRecommendationsRaw = Array.isArray(detail.recommendations)
     ? sortByHasEpisodeFirst(
         detail.recommendations.map((rec) => {
           const recMatch = index ? findMatchingRow(index, rec) : undefined;
@@ -714,6 +842,9 @@ export async function applyDbCatalogOverlayToDetail(
         }),
       )
     : [];
+  const mappedRecommendations = visCtx
+    ? filterPublicAnimes(mappedRecommendationsRaw, visCtx)
+    : mappedRecommendationsRaw;
 
   if (!match) {
     return {
@@ -791,24 +922,28 @@ export function invalidateLocalCatalogSearchCache(query?: string): void {
 export async function searchLocalCatalogAnime(
   query: string,
   limit = 12,
+  options?: { includeBlocked?: boolean },
 ): Promise<SlimAnime[]> {
   const clean = normalizeCatalogSearchQuery(query);
   if (!clean || clean.length < 2) return [];
 
+  const includeBlocked = Boolean(options?.includeBlocked);
   const safeLimit = Math.min(Math.max(1, Math.floor(limit) || 12), 50);
   const cacheKey = `${clean}:${safeLimit}`;
   const now = Date.now();
 
-  // 1. Consulta primeiro a memória local (cache hit)
-  const localEntry = localSearchCache.get(cacheKey);
-  if (localEntry && now - localEntry.timestamp < LOCAL_SEARCH_CACHE_TTL_MS) {
-    return localEntry.data;
-  }
+  if (!includeBlocked) {
+    // 1. Consulta primeiro a memória local (cache hit)
+    const localEntry = localSearchCache.get(cacheKey);
+    if (localEntry && now - localEntry.timestamp < LOCAL_SEARCH_CACHE_TTL_MS) {
+      return filterServerPublicAnimes(localEntry.data);
+    }
 
-  // 2. Proteção contra chamadas simultâneas duplicadas (singleflight)
-  const inFlight = localSearchInFlightPromises.get(cacheKey);
-  if (inFlight) {
-    return inFlight;
+    // 2. Proteção contra chamadas simultâneas duplicadas (singleflight)
+    const inFlight = localSearchInFlightPromises.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
   }
 
   const requestEpoch = localSearchCacheEpoch;
@@ -816,21 +951,24 @@ export async function searchLocalCatalogAnime(
 
   const flightPromise = (async (): Promise<SlimAnime[]> => {
     try {
-      // 3. Consulta no Upstash Redis (cache compartilhado)
-      const redisResult = await getRedisCatalogSearch(clean, safeLimit);
-      if (
-        Array.isArray(redisResult) &&
-        redisResult.every((r) => typeof r.hasEpisode === "boolean")
-      ) {
-        if (requestEpoch === localSearchCacheEpoch) {
-          localSearchCache.set(cacheKey, { data: redisResult, timestamp: Date.now() });
-          pruneLocalSearchCache();
+      // 3. Consulta no Upstash Redis (cache compartilhado) apenas no modo público
+      if (!includeBlocked) {
+        const redisResult = await getRedisCatalogSearch(clean, safeLimit);
+        if (
+          Array.isArray(redisResult) &&
+          redisResult.every((r) => typeof r.hasEpisode === "boolean")
+        ) {
+          const filteredRedis = await filterServerPublicAnimes(redisResult);
+          if (requestEpoch === localSearchCacheEpoch) {
+            localSearchCache.set(cacheKey, { data: filteredRedis, timestamp: Date.now() });
+            pruneLocalSearchCache();
+          }
+          return filteredRedis;
         }
-        return redisResult;
       }
 
       // Capturar geração compartilhada no Redis ANTES da consulta ao banco
-      const observedGen = await captureSearchGen();
+      const observedGen = includeBlocked ? "0" : await captureSearchGen();
 
       // 4. Consulta no PostgreSQL
       const sql = await getSql();
@@ -858,8 +996,7 @@ export async function searchLocalCatalogAnime(
            ) AS "hasDubbedEpisode"
          FROM "catalog_anime" c
          LEFT JOIN "anime_alias" a ON a."anime_id" = c."id"
-         WHERE c."hidden" = false
-           AND c."archived_at" IS NULL
+         WHERE ${includeBlocked ? "" : 'c."hidden" = false AND '}c."archived_at" IS NULL
            AND (
              c."search_blob" ILIKE $1 ESCAPE '\\'
              OR c."title_norm" ILIKE $1 ESCAPE '\\'
@@ -870,7 +1007,7 @@ export async function searchLocalCatalogAnime(
         [pattern, safeLimit],
       );
 
-      const results: SlimAnime[] =
+      const mappedResults: SlimAnime[] =
         !rows || rows.length === 0
           ? []
           : rows.map((row) => ({
@@ -894,12 +1031,22 @@ export async function searchLocalCatalogAnime(
               genres: Array.isArray(row.genres) ? row.genres : [],
               score: row.score ?? null,
               trailerId: row.trailerId?.trim() || null,
+              countryOfOrigin: normalizeCountryOfOrigin(
+                row.countryOfOrigin ?? row.country_of_origin,
+              ),
+              duplicateOfId: row.duplicateOfId ?? row.duplicate_of_id ?? null,
               catalogUpdatedAt: toTimestampMs(row.updatedAt),
               serverCatalogId: row.id,
               hasEpisode: Boolean(row.hasEpisode),
               isDubbed: resolveCatalogRowIsDubbed(row),
               source: "local" as const,
             }));
+
+      if (includeBlocked) {
+        return mappedResults;
+      }
+
+      const results = await filterServerPublicAnimes(mappedResults);
 
       // 5. Salva no Redis (validado por geração) e na memória local (inclui [] como negative cache)
       if (requestEpoch === localSearchCacheEpoch) {
@@ -914,16 +1061,20 @@ export async function searchLocalCatalogAnime(
       return results;
     } catch (err) {
       console.warn("[catalog-server-overlay] Erro na busca local otimizada de catalog_anime:", err);
-      return localSearchCache.get(cacheKey)?.data ?? [];
+      if (includeBlocked) return [];
+      const fallback = localSearchCache.get(cacheKey)?.data ?? [];
+      return filterServerPublicAnimes(fallback);
     } finally {
-      if (localSearchInFlightPromises.get(cacheKey) === flightPromiseRef) {
+      if (!includeBlocked && localSearchInFlightPromises.get(cacheKey) === flightPromiseRef) {
         localSearchInFlightPromises.delete(cacheKey);
       }
     }
   })();
 
-  flightPromiseRef = flightPromise;
-  localSearchInFlightPromises.set(cacheKey, flightPromise);
+  if (!includeBlocked) {
+    flightPromiseRef = flightPromise;
+    localSearchInFlightPromises.set(cacheKey, flightPromise);
+  }
   return flightPromise;
 }
 

@@ -1,5 +1,6 @@
 import type { SlimAnime } from "@/lib/types";
 import type { SearchUserItem } from "@/lib/profile.functions";
+import { filterPublicAnimes } from "@/lib/public-visibility";
 
 export const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
 const MAX_CACHE_ENTRIES = 100;
@@ -93,7 +94,10 @@ export function getCachedAnimeSearch(params: AnimeSearchParams): { items: SlimAn
     animeSearchCache.delete(key);
     return null;
   }
-  return entry.data;
+  return {
+    ...entry.data,
+    items: filterPublicAnimes(entry.data.items),
+  };
 }
 
 export function setCachedAnimeSearch(params: AnimeSearchParams, data: { items: SlimAnime[]; page: number; hasNext: boolean; source?: string }): void {
@@ -101,7 +105,10 @@ export function setCachedAnimeSearch(params: AnimeSearchParams, data: { items: S
   if (!data || !Array.isArray(data.items)) return;
   const key = getAnimeCacheKey(params);
   animeSearchCache.set(key, {
-    data,
+    data: {
+      ...data,
+      items: filterPublicAnimes(data.items),
+    },
     timestamp: Date.now(),
   });
   enforceCacheLimit(animeSearchCache);

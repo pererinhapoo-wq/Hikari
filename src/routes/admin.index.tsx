@@ -44,7 +44,6 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { getBearerToken } from "@/lib/auth/client";
-import { searchCatalog } from "@/lib/api";
 import {
   animeToLocal,
   displayTitle,
@@ -75,7 +74,10 @@ import {
   type BatchImportProgress,
   type FailedBatchItem,
 } from "@/lib/catalog-import-client";
-import type { AdminSystemStatus } from "@/lib/admin-dashboard.functions";
+import {
+  searchAdminCatalog,
+  type AdminSystemStatus,
+} from "@/lib/admin-dashboard.functions";
 import {
   getCachedAdminSystemStatus,
   invalidateAdminDashboardCache,
@@ -393,7 +395,7 @@ function AdminIndex() {
 
     setSearchingAniList(true);
     try {
-      const res = await searchCatalog({
+      const res = await searchAdminCatalog({
         data: {
           q: importQ.trim(),
           page: 1,
@@ -450,6 +452,8 @@ function AdminIndex() {
     const duplicated: LocalAnime = {
       ...target,
       id: newId,
+      countryOfOrigin: target.countryOfOrigin ?? null,
+      duplicateOfId: target.serverCatalogId || target.id,
       titleRomaji: baseTitleRomaji || target.titleRomaji,
       titleEnglish: baseTitleEnglish || target.titleEnglish,
       seasons:
@@ -499,6 +503,11 @@ function AdminIndex() {
           year: duplicated.year,
           trailerId: duplicated.trailerId,
           hidden: duplicated.hidden,
+          anilistId: duplicated.anilistId,
+          malId: duplicated.malId,
+          kitsuId: duplicated.kitsuId,
+          countryOfOrigin: duplicated.countryOfOrigin ?? null,
+          duplicateOfId: duplicated.duplicateOfId ?? null,
           seasons: duplicated.seasons.map((s) => ({
             number: s.number,
             title: s.title,

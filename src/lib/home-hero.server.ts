@@ -23,6 +23,13 @@ import {
   type RedisHeroBannerPoolReadResult,
   type RedisScopedWriteStatus,
 } from "@/lib/redis";
+import {
+  EMPTY_PUBLIC_VISIBILITY_CONTEXT,
+  isPubliclyBlockedAnime,
+  normalizeCountryOfOrigin,
+  type VisibilityIndexContext,
+} from "@/lib/public-visibility";
+import { getServerPublicVisibilityContext } from "@/lib/public-visibility.server";
 import type { SlimAnime } from "@/lib/types";
 
 export const MAX_HERO_SLIDES = 8;
@@ -66,6 +73,8 @@ export interface HeroCatalogAnimeCandidateRow {
   year: number | null;
   season: string | null;
   genres: string[] | null;
+  countryOfOrigin?: string | null;
+  duplicateOfId?: string | null;
   trailerId: string | null;
   hidden: boolean | null;
   archivedAt?: string | Date | null;
@@ -419,6 +428,7 @@ export function scoreAndDeduplicateHeroCandidates(
   trendingItems: SlimAnime[] = [],
   nowMs = Date.now(),
   calendarItems: SlimAnime[] = [],
+  visibilityCtx: VisibilityIndexContext = EMPTY_PUBLIC_VISIBILITY_CONTEXT,
 ): ScoredHeroCandidate[] {
   const candidates: ScoredHeroCandidate[] = [];
   const blockedKeys = new Set<string>();
@@ -426,7 +436,12 @@ export function scoreAndDeduplicateHeroCandidates(
   // Indexa Fonte B (Animes em Alta no Hikari) preservando exatamente a ordem recebida
   const trendingEntries = trendingItems
     .map((item, index) => ({ item, index }))
-    .filter(({ item }) => Boolean(item && item.id?.trim()) && !isAdultHeroCandidate(item.genres));
+    .filter(
+      ({ item }) =>
+        Boolean(item && item.id?.trim()) &&
+        !isAdultHeroCandidate(item.genres) &&
+        !isPubliclyBlockedAnime(item, visibilityCtx),
+    );
 
   const trendingByKey = new Map<string, { item: SlimAnime; index: number }>();
   for (const entry of trendingEntries) {
@@ -447,7 +462,12 @@ export function scoreAndDeduplicateHeroCandidates(
   // Indexa Fonte A opcional (itens do Calendário do dia caso informados diretamente)
   const calendarEntries = calendarItems
     .map((item, index) => ({ item, index }))
-    .filter(({ item }) => Boolean(item && item.id?.trim()) && !isAdultHeroCandidate(item.genres));
+    .filter(
+      ({ item }) =>
+        Boolean(item && item.id?.trim()) &&
+        !isAdultHeroCandidate(item.genres) &&
+        !isPubliclyBlockedAnime(item, visibilityCtx),
+    );
 
   const calendarByKey = new Map<string, { item: SlimAnime; index: number }>();
   for (const entry of calendarEntries) {
@@ -471,8 +491,13 @@ export function scoreAndDeduplicateHeroCandidates(
   for (const row of rows) {
     if (!row) continue;
 
-    // Bloqueia explicitamente ocultos, arquivados e +18/Hentai (inclusive para evitar fallback de Em Alta/Calendário stale)
-    if (row.hidden === true || Boolean(row.archivedAt) || isAdultHeroCandidate(row.genres)) {
+    // Bloqueia explicitamente ocultos, arquivados, +18/Hentai e regra centralizada de visibilidade pública
+    if (
+      row.hidden === true ||
+      Boolean(row.archivedAt) ||
+      isAdultHeroCandidate(row.genres) ||
+      isPubliclyBlockedAnime(row, visibilityCtx)
+    ) {
       for (const k of collectMatchKeysFromIds(row)) {
         blockedKeys.add(k);
       }
@@ -697,6 +722,16 @@ export function scoreAndDeduplicateHeroCandidates(
         null,
       year:
         row.year ?? matchedTrending?.item.year ?? matchedCalendar?.item.year ?? null,
+      countryOfOrigin:
+        normalizeCountryOfOrigin(row.countryOfOrigin) ??
+        matchedTrending?.item.countryOfOrigin ??
+        matchedCalendar?.item.countryOfOrigin ??
+        null,
+      duplicateOfId:
+        row.duplicateOfId ??
+        matchedTrending?.item.duplicateOfId ??
+        matchedCalendar?.item.duplicateOfId ??
+        null,
       trailerId:
         row.trailerId?.trim() ||
         matchedTrending?.item.trailerId ||
@@ -1434,7 +1469,7 @@ export async function queryCatalogCandidatesFromNeon(
     }
   }
 
-  const rows = await sql.query<HeroCatalogAnimeCandidateRow>(
+  const buildQuery = (includeVisibilityCols: boolean) =>
     `WITH ep_stats AS (
        SELECT
          e."animeId",
@@ -1491,6 +1526,13 @@ export async function queryCatalogCandidatesFromNeon(
        a."year",
        a."season",
        a."genres",
+       ${
+         includeVisibilityCols
+           ? `a."country_of_origin" AS "countryOfOrigin",
+       a."duplicate_of_id" AS "duplicateOfId",`
+           : `NULL::text AS "countryOfOrigin",
+       NULL::text AS "duplicateOfId",`
+       }
        a."trailerId",
        COALESCE(a."hidden", false) AS "hidden",
        a."archived_at" AS "archivedAt",
@@ -1548,18 +1590,35 @@ export async function queryCatalogCandidatesFromNeon(
        OR (a."anilistId" IS NOT NULL AND a."anilistId" = ANY($6::int[]))
        OR (a."malId" IS NOT NULL AND a."malId" = ANY($7::int[]))
        OR (a."kitsuId" IS NOT NULL AND a."kitsuId" = ANY($8::int[]))
-     );`,
-    [
-      todayRange.startTimestamp,
-      todayRange.endTimestamp,
-      todayWeekday,
-      CALENDAR_TIMEZONE,
-      Array.from(trendingCatalogIds),
-      Array.from(trendingAnilistIds),
-      Array.from(trendingMalIds),
-      Array.from(trendingKitsuIds),
-    ],
-  );
+     );`;
+
+  const params = [
+    todayRange.startTimestamp,
+    todayRange.endTimestamp,
+    todayWeekday,
+    CALENDAR_TIMEZONE,
+    Array.from(trendingCatalogIds),
+    Array.from(trendingAnilistIds),
+    Array.from(trendingMalIds),
+    Array.from(trendingKitsuIds),
+  ];
+
+  let rows: HeroCatalogAnimeCandidateRow[] = [];
+  try {
+    rows = await sql.query<HeroCatalogAnimeCandidateRow>(
+      buildQuery(true),
+      params,
+    );
+  } catch (err: unknown) {
+    if ((err as { code?: string } | null)?.code === "42703") {
+      rows = await sql.query<HeroCatalogAnimeCandidateRow>(
+        buildQuery(false),
+        params,
+      );
+    } else {
+      throw err;
+    }
+  }
 
   return Array.isArray(rows) ? rows : [];
 }
@@ -1609,6 +1668,29 @@ function isCurrentHeroPoolPayload(
   );
 }
 
+async function resolveSafeHeroVisibilityContext(): Promise<VisibilityIndexContext> {
+  try {
+    return await getServerPublicVisibilityContext();
+  } catch {
+    return EMPTY_PUBLIC_VISIBILITY_CONTEXT;
+  }
+}
+
+function filterHeroPoolPayload(
+  pool: HeroBannerPoolPayload | null | undefined,
+  visCtx: VisibilityIndexContext,
+): HeroBannerPoolPayload | null {
+  if (!pool || !Array.isArray(pool.items)) return null;
+  const filteredItems = pool.items.filter(
+    (item) => item?.anime && !isPubliclyBlockedAnime(item.anime, visCtx),
+  );
+  if (filteredItems.length === 0) return null;
+  return {
+    ...pool,
+    items: filteredItems,
+  };
+}
+
 export async function getHomeHeroPoolWithDeps(
   deps: HomeHeroDeps = defaultHomeHeroDeps,
   nowMs = Date.now(),
@@ -1622,7 +1704,12 @@ export async function getHomeHeroPoolWithDeps(
     if (!isCurrentHeroPoolPayload(ramHeroPool.payload, currentEnv, currentDayKey)) {
       ramHeroPool = null;
     } else if (nowMs - ramHeroPool.timestamp < HERO_RAM_CACHE_TTL_MS) {
-      return ramHeroPool.payload;
+      const visCtx = await resolveSafeHeroVisibilityContext();
+      const filteredRam = filterHeroPoolPayload(ramHeroPool.payload, visCtx);
+      if (filteredRam) {
+        return filteredRam;
+      }
+      ramHeroPool = null;
     }
   }
 
@@ -1636,17 +1723,22 @@ export async function getHomeHeroPoolWithDeps(
 
   const currentFlight = (async (): Promise<HeroBannerPoolPayload | null> => {
     try {
+      const visCtx = await resolveSafeHeroVisibilityContext();
+
       // 3. Consulta Upstash Redis antes de ir ao Neon (valida versão, ambiente e dia atual)
       const redisRead = await deps.getRedisPool();
       if (
         redisRead.status === "hit" &&
         isCurrentHeroPoolPayload(redisRead.payload, currentEnv, currentDayKey)
       ) {
-        if (requestEpoch === heroPoolEpoch) {
-          staleHeroPool = redisRead.payload;
-          ramHeroPool = { payload: redisRead.payload, timestamp: Date.now() };
+        const filteredRedis = filterHeroPoolPayload(redisRead.payload, visCtx);
+        if (filteredRedis) {
+          if (requestEpoch === heroPoolEpoch) {
+            staleHeroPool = filteredRedis;
+            ramHeroPool = { payload: filteredRedis, timestamp: Date.now() };
+          }
+          return filteredRedis;
         }
-        return redisRead.payload;
       }
 
       const activeFence =
@@ -1673,6 +1765,7 @@ export async function getHomeHeroPoolWithDeps(
         trendingItems,
         nowMs,
         calendarItems,
+        visCtx,
       );
 
       if (scored.length === 0) {
@@ -1680,7 +1773,7 @@ export async function getHomeHeroPoolWithDeps(
           staleHeroPool = null;
           return null;
         }
-        return staleHeroPool;
+        return filterHeroPoolPayload(staleHeroPool, visCtx);
       }
 
       const pool = buildHeroBannerPool(scored, nowMs);
@@ -1689,7 +1782,7 @@ export async function getHomeHeroPoolWithDeps(
           staleHeroPool = null;
           return null;
         }
-        return staleHeroPool;
+        return filterHeroPoolPayload(staleHeroPool, visCtx);
       }
 
       if (requestEpoch === heroPoolEpoch) {
@@ -1708,7 +1801,8 @@ export async function getHomeHeroPoolWithDeps(
         staleHeroPool = null;
         return null;
       }
-      return staleHeroPool;
+      const visCtx = await resolveSafeHeroVisibilityContext();
+      return filterHeroPoolPayload(staleHeroPool, visCtx);
     } finally {
       if (heroPoolInFlight === flightRef) {
         heroPoolInFlight = null;

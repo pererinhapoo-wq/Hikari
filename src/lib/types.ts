@@ -100,6 +100,8 @@ export type SlimAnime = {
   firstAvailableEpisodeNumber?: number;
   recentBadges?: AnimeRecentBadges;
   isDubbed?: boolean;
+  countryOfOrigin?: string | null;
+  duplicateOfId?: string | null;
 };
 
 export type AnimeVoiceActor = {
@@ -203,6 +205,8 @@ export type LocalAnime = {
   serverCatalogId?: string;
   hasEpisode?: boolean;
   recentBadges?: AnimeRecentBadges;
+  countryOfOrigin?: string | null;
+  duplicateOfId?: string | null;
 };
 
 export type HomeCatalog = {
@@ -322,6 +326,8 @@ export function localToAnime(local: LocalAnime): Anime {
     serverCatalogId: local.serverCatalogId,
     hasEpisode: local.hasEpisode ?? hasLocalPublishedEpisodes(normalizedSeasons),
     ...(local.recentBadges ? { recentBadges: normalizeAnimeRecentBadges(local.recentBadges) } : {}),
+    ...(local.countryOfOrigin !== undefined ? { countryOfOrigin: local.countryOfOrigin } : {}),
+    ...(local.duplicateOfId !== undefined ? { duplicateOfId: local.duplicateOfId } : {}),
   };
 }
 
@@ -629,5 +635,13 @@ export function animeToLocal(
         : existing?.recentBadges
           ? normalizeAnimeRecentBadges(existing.recentBadges)
           : undefined,
+    countryOfOrigin:
+      typeof fullAnime.countryOfOrigin === "string" && fullAnime.countryOfOrigin.trim()
+        ? fullAnime.countryOfOrigin.trim().toUpperCase()
+        : (existing?.countryOfOrigin ?? undefined),
+    duplicateOfId:
+      typeof fullAnime.duplicateOfId === "string" && fullAnime.duplicateOfId.trim()
+        ? fullAnime.duplicateOfId.trim()
+        : (existing?.duplicateOfId ?? undefined),
   };
 }

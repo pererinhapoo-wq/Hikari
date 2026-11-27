@@ -76,13 +76,80 @@ import {
   type RedisScopedFence,
 } from "@/lib/redis";
 
+import {
+  EMPTY_PUBLIC_VISIBILITY_CONTEXT,
+  filterPublicAnimes,
+  isConfirmedDonghuaOrigin,
+  isPubliclyBlockedAnime,
+  isPubliclyBlockedId,
+  normalizeCountryOfOrigin,
+  type VisibilityIndexContext,
+} from "@/lib/public-visibility";
+
 const ANILIST = "https://graphql.anilist.co";
 const JIKAN = "https://api.jikan.moe/v4";
 const KITSU = "https://kitsu.io/api/edge";
 
+async function getSafePublicVisibilityCtx(): Promise<VisibilityIndexContext> {
+  try {
+    const { getServerPublicVisibilityContext } = await import(
+      "@/lib/public-visibility.server"
+    );
+    return await getServerPublicVisibilityContext();
+  } catch {
+    return EMPTY_PUBLIC_VISIBILITY_CONTEXT;
+  }
+}
+
+function filterSeasonNavigationByVisibility(
+  navigation: SeasonNavigation | null | undefined,
+  visCtx: VisibilityIndexContext,
+): SeasonNavigation | undefined {
+  if (!navigation) return undefined;
+  const items = (navigation.items ?? []).filter(
+    (item) => item?.id && !isPubliclyBlockedId(item.id, visCtx),
+  );
+  const previous =
+    navigation.previous?.id && !isPubliclyBlockedId(navigation.previous.id, visCtx)
+      ? navigation.previous
+      : undefined;
+  const next =
+    navigation.next?.id && !isPubliclyBlockedId(navigation.next.id, visCtx)
+      ? navigation.next
+      : undefined;
+  return {
+    items,
+    previous,
+    next,
+  };
+}
+
+function filterPublicAnimeDetail<
+  T extends Anime & { seasonNavigation?: SeasonNavigation },
+>(
+  detail: T | null | undefined,
+  visCtx: VisibilityIndexContext,
+): T | null {
+  if (!detail) return null;
+  if (isPubliclyBlockedAnime(detail, visCtx)) return null;
+  return {
+    ...detail,
+    recommendations: filterPublicAnimes(detail.recommendations, visCtx),
+    ...(detail.seasonNavigation
+      ? {
+          seasonNavigation: filterSeasonNavigationByVisibility(
+            detail.seasonNavigation,
+            visCtx,
+          ),
+        }
+      : {}),
+  };
+}
+
 const CARD_FIELDS = `
   id
   idMal
+  countryOfOrigin
   isAdult
   tags {
     name
@@ -279,6 +346,7 @@ type AniMedia = {
       node?: {
         id: number;
         idMal?: number | null;
+        countryOfOrigin?: string | null;
         type?: string | null;
         format?: string | null;
         status?: string | null;
@@ -1338,6 +1406,11 @@ function mapAniSlim(
 
     year:
       media.seasonYear ?? null,
+
+    countryOfOrigin:
+      normalizeCountryOfOrigin(
+        media.countryOfOrigin,
+      ),
 
     trailerId:
       trailerFromAni(
@@ -3548,6 +3621,7 @@ async function fetchAniMediaByMalId(
               node {
                 id
                 idMal
+                countryOfOrigin
                 type
                 format
                 status
@@ -3586,6 +3660,7 @@ type SeasonGraphEdge = {
   node?: {
     id: number;
     idMal?: number | null;
+    countryOfOrigin?: string | null;
     type?: string | null;
     format?: string | null;
     status?: string | null;
@@ -3602,6 +3677,7 @@ type SeasonGraphEdge = {
 
 type SeasonGraphNode = {
   id: number;
+  countryOfOrigin?: string | null;
   type?: string | null;
   format?: string | null;
   status?: string | null;
@@ -3720,6 +3796,7 @@ async function fetchAniSeasonNodesBatch(
         (id, idx) => `
         m${idx}: Media(id: ${id}, type: ANIME) {
           id
+          countryOfOrigin
           type
           format
           status
@@ -3739,6 +3816,7 @@ async function fetchAniSeasonNodesBatch(
               relationType
               node {
                 id
+                countryOfOrigin
                 type
                 format
                 status
@@ -3765,6 +3843,7 @@ async function fetchAniSeasonNodesBatch(
         string,
         | {
             id: number;
+            countryOfOrigin?: string | null;
             type?: string | null;
             format?: string | null;
             status?: string | null;
@@ -3787,6 +3866,7 @@ async function fetchAniSeasonNodesBatch(
       if (!entry?.id) continue;
       collected.push({
         id: entry.id,
+        countryOfOrigin: entry.countryOfOrigin ?? null,
         type: entry.type,
         format: entry.format,
         status: entry.status,
@@ -3926,6 +4006,7 @@ async function computeSeasonNavigationForMedia(
 
   nodesById.set(media.id, {
     id: media.id,
+    countryOfOrigin: media.countryOfOrigin ?? null,
     type: "ANIME",
     format: media.format,
     status: media.status,
@@ -3945,6 +4026,7 @@ async function computeSeasonNavigationForMedia(
       if (!nodesById.has(neighbor.id)) {
         nodesById.set(neighbor.id, {
           id: neighbor.id,
+          countryOfOrigin: neighbor.countryOfOrigin ?? null,
           type: neighbor.type ?? "ANIME",
           format: neighbor.format,
           status: neighbor.status,
@@ -4083,7 +4165,13 @@ async function computeSeasonNavigationForMedia(
     keptNodes = releasedNodes;
   }
 
-  const orderedNodes = orderFranchiseSeasonNodes(nodesById, keptNodes);
+  const orderedNodesAll = orderFranchiseSeasonNodes(nodesById, keptNodes);
+  const orderedNodes = orderedNodesAll.filter(
+    (node) =>
+      node.id === media.id ||
+      (!isConfirmedDonghuaOrigin(node.countryOfOrigin) &&
+        !isPubliclyBlockedId(node.id)),
+  );
 
   const items: SeasonNavigationItem[] = orderedNodes.map((node) => ({
     id: String(node.id),
@@ -4165,6 +4253,7 @@ function buildDirectSeasonNavigation(
   const nodesById = new Map<number, SeasonGraphNode>();
   nodesById.set(media.id, {
     id: media.id,
+    countryOfOrigin: media.countryOfOrigin ?? null,
     type: "ANIME",
     format: media.format,
     status: media.status,
@@ -4181,6 +4270,7 @@ function buildDirectSeasonNavigation(
     if (!nodesById.has(neighbor.id)) {
       nodesById.set(neighbor.id, {
         id: neighbor.id,
+        countryOfOrigin: neighbor.countryOfOrigin ?? null,
         type: neighbor.type ?? "ANIME",
         format: neighbor.format,
         status: neighbor.status,
@@ -4218,7 +4308,12 @@ function buildDirectSeasonNavigation(
     keptNodes = releasedNodes;
   }
 
-  const orderedNodes = orderFranchiseSeasonNodes(nodesById, keptNodes);
+  const orderedNodes = orderFranchiseSeasonNodes(nodesById, keptNodes).filter(
+    (node) =>
+      node.id === media.id ||
+      (!isConfirmedDonghuaOrigin(node.countryOfOrigin) &&
+        !isPubliclyBlockedId(node.id)),
+  );
 
   const items: SeasonNavigationItem[] = orderedNodes.map((node) => ({
     id: String(node.id),
@@ -4338,7 +4433,7 @@ function mapAniFull(
     characters,
     staff,
     originSource: media.source ?? null,
-    countryOfOrigin: media.countryOfOrigin ?? null,
+    countryOfOrigin: normalizeCountryOfOrigin(media.countryOfOrigin),
     startDate: media.startDate ?? null,
     endDate: media.endDate ?? null,
     rating: media.isAdult ? "18+ (Adulto)" : null,
@@ -4369,7 +4464,9 @@ function mapAniFull(
         ],
 
         previous:
-          previousRelation?.node?.id
+          previousRelation?.node?.id &&
+          !isConfirmedDonghuaOrigin(previousRelation.node.countryOfOrigin) &&
+          !isPubliclyBlockedId(previousRelation.node.id)
             ? {
                 id: String(
                   previousRelation.node.id,
@@ -4384,7 +4481,9 @@ function mapAniFull(
             : undefined,
 
         next:
-          nextRelation?.node?.id
+          nextRelation?.node?.id &&
+          !isConfirmedDonghuaOrigin(nextRelation.node.countryOfOrigin) &&
+          !isPubliclyBlockedId(nextRelation.node.id)
             ? {
                 id: String(
                   nextRelation.node.id,
@@ -4411,7 +4510,14 @@ function mapAniFull(
         (
           item,
         ): item is AniMedia =>
-          Boolean(item?.id),
+          Boolean(item?.id) &&
+          !isConfirmedDonghuaOrigin(item?.countryOfOrigin) &&
+          !isPubliclyBlockedAnime({
+            id: item?.id,
+            anilistId: item?.id,
+            idMal: item?.idMal,
+            countryOfOrigin: item?.countryOfOrigin,
+          }),
       )
       .slice(0, 12)
       .map(mapAniSlim),
@@ -4435,6 +4541,8 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
 
   const releases: SlimAnime[] =
     [];
+
+  const visCtx = await getSafePublicVisibilityCtx();
 
   for (
     let page = 1;
@@ -4500,6 +4608,21 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
 
       if (
         !isHentaiAnime(media)
+      ) {
+        continue;
+      }
+
+      if (
+        isConfirmedDonghuaOrigin(media.countryOfOrigin) ||
+        isPubliclyBlockedAnime(
+          {
+            id: media.id,
+            anilistId: media.id,
+            idMal: media.idMal,
+            countryOfOrigin: media.countryOfOrigin,
+          },
+          visCtx,
+        )
       ) {
         continue;
       }
@@ -4581,6 +4704,7 @@ async function fetchRecentReleasesFromAni(): Promise<
       },
     );
 
+  const visCtx = await getSafePublicVisibilityCtx();
   const seen =
     new Set<number>();
 
@@ -4601,6 +4725,21 @@ async function fetchRecentReleasesFromAni(): Promise<
 
     if (
       isAdultAnime(media)
+    ) {
+      continue;
+    }
+
+    if (
+      isConfirmedDonghuaOrigin(media.countryOfOrigin) ||
+      isPubliclyBlockedAnime(
+        {
+          id: media.id,
+          anilistId: media.id,
+          idMal: media.idMal,
+          countryOfOrigin: media.countryOfOrigin,
+        },
+        visCtx,
+      )
     ) {
       continue;
     }
@@ -4760,28 +4899,39 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
     { season, year },
   );
 
-  const trending = (data.trending.media ?? []).filter(
-    (anime) => !isAdultAnime(anime),
+  const visCtx = await getSafePublicVisibilityCtx();
+
+  const trending = filterPublicAnimes(
+    (data.trending.media ?? [])
+      .filter((anime) => !isAdultAnime(anime))
+      .map(mapAniSlim),
+    visCtx,
   );
 
-  const popular = (data.popular.media ?? []).filter(
-    (anime) => !isAdultAnime(anime),
+  const popular = filterPublicAnimes(
+    (data.popular.media ?? [])
+      .filter((anime) => !isAdultAnime(anime))
+      .map(mapAniSlim),
+    visCtx,
   );
 
-  const seasonItems = (data.season?.media ?? []).filter(
-    (anime) => !isAdultAnime(anime),
+  const seasonItems = filterPublicAnimes(
+    (data.season?.media ?? [])
+      .filter((anime) => !isAdultAnime(anime))
+      .map(mapAniSlim),
+    visCtx,
   );
 
   return {
     todaySchedule: [],
 
-    trending: trending.map(mapAniSlim),
+    trending,
 
-    popular: popular.map(mapAniSlim),
+    popular,
 
     top: [],
 
-    season: seasonItems.map(mapAniSlim),
+    season: seasonItems,
 
     releases: [],
 
@@ -4820,8 +4970,15 @@ async function fetchHomeFromJikan(): Promise<HomeCatalog> {
     ).catch(() => ({ data: [] })),
   ]);
 
-  const seasonItems = (now.data ?? []).map(mapJikanSlim);
-  const popularItems = (popular.data ?? []).map(mapJikanSlim);
+  const visCtx = await getSafePublicVisibilityCtx();
+  const seasonItems = filterPublicAnimes(
+    (now.data ?? []).map(mapJikanSlim),
+    visCtx,
+  );
+  const popularItems = filterPublicAnimes(
+    (popular.data ?? []).map(mapJikanSlim),
+    visCtx,
+  );
 
   return {
     todaySchedule: [],
@@ -4989,8 +5146,15 @@ async function fetchHomeFromKitsu(): Promise<HomeCatalog> {
     ),
   ]);
 
-  const trendingItems = (trending.data ?? []).map(mapKitsuSlim);
-  const popularItems = (popular.data ?? []).map(mapKitsuSlim);
+  const visCtx = await getSafePublicVisibilityCtx();
+  const trendingItems = filterPublicAnimes(
+    (trending.data ?? []).map(mapKitsuSlim),
+    visCtx,
+  );
+  const popularItems = filterPublicAnimes(
+    (popular.data ?? []).map(mapKitsuSlim),
+    visCtx,
+  );
 
   const catalog: HomeCatalog = {
     todaySchedule: [],
@@ -5022,10 +5186,12 @@ export const fetchSeasonSection = createServerFn({
   const items = await withCache<SlimAnime[]>(
     cacheKey,
     async () => {
+      const visCtx = await getSafePublicVisibilityCtx();
+
       // 2. Tenta Redis compartilhado (somente lista válida do AniList)
       const redisItems = await getRedisHomeSeason(year, season);
       if (redisItems && redisItems.length > 0) {
-        return redisItems;
+        return filterPublicAnimes(redisItems, visCtx);
       }
 
       // 3. Tenta AniList (fonte principal)
@@ -5048,9 +5214,12 @@ export const fetchSeasonSection = createServerFn({
           { season, year },
         );
 
-        const items = (data.season?.media ?? [])
-          .filter((anime) => !isAdultAnime(anime))
-          .map(mapAniSlim);
+        const items = filterPublicAnimes(
+          (data.season?.media ?? [])
+            .filter((anime) => !isAdultAnime(anime))
+            .map(mapAniSlim),
+          visCtx,
+        );
 
         if (items.length > 0) {
           scheduleRedisBackgroundWrite(
@@ -5068,7 +5237,10 @@ export const fetchSeasonSection = createServerFn({
         const jikanRes = await jikanFetch<{ data?: JikanAnime[] }>(
           "/seasons/now?limit=18",
         );
-        const jikanItems = (jikanRes.data ?? []).map(mapJikanSlim);
+        const jikanItems = filterPublicAnimes(
+          (jikanRes.data ?? []).map(mapJikanSlim),
+          visCtx,
+        );
         if (jikanItems.length > 0) {
           return jikanItems;
         }
@@ -5080,7 +5252,10 @@ export const fetchSeasonSection = createServerFn({
         const kitsuRes = await kitsuFetch<{ data?: KitsuAnimeItem[] }>(
           `/anime?filter[season]=${season.toLowerCase()}&filter[seasonYear]=${year}&sort=-userCount&page[limit]=18`,
         );
-        const kitsuItems = (kitsuRes.data ?? []).map(mapKitsuSlim);
+        const kitsuItems = filterPublicAnimes(
+          (kitsuRes.data ?? []).map(mapKitsuSlim),
+          visCtx,
+        );
         if (kitsuItems.length > 0) {
           return kitsuItems;
         }
@@ -5088,14 +5263,14 @@ export const fetchSeasonSection = createServerFn({
         console.warn("[Hikari] Falha ao carregar animes da temporada de Kitsu:", err);
       }
 
-      return FALLBACK_ANIMES.slice(2, 18);
+      return filterPublicAnimes(FALLBACK_ANIMES.slice(2, 18), visCtx);
     },
     {
       shouldCache: (items) =>
         Array.isArray(items) &&
         items.length > 0 &&
         items.some((item) => item?.source !== "cache"),
-      fallback: () => FALLBACK_ANIMES.slice(2, 18),
+      fallback: () => filterPublicAnimes(FALLBACK_ANIMES.slice(2, 18)),
       cacheFallback: false,
       freshTtl: 15 * 60 * 1000,
       swrWindow: 60 * 60 * 1000,
@@ -5109,7 +5284,8 @@ export const fetchSeasonSection = createServerFn({
     const overlaid = await applyDbCatalogOverlayToSlimList(items);
     return sortByHasEpisodeFirst(overlaid);
   } catch {
-    return sortByHasEpisodeFirst(items);
+    const visCtx = await getSafePublicVisibilityCtx();
+    return sortByHasEpisodeFirst(filterPublicAnimes(items, visCtx));
   }
 });
 
@@ -5119,12 +5295,16 @@ async function fetchBrowseFromKitsu(
   genre?: string,
   seasonParam?: string,
   yearParam?: number,
+  options?: { allowBlocked?: boolean },
 ): Promise<SearchResult> {
   const current = currentAnimeSeason();
   const targetSeason = (seasonParam || current.season).toLowerCase();
   const targetYear = yearParam || current.year;
   const limit = 20;
   const offset = Math.max(0, (page - 1) * limit);
+  const visCtx = options?.allowBlocked
+    ? EMPTY_PUBLIC_VISIBILITY_CONTEXT
+    : await getSafePublicVisibilityCtx();
 
   let path = `/anime?sort=-userCount&page[limit]=${limit}&page[offset]=${offset}`;
   if (section === "top") {
@@ -5149,7 +5329,7 @@ async function fetchBrowseFromKitsu(
 
     const rawItems = (json.data ?? []).map(mapKitsuSlim);
     const expectedSeason = targetSeason.toUpperCase();
-    const items =
+    const scopedItems =
       section === "season"
         ? rawItems.filter(
             (item) =>
@@ -5157,6 +5337,9 @@ async function fetchBrowseFromKitsu(
               (!item.year || item.year === targetYear),
           )
         : rawItems;
+    const items = options?.allowBlocked
+      ? scopedItems
+      : filterPublicAnimes(scopedItems, visCtx);
 
     return {
       items,
@@ -5184,7 +5367,9 @@ async function fetchBrowseFromKitsu(
     }
 
     return {
-      items: fallbackItems,
+      items: options?.allowBlocked
+        ? fallbackItems
+        : filterPublicAnimes(fallbackItems, visCtx),
       page,
       hasNext: false,
       source: "kitsu",
@@ -5226,10 +5411,20 @@ export const fetchHomeCatalog =
         withCache<HomeCatalog>(
           key,
           async () => {
+            const visCtx = await getSafePublicVisibilityCtx();
+
             // 2. Tenta Redis compartilhado (somente dados base válidos do AniList)
             const redisCatalog = await getRedisHomeCatalog(todayKey);
             if (redisCatalog) {
-              return redisCatalog;
+              return {
+                ...redisCatalog,
+                todaySchedule: filterPublicAnimes(redisCatalog.todaySchedule, visCtx),
+                trending: filterPublicAnimes(redisCatalog.trending, visCtx),
+                popular: filterPublicAnimes(redisCatalog.popular, visCtx),
+                top: filterPublicAnimes(redisCatalog.top, visCtx),
+                season: filterPublicAnimes(redisCatalog.season, visCtx),
+                releases: filterPublicAnimes(redisCatalog.releases, visCtx),
+              };
             }
 
             // 3. Tenta AniList (fonte primária das prateleiras em alta/populares/temporada)
@@ -5289,8 +5484,18 @@ export const fetchHomeCatalog =
             shouldCache: (catalog) =>
               (catalog?.trending?.length ?? 0) > 0 &&
               catalog.source === "anilist",
-            fallback: () =>
-              getEmergencyFallbackCatalog(),
+            fallback: () => {
+              const fallback = getEmergencyFallbackCatalog();
+              return {
+                ...fallback,
+                todaySchedule: filterPublicAnimes(fallback.todaySchedule),
+                trending: filterPublicAnimes(fallback.trending),
+                popular: filterPublicAnimes(fallback.popular),
+                top: filterPublicAnimes(fallback.top),
+                season: filterPublicAnimes(fallback.season),
+                releases: filterPublicAnimes(fallback.releases),
+              };
+            },
             cacheFallback: false,
           },
         ),
@@ -5330,10 +5535,19 @@ export const fetchHomeCatalog =
         };
       } catch (err) {
         console.warn("[Hikari] Falha ao mesclar catálogo do banco na Home:", err);
+        const visCtx = await getSafePublicVisibilityCtx();
         return {
           ...catalog,
-          ...(heroItems.length > 0 ? { heroItems } : {}),
-          emAltaItems,
+          todaySchedule: filterPublicAnimes(catalog.todaySchedule, visCtx),
+          trending: filterPublicAnimes(catalog.trending, visCtx),
+          popular: filterPublicAnimes(catalog.popular, visCtx),
+          top: filterPublicAnimes(catalog.top, visCtx),
+          season: filterPublicAnimes(catalog.season, visCtx),
+          releases: filterPublicAnimes(catalog.releases, visCtx),
+          ...(heroItems.length > 0
+            ? { heroItems: filterPublicAnimes(heroItems, visCtx) }
+            : {}),
+          emAltaItems: filterPublicAnimes(emAltaItems, visCtx),
         };
       }
     },
@@ -5406,6 +5620,7 @@ type SearchRequestParams =
 
 async function searchAni(
   params: SearchRequestParams,
+  options?: { allowBlocked?: boolean },
 ): Promise<SearchResult> {
   const page =
     params.page ?? 1;
@@ -5503,11 +5718,15 @@ async function searchAni(
       },
     );
 
-  const mappedItems = (data.Page.media ?? [])
+  const rawMapped = (data.Page.media ?? [])
     .filter((anime) =>
       params.adult ? isHentaiAnime(anime) : !isAdultAnime(anime),
     )
     .map(mapAniSlim);
+
+  const mappedItems = options?.allowBlocked
+    ? rawMapped
+    : filterPublicAnimes(rawMapped, await getSafePublicVisibilityCtx());
 
   const shouldRankByRelevance =
     !params.sort || params.sort === "SEARCH_MATCH";
@@ -5532,6 +5751,7 @@ async function searchAni(
 
 async function searchJikan(
   params: SearchRequestParams,
+  options?: { allowBlocked?: boolean },
 ): Promise<SearchResult> {
   const page =
     params.page ?? 1;
@@ -5588,13 +5808,14 @@ async function searchJikan(
       `/anime?${query.toString()}`,
     );
 
+  const rawItems = (json.data ?? []).map(mapJikanSlim);
+  const filtered = options?.allowBlocked
+    ? rawItems
+    : filterPublicAnimes(rawItems, await getSafePublicVisibilityCtx());
+
   return {
     items: rankSearchResults(
-      (
-        json.data ?? []
-      ).map(
-        mapJikanSlim,
-      ),
+      filtered,
       params.q,
     ),
 
@@ -5612,13 +5833,14 @@ async function searchJikan(
 
 async function searchKitsu(
   params: SearchRequestParams,
+  options?: { allowBlocked?: boolean },
 ): Promise<SearchResult> {
   const page = params.page ?? 1;
   const limit = 20;
   const offset = Math.max(0, (page - 1) * limit);
 
   if (!params.q) {
-    return fetchBrowseFromKitsu("popular", page, params.genre);
+    return fetchBrowseFromKitsu("popular", page, params.genre, undefined, undefined, options);
   }
 
   let path = `/anime?filter[text]=${encodeURIComponent(params.q)}&page[limit]=${limit}&page[offset]=${offset}`;
@@ -5631,8 +5853,12 @@ async function searchKitsu(
       data?: KitsuAnimeItem[];
     }>(path);
 
+    const rawItems = (json.data ?? []).map(mapKitsuSlim);
+    const filtered = options?.allowBlocked
+      ? rawItems
+      : filterPublicAnimes(rawItems, await getSafePublicVisibilityCtx());
     const items = rankSearchResults(
-      (json.data ?? []).map(mapKitsuSlim),
+      filtered,
       params.q,
     );
 
@@ -5654,6 +5880,7 @@ async function searchKitsu(
 
 async function searchRelaxed(
   params: SearchRequestParams,
+  options?: { allowBlocked?: boolean },
 ): Promise<SlimAnime[]> {
   const original = params.q?.trim() ?? "";
   const lowerOriginal = original.toLowerCase();
@@ -5718,18 +5945,21 @@ async function searchRelaxed(
 
   let aniItems: SlimAnime[] = [];
   try {
-    const aniRes = await searchAni(searchParams);
+    const aniRes = await searchAni(searchParams, options);
     aniItems = aniRes.items;
     if (aniItems.length >= 3) {
-      return rankSearchResults(aniItems, original);
+      const ranked = rankSearchResults(aniItems, original);
+      return options?.allowBlocked
+        ? ranked
+        : filterPublicAnimes(ranked, await getSafePublicVisibilityCtx());
     }
   } catch {
     aniItems = [];
   }
 
   const fallbackResults = await Promise.allSettled([
-    searchJikan(searchParams),
-    searchKitsu(searchParams),
+    searchJikan(searchParams, options),
+    searchKitsu(searchParams, options),
   ]);
 
   const jikanItems =
@@ -5742,13 +5972,16 @@ async function searchRelaxed(
       ? fallbackResults[1].value.items
       : [];
 
-  return rankSearchResults(
+  const ranked = rankSearchResults(
     mergeSearchItems(
       mergeSearchItems(aniItems, jikanItems),
       kitsuItems,
     ),
     original,
   );
+  return options?.allowBlocked
+    ? ranked
+    : filterPublicAnimes(ranked, await getSafePublicVisibilityCtx());
 }
 
 function isStrongSearchResult(
@@ -5803,6 +6036,7 @@ async function fetchMalPrefixItems(query: string): Promise<MalPrefixItem[]> {
 async function resolveMalIdsViaAniList(
   malIds: number[],
   params: SearchRequestParams,
+  options?: { allowBlocked?: boolean },
 ): Promise<SlimAnime[]> {
   if (malIds.length === 0) return [];
 
@@ -5847,11 +6081,14 @@ async function resolveMalIdsViaAniList(
       },
     );
 
-    return (data.Page.media ?? [])
+    const mapped = (data.Page.media ?? [])
       .filter((anime) =>
         params.adult ? isHentaiAnime(anime) : !isAdultAnime(anime),
       )
       .map(mapAniSlim);
+    return options?.allowBlocked
+      ? mapped
+      : filterPublicAnimes(mapped, await getSafePublicVisibilityCtx());
   } catch {
     return [];
   }
@@ -5922,6 +6159,7 @@ function sortByExplicitSearchOption(
 
 async function searchDirectFast(
   params: SearchRequestParams,
+  options?: { allowBlocked?: boolean },
 ): Promise<{
   items: SlimAnime[];
   hasNext: boolean;
@@ -5932,10 +6170,11 @@ async function searchDirectFast(
     Boolean(params.q?.trim()) && (params.page ?? 1) === 1 && !params.adult;
   const shouldRankByRelevance =
     !params.sort || params.sort === "SEARCH_MATCH";
+  const allowBlocked = Boolean(options?.allowBlocked);
 
   // 1. Consulta prioritariamente o AniList em paralelo com busca de prefixo MAL e catálogo local na página 1
   const [aniSettled, malPrefixItems, localCatalogItems] = await Promise.all([
-    searchAni(params).then(
+    searchAni(params, options).then(
       (value) => ({ ok: true as const, value }),
       () => ({ ok: false as const, value: null }),
     ),
@@ -5943,7 +6182,13 @@ async function searchDirectFast(
       ? fetchMalPrefixItems(params.q!)
       : Promise.resolve([] as MalPrefixItem[]),
     isFirstPageTextSearch && params.q
-      ? import("@/lib/catalog-server-overlay.server").then((m) => m.searchLocalCatalogAnime(params.q!)).catch(() => [])
+      ? import("@/lib/catalog-server-overlay.server")
+          .then((m) =>
+            m.searchLocalCatalogAnime(params.q!, 12, {
+              includeBlocked: allowBlocked,
+            }),
+          )
+          .catch(() => [])
       : Promise.resolve([] as SlimAnime[]),
   ]);
 
@@ -5964,7 +6209,7 @@ async function searchDirectFast(
       .filter((id) => !existingMalIds.has(id));
 
     if (missingMalIds.length > 0) {
-      prefixResolvedItems = await resolveMalIdsViaAniList(missingMalIds, params);
+      prefixResolvedItems = await resolveMalIdsViaAniList(missingMalIds, params, options);
 
       // Se o AniList não resolveu os itens e não há filtros estruturais incompatíveis,
       // usa os próprios itens do prefixo MAL para nunca perder a correspondência parcial.
@@ -5982,7 +6227,14 @@ async function searchDirectFast(
     }
   }
 
-  const combinedAni = mergeSearchItems(existingAniItems, prefixResolvedItems);
+  const visCtx = allowBlocked
+    ? EMPTY_PUBLIC_VISIBILITY_CONTEXT
+    : await getSafePublicVisibilityCtx();
+
+  const rawCombinedAni = mergeSearchItems(existingAniItems, prefixResolvedItems);
+  const combinedAni = allowBlocked
+    ? rawCombinedAni
+    : filterPublicAnimes(rawCombinedAni, visCtx);
 
   // Se já há resultados suficientes do AniList/prefixo, ordena por relevância + popularidade
   if (combinedAni.length >= 3) {
@@ -5998,8 +6250,8 @@ async function searchDirectFast(
 
   // 3. Fallback Jikan + Kitsu apenas quando AniList + prefixo retornaram menos de 3 resultados
   const fallbackSettled = await Promise.allSettled([
-    searchJikan(params),
-    searchKitsu(params),
+    searchJikan(params, options),
+    searchKitsu(params, options),
   ]);
 
   const results: SearchResult[] = [];
@@ -6024,11 +6276,14 @@ async function searchDirectFast(
     throw new Error("Todas as fontes de pesquisa falharam");
   }
 
-  const merged = results.reduce(
+  const rawMerged = results.reduce(
     (accumulated, current) =>
       mergeSearchItems(accumulated, current.items),
     [] as SlimAnime[],
   );
+  const merged = allowBlocked
+    ? rawMerged
+    : filterPublicAnimes(rawMerged, visCtx);
 
   const primaryWithItems = results.find((r) => r.items.length > 0);
 
@@ -6045,177 +6300,173 @@ async function searchDirectFast(
   };
 }
 
-export const searchCatalog =
-  createServerFn({
-    method: "GET",
-  })
-    .validator(
-      searchSchema,
-    )
-    .handler(
-      async ({
-        data,
-      }) => {
-        const normalizedData: SearchRequestParams = {
-          q: data.q?.trim() || undefined,
-          genre: data.genre?.trim() || undefined,
-          year: data.year?.trim() || undefined,
-          format: data.format?.trim() || undefined,
-          status: data.status?.trim() || undefined,
-          sort: data.sort?.trim() || undefined,
-          page: data.page ?? 1,
-          adult: data.adult ? true : undefined,
-        };
+async function runSearchCatalogQuery(
+  normalizedData: SearchRequestParams,
+  options?: { allowBlocked?: boolean },
+): Promise<SearchResult> {
+  const allowBlocked = Boolean(options?.allowBlocked);
+  const q = normalizedData.q ?? "";
 
-        const key = `search:v5:${JSON.stringify({
-          ...normalizedData,
-          q: normalizedData.q?.toLowerCase(),
-        })}`;
+  if (q) {
+    const direct = await searchDirectFast(normalizedData, options);
+    let items = direct.items;
 
-        const result = await withCache<SearchResult>(
-          key,
-          async () => {
-            const q =
-              normalizedData.q ?? "";
+    // Se o AniList já retornou 3 ou mais resultados válidos,
+    // não executa busca alternativa (searchRelaxed).
+    if (direct.aniCount < 3) {
+      const hasStrongMatch = isStrongSearchResult(items, q);
 
-            if (q) {
-              const direct =
-                await searchDirectFast(
-                  normalizedData,
-                );
-
-              let items = direct.items;
-
-              // Se o AniList já retornou 3 ou mais resultados válidos,
-              // não executa busca alternativa (searchRelaxed).
-              if (direct.aniCount < 3) {
-                const hasStrongMatch =
-                  isStrongSearchResult(
-                    items,
-                    q,
-                  );
-
-                if (!hasStrongMatch) {
-                  try {
-                    const relaxed =
-                      await searchRelaxed(
-                        normalizedData,
-                      );
-
-                    items =
-                      rankSearchResults(
-                        mergeSearchItems(
-                          items,
-                          relaxed,
-                        ),
-                        q,
-                      );
-                  } catch {
-                    // Mantém os resultados diretos já encontrados.
-                  }
-                }
-              }
-
-              return {
-                items: items.slice(0, 24),
-                page: normalizedData.page ?? 1,
-                hasNext: direct.hasNext,
-                source: direct.source,
-              };
-            }
-
-            try {
-              const aniResult =
-                await searchAni(
-                  normalizedData,
-                );
-
-              if (
-                aniResult.items.length >= 3 ||
-                normalizedData.adult
-              ) {
-                return aniResult;
-              }
-
-              const [jikanRes, kitsuRes] =
-                await Promise.allSettled([
-                  searchJikan(normalizedData),
-                  searchKitsu(normalizedData),
-                ]);
-
-              const jikanItems =
-                jikanRes.status === "fulfilled"
-                  ? jikanRes.value.items
-                  : [];
-              const kitsuItems =
-                kitsuRes.status === "fulfilled"
-                  ? kitsuRes.value.items
-                  : [];
-
-              const merged = mergeSearchItems(
-                mergeSearchItems(
-                  aniResult.items,
-                  jikanItems,
-                ),
-                kitsuItems,
-              );
-
-              return {
-                items: merged.slice(0, 24),
-                page: normalizedData.page ?? 1,
-                hasNext:
-                  aniResult.hasNext ||
-                  (jikanRes.status === "fulfilled" &&
-                    jikanRes.value.hasNext) ||
-                  (kitsuRes.status === "fulfilled" &&
-                    kitsuRes.value.hasNext),
-                source:
-                  aniResult.items.length > 0
-                    ? "anilist"
-                    : jikanItems.length > 0
-                      ? "jikan"
-                      : "kitsu",
-              };
-            } catch {
-              try {
-                return await searchJikan(
-                  normalizedData,
-                );
-              } catch {
-                return await searchKitsu(
-                  normalizedData,
-                );
-              }
-            }
-          },
-          {
-            shouldCache: (result, stale) =>
-              result.items.length > 0 ||
-              !stale ||
-              stale.items.length === 0,
-            fallback: () => ({
-              items: [],
-              page: normalizedData.page ?? 1,
-              hasNext: false,
-              source: "anilist" as const,
-            }),
-          },
-        );
-
+      if (!hasStrongMatch) {
         try {
-          const { applyDbCatalogOverlayToSlimList } = await import(
-            "@/lib/catalog-server-overlay.server"
-          );
-          const overlaid = await applyDbCatalogOverlayToSlimList(result.items);
-          return {
-            ...result,
-            items: sortByHasEpisodeFirst(overlaid),
-          };
+          const relaxed = await searchRelaxed(normalizedData, options);
+          items = rankSearchResults(mergeSearchItems(items, relaxed), q);
         } catch {
-          return result;
+          // Mantém os resultados diretos já encontrados.
         }
-      },
+      }
+    }
+
+    const finalItems = allowBlocked
+      ? items.slice(0, 24)
+      : filterPublicAnimes(items, await getSafePublicVisibilityCtx()).slice(0, 24);
+
+    return {
+      items: finalItems,
+      page: normalizedData.page ?? 1,
+      hasNext: direct.hasNext,
+      source: direct.source,
+    };
+  }
+
+  try {
+    const aniResult = await searchAni(normalizedData, options);
+
+    if (aniResult.items.length >= 3 || normalizedData.adult) {
+      return aniResult;
+    }
+
+    const [jikanRes, kitsuRes] = await Promise.allSettled([
+      searchJikan(normalizedData, options),
+      searchKitsu(normalizedData, options),
+    ]);
+
+    const jikanItems =
+      jikanRes.status === "fulfilled" ? jikanRes.value.items : [];
+    const kitsuItems =
+      kitsuRes.status === "fulfilled" ? kitsuRes.value.items : [];
+
+    const rawMerged = mergeSearchItems(
+      mergeSearchItems(aniResult.items, jikanItems),
+      kitsuItems,
     );
+    const merged = allowBlocked
+      ? rawMerged
+      : filterPublicAnimes(rawMerged, await getSafePublicVisibilityCtx());
+
+    return {
+      items: merged.slice(0, 24),
+      page: normalizedData.page ?? 1,
+      hasNext:
+        aniResult.hasNext ||
+        (jikanRes.status === "fulfilled" && jikanRes.value.hasNext) ||
+        (kitsuRes.status === "fulfilled" && kitsuRes.value.hasNext),
+      source:
+        aniResult.items.length > 0
+          ? "anilist"
+          : jikanItems.length > 0
+            ? "jikan"
+            : "kitsu",
+    };
+  } catch {
+    try {
+      return await searchJikan(normalizedData, options);
+    } catch {
+      return await searchKitsu(normalizedData, options);
+    }
+  }
+}
+
+export async function executeSearchCatalog(
+  data: z.infer<typeof searchSchema>,
+  options?: { allowBlocked?: boolean },
+): Promise<SearchResult> {
+  const allowBlocked = Boolean(options?.allowBlocked);
+  const normalizedData: SearchRequestParams = {
+    q: data.q?.trim() || undefined,
+    genre: data.genre?.trim() || undefined,
+    year: data.year?.trim() || undefined,
+    format: data.format?.trim() || undefined,
+    status: data.status?.trim() || undefined,
+    sort: data.sort?.trim() || undefined,
+    page: data.page ?? 1,
+    adult: data.adult ? true : undefined,
+  };
+
+  if (allowBlocked) {
+    const rawResult = await runSearchCatalogQuery(normalizedData, {
+      allowBlocked: true,
+    });
+    try {
+      const { applyDbCatalogOverlayToSlimList } = await import(
+        "@/lib/catalog-server-overlay.server"
+      );
+      const overlaid = await applyDbCatalogOverlayToSlimList(rawResult.items, {
+        includeBlocked: true,
+      });
+      return {
+        ...rawResult,
+        items: sortByHasEpisodeFirst(overlaid),
+      };
+    } catch {
+      return rawResult;
+    }
+  }
+
+  const key = `search:v5:${JSON.stringify({
+    ...normalizedData,
+    q: normalizedData.q?.toLowerCase(),
+  })}`;
+
+  const result = await withCache<SearchResult>(
+    key,
+    () => runSearchCatalogQuery(normalizedData, { allowBlocked: false }),
+    {
+      shouldCache: (result, stale) =>
+        result.items.length > 0 || !stale || stale.items.length === 0,
+      fallback: () => ({
+        items: [],
+        page: normalizedData.page ?? 1,
+        hasNext: false,
+        source: "anilist" as const,
+      }),
+    },
+  );
+
+  const visCtx = await getSafePublicVisibilityCtx();
+  const visibleCachedItems = filterPublicAnimes(result.items, visCtx);
+
+  try {
+    const { applyDbCatalogOverlayToSlimList } = await import(
+      "@/lib/catalog-server-overlay.server"
+    );
+    const overlaid = await applyDbCatalogOverlayToSlimList(visibleCachedItems);
+    return {
+      ...result,
+      items: sortByHasEpisodeFirst(overlaid),
+    };
+  } catch {
+    return {
+      ...result,
+      items: visibleCachedItems,
+    };
+  }
+}
+
+export const searchCatalog = createServerFn({
+  method: "GET",
+})
+  .validator(searchSchema)
+  .handler(async ({ data }) => executeSearchCatalog(data));
 
 /*
  * 🔞 CATÁLOGO +18
@@ -6232,7 +6483,7 @@ export const fetchAdultCatalog =
       const key =
         "adult-catalog:v2";
 
-      return withCache<SearchResult & { recentItems?: SlimAnime[] }>(
+      const cached = await withCache<SearchResult & { recentItems?: SlimAnime[] }>(
         key,
         async () => {
           const data =
@@ -6268,7 +6519,8 @@ export const fetchAdultCatalog =
               `,
             );
 
-          const items =
+          const visCtxInner = await getSafePublicVisibilityCtx();
+          const items = filterPublicAnimes(
             (
               data.Page.media ??
               []
@@ -6281,10 +6533,14 @@ export const fetchAdultCatalog =
               )
               .map(
                 mapAniSlim,
-              );
+              ),
+            visCtxInner,
+          );
 
-          const recentItems =
-            await fetchRecentAdultReleasesFromAni().catch(() => []);
+          const recentItems = filterPublicAnimes(
+            await fetchRecentAdultReleasesFromAni().catch(() => []),
+            visCtxInner,
+          );
 
           return {
             items,
@@ -6321,6 +6577,14 @@ export const fetchAdultCatalog =
           cacheFallback: true,
         },
       );
+
+      const visCtx = await getSafePublicVisibilityCtx();
+      const filteredResult: SearchResult & { recentItems?: SlimAnime[] } = {
+        ...cached,
+        items: filterPublicAnimes(cached.items, visCtx),
+        recentItems: filterPublicAnimes(cached.recentItems ?? [], visCtx),
+      };
+      return filteredResult;
     },
   );
 
@@ -6405,11 +6669,24 @@ export const fetchAdultTags =
       const key =
         "adult-tags:v10";
 
-      return withCache<AdultTagCatalog>(
+      const cached = await withCache<AdultTagCatalog>(
         key,
         async () => {
+          const visCtxInner = await getSafePublicVisibilityCtx();
           const allMedia =
             new Map<number, AniMedia>();
+
+          const isAllowedAdultMedia = (anime: AniMedia): boolean =>
+            !isConfirmedDonghuaOrigin(anime.countryOfOrigin) &&
+            !isPubliclyBlockedAnime(
+              {
+                id: String(anime.id),
+                anilistId: anime.id,
+                malId: anime.idMal ?? null,
+                countryOfOrigin: anime.countryOfOrigin ?? null,
+              },
+              visCtxInner,
+            );
 
       const addMedia = (
         media:
@@ -6418,7 +6695,7 @@ export const fetchAdultTags =
           | undefined,
       ) => {
         for (const anime of media ?? []) {
-          if (isHentaiAnime(anime)) {
+          if (isHentaiAnime(anime) && isAllowedAdultMedia(anime)) {
             allMedia.set(
               anime.id,
               anime,
@@ -6444,7 +6721,7 @@ export const fetchAdultTags =
                 "hentai",
             );
 
-          if (isHentaiByGenre) {
+          if (isHentaiByGenre && isAllowedAdultMedia(anime)) {
             allMedia.set(
               anime.id,
               anime,
@@ -6693,10 +6970,12 @@ export const fetchAdultTags =
           allMedia.values(),
         );
 
-      const items =
+      const items = filterPublicAnimes(
         media.map(
           mapAniSlim,
-        );
+        ),
+        visCtxInner,
+      );
 
       const tags =
         MAIN_ADULT_TAGS.map((mainTag) => {
@@ -6768,8 +7047,31 @@ export const fetchAdultTags =
       cacheFallback: true,
     },
   );
-},
-);
+
+      const visCtx = await getSafePublicVisibilityCtx();
+      const visibleItems = filterPublicAnimes(cached.items, visCtx);
+      const visibleIds = new Set<string>();
+      for (const item of visibleItems) {
+        if (item.anilistId) visibleIds.add(String(item.anilistId));
+        if (item.id) visibleIds.add(String(item.id));
+      }
+
+      return {
+        items: visibleItems,
+        tags: cached.tags.map((tag) => {
+          const filteredIds = tag.animeIds.filter(
+            (animeId) =>
+              visibleIds.has(animeId) && !isPubliclyBlockedId(animeId, visCtx),
+          );
+          return {
+            name: tag.name,
+            count: filteredIds.length,
+            animeIds: filteredIds,
+          };
+        }),
+      };
+    },
+  );
 
 const idSchema =
   z.object({
@@ -6902,911 +7204,1051 @@ function isValidAnimeDetail(detail: Anime | null | undefined): detail is Anime {
   return hasTitle;
 }
 
-export const fetchAnimeDetail =
-  createServerFn({
-    method: "GET",
-  })
-    .validator(idSchema)
-    .handler(
-      async ({
-        data,
-      }) => {
-        let id = data.id?.trim() || "";
-        if (!id) {
+export async function executeFetchAnimeDetail(
+  rawId: string,
+  options?: { allowBlocked?: boolean },
+): Promise<(Anime & { seasonNavigation?: SeasonNavigation }) | null> {
+  const allowBlocked = Boolean(options?.allowBlocked);
+  let id = rawId?.trim() || "";
+  if (!id) {
+    return null;
+  }
+
+  if (id.startsWith("anilist-")) {
+    id = id.replace("anilist-", "").trim();
+  }
+
+  if (!allowBlocked) {
+    const initialVisCtx = await getSafePublicVisibilityCtx();
+    if (
+      isPubliclyBlockedId(rawId, initialVisCtx) ||
+      isPubliclyBlockedId(id, initialVisCtx)
+    ) {
+      return null;
+    }
+  }
+
+  const key = `detail:v7:${id}`;
+
+  if (
+    id.startsWith("local-") ||
+    (!/^\d+$/.test(id) && !id.startsWith("kitsu-") && !id.startsWith("mal-"))
+  ) {
+    if (!allowBlocked) {
+      const localHit = inspectCache<Anime | null>(key);
+      if (localHit.status === "fresh" && localHit.data) {
+        return filterPublicAnimeDetail(
+          localHit.data,
+          await getSafePublicVisibilityCtx(),
+        );
+      }
+
+      let preAliases: string[] = [id];
+      try {
+        const { resolveCatalogDetailAliasesForId } = await import(
+          "@/lib/catalog-server-overlay.server"
+        );
+        preAliases = await resolveCatalogDetailAliasesForId(id);
+      } catch {
+        preAliases = [id];
+      }
+
+      const redisRead = await getRedisAnimeDetailWithFence(id, preAliases);
+      if (redisRead.status === "hit" && redisRead.detail) {
+        const visCtx = await getSafePublicVisibilityCtx();
+        const filteredRedis = filterPublicAnimeDetail(redisRead.detail, visCtx);
+        if (!filteredRedis) {
           return null;
         }
+        toCache(key, filteredRedis);
+        return filteredRedis;
+      }
 
-        if (id.startsWith("anilist-")) {
-          id = id.replace("anilist-", "").trim();
-        }
-
-        const key = `detail:v7:${id}`;
-
-        if (id.startsWith("local-") || (!/^\d+$/.test(id) && !id.startsWith("kitsu-") && !id.startsWith("mal-"))) {
-          const localHit = inspectCache<Anime | null>(key);
-          if (localHit.status === "fresh" && localHit.data) {
-            return localHit.data;
-          }
-
-          let preAliases: string[] = [id];
-          try {
-            const { resolveCatalogDetailAliasesForId } = await import(
-              "@/lib/catalog-server-overlay.server"
-            );
-            preAliases = await resolveCatalogDetailAliasesForId(id);
-          } catch {
-            preAliases = [id];
-          }
-
-          const redisRead = await getRedisAnimeDetailWithFence(id, preAliases);
-          if (redisRead.status === "hit" && redisRead.detail) {
-            toCache(key, redisRead.detail);
-            return redisRead.detail;
-          }
-
-          const localFence: RedisAnimeDetailFence | null | undefined =
-            redisRead.status === "miss"
-              ? redisRead.fence
-              : redisRead.status === "failed"
-                ? null
-                : undefined;
-
-          try {
-            const { buildLocalAnimeFromDb } = await import(
-              "@/lib/catalog-server-overlay.server"
-            );
-            const localDetail = await buildLocalAnimeFromDb(id);
-            if (localDetail) {
-              const writeStatus = await setRedisAnimeDetail(id, localDetail, localFence);
-              if (writeStatus === "fenced") {
-                evictLocalDetailCacheAliases(id, localDetail);
-              } else {
-                toCache(key, localDetail);
-              }
-            }
-            return localDetail;
-          } catch {
-            return null;
-          }
-        }
-
-        // 1. Verifica cache local em memória (preserva TTL de 30m e janela SWR)
-        const localHit = inspectCache<Anime | null>(key);
-        if (localHit.status === "fresh" && localHit.data) {
-          return localHit.data;
-        }
-
-        const flightState = { fenced: false };
-        let dbFallbackExecuted = false;
-
-        const resolveDbFallbackOnce = async (): Promise<Anime | null> => {
-          if (dbFallbackExecuted) {
-            return null;
-          }
-          dbFallbackExecuted = true;
-          try {
-            const { applyDbCatalogOverlayToDetail } = await import(
-              "@/lib/catalog-server-overlay.server"
-            );
-            return await applyDbCatalogOverlayToDetail(null, id);
-          } catch {
-            return null;
-          }
-        };
-
-        const resolveExternalFallback = async (
-          ctx?: CacheFlightContext,
-        ): Promise<Anime | null> => {
-          if (id.startsWith("kitsu-")) {
-            const kitsuId = Number(id.replace("kitsu-", ""));
-            const fallback = FALLBACK_ANIMES.find((a) => a.id === id || a.kitsuId === kitsuId);
-            if (fallback) {
-              const cleanTitles = [
-                fallback.titles.romaji,
-                fallback.titles.english,
-                fallback.titles.native,
-              ].filter(Boolean);
-              const cachedCredits = fromCache<AnimeCreditsResult>(
-                `credits:v1:${fallback.anilistId ?? 0}:${fallback.malId ?? 0}:${kitsuId}:0:${normalizeSearchText(cleanTitles[0] ?? "")}:${fallback.year ?? 0}`,
-              );
-
-              const kitsuFallback: Anime = {
-                ...fallback,
-                id,
-                studios: cachedCredits?.studios ?? [],
-                streamingEpisodes: [],
-                seasons: [
-                  {
-                    id: `s1-${fallback.id}`,
-                    number: 1,
-                    title: "Temporada 1",
-                    episodes: Array.from(
-                      { length: fallback.episodesCount ?? 12 },
-                      (_, i) => ({
-                        id: `ep-${fallback.id}-${i + 1}`,
-                        number: i + 1,
-                        title: `Episódio ${i + 1}`,
-                      }),
-                    ),
-                  },
-                ],
-                recommendations: [],
-                characters: cachedCredits?.characters ?? [],
-                staff: cachedCredits?.staff ?? [],
-                seasonNavigation: {
-                  items: [
-                    {
-                      id: `kitsu-${kitsuId}`,
-                      title: displayTitle(fallback),
-                    },
-                  ],
-                },
-              };
-              try {
-                const { applyDbCatalogOverlayToDetail } = await import(
-                  "@/lib/catalog-server-overlay.server"
-                );
-                const overlaid =
-                  (await applyDbCatalogOverlayToDetail(kitsuFallback, id)) ??
-                  kitsuFallback;
-                if ((!ctx || ctx.isCurrentFlight()) && !flightState.fenced) {
-                  toCache(key, overlaid);
-                }
-                return overlaid;
-              } catch {
-                return kitsuFallback;
-              }
-            }
-            return await resolveDbFallbackOnce();
-          }
-
-          const malId = id.startsWith("mal-")
-            ? Number(id.replace("mal-", ""))
+      const localFence: RedisAnimeDetailFence | null | undefined =
+        redisRead.status === "miss"
+          ? redisRead.fence
+          : redisRead.status === "failed"
+            ? null
             : undefined;
-          const anilistId = Number(id);
 
-          // O ID desta rota pode ser um ID do AniList ou MyAnimeList (mal-*).
-          // Se o AniList estiver indisponível, verificamos se o anime está no catálogo seguro
-          const fallback = FALLBACK_ANIMES.find(
-            (a) =>
-              (malId && a.malId === malId) ||
-              (Number.isFinite(anilistId) && a.anilistId === anilistId) ||
-              a.id === id,
-          );
-
-          if (fallback) {
-            const cleanTitles = [
-              fallback.titles.romaji,
-              fallback.titles.english,
-              fallback.titles.native,
-            ].filter(Boolean);
-            const cachedCredits = fromCache<AnimeCreditsResult>(
-              `credits:v1:${fallback.anilistId ?? anilistId ?? 0}:${fallback.malId ?? malId ?? 0}:0:0:${normalizeSearchText(cleanTitles[0] ?? "")}:${fallback.year ?? 0}`,
-            );
-
-            const fallbackDetail: Anime & {
-              seasonNavigation?: SeasonNavigation;
-            } = {
-              ...fallback,
-              id,
-              studios: cachedCredits?.studios ?? [],
-              streamingEpisodes: [],
-              seasons: [
-                {
-                  id: `s1-${id}`,
-                  number: 1,
-                  title: "Temporada 1",
-                  episodes: Array.from(
-                    { length: fallback.episodesCount ?? 12 },
-                    (_, i) => ({
-                      id: id.startsWith("mal-")
-                        ? `mal-ep-${malId}-${i + 1}`
-                        : `ep-${id}-${i + 1}`,
-                      number: i + 1,
-                      title: `Episódio ${i + 1}`,
-                    }),
-                  ),
-                },
-              ],
-              recommendations: [],
-              characters: cachedCredits?.characters ?? [],
-              staff: cachedCredits?.staff ?? [],
-              seasonNavigation: {
-                items: [
-                  {
-                    id,
-                    title: displayTitle(fallback),
-                  },
-                ],
-              },
-            };
-
-            try {
-              const { applyDbCatalogOverlayToDetail } = await import(
-                "@/lib/catalog-server-overlay.server"
-              );
-              const overlaid =
-                (await applyDbCatalogOverlayToDetail(fallbackDetail, id)) ??
-                fallbackDetail;
-              if ((!ctx || ctx.isCurrentFlight()) && !flightState.fenced) {
-                toCache(key, overlaid);
-              }
-              return overlaid;
-            } catch {
-              if ((!ctx || ctx.isCurrentFlight()) && !flightState.fenced) {
-                toCache(key, fallbackDetail);
-              }
-              return fallbackDetail;
-            }
-          }
-
-          return await resolveDbFallbackOnce();
-        };
-
-        return await withCache<Anime | null>(
-          key,
-          async (ctx) => {
-            // 2. Captura de aliases + leitura Redis + fence composto dentro da Promise líder
-            //    ANTES de consultar APIs externas ou PostgreSQL, evitando mistura de fences no coalescing.
-            let preAliases: string[] = [id];
-            try {
-              const { resolveCatalogDetailAliasesForId } = await import(
-                "@/lib/catalog-server-overlay.server"
-              );
-              preAliases = await resolveCatalogDetailAliasesForId(id);
-            } catch {
-              preAliases = [id];
-            }
-
-            const redisRead = await getRedisAnimeDetailWithFence(id, preAliases);
-            if (redisRead.status === "hit" && redisRead.detail) {
-              if (ctx && !ctx.isCurrentFlight()) {
-                flightState.fenced = true;
-                evictLocalDetailCacheAliases(id, redisRead.detail);
-              }
-              return redisRead.detail;
-            }
-
-            const activeFence: RedisAnimeDetailFence | null | undefined =
-              redisRead.status === "miss"
-                ? redisRead.fence
-                : redisRead.status === "failed"
-                  ? null
-                  : undefined;
-
-            const fresh = await (async (): Promise<Anime | null> => {
-              if (id.startsWith("kitsu-")) {
-                const kitsuId = Number(id.replace("kitsu-", ""));
-                return await fetchKitsuDetail(kitsuId);
-              }
-
-        if (
-          id.startsWith(
-            "mal-",
-          )
-        ) {
-          const malId =
-            Number(
-              id.replace(
-                "mal-",
-                "",
-              ),
-            );
-
-          let json: { data: JikanAnime } | null = null;
-          let aniMedia: AniMedia | null = null;
-
-          // Executa Jikan com tolerância rápida a falhas e tenta AniList como alternativa
-          try {
-            json =
-              await jikanFetch<{
-                data: JikanAnime;
-              }>(
-                `/anime/${malId}/full`,
-              );
-          } catch {
-            json = null;
-          }
-
-          try {
-            aniMedia =
-              await fetchAniMediaByMalId(
-                malId,
-              );
-          } catch {
-            aniMedia = null;
-          }
-
-          if (!json?.data && !aniMedia) {
-            throw new Error(`Anime mal-${malId} indisponível`);
-          }
-
-          const slim = json?.data
-            ? mapJikanSlim(json.data)
-            : mapAniSlim(aniMedia!);
-
-          let seasons: Season[] = [];
-          let jikanPictures: string[] = [];
-
-          // Checa se episódios ou imagens do Jikan já estão em cache (0ms de espera)
-          const cachedMalSeasons = fromCache<Season[]>(`jikan-episodes:v2:${malId}`);
-          if (cachedMalSeasons && cachedMalSeasons.length > 0) {
-            seasons = cachedMalSeasons;
-          } else {
-            const count = json?.data?.episodes ?? aniMedia?.episodes ?? 0;
-            seasons = [
-              {
-                id: `s1-${malId}`,
-                number: 1,
-                title: "Temporada 1",
-                episodes: Array.from({ length: count }, (_, index) => ({
-                  id: `mal-ep-${malId}-${index + 1}`,
-                  number: index + 1,
-                  title: `Episódio ${index + 1}`,
-                })),
-              },
-            ];
-          }
-
-          const cachedMalPics = fromCache<string[]>(`jikan-pictures:v1:${malId}`);
-          if (cachedMalPics && cachedMalPics.length > 0) {
-            jikanPictures = cachedMalPics;
-          }
-
-          let seasonNavigation:
-            SeasonNavigation | undefined;
-
-          if (aniMedia) {
-            toCache(`media:raw:${aniMedia.id}`, aniMedia);
-            toCache(`mal-ani:${malId}`, aniMedia);
-
-            const navKey = `season-nav:v3:${aniMedia.id}`;
-            const cachedNav = fromCache<SeasonNavigation>(navKey);
-            const navigation =
-              cachedNav ?? buildDirectSeasonNavigation(aniMedia);
-
-            const currentAniId =
-              String(aniMedia.id);
-
-            seasonNavigation = {
-              ...navigation,
-              items: navigation.items.map(
-                (item) =>
-                  item.id === currentAniId
-                    ? {
-                        ...item,
-                        id: `mal-${malId}`,
-                      }
-                    : item,
-              ),
-            };
-          }
-
-          const mappedAni = aniMedia ? mapAniFull(aniMedia, seasons, seasonNavigation, jikanPictures) : null;
-          const jikanStudios = (json?.data?.studios ?? [])
-            .map((studio) => studio.name?.trim())
-            .filter((name): name is string => Boolean(name));
-
-          let resolvedCharacters = mappedAni?.characters ?? [];
-          let resolvedStaff = mappedAni?.staff ?? [];
-          let resolvedStudios =
-            jikanStudios.length > 0
-              ? jikanStudios
-              : (mappedAni?.studios ?? []);
-
-          // Se faltarem créditos, verifica se já estão no cache em memória (0ms).
-          // Não bloqueia o loader inicial com await resolveAnimeCredits se não estiver em cache.
-          if (
-            resolvedCharacters.length === 0 ||
-            resolvedStaff.length === 0 ||
-            resolvedStudios.length === 0
-          ) {
-            const cleanTitles = [
-              slim.titles.romaji,
-              slim.titles.english,
-              slim.titles.native,
-            ]
-              .map((t) => t?.trim())
-              .filter((t): t is string => Boolean(t && t.length >= 2));
-            const creditsCacheKey = `credits:v1:${aniMedia?.id ?? 0}:${malId}:0:${aniMedia ? 1 : 0}:${normalizeSearchText(cleanTitles[0] ?? "")}:${slim.year ?? 0}`;
-            const cachedCredits = fromCache<AnimeCreditsResult>(creditsCacheKey);
-
-            if (cachedCredits) {
-              if (resolvedCharacters.length === 0 && cachedCredits.characters.length > 0) {
-                resolvedCharacters = cachedCredits.characters;
-              }
-              if (resolvedStaff.length === 0 && cachedCredits.staff.length > 0) {
-                resolvedStaff = cachedCredits.staff;
-              }
-              if (resolvedStudios.length === 0 && cachedCredits.studios.length > 0) {
-                resolvedStudios = cachedCredits.studios;
-              }
-            }
-          }
-
-          const resolvedMobileBanner = await resolveServerMobileBanner({
-            animeId: `mal-${malId}`,
-            anilistId: aniMedia?.id ?? slim.anilistId,
-            malId,
-            kitsuId: slim.kitsuId,
-            year: slim.year ?? null,
-            startYear: mappedAni?.startDate?.year ?? slim.year ?? null,
-            format: slim.format ?? null,
-            status: slim.status ?? null,
-            currentBanner: slim.banner ?? null,
-            currentCover: slim.cover ?? null,
-            isAdminCustomBanner: false,
-            preloadedMalPictures:
-              jikanPictures.length > 0 ? jikanPictures : (mappedAni?.images ?? []),
-          });
-
-          const anime: Anime & {
-            seasonNavigation?: SeasonNavigation;
-          } = {
-            ...slim,
-            id: `mal-${malId}`,
-            anilistId: aniMedia?.id ?? slim.anilistId,
-            studios: resolvedStudios,
-            streamingEpisodes: [],
-            seasons,
-            images: jikanPictures.length > 0 ? jikanPictures : (mappedAni?.images ?? []),
-            recommendations: mappedAni?.recommendations ?? [],
-            characters: resolvedCharacters,
-            staff: resolvedStaff,
-            originSource: mappedAni?.originSource ?? (json?.data as Record<string, unknown> | undefined)?.source as string ?? null,
-            countryOfOrigin: mappedAni?.countryOfOrigin ?? "JP",
-            startDate: mappedAni?.startDate ?? null,
-            endDate: mappedAni?.endDate ?? null,
-            rating: ((json?.data as Record<string, unknown> | undefined)?.rating as string) ?? null,
-            seasonNavigation,
-            ...(resolvedMobileBanner ? { resolvedMobileBanner } : {}),
-          };
-
-          return anime;
-        }
-
-        const anilistId =
-          Number(id);
-
-        if (
-          !Number.isFinite(
-            anilistId,
-          )
-        ) {
+      try {
+        const { buildLocalAnimeFromDb } = await import(
+          "@/lib/catalog-server-overlay.server"
+        );
+        const localDetail = await buildLocalAnimeFromDb(id, {
+          includeBlocked: false,
+        });
+        if (!localDetail) {
           return null;
         }
+        const filteredLocal = filterPublicAnimeDetail(
+          localDetail,
+          await getSafePublicVisibilityCtx(),
+        );
+        if (!filteredLocal) {
+          return null;
+        }
+        const writeStatus = await setRedisAnimeDetail(
+          id,
+          filteredLocal,
+          localFence,
+        );
+        if (writeStatus === "fenced") {
+          evictLocalDetailCacheAliases(id, filteredLocal);
+        } else {
+          toCache(key, filteredLocal);
+        }
+        return filteredLocal;
+      } catch {
+        return null;
+      }
+    }
 
-        const result =
-          await anilistGraphQL<{
-              Media:
-                | AniMedia
-                | null;
-            }>(
-              `
-              query Detail($id: Int) {
-                Media(
-                  id: $id,
-                  type: ANIME
-                ) {
-                  ${CARD_FIELDS}
+    try {
+      const { buildLocalAnimeFromDb } = await import(
+        "@/lib/catalog-server-overlay.server"
+      );
+      return await buildLocalAnimeFromDb(id, { includeBlocked: true });
+    } catch {
+      return null;
+    }
+  }
 
-                  duration
-                  source
-                  countryOfOrigin
-                  startDate {
-                    year
-                    month
-                    day
-                  }
-                  endDate {
-                    year
-                    month
-                    day
-                  }
+  // 1. Verifica cache local em memória apenas para o site público (preserva TTL de 30m e janela SWR)
+  if (!allowBlocked) {
+    const localHit = inspectCache<Anime | null>(key);
+    if (localHit.status === "fresh" && localHit.data) {
+      return filterPublicAnimeDetail(
+        localHit.data,
+        await getSafePublicVisibilityCtx(),
+      );
+    }
+  }
 
-                  ${ANI_CREDITS_FIELDS}
+  const flightState = { fenced: false };
+  let dbFallbackExecuted = false;
 
-                  nextAiringEpisode {
-                    episode
-                    airingAt
-                  }
+  const resolveDbFallbackOnce = async (): Promise<Anime | null> => {
+    if (dbFallbackExecuted) {
+      return null;
+    }
+    dbFallbackExecuted = true;
+    try {
+      const { applyDbCatalogOverlayToDetail } = await import(
+        "@/lib/catalog-server-overlay.server"
+      );
+      return await applyDbCatalogOverlayToDetail(null, id, {
+        includeBlocked: allowBlocked,
+      });
+    } catch {
+      return null;
+    }
+  };
 
-                  streamingEpisodes {
-                    title
-                    thumbnail
-                    url
-                    site
-                  }
+  const resolveExternalFallback = async (
+    ctx?: CacheFlightContext,
+  ): Promise<Anime | null> => {
+    if (id.startsWith("kitsu-")) {
+      const kitsuId = Number(id.replace("kitsu-", ""));
+      const fallback = FALLBACK_ANIMES.find(
+        (a) => a.id === id || a.kitsuId === kitsuId,
+      );
+      if (fallback) {
+        const cleanTitles = [
+          fallback.titles.romaji,
+          fallback.titles.english,
+          fallback.titles.native,
+        ].filter(Boolean);
+        const cachedCredits = fromCache<AnimeCreditsResult>(
+          `credits:v1:${fallback.anilistId ?? 0}:${fallback.malId ?? 0}:${kitsuId}:0:${normalizeSearchText(cleanTitles[0] ?? "")}:${fallback.year ?? 0}`,
+        );
 
-                  synonyms
-
-                  relations {
-                    edges {
-                      relationType
-                      node {
-                        id
-                        idMal
-                        type
-                        format
-                        status
-                        episodes
-                        seasonYear
-                        startDate {
-                          year
-                          month
-                          day
-                        }
-                        title {
-                          romaji
-                          english
-                        }
-                        coverImage {
-                          extraLarge
-                          large
-                        }
-                        bannerImage
-                      }
-                    }
-                  }
-
-                  recommendations(
-                    sort: RATING_DESC,
-                    perPage: 10
-                  ) {
-                    nodes {
-                      mediaRecommendation {
-                        id
-                        idMal
-
-                        title {
-                          romaji
-                          english
-                          native
-                        }
-
-                        coverImage {
-                          extraLarge
-                          large
-                          color
-                        }
-
-                        bannerImage
-                        averageScore
-                        genres
-                        format
-                        status
-                        episodes
-                        season
-                        seasonYear
-
-                        trailer {
-                          id
-                          site
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-              `,
+        const kitsuFallback: Anime = {
+          ...fallback,
+          id,
+          studios: cachedCredits?.studios ?? [],
+          streamingEpisodes: [],
+          seasons: [
+            {
+              id: `s1-${fallback.id}`,
+              number: 1,
+              title: "Temporada 1",
+              episodes: Array.from(
+                { length: fallback.episodesCount ?? 12 },
+                (_, i) => ({
+                  id: `ep-${fallback.id}-${i + 1}`,
+                  number: i + 1,
+                  title: `Episódio ${i + 1}`,
+                }),
+              ),
+            },
+          ],
+          recommendations: [],
+          characters: cachedCredits?.characters ?? [],
+          staff: cachedCredits?.staff ?? [],
+          seasonNavigation: {
+            items: [
               {
-                id: anilistId,
+                id: `kitsu-${kitsuId}`,
+                title: displayTitle(fallback),
               },
-            );
-
-          const media =
-            result.Media;
-
-          if (!media) {
+            ],
+          },
+        };
+        try {
+          const { applyDbCatalogOverlayToDetail } = await import(
+            "@/lib/catalog-server-overlay.server"
+          );
+          const overlaid = await applyDbCatalogOverlayToDetail(
+            kitsuFallback,
+            id,
+            { includeBlocked: allowBlocked },
+          );
+          if (!overlaid) {
             return null;
           }
-
-          let seasons: Season[] = [];
-          let jikanPictures: string[] = [];
-          if (media.idMal) {
-            const cachedPics = fromCache<string[]>(`jikan-pictures:v1:${media.idMal}`);
-            if (cachedPics && cachedPics.length > 0) {
-              jikanPictures = cachedPics;
-            }
-          }
-
-          const mobileBannerTask = resolveServerMobileBanner({
-            animeId: String(media.id),
-            anilistId: media.id,
-            malId: media.idMal ?? undefined,
-            year: media.seasonYear ?? media.startDate?.year ?? null,
-            startYear: media.startDate?.year ?? media.seasonYear ?? null,
-            format: media.format ?? null,
-            status: media.status ?? null,
-            currentBanner: media.bannerImage ?? null,
-            currentCover:
-              media.coverImage?.extraLarge ?? media.coverImage?.large ?? null,
-            isAdminCustomBanner: false,
-            preloadedMalPictures: jikanPictures,
-          });
-
-          const useAniStreaming = hasValidSeasonStreamingEpisodes(media);
-
-          if (useAniStreaming && media.streamingEpisodes) {
-            const fromStream: Episode[] =
-              media.streamingEpisodes.map(
-                (episode, index) => ({
-                  id: `stream-${media.id}-${index}`,
-                  number: index + 1,
-                  title:
-                    episode.title ??
-                    `Episódio ${index + 1}`,
-                  thumbnail: episode.thumbnail,
-                  videoUrl: episode.url,
-                }),
-              );
-
-            const count =
-              media.episodes ??
-              fromStream.length;
-
-            const episodes =
-              fromStream.length >= count
-                ? fromStream
-                : Array.from(
-                    { length: count },
-                    (_, index) => {
-                      const found =
-                        fromStream[index];
-                      return (
-                        found ?? {
-                          id: `ep-${media.id}-${index + 1}`,
-                          number: index + 1,
-                          title: `Episódio ${index + 1}`,
-                        }
-                      );
-                    },
-                  );
-
-            seasons = [
-              {
-                id: `s1-${media.id}`,
-                number: 1,
-                title: "Temporada 1",
-                episodes,
-              },
-            ];
-          } else {
-            // Quando a AniList não possui streamingEpisodes ou retorna episódios de outra temporada,
-            // busca episódios e miniaturas específicos desta temporada no Kitsu e aproveita cache do Jikan (0ms)
-            let cachedTitleMap: Map<number, { title: string; aired?: string }> | null = null;
-            if (media.idMal) {
-              const cachedEpisodes = fromCache<Season[]>(`jikan-episodes:v2:${media.idMal}`);
-              if (cachedEpisodes?.[0]?.episodes?.length) {
-                cachedTitleMap = new Map();
-                for (const ep of cachedEpisodes[0].episodes) {
-                  if (ep.title && ep.title !== `Episódio ${ep.number}`) {
-                    cachedTitleMap.set(ep.number, { title: ep.title, aired: ep.aired });
-                  }
-                }
-              }
-            }
-
-            // Verifica se o registro já armazenado em cache (ex: revalidação SWR) possuía episódios com títulos enriquecidos
-            const existingDetail = fromCache<Anime>(key);
-            if (
-              existingDetail?.seasons?.[0]?.episodes?.length &&
-              (!existingDetail.streamingEpisodes || existingDetail.streamingEpisodes.length === 0)
-            ) {
-              if (!cachedTitleMap) cachedTitleMap = new Map();
-              for (const ep of existingDetail.seasons[0].episodes) {
-                if (ep.title && ep.title !== `Episódio ${ep.number}` && !cachedTitleMap.has(ep.number)) {
-                  cachedTitleMap.set(ep.number, { title: ep.title, aired: ep.aired });
-                }
-              }
-            }
-
-            const kitsuSeasonEpisodes = await fetchKitsuEpisodesForAniMedia(media);
-            const kitsuByNum = new Map<number, Episode>();
-            for (const kep of kitsuSeasonEpisodes) {
-              kitsuByNum.set(kep.number, kep);
-            }
-
-            const count =
-              media.episodes ??
-              (media.nextAiringEpisode?.episode
-                ? Math.max(0, media.nextAiringEpisode.episode - 1)
-                : media.format === "MOVIE"
-                  ? 1
-                  : kitsuSeasonEpisodes.length);
-
-            const episodes = Array.from(
-              { length: count },
-              (_, index) => {
-                const epNum = index + 1;
-                const kitsuEp = kitsuByNum.get(epNum);
-                const enriched = cachedTitleMap?.get(epNum);
-                const kitsuHasTitle =
-                  kitsuEp?.title && kitsuEp.title !== `Episódio ${epNum}`;
-                return {
-                  id: kitsuEp?.id ?? `ep-${media.id}-${epNum}`,
-                  number: epNum,
-                  title:
-                    (kitsuHasTitle ? kitsuEp.title : undefined) ??
-                    enriched?.title ??
-                    `Episódio ${epNum}`,
-                  thumbnail: kitsuEp?.thumbnail,
-                  duration: kitsuEp?.duration,
-                  synopsis: kitsuEp?.synopsis,
-                  aired: kitsuEp?.aired ?? enriched?.aired,
-                };
-              },
-            );
-
-            seasons = [
-              {
-                id: `s1-${media.id}`,
-                number: 1,
-                title: "Temporada 1",
-                episodes,
-              },
-            ];
-          }
-
-          toCache(`media:raw:${media.id}`, media);
-
-          const navKey = `season-nav:v3:${media.id}`;
-          const cachedNav = fromCache<SeasonNavigation>(navKey);
-          const seasonNavigation =
-            cachedNav ?? buildDirectSeasonNavigation(media);
-
-          const mapped = mapAniFull(
-            media,
-            seasons,
-            seasonNavigation,
-            jikanPictures,
-            useAniStreaming,
-          );
-
-          // Se faltarem créditos, verifica se já estão no cache em memória (0ms de espera).
-          // Se não estiverem em cache, não bloqueia o loader: o cliente buscará via fetchAnimeCredits em segundo plano.
           if (
-            (mapped.characters?.length ?? 0) === 0 ||
-            (mapped.staff?.length ?? 0) === 0 ||
-            (mapped.studios?.length ?? 0) === 0
+            !allowBlocked &&
+            (!ctx || ctx.isCurrentFlight()) &&
+            !flightState.fenced
           ) {
-            const cleanTitles = [
-              mapped.titles.romaji,
-              mapped.titles.english,
-              mapped.titles.native,
-            ]
-              .map((t) => t?.trim())
-              .filter((t): t is string => Boolean(t && t.length >= 2));
-            const creditsCacheKey = `credits:v1:${anilistId}:${media.idMal ?? 0}:0:1:${normalizeSearchText(cleanTitles[0] ?? "")}:${mapped.year ?? 0}`;
-            const cachedCredits = fromCache<AnimeCreditsResult>(creditsCacheKey);
-
-            if (cachedCredits) {
-              if ((mapped.characters?.length ?? 0) === 0 && cachedCredits.characters.length > 0) {
-                mapped.characters = cachedCredits.characters;
-              }
-              if ((mapped.staff?.length ?? 0) === 0 && cachedCredits.staff.length > 0) {
-                mapped.staff = cachedCredits.staff;
-              }
-              if ((mapped.studios?.length ?? 0) === 0 && cachedCredits.studios.length > 0) {
-                mapped.studios = cachedCredits.studios;
-              }
-            }
+            toCache(key, overlaid);
           }
-
-          const resolvedMobileBanner = await mobileBannerTask;
-          if (resolvedMobileBanner) {
-            mapped.resolvedMobileBanner = resolvedMobileBanner;
-          }
-
-          // Preserva créditos e dados já salvos no cache anterior se a nova consulta estiver incompleta
-          const existingDetail = fromCache<Anime>(key);
-          if (existingDetail) {
-            if ((mapped.characters?.length ?? 0) === 0 && (existingDetail.characters?.length ?? 0) > 0) {
-              mapped.characters = existingDetail.characters;
-            }
-            if ((mapped.staff?.length ?? 0) === 0 && (existingDetail.staff?.length ?? 0) > 0) {
-              mapped.staff = existingDetail.staff;
-            }
-            if ((mapped.studios?.length ?? 0) === 0 && (existingDetail.studios?.length ?? 0) > 0) {
-              mapped.studios = existingDetail.studios;
-            }
-            if ((mapped.images?.length ?? 0) === 0 && (existingDetail.images?.length ?? 0) > 0) {
-              mapped.images = existingDetail.images;
-            }
-            if (!mapped.resolvedMobileBanner && existingDetail.resolvedMobileBanner) {
-              mapped.resolvedMobileBanner = existingDetail.resolvedMobileBanner;
-            }
-          }
-
-          return mapped;
-            })();
-
-            if (!fresh) {
-              return await resolveExternalFallback(ctx);
-            }
-
-            let finalDetail: Anime = fresh;
-            try {
-              const { applyDbCatalogOverlayToDetail } = await import(
-                "@/lib/catalog-server-overlay.server"
+          return overlaid;
+        } catch {
+          return allowBlocked
+            ? kitsuFallback
+            : filterPublicAnimeDetail(
+                kitsuFallback,
+                await getSafePublicVisibilityCtx(),
               );
-              finalDetail =
-                (await applyDbCatalogOverlayToDetail(fresh, id)) ?? fresh;
-            } catch {
-              finalDetail = fresh;
-            }
+        }
+      }
+      return await resolveDbFallbackOnce();
+    }
 
-            if (ctx && !ctx.isCurrentFlight()) {
-              flightState.fenced = true;
-              evictLocalDetailCacheAliases(id, finalDetail);
-              return finalDetail;
-            }
+    const malId = id.startsWith("mal-")
+      ? Number(id.replace("mal-", ""))
+      : undefined;
+    const anilistId = Number(id);
 
-            const primaryWrite = await setRedisAnimeDetail(
+    // O ID desta rota pode ser um ID do AniList ou MyAnimeList (mal-*).
+    // Se o AniList estiver indisponível, verificamos se o anime está no catálogo seguro
+    const fallback = FALLBACK_ANIMES.find(
+      (a) =>
+        (malId && a.malId === malId) ||
+        (Number.isFinite(anilistId) && a.anilistId === anilistId) ||
+        a.id === id,
+    );
+
+    if (fallback) {
+      const cleanTitles = [
+        fallback.titles.romaji,
+        fallback.titles.english,
+        fallback.titles.native,
+      ].filter(Boolean);
+      const cachedCredits = fromCache<AnimeCreditsResult>(
+        `credits:v1:${fallback.anilistId ?? anilistId ?? 0}:${fallback.malId ?? malId ?? 0}:0:0:${normalizeSearchText(cleanTitles[0] ?? "")}:${fallback.year ?? 0}`,
+      );
+
+      const fallbackDetail: Anime & {
+        seasonNavigation?: SeasonNavigation;
+      } = {
+        ...fallback,
+        id,
+        studios: cachedCredits?.studios ?? [],
+        streamingEpisodes: [],
+        seasons: [
+          {
+            id: `s1-${id}`,
+            number: 1,
+            title: "Temporada 1",
+            episodes: Array.from(
+              { length: fallback.episodesCount ?? 12 },
+              (_, i) => ({
+                id: id.startsWith("mal-")
+                  ? `mal-ep-${malId}-${i + 1}`
+                  : `ep-${id}-${i + 1}`,
+                number: i + 1,
+                title: `Episódio ${i + 1}`,
+              }),
+            ),
+          },
+        ],
+        recommendations: [],
+        characters: cachedCredits?.characters ?? [],
+        staff: cachedCredits?.staff ?? [],
+        seasonNavigation: {
+          items: [
+            {
               id,
-              finalDetail,
-              activeFence,
+              title: displayTitle(fallback),
+            },
+          ],
+        },
+      };
+
+      try {
+        const { applyDbCatalogOverlayToDetail } = await import(
+          "@/lib/catalog-server-overlay.server"
+        );
+        const overlaid = await applyDbCatalogOverlayToDetail(
+          fallbackDetail,
+          id,
+          { includeBlocked: allowBlocked },
+        );
+        if (!overlaid) {
+          return null;
+        }
+        if (
+          !allowBlocked &&
+          (!ctx || ctx.isCurrentFlight()) &&
+          !flightState.fenced
+        ) {
+          toCache(key, overlaid);
+        }
+        return overlaid;
+      } catch {
+        const safeDetail = allowBlocked
+          ? fallbackDetail
+          : filterPublicAnimeDetail(
+              fallbackDetail,
+              await getSafePublicVisibilityCtx(),
             );
-            if (primaryWrite === "fenced" || (ctx && !ctx.isCurrentFlight())) {
-              flightState.fenced = true;
-              evictLocalDetailCacheAliases(id, finalDetail);
-              return finalDetail;
+        if (
+          safeDetail &&
+          !allowBlocked &&
+          (!ctx || ctx.isCurrentFlight()) &&
+          !flightState.fenced
+        ) {
+          toCache(key, safeDetail);
+        }
+        return safeDetail;
+      }
+    }
+
+    return await resolveDbFallbackOnce();
+  };
+
+  const fetchFreshExternalDetail = async (): Promise<Anime | null> => {
+    if (id.startsWith("kitsu-")) {
+      const kitsuId = Number(id.replace("kitsu-", ""));
+      return await fetchKitsuDetail(kitsuId);
+    }
+
+    if (id.startsWith("mal-")) {
+      const malId = Number(id.replace("mal-", ""));
+
+      let json: { data: JikanAnime } | null = null;
+      let aniMedia: AniMedia | null = null;
+
+      // Executa Jikan com tolerância rápida a falhas e tenta AniList como alternativa
+      try {
+        json = await jikanFetch<{
+          data: JikanAnime;
+        }>(`/anime/${malId}/full`);
+      } catch {
+        json = null;
+      }
+
+      try {
+        aniMedia = await fetchAniMediaByMalId(malId);
+      } catch {
+        aniMedia = null;
+      }
+
+      if (!json?.data && !aniMedia) {
+        throw new Error(`Anime mal-${malId} indisponível`);
+      }
+
+      const slim = json?.data
+        ? mapJikanSlim(json.data)
+        : mapAniSlim(aniMedia!);
+
+      let seasons: Season[] = [];
+      let jikanPictures: string[] = [];
+
+      // Checa se episódios ou imagens do Jikan já estão em cache (0ms de espera)
+      const cachedMalSeasons = fromCache<Season[]>(`jikan-episodes:v2:${malId}`);
+      if (cachedMalSeasons && cachedMalSeasons.length > 0) {
+        seasons = cachedMalSeasons;
+      } else {
+        const count = json?.data?.episodes ?? aniMedia?.episodes ?? 0;
+        seasons = [
+          {
+            id: `s1-${malId}`,
+            number: 1,
+            title: "Temporada 1",
+            episodes: Array.from({ length: count }, (_, index) => ({
+              id: `mal-ep-${malId}-${index + 1}`,
+              number: index + 1,
+              title: `Episódio ${index + 1}`,
+            })),
+          },
+        ];
+      }
+
+      const cachedMalPics = fromCache<string[]>(`jikan-pictures:v1:${malId}`);
+      if (cachedMalPics && cachedMalPics.length > 0) {
+        jikanPictures = cachedMalPics;
+      }
+
+      let seasonNavigation: SeasonNavigation | undefined;
+
+      if (aniMedia) {
+        toCache(`media:raw:${aniMedia.id}`, aniMedia);
+        toCache(`mal-ani:${malId}`, aniMedia);
+
+        const navKey = `season-nav:v3:${aniMedia.id}`;
+        const cachedNav = fromCache<SeasonNavigation>(navKey);
+        const navigation = cachedNav ?? buildDirectSeasonNavigation(aniMedia);
+
+        const currentAniId = String(aniMedia.id);
+
+        seasonNavigation = {
+          ...navigation,
+          items: navigation.items.map((item) =>
+            item.id === currentAniId
+              ? {
+                  ...item,
+                  id: `mal-${malId}`,
+                }
+              : item,
+          ),
+        };
+      }
+
+      const mappedAni = aniMedia
+        ? mapAniFull(aniMedia, seasons, seasonNavigation, jikanPictures)
+        : null;
+      const jikanStudios = (json?.data?.studios ?? [])
+        .map((studio) => studio.name?.trim())
+        .filter((name): name is string => Boolean(name));
+
+      let resolvedCharacters = mappedAni?.characters ?? [];
+      let resolvedStaff = mappedAni?.staff ?? [];
+      let resolvedStudios =
+        jikanStudios.length > 0 ? jikanStudios : (mappedAni?.studios ?? []);
+
+      // Se faltarem créditos, verifica se já estão no cache em memória (0ms).
+      // Não bloqueia o loader inicial com await resolveAnimeCredits se não estiver em cache.
+      if (
+        resolvedCharacters.length === 0 ||
+        resolvedStaff.length === 0 ||
+        resolvedStudios.length === 0
+      ) {
+        const cleanTitles = [
+          slim.titles.romaji,
+          slim.titles.english,
+          slim.titles.native,
+        ]
+          .map((t) => t?.trim())
+          .filter((t): t is string => Boolean(t && t.length >= 2));
+        const creditsCacheKey = `credits:v1:${aniMedia?.id ?? 0}:${malId}:0:${aniMedia ? 1 : 0}:${normalizeSearchText(cleanTitles[0] ?? "")}:${slim.year ?? 0}`;
+        const cachedCredits = fromCache<AnimeCreditsResult>(creditsCacheKey);
+
+        if (cachedCredits) {
+          if (
+            resolvedCharacters.length === 0 &&
+            cachedCredits.characters.length > 0
+          ) {
+            resolvedCharacters = cachedCredits.characters;
+          }
+          if (resolvedStaff.length === 0 && cachedCredits.staff.length > 0) {
+            resolvedStaff = cachedCredits.staff;
+          }
+          if (resolvedStudios.length === 0 && cachedCredits.studios.length > 0) {
+            resolvedStudios = cachedCredits.studios;
+          }
+        }
+      }
+
+      const resolvedMobileBanner = await resolveServerMobileBanner({
+        animeId: `mal-${malId}`,
+        anilistId: aniMedia?.id ?? slim.anilistId,
+        malId,
+        kitsuId: slim.kitsuId,
+        year: slim.year ?? null,
+        startYear: mappedAni?.startDate?.year ?? slim.year ?? null,
+        format: slim.format ?? null,
+        status: slim.status ?? null,
+        currentBanner: slim.banner ?? null,
+        currentCover: slim.cover ?? null,
+        isAdminCustomBanner: false,
+        preloadedMalPictures:
+          jikanPictures.length > 0 ? jikanPictures : (mappedAni?.images ?? []),
+      });
+
+      const anime: Anime & {
+        seasonNavigation?: SeasonNavigation;
+      } = {
+        ...slim,
+        id: `mal-${malId}`,
+        anilistId: aniMedia?.id ?? slim.anilistId,
+        studios: resolvedStudios,
+        streamingEpisodes: [],
+        seasons,
+        images:
+          jikanPictures.length > 0 ? jikanPictures : (mappedAni?.images ?? []),
+        recommendations: mappedAni?.recommendations ?? [],
+        characters: resolvedCharacters,
+        staff: resolvedStaff,
+        originSource:
+          mappedAni?.originSource ??
+          ((json?.data as Record<string, unknown> | undefined)?.source as string) ??
+          null,
+        countryOfOrigin: normalizeCountryOfOrigin(mappedAni?.countryOfOrigin),
+        startDate: mappedAni?.startDate ?? null,
+        endDate: mappedAni?.endDate ?? null,
+        rating:
+          ((json?.data as Record<string, unknown> | undefined)?.rating as string) ??
+          null,
+        seasonNavigation,
+        ...(resolvedMobileBanner ? { resolvedMobileBanner } : {}),
+      };
+
+      return anime;
+    }
+
+    const anilistId = Number(id);
+
+    if (!Number.isFinite(anilistId)) {
+      return null;
+    }
+
+    const result = await anilistGraphQL<{
+      Media: AniMedia | null;
+    }>(
+      `
+      query Detail($id: Int) {
+        Media(
+          id: $id,
+          type: ANIME
+        ) {
+          ${CARD_FIELDS}
+
+          duration
+          source
+          countryOfOrigin
+          startDate {
+            year
+            month
+            day
+          }
+          endDate {
+            year
+            month
+            day
+          }
+
+          ${ANI_CREDITS_FIELDS}
+
+          nextAiringEpisode {
+            episode
+            airingAt
+          }
+
+          streamingEpisodes {
+            title
+            thumbnail
+            url
+            site
+          }
+
+          synonyms
+
+          relations {
+            edges {
+              relationType
+              node {
+                id
+                idMal
+                type
+                countryOfOrigin
+                format
+                status
+                episodes
+                seasonYear
+                startDate {
+                  year
+                  month
+                  day
+                }
+                title {
+                  romaji
+                  english
+                }
+                coverImage {
+                  extraLarge
+                  large
+                }
+                bannerImage
+              }
             }
+          }
 
-            const allAliases = collectDetailAliasIds(id, {
-              serverCatalogId: finalDetail.serverCatalogId,
-              anilistId: finalDetail.anilistId,
-              malId: finalDetail.malId,
-              kitsuId: finalDetail.kitsuId,
-            });
+          recommendations(
+            sort: RATING_DESC,
+            perPage: 10
+          ) {
+            nodes {
+              mediaRecommendation {
+                id
+                idMal
+                countryOfOrigin
 
-            for (const aliasId of allAliases) {
-              if (aliasId === id) continue;
-              const aliasCoveredByFence =
-                activeFence === undefined ||
-                (activeFence !== null &&
-                  Object.prototype.hasOwnProperty.call(
-                    activeFence.idGens,
-                    aliasId,
-                  ));
+                title {
+                  romaji
+                  english
+                  native
+                }
 
-              if (aliasCoveredByFence) {
-                const aliasWrite = await setRedisAnimeDetail(
-                  aliasId,
-                  finalDetail,
-                  activeFence,
-                );
-                if (aliasWrite === "fenced" || (ctx && !ctx.isCurrentFlight())) {
-                  flightState.fenced = true;
-                  evictLocalDetailCacheAliases(id, finalDetail);
-                  return finalDetail;
+                coverImage {
+                  extraLarge
+                  large
+                  color
+                }
+
+                bannerImage
+                averageScore
+                genres
+                format
+                status
+                episodes
+                season
+                seasonYear
+
+                trailer {
+                  id
+                  site
                 }
               }
             }
-
-            return finalDetail;
-        },
-        {
-          shouldCache: (detail, stale) => {
-            if (flightState.fenced) return false;
-            if (!isValidAnimeDetail(detail)) return false;
-            // Evita que uma resposta transitória vazia sobrescreva dados válidos já armazenados
-            if (stale && isValidAnimeDetail(stale)) {
-              const staleEps = stale.seasons?.[0]?.episodes?.length ?? 0;
-              const freshEps = detail.seasons?.[0]?.episodes?.length ?? 0;
-              if (staleEps > 0 && freshEps === 0) {
-                return false;
-              }
-            }
-            return true;
-          },
-          fallback: async (_err, ctx) => {
-            return await resolveExternalFallback(ctx);
-          },
-        },
-      );
+          }
+        }
+      }
+      `,
+      {
+        id: anilistId,
       },
     );
+
+    const media = result.Media;
+
+    if (!media) {
+      return null;
+    }
+
+    let seasons: Season[] = [];
+    let jikanPictures: string[] = [];
+    if (media.idMal) {
+      const cachedPics = fromCache<string[]>(`jikan-pictures:v1:${media.idMal}`);
+      if (cachedPics && cachedPics.length > 0) {
+        jikanPictures = cachedPics;
+      }
+    }
+
+    const mobileBannerTask = resolveServerMobileBanner({
+      animeId: String(media.id),
+      anilistId: media.id,
+      malId: media.idMal ?? undefined,
+      year: media.seasonYear ?? media.startDate?.year ?? null,
+      startYear: media.startDate?.year ?? media.seasonYear ?? null,
+      format: media.format ?? null,
+      status: media.status ?? null,
+      currentBanner: media.bannerImage ?? null,
+      currentCover:
+        media.coverImage?.extraLarge ?? media.coverImage?.large ?? null,
+      isAdminCustomBanner: false,
+      preloadedMalPictures: jikanPictures,
+    });
+
+    const useAniStreaming = hasValidSeasonStreamingEpisodes(media);
+
+    if (useAniStreaming && media.streamingEpisodes) {
+      const fromStream: Episode[] = media.streamingEpisodes.map(
+        (episode, index) => ({
+          id: `stream-${media.id}-${index}`,
+          number: index + 1,
+          title: episode.title ?? `Episódio ${index + 1}`,
+          thumbnail: episode.thumbnail,
+          videoUrl: episode.url,
+        }),
+      );
+
+      const count = media.episodes ?? fromStream.length;
+
+      const episodes =
+        fromStream.length >= count
+          ? fromStream
+          : Array.from({ length: count }, (_, index) => {
+              const found = fromStream[index];
+              return (
+                found ?? {
+                  id: `ep-${media.id}-${index + 1}`,
+                  number: index + 1,
+                  title: `Episódio ${index + 1}`,
+                }
+              );
+            });
+
+      seasons = [
+        {
+          id: `s1-${media.id}`,
+          number: 1,
+          title: "Temporada 1",
+          episodes,
+        },
+      ];
+    } else {
+      // Quando a AniList não possui streamingEpisodes ou retorna episódios de outra temporada,
+      // busca episódios e miniaturas específicos desta temporada no Kitsu e aproveita cache do Jikan (0ms)
+      let cachedTitleMap: Map<number, { title: string; aired?: string }> | null =
+        null;
+      if (media.idMal) {
+        const cachedEpisodes = fromCache<Season[]>(
+          `jikan-episodes:v2:${media.idMal}`,
+        );
+        if (cachedEpisodes?.[0]?.episodes?.length) {
+          cachedTitleMap = new Map();
+          for (const ep of cachedEpisodes[0].episodes) {
+            if (ep.title && ep.title !== `Episódio ${ep.number}`) {
+              cachedTitleMap.set(ep.number, {
+                title: ep.title,
+                aired: ep.aired,
+              });
+            }
+          }
+        }
+      }
+
+      // Verifica se o registro já armazenado em cache (ex: revalidação SWR) possuía episódios com títulos enriquecidos
+      const existingDetail = fromCache<Anime>(key);
+      if (
+        existingDetail?.seasons?.[0]?.episodes?.length &&
+        (!existingDetail.streamingEpisodes ||
+          existingDetail.streamingEpisodes.length === 0)
+      ) {
+        if (!cachedTitleMap) cachedTitleMap = new Map();
+        for (const ep of existingDetail.seasons[0].episodes) {
+          if (
+            ep.title &&
+            ep.title !== `Episódio ${ep.number}` &&
+            !cachedTitleMap.has(ep.number)
+          ) {
+            cachedTitleMap.set(ep.number, { title: ep.title, aired: ep.aired });
+          }
+        }
+      }
+
+      const kitsuSeasonEpisodes = await fetchKitsuEpisodesForAniMedia(media);
+      const kitsuByNum = new Map<number, Episode>();
+      for (const kep of kitsuSeasonEpisodes) {
+        kitsuByNum.set(kep.number, kep);
+      }
+
+      const count =
+        media.episodes ??
+        (media.nextAiringEpisode?.episode
+          ? Math.max(0, media.nextAiringEpisode.episode - 1)
+          : media.format === "MOVIE"
+            ? 1
+            : kitsuSeasonEpisodes.length);
+
+      const episodes = Array.from({ length: count }, (_, index) => {
+        const epNum = index + 1;
+        const kitsuEp = kitsuByNum.get(epNum);
+        const enriched = cachedTitleMap?.get(epNum);
+        const kitsuHasTitle =
+          kitsuEp?.title && kitsuEp.title !== `Episódio ${epNum}`;
+        return {
+          id: kitsuEp?.id ?? `ep-${media.id}-${epNum}`,
+          number: epNum,
+          title:
+            (kitsuHasTitle ? kitsuEp.title : undefined) ??
+            enriched?.title ??
+            `Episódio ${epNum}`,
+          thumbnail: kitsuEp?.thumbnail,
+          duration: kitsuEp?.duration,
+          synopsis: kitsuEp?.synopsis,
+          aired: kitsuEp?.aired ?? enriched?.aired,
+        };
+      });
+
+      seasons = [
+        {
+          id: `s1-${media.id}`,
+          number: 1,
+          title: "Temporada 1",
+          episodes,
+        },
+      ];
+    }
+
+    toCache(`media:raw:${media.id}`, media);
+
+    const navKey = `season-nav:v3:${media.id}`;
+    const cachedNav = fromCache<SeasonNavigation>(navKey);
+    const seasonNavigation = cachedNav ?? buildDirectSeasonNavigation(media);
+
+    const mapped = mapAniFull(
+      media,
+      seasons,
+      seasonNavigation,
+      jikanPictures,
+      useAniStreaming,
+    );
+
+    // Se faltarem créditos, verifica se já estão no cache em memória (0ms de espera).
+    // Se não estiverem em cache, não bloqueia o loader: o cliente buscará via fetchAnimeCredits em segundo plano.
+    if (
+      (mapped.characters?.length ?? 0) === 0 ||
+      (mapped.staff?.length ?? 0) === 0 ||
+      (mapped.studios?.length ?? 0) === 0
+    ) {
+      const cleanTitles = [
+        mapped.titles.romaji,
+        mapped.titles.english,
+        mapped.titles.native,
+      ]
+        .map((t) => t?.trim())
+        .filter((t): t is string => Boolean(t && t.length >= 2));
+      const creditsCacheKey = `credits:v1:${anilistId}:${media.idMal ?? 0}:0:1:${normalizeSearchText(cleanTitles[0] ?? "")}:${mapped.year ?? 0}`;
+      const cachedCredits = fromCache<AnimeCreditsResult>(creditsCacheKey);
+
+      if (cachedCredits) {
+        if (
+          (mapped.characters?.length ?? 0) === 0 &&
+          cachedCredits.characters.length > 0
+        ) {
+          mapped.characters = cachedCredits.characters;
+        }
+        if (
+          (mapped.staff?.length ?? 0) === 0 &&
+          cachedCredits.staff.length > 0
+        ) {
+          mapped.staff = cachedCredits.staff;
+        }
+        if (
+          (mapped.studios?.length ?? 0) === 0 &&
+          cachedCredits.studios.length > 0
+        ) {
+          mapped.studios = cachedCredits.studios;
+        }
+      }
+    }
+
+    const resolvedMobileBanner = await mobileBannerTask;
+    if (resolvedMobileBanner) {
+      mapped.resolvedMobileBanner = resolvedMobileBanner;
+    }
+
+    // Preserva créditos e dados já salvos no cache anterior se a nova consulta estiver incompleta
+    const existingDetail = fromCache<Anime>(key);
+    if (existingDetail) {
+      if (
+        (mapped.characters?.length ?? 0) === 0 &&
+        (existingDetail.characters?.length ?? 0) > 0
+      ) {
+        mapped.characters = existingDetail.characters;
+      }
+      if (
+        (mapped.staff?.length ?? 0) === 0 &&
+        (existingDetail.staff?.length ?? 0) > 0
+      ) {
+        mapped.staff = existingDetail.staff;
+      }
+      if (
+        (mapped.studios?.length ?? 0) === 0 &&
+        (existingDetail.studios?.length ?? 0) > 0
+      ) {
+        mapped.studios = existingDetail.studios;
+      }
+      if (
+        (mapped.images?.length ?? 0) === 0 &&
+        (existingDetail.images?.length ?? 0) > 0
+      ) {
+        mapped.images = existingDetail.images;
+      }
+      if (!mapped.resolvedMobileBanner && existingDetail.resolvedMobileBanner) {
+        mapped.resolvedMobileBanner = existingDetail.resolvedMobileBanner;
+      }
+    }
+
+    return mapped;
+  };
+
+  if (allowBlocked) {
+    let fresh: Anime | null = null;
+    try {
+      fresh = await fetchFreshExternalDetail();
+    } catch {
+      return await resolveExternalFallback();
+    }
+
+    if (!fresh) {
+      return await resolveExternalFallback();
+    }
+
+    try {
+      const { applyDbCatalogOverlayToDetail } = await import(
+        "@/lib/catalog-server-overlay.server"
+      );
+      return await applyDbCatalogOverlayToDetail(fresh, id, {
+        includeBlocked: true,
+      });
+    } catch {
+      return fresh;
+    }
+  }
+
+  const cachedResult = await withCache<Anime | null>(
+    key,
+    async (ctx) => {
+      // 2. Captura de aliases + leitura Redis + fence composto dentro da Promise líder
+      //    ANTES de consultar APIs externas ou PostgreSQL, evitando mistura de fences no coalescing.
+      let preAliases: string[] = [id];
+      try {
+        const { resolveCatalogDetailAliasesForId } = await import(
+          "@/lib/catalog-server-overlay.server"
+        );
+        preAliases = await resolveCatalogDetailAliasesForId(id);
+      } catch {
+        preAliases = [id];
+      }
+
+      const redisRead = await getRedisAnimeDetailWithFence(id, preAliases);
+      if (redisRead.status === "hit" && redisRead.detail) {
+        const visCtx = await getSafePublicVisibilityCtx();
+        const filteredHit = filterPublicAnimeDetail(redisRead.detail, visCtx);
+        if (ctx && !ctx.isCurrentFlight()) {
+          flightState.fenced = true;
+          evictLocalDetailCacheAliases(id, redisRead.detail);
+        }
+        return filteredHit;
+      }
+
+      const activeFence: RedisAnimeDetailFence | null | undefined =
+        redisRead.status === "miss"
+          ? redisRead.fence
+          : redisRead.status === "failed"
+            ? null
+            : undefined;
+
+      const fresh = await fetchFreshExternalDetail();
+
+      if (!fresh) {
+        return await resolveExternalFallback(ctx);
+      }
+
+      let finalDetail: Anime | null = fresh;
+      try {
+        const { applyDbCatalogOverlayToDetail } = await import(
+          "@/lib/catalog-server-overlay.server"
+        );
+        finalDetail = await applyDbCatalogOverlayToDetail(fresh, id, {
+          includeBlocked: false,
+        });
+      } catch {
+        finalDetail = filterPublicAnimeDetail(
+          fresh,
+          await getSafePublicVisibilityCtx(),
+        );
+      }
+
+      if (!finalDetail) {
+        return null;
+      }
+
+      finalDetail = filterPublicAnimeDetail(
+        finalDetail,
+        await getSafePublicVisibilityCtx(),
+      );
+      if (!finalDetail) {
+        return null;
+      }
+
+      if (ctx && !ctx.isCurrentFlight()) {
+        flightState.fenced = true;
+        evictLocalDetailCacheAliases(id, finalDetail);
+        return finalDetail;
+      }
+
+      const primaryWrite = await setRedisAnimeDetail(
+        id,
+        finalDetail,
+        activeFence,
+      );
+      if (primaryWrite === "fenced" || (ctx && !ctx.isCurrentFlight())) {
+        flightState.fenced = true;
+        evictLocalDetailCacheAliases(id, finalDetail);
+        return finalDetail;
+      }
+
+      const allAliases = collectDetailAliasIds(id, {
+        serverCatalogId: finalDetail.serverCatalogId,
+        anilistId: finalDetail.anilistId,
+        malId: finalDetail.malId,
+        kitsuId: finalDetail.kitsuId,
+      });
+
+      for (const aliasId of allAliases) {
+        if (aliasId === id) continue;
+        const aliasCoveredByFence =
+          activeFence === undefined ||
+          (activeFence !== null &&
+            Object.prototype.hasOwnProperty.call(
+              activeFence.idGens,
+              aliasId,
+            ));
+
+        if (aliasCoveredByFence) {
+          const aliasWrite = await setRedisAnimeDetail(
+            aliasId,
+            finalDetail,
+            activeFence,
+          );
+          if (aliasWrite === "fenced" || (ctx && !ctx.isCurrentFlight())) {
+            flightState.fenced = true;
+            evictLocalDetailCacheAliases(id, finalDetail);
+            return finalDetail;
+          }
+        }
+      }
+
+      return finalDetail;
+    },
+    {
+      shouldCache: (detail, stale) => {
+        if (flightState.fenced) return false;
+        if (!isValidAnimeDetail(detail)) return false;
+        // Evita que uma resposta transitória vazia sobrescreva dados válidos já armazenados
+        if (stale && isValidAnimeDetail(stale)) {
+          const staleEps = stale.seasons?.[0]?.episodes?.length ?? 0;
+          const freshEps = detail.seasons?.[0]?.episodes?.length ?? 0;
+          if (staleEps > 0 && freshEps === 0) {
+            return false;
+          }
+        }
+        return true;
+      },
+      fallback: async (_err, ctx) => {
+        return await resolveExternalFallback(ctx);
+      },
+    },
+  );
+
+  return filterPublicAnimeDetail(
+    cachedResult,
+    await getSafePublicVisibilityCtx(),
+  );
+}
+
+export const fetchAnimeDetail = createServerFn({
+  method: "GET",
+})
+  .validator(idSchema)
+  .handler(async ({ data }) => executeFetchAnimeDetail(data.id));
 
 export const fetchAnimeSeasonNavigation = createServerFn({
   method: "GET",
@@ -7815,6 +8257,11 @@ export const fetchAnimeSeasonNavigation = createServerFn({
   .handler(async ({ data }) => {
     const { id } = data;
     if (!id || id.startsWith("local-") || id.startsWith("kitsu-")) {
+      return null;
+    }
+
+    const visCtx = await getSafePublicVisibilityCtx();
+    if (isPubliclyBlockedId(id, visCtx)) {
       return null;
     }
 
@@ -7831,23 +8278,40 @@ export const fetchAnimeSeasonNavigation = createServerFn({
           },
         );
         if (!aniMedia) return null;
+        if (
+          isConfirmedDonghuaOrigin(aniMedia.countryOfOrigin) ||
+          isPubliclyBlockedAnime(
+            {
+              id: aniMedia.id,
+              anilistId: aniMedia.id,
+              malId: aniMedia.idMal ?? malId,
+              countryOfOrigin: aniMedia.countryOfOrigin ?? null,
+            },
+            visCtx,
+          )
+        ) {
+          return null;
+        }
 
         toCache(`media:raw:${aniMedia.id}`, aniMedia);
 
         const navigation = await buildSeasonNavigation(aniMedia);
 
         const currentAniId = String(aniMedia.id);
-        return {
-          ...navigation,
-          items: navigation.items.map((item) =>
-            item.id === currentAniId
-              ? {
-                  ...item,
-                  id: `mal-${malId}`,
-                }
-              : item,
-          ),
-        };
+        return filterSeasonNavigationByVisibility(
+          {
+            ...navigation,
+            items: navigation.items.map((item) =>
+              item.id === currentAniId
+                ? {
+                    ...item,
+                    id: `mal-${malId}`,
+                  }
+                : item,
+            ),
+          },
+          visCtx,
+        ) ?? null;
       }
 
       const anilistId = Number(id);
@@ -7858,7 +8322,7 @@ export const fetchAnimeSeasonNavigation = createServerFn({
       const navKey = `season-nav:v3:${anilistId}`;
       let failedFirstRound = false;
 
-      return await withCache<SeasonNavigation | null>(
+      const nav = await withCache<SeasonNavigation | null>(
         navKey,
         async () => {
           let media = fromCache<AniMedia>(`media:raw:${anilistId}`);
@@ -7873,6 +8337,7 @@ export const fetchAnimeSeasonNavigation = createServerFn({
                 episodes: rootNode.episodes,
                 seasonYear: rootNode.seasonYear,
                 startDate: rootNode.startDate,
+                countryOfOrigin: rootNode.countryOfOrigin,
                 title: rootNode.title,
                 relations: { edges: rootNode.edges },
               });
@@ -7883,15 +8348,23 @@ export const fetchAnimeSeasonNavigation = createServerFn({
             return null;
           }
 
+          if (
+            isConfirmedDonghuaOrigin(media.countryOfOrigin) ||
+            isPubliclyBlockedId(media.id, visCtx)
+          ) {
+            return null;
+          }
+
           const computed = await computeSeasonNavigationForMedia(media);
           failedFirstRound = computed.batchFailedOnFirstRound;
-          return computed.result;
+          return filterSeasonNavigationByVisibility(computed.result, visCtx) ?? null;
         },
         {
           shouldCache: (fresh, stale) =>
             Boolean(fresh) && (!stale || !failedFirstRound),
         },
       );
+      return filterSeasonNavigationByVisibility(nav, visCtx) ?? null;
     } catch (err) {
       console.warn("[Hikari] Falha na busca complementar de temporadas:", err);
       return null;
@@ -8009,6 +8482,7 @@ export const fetchBrowse =
         const result = await withCache<SearchResult>(
           key,
           async () => {
+            const visCtxInner = await getSafePublicVisibilityCtx();
             const sortMap = {
               popular:
                 "POPULARITY_DESC",
@@ -8115,19 +8589,22 @@ export const fetchBrowse =
                 );
 
               return {
-                items: (
-                  result.Page
-                    .media ?? []
-                )
-                  .filter(
-                    (anime) =>
-                      !isAdultAnime(
-                        anime,
-                      ),
+                items: filterPublicAnimes(
+                  (
+                    result.Page
+                      .media ?? []
                   )
-                  .map(
-                    mapAniSlim,
-                  ),
+                    .filter(
+                      (anime) =>
+                        !isAdultAnime(
+                          anime,
+                        ),
+                    )
+                    .map(
+                      mapAniSlim,
+                    ),
+                  visCtxInner,
+                ),
 
                 page,
 
@@ -8164,7 +8641,7 @@ export const fetchBrowse =
                   }>(path);
 
                 const mappedJikan = (json.data ?? []).map(mapJikanSlim);
-                const items =
+                const items = filterPublicAnimes(
                   data.section === "season"
                     ? mappedJikan.filter(
                         (item) =>
@@ -8172,7 +8649,9 @@ export const fetchBrowse =
                             item.season.toUpperCase() === season) &&
                           (!item.year || item.year === year),
                       )
-                    : mappedJikan;
+                    : mappedJikan,
+                  visCtxInner,
+                );
 
                 return {
                   items,
@@ -8207,17 +8686,23 @@ export const fetchBrowse =
           },
         );
 
+        const visCtx = await getSafePublicVisibilityCtx();
+        const visibleItems = filterPublicAnimes(result.items, visCtx);
+
         try {
           const { applyDbCatalogOverlayToSlimList } = await import(
             "@/lib/catalog-server-overlay.server"
           );
-          const overlaid = await applyDbCatalogOverlayToSlimList(result.items);
+          const overlaid = await applyDbCatalogOverlayToSlimList(visibleItems);
           return {
             ...result,
             items: sortByHasEpisodeFirst(overlaid),
           };
         } catch {
-          return result;
+          return {
+            ...result,
+            items: visibleItems,
+          };
         }
       },
     );

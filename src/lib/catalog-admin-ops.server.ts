@@ -6,6 +6,8 @@ import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { resolveCatalogAnimeMediaWrite } from "@/lib/types";
 import { deleteAnimeRecentBadgesFromDb } from "@/lib/catalog-badges";
+import { invalidatePublicVisibilityCache } from "@/lib/public-visibility.server";
+import { normalizeCountryOfOrigin } from "@/lib/public-visibility";
 import type { RedisEvalClient } from "@/lib/redis";
 import {
   discoverMatchingOrphanIdsFromUserTables,
@@ -63,6 +65,8 @@ export const animeAdminPostSchema = z.object({
     .optional()
     .nullable(),
   badgesExplicitlyEdited: z.boolean().optional(),
+  countryOfOrigin: z.string().max(16).optional().nullable(),
+  duplicateOfId: z.string().max(128).optional().nullable(),
   seasons: z.array(seasonItemSchema).optional().nullable(),
 });
 
@@ -294,6 +298,100 @@ export async function executeAdminUpsertCatalogAnime(
       .join(" ")
       .toLowerCase();
 
+    const normalizedCountryOfOrigin = normalizeCountryOfOrigin(
+      data.countryOfOrigin,
+    );
+    const cleanDuplicateOfId =
+      typeof data.duplicateOfId === "string" && data.duplicateOfId.trim()
+        ? data.duplicateOfId.trim()
+        : null;
+
+    let hasCountryOfOriginCol = true;
+    let hasDuplicateOfIdCol = true;
+    try {
+      const colCheck = await tx.query<{ column_name: string }>(
+        `SELECT "column_name"
+         FROM "information_schema"."columns"
+         WHERE "table_name" = 'catalog_anime'
+           AND "column_name" IN ('country_of_origin', 'duplicate_of_id');`,
+      );
+      if (colCheck.length > 0) {
+        const presentCols = new Set(colCheck.map((r) => r.column_name));
+        hasCountryOfOriginCol = presentCols.has("country_of_origin");
+        hasDuplicateOfIdCol = presentCols.has("duplicate_of_id");
+      } else {
+        hasCountryOfOriginCol = false;
+        hasDuplicateOfIdCol = false;
+      }
+    } catch {
+      hasCountryOfOriginCol = false;
+      hasDuplicateOfIdCol = false;
+    }
+
+    const visibilityInsertCols: string[] = [];
+    const visibilityInsertVals: string[] = [];
+    const visibilityUpdates: string[] = [];
+    const upsertParams: unknown[] = [
+      targetId,
+      canonicalTitle,
+      resolvedAnilistId,
+      resolvedMalId,
+      resolvedKitsuId,
+      data.titleRomaji?.trim() ?? null,
+      data.titleEnglish?.trim() ?? null,
+      data.titleNative?.trim() ?? null,
+      mediaWrite.insertCover,
+      mediaWrite.insertBanner,
+      data.synopsis?.trim() ?? null,
+      data.format?.trim() ?? null,
+      data.status?.trim() ?? null,
+      data.episodesCount ?? null,
+      data.year ?? null,
+      data.season?.trim() ?? null,
+      genresArray,
+      data.trailerId?.trim() ?? null,
+      mediaWrite.shouldWriteCover,
+      mediaWrite.shouldWriteBanner,
+      data.hidden ?? false,
+      data.score ?? null,
+      hiddenProvided,
+      scoreProvided,
+      manualFields,
+      normTitle,
+      searchBlob,
+      JSON.stringify(mergedEpisodeHistory),
+    ];
+
+    if (hasCountryOfOriginCol) {
+      upsertParams.push(normalizedCountryOfOrigin);
+      visibilityInsertCols.push(`"country_of_origin"`);
+      visibilityInsertVals.push(`$${upsertParams.length}`);
+      visibilityUpdates.push(
+        `"country_of_origin" = COALESCE(NULLIF(EXCLUDED."country_of_origin", ''), "catalog_anime"."country_of_origin")`,
+      );
+    }
+    if (hasDuplicateOfIdCol) {
+      upsertParams.push(cleanDuplicateOfId);
+      visibilityInsertCols.push(`"duplicate_of_id"`);
+      visibilityInsertVals.push(`$${upsertParams.length}`);
+      visibilityUpdates.push(
+        `"duplicate_of_id" = COALESCE(NULLIF(EXCLUDED."duplicate_of_id", ''), "catalog_anime"."duplicate_of_id")`,
+      );
+    }
+
+    const visInsertColsSql =
+      visibilityInsertCols.length > 0
+        ? `, ${visibilityInsertCols.join(", ")}`
+        : "";
+    const visInsertValsSql =
+      visibilityInsertVals.length > 0
+        ? `, ${visibilityInsertVals.join(", ")}`
+        : "";
+    const visUpdatesSql =
+      visibilityUpdates.length > 0
+        ? `,\n         ${visibilityUpdates.join(",\n         ")}`
+        : "";
+
     // 2. Upsert do anime ativo (sempre limpando archived_at = NULL)
     const result = await tx.query<{
       id: string;
@@ -318,7 +416,7 @@ export async function executeAdminUpsertCatalogAnime(
          "cover", "banner", "synopsis", "format", "status",
          "episodesCount", "year", "season", "genres", "trailerId",
          "hidden", "score", "manual_fields",
-         "title_norm", "search_blob", "archived_at", "episode_history",
+         "title_norm", "search_blob", "archived_at", "episode_history"${visInsertColsSql},
          "createdAt", "updatedAt"
        )
        VALUES (
@@ -330,7 +428,7 @@ export async function executeAdminUpsertCatalogAnime(
          $18,
          $21, $22,
          COALESCE($25::text[], '{}'::text[]),
-         $26, $27, NULL, $28::jsonb,
+         $26, $27, NULL, $28::jsonb${visInsertValsSql},
          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
        )
        ON CONFLICT ("id") DO UPDATE
@@ -384,41 +482,12 @@ export async function executeAdminUpsertCatalogAnime(
          "title_norm" = COALESCE(NULLIF(EXCLUDED."title_norm", ''), "catalog_anime"."title_norm"),
          "search_blob" = COALESCE(NULLIF(EXCLUDED."search_blob", ''), "catalog_anime"."search_blob"),
          "archived_at" = NULL,
-         "episode_history" = EXCLUDED."episode_history",
+         "episode_history" = EXCLUDED."episode_history"${visUpdatesSql},
          "updatedAt" = CURRENT_TIMESTAMP
        RETURNING "id", "cover", "banner", "anilistId", "malId", "kitsuId",
                  "title", "titleRomaji", "titleEnglish", "titleNative",
                  "format", "status", "episodesCount", "year", "updatedAt";`,
-      [
-        targetId,
-        canonicalTitle,
-        resolvedAnilistId,
-        resolvedMalId,
-        resolvedKitsuId,
-        data.titleRomaji?.trim() ?? null,
-        data.titleEnglish?.trim() ?? null,
-        data.titleNative?.trim() ?? null,
-        mediaWrite.insertCover,
-        mediaWrite.insertBanner,
-        data.synopsis?.trim() ?? null,
-        data.format?.trim() ?? null,
-        data.status?.trim() ?? null,
-        data.episodesCount ?? null,
-        data.year ?? null,
-        data.season?.trim() ?? null,
-        genresArray,
-        data.trailerId?.trim() ?? null,
-        mediaWrite.shouldWriteCover,
-        mediaWrite.shouldWriteBanner,
-        data.hidden ?? false,
-        data.score ?? null,
-        hiddenProvided,
-        scoreProvided,
-        manualFields,
-        normTitle,
-        searchBlob,
-        JSON.stringify(mergedEpisodeHistory),
-      ],
+      upsertParams,
     );
 
     const savedRow = result[0];
@@ -579,6 +648,8 @@ export async function executeAdminUpsertCatalogAnime(
     skipHeroAndTrending: true,
     redisOverride: options?.redisOverride,
   });
+
+  invalidatePublicVisibilityCache();
 
   await invalidateServerCatalogCachesAsync(
     canonicalSavedId,
@@ -811,6 +882,8 @@ export async function executeAdminArchiveCatalogAnime(
       redisOverride: options?.redisOverride,
     });
   }
+  invalidatePublicVisibilityCache();
+
   await invalidateServerCatalogCachesAsync(
     archiveResult.targetId,
     {

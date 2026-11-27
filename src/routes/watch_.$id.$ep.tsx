@@ -56,6 +56,11 @@ import {
   type Episode,
   type Season,
 } from "@/lib/types";
+import {
+  buildClientVisibilityContext,
+  isPubliclyBlockedAnime,
+  isPubliclyBlockedId,
+} from "@/lib/public-visibility";
 
 function parseEpisodeNumber(epStr?: string): number {
   if (!epStr) return 1;
@@ -132,12 +137,20 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
   },
 
   loader: async ({ params }) => {
+    if (isPubliclyBlockedId(params.id)) {
+      return { remote: null, catalogEpisodes: null };
+    }
+
     const detailKey = `detail:v7:${params.id}`;
-    const cachedRemote =
+    const rawCachedRemote =
       typeof window !== "undefined"
         ? fromCache<Anime | null>(detailKey, () =>
             fetchAnimeDetail({ data: { id: params.id } }),
           )
+        : null;
+    const cachedRemote =
+      rawCachedRemote && !isPubliclyBlockedAnime(rawCachedRemote)
+        ? rawCachedRemote
         : null;
     const cachedClientEpisodes =
       typeof window !== "undefined" ? getCachedCatalogEpisodes(params.id) : null;
@@ -148,6 +161,9 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
         : fetchAnimeDetail({
             data: { id: params.id },
           }).then((fetched) => {
+            if (fetched && isPubliclyBlockedAnime(fetched)) {
+              return null;
+            }
             if (fetched && typeof window !== "undefined") {
               toCache(detailKey, fetched);
               if (fetched.id && fetched.id !== params.id) {
@@ -163,6 +179,10 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
             : getCatalogEpisodes({ data: { animeId: params.id } })
           ).catch(() => null),
     ]);
+
+    if (!remote && !initialCatalogEpisodes?.episodes?.length) {
+      return { remote: null, catalogEpisodes: initialCatalogEpisodes };
+    }
 
     let catalogEpisodes = initialCatalogEpisodes;
     if (
@@ -186,8 +206,14 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
   },
 
   head: ({ params, loaderData }) => {
-    const remote = loaderData?.remote;
-    const catalogEpisodes = loaderData?.catalogEpisodes;
+    const rawRemote = loaderData?.remote;
+    const remote =
+      rawRemote &&
+      !isPubliclyBlockedId(params.id) &&
+      !isPubliclyBlockedAnime(rawRemote)
+        ? rawRemote
+        : null;
+    const catalogEpisodes = remote ? loaderData?.catalogEpisodes : null;
     const epNum = parseEpisodeNumber(params.ep);
 
     const animeTitle =
@@ -319,14 +345,29 @@ function WatchPage() {
     (s) => s.markContinue,
   );
 
-  const baseAnime = useMemo(
-    () => mergeDetail(remote, id, locals),
-    [remote, id, locals],
+  const visCtx = useMemo(
+    () => buildClientVisibilityContext(locals),
+    [locals],
   );
 
-  const episodeCatalogId = baseAnime?.serverCatalogId || baseAnime?.id || id;
+  const isRouteBlocked = useMemo(
+    () =>
+      isPubliclyBlockedId(id, visCtx) ||
+      (remote ? isPubliclyBlockedAnime(remote, visCtx) : false),
+    [id, remote, visCtx],
+  );
+
+  const baseAnime = useMemo(
+    () => (isRouteBlocked ? null : mergeDetail(remote, id, locals)),
+    [isRouteBlocked, remote, id, locals],
+  );
+
+  const episodeCatalogId = isRouteBlocked
+    ? ""
+    : baseAnime?.serverCatalogId || baseAnime?.id || id;
 
   const [resolvedSeasons, setResolvedSeasons] = useState<Season[] | null>(() => {
+    if (isRouteBlocked) return null;
     if (catalogEpisodes) {
       const cacheKey = catalogEpisodes.animeId || episodeCatalogId;
       if (typeof window !== "undefined") {
@@ -344,12 +385,13 @@ function WatchPage() {
   });
 
   const [settledCatalogId, setSettledCatalogId] = useState<string | null>(() =>
-    catalogEpisodes ? episodeCatalogId : null,
+    isRouteBlocked ? "" : catalogEpisodes ? episodeCatalogId : null,
   );
   const [isRetrying, setIsRetrying] = useState(false);
 
   useEffect(() => {
-    if (!episodeCatalogId) {
+    if (!episodeCatalogId || isRouteBlocked) {
+      setResolvedSeasons(null);
       setSettledCatalogId("");
       return;
     }
@@ -369,9 +411,12 @@ function WatchPage() {
     return () => {
       cancelled = true;
     };
-  }, [episodeCatalogId, baseAnime?.seasons]);
+  }, [episodeCatalogId, baseAnime?.seasons, isRouteBlocked]);
 
   const anime = useMemo(() => {
+    if (isRouteBlocked) {
+      return null;
+    }
     const hasResolvedEpisodes = Boolean(
       resolvedSeasons?.some((s) => (s.episodes?.length ?? 0) > 0),
     );
@@ -390,7 +435,7 @@ function WatchPage() {
       ...baseAnime,
       seasons: resolvedSeasons,
     };
-  }, [baseAnime, resolvedSeasons, id, catalogEpisodes?.animeId, episodeCatalogId]);
+  }, [isRouteBlocked, baseAnime, resolvedSeasons, id, catalogEpisodes?.animeId, episodeCatalogId]);
 
   const episodesSettled =
     Boolean(catalogEpisodes) || settledCatalogId === episodeCatalogId;
@@ -495,11 +540,13 @@ function WatchPage() {
   }
 
   if (!anime) {
-    const hasValidAnimeDestination = Boolean(
-      remote?.id ||
-        baseAnime?.id ||
-        (catalogEpisodes?.episodes?.length ?? 0) > 0,
-    );
+    const hasValidAnimeDestination =
+      !isRouteBlocked &&
+      Boolean(
+        remote?.id ||
+          baseAnime?.id ||
+          (catalogEpisodes?.episodes?.length ?? 0) > 0,
+      );
 
     return (
       <div className="flex min-h-svh flex-col bg-bg text-fg">

@@ -24,6 +24,11 @@ import {
   buildHikariPlayerEpisodeUrl,
   normalizeHikariPlayerEpisodeId,
 } from "@/lib/hikari-player";
+import {
+  buildClientVisibilityContext,
+  isPubliclyBlockedAnime,
+  isPubliclyBlockedId,
+} from "@/lib/public-visibility";
 
 export type PublishedEpisodeBadge = "LANÇAMENTO" | "NOVO" | "FINAL" | null;
 
@@ -994,9 +999,10 @@ export function isConfirmedFinalEpisode(
  */
 export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode[] {
   const result: PublishedEpisode[] = [];
+  const visCtx = buildClientVisibilityContext(animes);
 
   for (const anime of animes) {
-    if (anime.hidden) continue;
+    if (anime.hidden || isPubliclyBlockedAnime(anime, visCtx)) continue;
 
     const animeTitle = resolveAnimeCanonicalTitle(anime);
     const altTitles = resolveAnimeAltTitles(anime, animeTitle);
@@ -1151,9 +1157,10 @@ export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode
  */
 export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[] {
   const list: PublishedEpisode[] = [];
+  const visCtx = buildClientVisibilityContext(animes);
 
   for (const anime of animes) {
-    if (anime.hidden) continue;
+    if (anime.hidden || isPubliclyBlockedAnime(anime, visCtx)) continue;
 
     const animeTitle = resolveAnimeCanonicalTitle(anime);
     const altTitles = resolveAnimeAltTitles(anime, animeTitle);
@@ -1243,6 +1250,7 @@ export function resolvePublicEpisodes(
   options?: { outbox?: OutboxOperation[]; tombstones?: TombstoneRecord[] },
 ): PublishedEpisode[] {
   const safeLocals = Array.isArray(localAnimes) ? localAnimes : [];
+  const visCtx = buildClientVisibilityContext(safeLocals);
 
   const outboxOps =
     options?.outbox !== undefined
@@ -1308,6 +1316,23 @@ export function resolvePublicEpisodes(
   // 1. Processa os episódios confirmados do PostgreSQL (fonte canônica)
   for (const row of remoteRows) {
     if (row.published !== true) continue; // Nunca exibe rascunho ou episódio sem aprovação explícita
+    if (
+      isPubliclyBlockedId(row.animeId, visCtx) ||
+      isPubliclyBlockedAnime(
+        {
+          id: row.animeId,
+          serverCatalogId: row.animeId,
+          anilistId: row.animeAnilistId ?? null,
+          malId: row.animeMalId ?? null,
+          kitsuId: row.animeKitsuId ?? null,
+          countryOfOrigin: row.animeCountryOfOrigin ?? null,
+          duplicateOfId: row.animeDuplicateOfId ?? null,
+        },
+        visCtx,
+      )
+    ) {
+      continue;
+    }
 
     const sNum = row.seasonNumber || 1;
     const epNum = row.number;
@@ -1504,7 +1529,7 @@ export function resolvePublicEpisodes(
 
   // 2. Processa episódios locais adicionais que ainda não existem no PostgreSQL (offline / rascunhos publicados)
   for (const anime of safeLocals) {
-    if (anime.hidden) continue;
+    if (anime.hidden || isPubliclyBlockedAnime(anime, visCtx)) continue;
 
     const animeTitle = resolveAnimeCanonicalTitle(anime);
     const altTitles = resolveAnimeAltTitles(anime, animeTitle);
