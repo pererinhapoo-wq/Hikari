@@ -54,6 +54,7 @@ export interface DbCatalogAnimeRow {
   score: number | null;
   updatedAt: string | Date | null;
   hasEpisode?: boolean;
+  is_dubbed?: boolean;
 }
 
 export function toTimestampMs(val: unknown): number {
@@ -355,6 +356,7 @@ function mergeRowIntoSlim(item: SlimAnime, row: DbCatalogAnimeRow): SlimAnime {
     catalogUpdatedAt: updatedAtMs || item.catalogUpdatedAt,
     serverCatalogId: row.id,
     hasEpisode: Boolean(row.hasEpisode),
+    isDubbed: Boolean(row.is_dubbed) || rowIsDubbed(row),
   };
 }
 

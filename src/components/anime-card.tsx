@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Bookmark,
@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { useHikariStore } from "@/lib/store";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { triggerMonetagSmartLinkOnNavigationClick } from "@/lib/monetag-smartlink";
+import { isAnimeDubbed } from "@/lib/published-episodes";
 
 export const AnimeCard = memo(function AnimeCard({
   anime,
@@ -87,6 +88,12 @@ export const AnimeCard = memo(function AnimeCard({
       : "";
   const yearText = anime.year ? String(anime.year) : "";
 
+  const isDub = useMemo(() => {
+    if (typeof anime.isDubbed === "boolean") return anime.isDubbed;
+    if (typeof (anime as any).is_dubbed === "boolean") return (anime as any).is_dubbed;
+    return Boolean(inferIsDubbedFromTitles(anime) || rowIsDubbed(anime));
+  }, [anime]);
+
   return (
     <article className={cn("group relative flex flex-col min-w-0 shrink-0 [contain:layout_paint]", width)}>
       <Link
@@ -133,6 +140,19 @@ export const AnimeCard = memo(function AnimeCard({
                 : "group-hover:scale-[1.03] group-active:scale-[1.01]",
             )}
           />
+
+          {/* Selo DUB sobre a imagem do anime */}
+          {isDub && (
+            <div className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 flex items-center z-10 select-none pointer-events-none">
+              <span
+                data-badge="dub"
+                className="inline-flex items-center justify-center h-4 sm:h-[18px] px-1.5 rounded bg-emerald-600/95 border border-emerald-300/50 text-[8px] sm:text-[9px] font-bold tracking-wider text-white shadow-sm leading-none uppercase"
+              >
+                DUB
+              </span>
+            </div>
+          )}
+
           {optimizedHover && (
             <div
               aria-hidden="true"

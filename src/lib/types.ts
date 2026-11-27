@@ -79,6 +79,7 @@ export type SlimAnime = {
   hasEpisode?: boolean;
   firstAvailableEpisodeNumber?: number;
   recentBadges?: AnimeRecentBadges;
+  isDubbed?: boolean;
 };
 
 export type AnimeVoiceActor = {

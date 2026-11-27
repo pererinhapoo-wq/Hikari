@@ -4,6 +4,7 @@ import {
   type Episode,
   type LocalAnime,
 } from "@/lib/types";
+import { inferIsDubbedFromTitles, rowIsDubbed } from "@/lib/anime-identity";
 import { getBearerToken } from "@/lib/auth/client";
 import { readOutbox, type OutboxOperation } from "@/lib/episode-writer";
 import {
@@ -115,6 +116,135 @@ export function isPublishedEpisodeDubbed(
   }
 
   return false;
+}
+
+/**
+ * Determina se um anime deve exibir o selo DUB nos cards do catálogo:
+ * - Anime com pelo menos um episódio identificado como dublado: exibir DUB.
+ * - Anime sem episódios dublados: NÃO exibir o selo.
+ * - Anime sem episódios: NÃO exibir o selo.
+ * - A identificação reflete os dados reais, sem depender apenas de título
+ *   quando houver episódios cadastrados.
+ */
+export function isAnimeDubbed(
+  anime?: {
+    id?: string;
+    titles?: { romaji?: string | null; english?: string | null; native?: string | null };
+    titleRomaji?: string | null;
+    titleEnglish?: string | null;
+    titleNative?: string | null;
+    title?: string | null;
+    hasEpisode?: boolean;
+    isDubbed?: boolean;
+    is_dubbed?: boolean;
+    seasons?: Array<{
+      id?: string;
+      number?: number;
+      title?: string;
+      episodes?: Array<{
+        id?: string;
+        number?: number;
+        title?: string;
+        published?: boolean;
+        audio?: string;
+        audioVersion?: string;
+        videoUrl?: string;
+        videoUrl2?: string;
+        videoUrl3?: string;
+        videoUrl4?: string;
+        videoUrl5?: string;
+        hikariPlayerEpisodeId?: string | null;
+      }>;
+    }> | null;
+  } | null,
+): boolean {
+  if (!anime) return false;
+
+  const seasons = anime.seasons;
+  if (Array.isArray(seasons) && seasons.length > 0) {
+    let hasPublished = false;
+
+    const canonicalTitle =
+      anime.titleEnglish?.trim() ||
+      anime.titleRomaji?.trim() ||
+      anime.titleNative?.trim() ||
+      anime.title?.trim() ||
+      anime.titles?.english?.trim() ||
+      anime.titles?.romaji?.trim() ||
+      anime.titles?.native?.trim() ||
+      "Anime";
+
+    const altTitles = [
+      canonicalTitle,
+      anime.titleRomaji,
+      anime.titleEnglish,
+      anime.titleNative,
+      anime.title,
+      anime.titles?.romaji,
+      anime.titles?.english,
+      anime.titles?.native,
+    ].filter((t): t is string => typeof t === "string" && Boolean(t.trim()));
+
+    for (const season of seasons) {
+      if (!Array.isArray(season?.episodes)) continue;
+      for (const ep of season.episodes) {
+        if (!ep || ep.published !== true) continue;
+        hasPublished = true;
+        if (
+          isPublishedEpisodeDubbed({
+            episodeTitle: ep.title || "",
+            seasonTitle: season.title || "",
+            animeTitle: canonicalTitle,
+            animeAltTitles: altTitles,
+            audio: ep.audio,
+            audioVersion: ep.audioVersion,
+          })
+        ) {
+          return true;
+        }
+      }
+    }
+
+    // Se temos temporadas carregadas e NÃO tem nenhum episódio publicado:
+    // Regra: Anime sem episódios: NÃO exibir o selo
+    if (!hasPublished && anime.hasEpisode !== true) {
+      return false;
+    }
+
+    // Se tem episódios publicados mas nenhum foi identificado como dublado:
+    // Regra: Anime sem episódios dublados: NÃO exibir o selo
+    if (hasPublished) {
+      return false;
+    }
+  }
+
+  // Se não temos temporadas/episódios carregados diretamente:
+  // Regra fundamental: se o anime não tem episódios publicados confirmados, nunca exibe DUB!
+  if (anime.hasEpisode !== true) {
+    return false;
+  }
+
+  if (typeof anime.isDubbed === "boolean") {
+    return anime.isDubbed;
+  }
+  if (typeof anime.is_dubbed === "boolean") {
+    return anime.is_dubbed;
+  }
+
+  return Boolean(
+    inferIsDubbedFromTitles({
+      title: anime.title,
+      titleRomaji: anime.titleRomaji || anime.titles?.romaji,
+      titleEnglish: anime.titleEnglish || anime.titles?.english,
+      titleNative: anime.titleNative || anime.titles?.native,
+    }) ||
+      rowIsDubbed({
+        title: anime.title,
+        titleRomaji: anime.titleRomaji || anime.titles?.romaji,
+        titleEnglish: anime.titleEnglish || anime.titles?.english,
+        titleNative: anime.titleNative || anime.titles?.native,
+      }),
+  );
 }
 
 /**
