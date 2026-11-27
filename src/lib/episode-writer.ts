@@ -13,6 +13,7 @@ import {
   normalizeHikariPlayerEpisodeId,
   validateHikariPlayerEpisodeId,
 } from "@/lib/hikari-player";
+import { isHikariPlayerIdThumbnailCandidate } from "@/lib/hikari-player-thumbnail";
 import {
   hasEpisodePlayableSource,
   isPersistablePlayableVideoUrl,
@@ -878,13 +879,16 @@ export async function persistEpisode(
 
   const isPublished = episode.published === true && hasPlayableSource;
 
+  const rawThumbnail = episode.thumbnail?.trim() || "";
+  const isUnresolvedHikariId = isHikariPlayerIdThumbnailCandidate(rawThumbnail);
+
   const payload: EpisodePayload = {
     id: episode.id,
     animeId,
     seasonNumber,
     number: episode.number,
     title: episode.title,
-    thumbnail: episode.thumbnail?.trim() || null,
+    thumbnail: isUnresolvedHikariId ? null : rawThumbnail || null,
     duration: episode.duration || null,
     synopsis: episode.synopsis || null,
     videoUrl: episode.videoUrl || null,
@@ -911,7 +915,9 @@ export async function persistEpisode(
       : {}),
     published: isPublished,
     replaceSources: true,
-    replaceThumbnail: Boolean(options?.replaceThumbnail),
+    replaceThumbnail: isUnresolvedHikariId
+      ? false
+      : Boolean(options?.replaceThumbnail),
     animeTitle: animeTitle || null,
   };
 

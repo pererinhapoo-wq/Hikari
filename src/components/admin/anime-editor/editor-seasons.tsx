@@ -85,9 +85,10 @@ import {
   buildHikariPlayerEpisodeUrl,
   validateHikariPlayerEpisodeId,
 } from "@/lib/hikari-player";
-import type {
-  EpisodeThumbnailOrigin,
-  HikariPlayerThumbStatusEntry,
+import {
+  classifyThumbnailInput,
+  type EpisodeThumbnailOrigin,
+  type HikariPlayerThumbStatusEntry,
 } from "@/lib/hikari-player-thumbnail";
 import { cn } from "@/lib/utils";
 import {
@@ -168,6 +169,9 @@ interface EditorSeasonsProps {
   hikariThumbStatuses?: Record<string, HikariPlayerThumbStatusEntry>;
   onLookupHikariPlayerThumbnail?: (episodeId: string, rawHikariPlayerId: string) => void;
   onCancelHikariPlayerThumbnailLookup?: (episodeId: string, clearStatus?: boolean) => void;
+  thumbInputHikariStatuses?: Record<string, HikariPlayerThumbStatusEntry>;
+  onLookupThumbnailHikariPlayer?: (episodeId: string, rawHikariPlayerId: string) => void;
+  onCancelThumbnailHikariPlayerLookup?: (episodeId: string, clearStatus?: boolean) => void;
   onThumbnailChange?: (sid: string, ep: Episode, value: string) => void;
   onThumbnailClear?: (sid: string, ep: Episode) => void;
   onFetchOpeningSuggestions?: () => Promise<void>;
@@ -278,6 +282,9 @@ export function EditorSeasons({
   hikariThumbStatuses,
   onLookupHikariPlayerThumbnail,
   onCancelHikariPlayerThumbnailLookup,
+  thumbInputHikariStatuses,
+  onLookupThumbnailHikariPlayer,
+  onCancelThumbnailHikariPlayerLookup,
   onThumbnailChange,
   onThumbnailClear,
   onFetchOpeningSuggestions,
@@ -519,6 +526,7 @@ export function EditorSeasons({
               thumbnailEditModes={thumbnailEditModes}
               thumbnailOrigins={thumbnailOrigins}
               hikariThumbStatuses={hikariThumbStatuses}
+              thumbInputHikariStatuses={thumbInputHikariStatuses}
               openingSuggestions={openingSuggestions}
               publishErrors={publishErrors}
               getInheritedThumbnail={getInheritedThumbnail}
@@ -536,6 +544,8 @@ export function EditorSeasons({
               onUploadVideoToB2={onUploadVideoToB2}
               onLookupHikariPlayerThumbnail={onLookupHikariPlayerThumbnail}
               onCancelHikariPlayerThumbnailLookup={onCancelHikariPlayerThumbnailLookup}
+              onLookupThumbnailHikariPlayer={onLookupThumbnailHikariPlayer}
+              onCancelThumbnailHikariPlayerLookup={onCancelThumbnailHikariPlayerLookup}
               onThumbnailChange={onThumbnailChange}
               onThumbnailClear={onThumbnailClear}
               onApplyOpeningSuggestion={onApplyOpeningSuggestion}
@@ -616,6 +626,7 @@ interface SeasonSectionProps {
   thumbnailEditModes?: Record<string, "modified" | "cleared">;
   thumbnailOrigins?: Record<string, EpisodeThumbnailOrigin>;
   hikariThumbStatuses?: Record<string, HikariPlayerThumbStatusEntry>;
+  thumbInputHikariStatuses?: Record<string, HikariPlayerThumbStatusEntry>;
   openingSuggestions?: Record<string, OpeningSuggestionEntry>;
   publishErrors: Record<string, string>;
   getInheritedThumbnail?: (seasonNumber: number, ep: Episode) => string | undefined;
@@ -650,6 +661,8 @@ interface SeasonSectionProps {
   ) => Promise<void>;
   onLookupHikariPlayerThumbnail?: (episodeId: string, rawHikariPlayerId: string) => void;
   onCancelHikariPlayerThumbnailLookup?: (episodeId: string, clearStatus?: boolean) => void;
+  onLookupThumbnailHikariPlayer?: (episodeId: string, rawHikariPlayerId: string) => void;
+  onCancelThumbnailHikariPlayerLookup?: (episodeId: string, clearStatus?: boolean) => void;
   onThumbnailChange?: (sid: string, ep: Episode, value: string) => void;
   onThumbnailClear?: (sid: string, ep: Episode) => void;
   onApplyOpeningSuggestion?: (
@@ -676,6 +689,7 @@ const SeasonSection = memo(function SeasonSection({
   thumbnailEditModes,
   thumbnailOrigins,
   hikariThumbStatuses,
+  thumbInputHikariStatuses,
   openingSuggestions,
   publishErrors,
   getInheritedThumbnail,
@@ -693,6 +707,8 @@ const SeasonSection = memo(function SeasonSection({
   onUploadVideoToB2,
   onLookupHikariPlayerThumbnail,
   onCancelHikariPlayerThumbnailLookup,
+  onLookupThumbnailHikariPlayer,
+  onCancelThumbnailHikariPlayerLookup,
   onThumbnailChange,
   onThumbnailClear,
   onApplyOpeningSuggestion,
@@ -978,6 +994,7 @@ const SeasonSection = memo(function SeasonSection({
                         thumbnailEditMode={thumbMode}
                         thumbnailOrigin={thumbnailOrigins?.[ep.id]}
                         hikariThumbStatus={hikariThumbStatuses?.[ep.id]}
+                        thumbInputHikariStatus={thumbInputHikariStatuses?.[ep.id]}
                         inheritedThumbnail={inheritedThumbnail}
                         explicitPublishError={publishErrors[ep.id]}
                         openingSuggestion={openingSuggestion}
@@ -991,6 +1008,8 @@ const SeasonSection = memo(function SeasonSection({
                         onUploadVideoToB2={onUploadVideoToB2}
                         onLookupHikariPlayerThumbnail={onLookupHikariPlayerThumbnail}
                         onCancelHikariPlayerThumbnailLookup={onCancelHikariPlayerThumbnailLookup}
+                        onLookupThumbnailHikariPlayer={onLookupThumbnailHikariPlayer}
+                        onCancelThumbnailHikariPlayerLookup={onCancelThumbnailHikariPlayerLookup}
                         onThumbnailChange={onThumbnailChange}
                         onThumbnailClear={onThumbnailClear}
                         onApplyOpeningSuggestion={onApplyOpeningSuggestion}
@@ -1125,6 +1144,7 @@ interface EpisodeCardProps {
   thumbnailEditMode?: "modified" | "cleared";
   thumbnailOrigin?: EpisodeThumbnailOrigin;
   hikariThumbStatus?: HikariPlayerThumbStatusEntry;
+  thumbInputHikariStatus?: HikariPlayerThumbStatusEntry;
   inheritedThumbnail?: string;
   explicitPublishError?: string;
   openingSuggestion?: OpeningSuggestionEntry;
@@ -1156,6 +1176,8 @@ interface EpisodeCardProps {
   ) => Promise<void>;
   onLookupHikariPlayerThumbnail?: (episodeId: string, rawHikariPlayerId: string) => void;
   onCancelHikariPlayerThumbnailLookup?: (episodeId: string, clearStatus?: boolean) => void;
+  onLookupThumbnailHikariPlayer?: (episodeId: string, rawHikariPlayerId: string) => void;
+  onCancelThumbnailHikariPlayerLookup?: (episodeId: string, clearStatus?: boolean) => void;
   onThumbnailChange?: (sid: string, ep: Episode, value: string) => void;
   onThumbnailClear?: (sid: string, ep: Episode) => void;
   onApplyOpeningSuggestion?: (
@@ -1183,6 +1205,7 @@ const EpisodeCard = memo(function EpisodeCard({
   thumbnailEditMode,
   thumbnailOrigin,
   hikariThumbStatus,
+  thumbInputHikariStatus,
   inheritedThumbnail,
   explicitPublishError,
   openingSuggestion,
@@ -1196,6 +1219,8 @@ const EpisodeCard = memo(function EpisodeCard({
   onUploadVideoToB2,
   onLookupHikariPlayerThumbnail,
   onCancelHikariPlayerThumbnailLookup,
+  onLookupThumbnailHikariPlayer,
+  onCancelThumbnailHikariPlayerLookup,
   onThumbnailChange,
   onThumbnailClear,
   onApplyOpeningSuggestion,
@@ -1326,18 +1351,84 @@ const EpisodeCard = memo(function EpisodeCard({
     return trimmed;
   };
 
+  const thumbHikariLookupTimerRef = useRef<number | null>(null);
+  const thumbHikariRecentPasteAtRef = useRef<number>(0);
+
+  const clearThumbHikariLookupTimer = useCallback(() => {
+    if (thumbHikariLookupTimerRef.current !== null && typeof window !== "undefined") {
+      window.clearTimeout(thumbHikariLookupTimerRef.current);
+      thumbHikariLookupTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleThumbHikariLookup = useCallback(
+    (rawValue: string, delayMs: number) => {
+      clearThumbHikariLookupTimer();
+      const classification = classifyThumbnailInput(rawValue);
+      if (classification.kind !== "hikari_player_id") {
+        onCancelThumbnailHikariPlayerLookup?.(ep.id, true);
+        return;
+      }
+      if (!onLookupThumbnailHikariPlayer) return;
+      const targetId = classification.id;
+      if (delayMs <= 0) {
+        onLookupThumbnailHikariPlayer(ep.id, targetId);
+        return;
+      }
+      thumbHikariLookupTimerRef.current = window.setTimeout(() => {
+        thumbHikariLookupTimerRef.current = null;
+        onLookupThumbnailHikariPlayer(ep.id, targetId);
+      }, delayMs);
+    },
+    [
+      clearThumbHikariLookupTimer,
+      ep.id,
+      onCancelThumbnailHikariPlayerLookup,
+      onLookupThumbnailHikariPlayer,
+    ],
+  );
+
+  const handleThumbInputChange = (nextValue: string) => {
+    if (onThumbnailChange) {
+      onThumbnailChange(seasonId, ep, nextValue);
+    } else {
+      onPatchEpisode(seasonId, ep.id, {
+        thumbnail: nextValue,
+      });
+    }
+
+    const isPasteTriggered = Date.now() - thumbHikariRecentPasteAtRef.current < 150;
+    if (isPasteTriggered) {
+      thumbHikariRecentPasteAtRef.current = 0;
+    }
+    scheduleThumbHikariLookup(nextValue, isPasteTriggered ? 20 : 450);
+  };
+
+  const handleThumbInputClear = () => {
+    clearThumbHikariLookupTimer();
+    onCancelThumbnailHikariPlayerLookup?.(ep.id, true);
+    if (onThumbnailClear) {
+      onThumbnailClear(seasonId, ep);
+    } else {
+      onPatchEpisode(seasonId, ep.id, {
+        thumbnail: "",
+      });
+    }
+  };
+
   const pasteTimeoutRef = useRef<number | null>(null);
   const lastPasteTriggerRef = useRef<RecentPasteRecord | null>(null);
 
   useEffect(() => {
     return () => {
       clearHikariLookupTimer();
+      clearThumbHikariLookupTimer();
       if (pasteTimeoutRef.current !== null && typeof window !== "undefined") {
         window.clearTimeout(pasteTimeoutRef.current);
         pasteTimeoutRef.current = null;
       }
     };
-  }, [clearHikariLookupTimer]);
+  }, [clearHikariLookupTimer, clearThumbHikariLookupTimer]);
 
   const handleSlotBlur = (key: VideoSlotKey, rawValue: string) => {
     const val = normalizeDurableSourceInput(key, rawValue);
@@ -1963,15 +2054,7 @@ const EpisodeCard = memo(function EpisodeCard({
                 src={displayThumbnail}
                 episodeNumber={ep.number}
                 immediatePreview={thumbnailOrigin === "hikari-player"}
-                onClear={() => {
-                  if (onThumbnailClear) {
-                    onThumbnailClear(seasonId, ep);
-                  } else {
-                    onPatchEpisode(seasonId, ep.id, {
-                      thumbnail: "",
-                    });
-                  }
-                }}
+                onClear={handleThumbInputClear}
               />
 
               <div className="min-w-0 flex-1 space-y-2">
@@ -1980,30 +2063,23 @@ const EpisodeCard = memo(function EpisodeCard({
                     <Input
                       id={`ep-thumb-${ep.id}`}
                       value={displayThumbnail}
-                      onChange={(e) => {
-                        if (onThumbnailChange) {
-                          onThumbnailChange(seasonId, ep, e.target.value);
-                        } else {
-                          onPatchEpisode(seasonId, ep.id, {
-                            thumbnail: e.target.value,
-                          });
+                      onChange={(e) => handleThumbInputChange(e.target.value)}
+                      onPaste={() => {
+                        thumbHikariRecentPasteAtRef.current = Date.now();
+                      }}
+                      onBlur={(e) => {
+                        const classification = classifyThumbnailInput(e.target.value);
+                        if (classification.kind === "hikari_player_id") {
+                          scheduleThumbHikariLookup(e.target.value, 0);
                         }
                       }}
-                      placeholder="Cole a URL da imagem do episódio (opcional)"
+                      placeholder="Cole a URL da imagem ou ID do Hikari Player (opcional)"
                       className="h-10 w-full border-white/10 bg-[var(--studio-panel)] pr-8 text-xs"
                     />
                     {Boolean(displayThumbnail) && (
                       <button
                         type="button"
-                        onClick={() => {
-                          if (onThumbnailClear) {
-                            onThumbnailClear(seasonId, ep);
-                          } else {
-                            onPatchEpisode(seasonId, ep.id, {
-                              thumbnail: "",
-                            });
-                          }
-                        }}
+                        onClick={handleThumbInputClear}
                         aria-label={`Limpar imagem do Episódio ${ep.number}`}
                         title="Limpar URL da imagem"
                         className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-[var(--color-subtle)] hover:bg-white/[0.08] hover:text-rose-400"
@@ -2044,6 +2120,37 @@ const EpisodeCard = memo(function EpisodeCard({
                     )}
                   </Button>
                 </div>
+
+                {thumbInputHikariStatus && thumbInputHikariStatus.status !== "idle" && (
+                  <p
+                    aria-live="polite"
+                    data-thumb-input-hikari-status={thumbInputHikariStatus.status}
+                    className={cn(
+                      "flex items-center gap-1.5 text-[11px]",
+                      thumbInputHikariStatus.status === "loading" &&
+                        "text-violet-300",
+                      thumbInputHikariStatus.status === "imported" &&
+                        "text-emerald-400",
+                      thumbInputHikariStatus.status === "no_image" &&
+                        "text-[var(--color-muted)]",
+                      (thumbInputHikariStatus.status === "not_found" ||
+                        thumbInputHikariStatus.status === "error") &&
+                        "text-amber-300/90",
+                    )}
+                  >
+                    {thumbInputHikariStatus.status === "loading" && (
+                      <Loader2 className="size-3 shrink-0 animate-spin" />
+                    )}
+                    {thumbInputHikariStatus.status === "imported" && (
+                      <CheckCircle2 className="size-3 shrink-0" />
+                    )}
+                    {(thumbInputHikariStatus.status === "not_found" ||
+                      thumbInputHikariStatus.status === "error") && (
+                      <AlertCircle className="size-3 shrink-0" />
+                    )}
+                    <span>{thumbInputHikariStatus.message}</span>
+                  </p>
+                )}
 
                 <p className="text-[11px] text-[var(--color-subtle)]">
                   Opcional. A URL informada ou escolhida aqui tem prioridade sobre a imagem automática ou padrão do Hikari, e nunca é apagada ao colar um link de vídeo.

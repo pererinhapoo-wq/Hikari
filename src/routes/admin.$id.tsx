@@ -79,7 +79,10 @@ import {
   validateHikariPlayerEpisodeId,
 } from "@/lib/hikari-player";
 import {
+  classifyThumbnailInput,
   createHikariPlayerThumbnailManager,
+  HIKARI_PLAYER_THUMB_INPUT_MESSAGES,
+  isHikariPlayerIdThumbnailCandidate,
   resolveInitialThumbnailOrigin,
   type EpisodeThumbnailOrigin,
   type HikariPlayerThumbStatusEntry,
@@ -346,6 +349,11 @@ function AdminEditor() {
   >({});
   const latestHikariIdsRef = useRef<Record<string, string>>({});
   const hikariThumbManagerRef = useRef<HikariPlayerThumbnailManager | null>(null);
+  const [thumbInputHikariStatuses, setThumbInputHikariStatuses] = useState<
+    Record<string, HikariPlayerThumbStatusEntry>
+  >({});
+  const latestThumbnailValuesRef = useRef<Record<string, string>>({});
+  const thumbInputHikariManagerRef = useRef<HikariPlayerThumbnailManager | null>(null);
 
   const revokeEpisodePreviewUrls = useCallback((epId: string) => {
     const task = candidateTasksRef.current.get(epId);
@@ -427,10 +435,12 @@ function AdminEditor() {
       const prevOrigins = thumbnailOriginsRef.current;
       const nextOrigins: Record<string, EpisodeThumbnailOrigin> = {};
       const nextIds: Record<string, string> = {};
+      const nextThumbs: Record<string, string> = {};
 
       for (const season of seasons) {
         for (const ep of season.episodes) {
           nextIds[ep.id] = ep.hikariPlayerEpisodeId ?? "";
+          nextThumbs[ep.id] = ep.thumbnail ?? "";
           if (preserveExisting && prevOrigins[ep.id]) {
             nextOrigins[ep.id] = prevOrigins[ep.id];
           } else {
@@ -440,6 +450,7 @@ function AdminEditor() {
       }
 
       latestHikariIdsRef.current = nextIds;
+      latestThumbnailValuesRef.current = nextThumbs;
       thumbnailOriginsRef.current = nextOrigins;
       setThumbnailOrigins(nextOrigins);
     },
@@ -568,6 +579,9 @@ function AdminEditor() {
       if ("hikariPlayerEpisodeId" in patch) {
         latestHikariIdsRef.current[eid] = patch.hikariPlayerEpisodeId ?? "";
       }
+      if ("thumbnail" in patch) {
+        latestThumbnailValuesRef.current[eid] = patch.thumbnail ?? "";
+      }
 
       const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
       const liveEp = liveSeason?.episodes.find((e) => e.id === eid);
@@ -661,9 +675,80 @@ function AdminEditor() {
     });
   }
 
+  if (!thumbInputHikariManagerRef.current) {
+    thumbInputHikariManagerRef.current = createHikariPlayerThumbnailManager({
+      allowReplacePendingId: true,
+      messages: HIKARI_PLAYER_THUMB_INPUT_MESSAGES,
+      getCurrentEpisodeId: (epId) => {
+        let rawThumb: string | undefined;
+        if (Object.prototype.hasOwnProperty.call(latestThumbnailValuesRef.current, epId)) {
+          rawThumb = latestThumbnailValuesRef.current[epId];
+        } else {
+          for (const s of formRef.current?.seasons ?? []) {
+            const found = s.episodes.find((e) => e.id === epId);
+            if (found) {
+              rawThumb = found.thumbnail ?? "";
+              break;
+            }
+          }
+        }
+        const classification = classifyThumbnailInput(rawThumb);
+        return classification.kind === "hikari_player_id" ? classification.id : null;
+      },
+      getCurrentThumbnailState: (epId) => {
+        let rawThumb = "";
+        if (Object.prototype.hasOwnProperty.call(latestThumbnailValuesRef.current, epId)) {
+          rawThumb = latestThumbnailValuesRef.current[epId] ?? "";
+        } else {
+          for (const s of formRef.current?.seasons ?? []) {
+            const found = s.episodes.find((e) => e.id === epId);
+            if (found) {
+              rawThumb = found.thumbnail ?? "";
+              break;
+            }
+          }
+        }
+        return {
+          thumbnail: rawThumb,
+          origin:
+            thumbnailOriginsRef.current[epId] ??
+            resolveInitialThumbnailOrigin(rawThumb),
+        };
+      },
+      onStatusChange: (epId, status) => {
+        setThumbInputHikariStatuses((prev) => {
+          const next = { ...prev };
+          if (status) {
+            next[epId] = status;
+          } else {
+            delete next[epId];
+          }
+          return next;
+        });
+      },
+      onApplyPoster: (epId, posterUrl) => {
+        const seasons = formRef.current?.seasons ?? [];
+        for (const s of seasons) {
+          if (s.episodes.some((e) => e.id === epId)) {
+            patchEpisode(s.id, epId, { thumbnail: posterUrl });
+            setEpisodeThumbnailEditMode(epId, "modified");
+            setEpisodeThumbnailOrigin(epId, "hikari-player");
+            break;
+          }
+        }
+      },
+      getAuthHeaders: (): Record<string, string> => {
+        const token = getBearerToken();
+        if (!token) return {};
+        return { Authorization: `Bearer ${token}` };
+      },
+    });
+  }
+
   useEffect(() => {
     return () => {
       hikariThumbManagerRef.current?.dispose();
+      thumbInputHikariManagerRef.current?.dispose();
     };
   }, []);
 
@@ -677,6 +762,20 @@ function AdminEditor() {
   const handleCancelHikariPlayerThumbnailLookup = useCallback(
     (episodeId: string, clearStatus = true) => {
       hikariThumbManagerRef.current?.cancel(episodeId, { clearStatus });
+    },
+    [],
+  );
+
+  const handleLookupThumbnailHikariPlayer = useCallback(
+    (episodeId: string, rawHikariPlayerId: string) => {
+      void thumbInputHikariManagerRef.current?.lookup(episodeId, rawHikariPlayerId);
+    },
+    [],
+  );
+
+  const handleCancelThumbnailHikariPlayerLookup = useCallback(
+    (episodeId: string, clearStatus = true) => {
+      thumbInputHikariManagerRef.current?.cancel(episodeId, { clearStatus });
     },
     [],
   );
@@ -972,6 +1071,7 @@ function AdminEditor() {
           throw new Error("A imagem selecionada não pôde ser preparada para salvamento.");
         }
 
+        thumbInputHikariManagerRef.current?.cancel(ep.id, { clearStatus: true });
         patchEpisode(sid, ep.id, { thumbnail: finalUrl });
         setEpisodeThumbnailEditMode(ep.id, "modified");
         setEpisodeThumbnailOrigin(ep.id, "manual");
@@ -1082,6 +1182,7 @@ function AdminEditor() {
           return;
         }
 
+        thumbInputHikariManagerRef.current?.cancel(ep.id, { clearStatus: true });
         patchEpisode(sid, ep.id, { thumbnail: res.url });
         setEpisodeThumbnailEditMode(ep.id, "modified");
         setEpisodeThumbnailOrigin(ep.id, "manual");
@@ -1216,6 +1317,8 @@ function AdminEditor() {
     setThumbnailEditModes({});
     setHikariThumbStatuses({});
     latestHikariIdsRef.current = {};
+    setThumbInputHikariStatuses({});
+    latestThumbnailValuesRef.current = {};
     dirtyEpisodeIdsRef.current = new Set();
     explicitUserDirtyEpisodeIdsRef.current = new Set();
     dirtyMediaRef.current = { cover: false, banner: false };
@@ -1638,9 +1741,14 @@ function AdminEditor() {
           const hikariValidation = validateHikariPlayerEpisodeId(
             ep.hikariPlayerEpisodeId,
           );
+          const rawThumb = ep.thumbnail?.trim() || "";
+          const safeThumbnail =
+            rawThumb && !isHikariPlayerIdThumbnailCandidate(rawThumb)
+              ? rawThumb
+              : undefined;
           return {
             ...ep,
-            thumbnail: ep.thumbnail?.trim() || undefined,
+            thumbnail: safeThumbnail,
             hikariPlayerEpisodeId: hikariValidation.valid
               ? hikariValidation.value ?? undefined
               : undefined,
@@ -1790,8 +1898,15 @@ function AdminEditor() {
       for (const season of effectiveAnime.seasons) {
         for (const ep of season.episodes) {
           const thumbMode = thumbnailEditModesRef.current[ep.id];
+          const liveRawThumb =
+            formRef.current?.seasons
+              .find((s) => s.id === season.id)
+              ?.episodes.find((e) => e.id === ep.id)?.thumbnail ?? ep.thumbnail;
+          const isUnresolvedThumbId =
+            isHikariPlayerIdThumbnailCandidate(liveRawThumb);
           const shouldReplaceThumb =
-            thumbMode === "modified" || thumbMode === "cleared";
+            !isUnresolvedThumbId &&
+            (thumbMode === "modified" || thumbMode === "cleared");
           const isDirtyEpisode =
             dirtyEpisodeIdsRef.current.has(ep.id) ||
             existingOutboxIds.has(ep.id) ||
@@ -2267,6 +2382,8 @@ function AdminEditor() {
       }
       hikariThumbManagerRef.current?.cancel(eid, { clearStatus: true });
       delete latestHikariIdsRef.current[eid];
+      thumbInputHikariManagerRef.current?.cancel(eid, { clearStatus: true });
+      delete latestThumbnailValuesRef.current[eid];
       setEpisodeThumbnailOrigin(eid, undefined);
       setEpisodeThumbnailEditMode(eid, undefined);
     },
@@ -2280,14 +2397,21 @@ function AdminEditor() {
   const handleEpisodeThumbnailChange = useCallback(
     (sid: string, ep: Episode, value: string) => {
       patchEpisode(sid, ep.id, { thumbnail: value });
-      setEpisodeThumbnailEditMode(ep.id, value.trim() ? "modified" : "cleared");
-      setEpisodeThumbnailOrigin(ep.id, value.trim() ? "manual" : "empty");
+      const classification = classifyThumbnailInput(value);
+      if (classification.kind === "hikari_player_id") {
+        setEpisodeThumbnailEditMode(ep.id, "modified");
+        setEpisodeThumbnailOrigin(ep.id, "empty");
+      } else {
+        setEpisodeThumbnailEditMode(ep.id, value.trim() ? "modified" : "cleared");
+        setEpisodeThumbnailOrigin(ep.id, value.trim() ? "manual" : "empty");
+      }
     },
     [patchEpisode, setEpisodeThumbnailEditMode, setEpisodeThumbnailOrigin],
   );
 
   const handleEpisodeThumbnailClear = useCallback(
     (sid: string, ep: Episode) => {
+      thumbInputHikariManagerRef.current?.cancel(ep.id, { clearStatus: true });
       patchEpisode(sid, ep.id, { thumbnail: "" });
       setEpisodeThumbnailEditMode(ep.id, "cleared");
       setEpisodeThumbnailOrigin(ep.id, "empty");
@@ -2644,6 +2768,9 @@ function AdminEditor() {
           hikariThumbStatuses={hikariThumbStatuses}
           onLookupHikariPlayerThumbnail={handleLookupHikariPlayerThumbnail}
           onCancelHikariPlayerThumbnailLookup={handleCancelHikariPlayerThumbnailLookup}
+          thumbInputHikariStatuses={thumbInputHikariStatuses}
+          onLookupThumbnailHikariPlayer={handleLookupThumbnailHikariPlayer}
+          onCancelThumbnailHikariPlayerLookup={handleCancelThumbnailHikariPlayerLookup}
           onThumbnailChange={handleEpisodeThumbnailChange}
           onThumbnailClear={handleEpisodeThumbnailClear}
           onFetchOpeningSuggestions={handleFetchOpeningSuggestions}

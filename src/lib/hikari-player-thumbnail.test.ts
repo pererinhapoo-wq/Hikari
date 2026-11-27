@@ -12,13 +12,21 @@ import {
 } from "./hikari-player-api.server";
 import {
   canAutoApplyHikariPlayerThumbnail,
+  classifyThumbnailInput,
   createHikariPlayerThumbnailManager,
   HIKARI_PLAYER_CLIENT_TIMEOUT_MS,
+  HIKARI_PLAYER_THUMB_INPUT_MESSAGES,
   HIKARI_PLAYER_THUMB_MESSAGES,
+  isHikariPlayerIdThumbnailCandidate,
   resolveInitialThumbnailOrigin,
   type EpisodeThumbnailOrigin,
   type HikariPlayerThumbStatusEntry,
 } from "./hikari-player-thumbnail";
+import { persistEpisode } from "./episode-writer";
+import {
+  isValidImagePreviewUrl,
+  shouldRunAutoThumbnailProbe,
+} from "./thumbnail-probe-guard";
 import { handleGetHikariPlayerEpisode } from "@/routes/api/admin/hikari-player-episode.$id";
 import { handlePostCatalogEpisode } from "@/routes/api/admin/catalog-episode";
 import { invalidateCatalogEpisodesCacheAsync } from "./catalog-episodes";
@@ -833,3 +841,363 @@ describe("catalog-episode — integração com salvamento e fail-open no Postgre
     }
   });
 });
+
+describe("campo Imagem do episódio (URL) — detecção segura de ID vs URL e proteção completa", () => {
+  it("14. Reconhece IDs válidos (como 9Z5APS7J8yJCrXLt064GB) e nunca classifica URLs, caminhos relativos, blob/data ou prefixos parciais como ID", () => {
+    // IDs válidos devem ser reconhecidos
+    assert.deepEqual(classifyThumbnailInput("9Z5APS7J8yJCrXLt064GB"), {
+      kind: "hikari_player_id",
+      id: "9Z5APS7J8yJCrXLt064GB",
+    });
+    assert.deepEqual(classifyThumbnailInput("  ep_abc123456  "), {
+      kind: "hikari_player_id",
+      id: "ep_abc123456",
+    });
+    assert.deepEqual(classifyThumbnailInput("abc123"), {
+      kind: "hikari_player_id",
+      id: "abc123",
+    });
+    assert.equal(
+      isHikariPlayerIdThumbnailCandidate("9Z5APS7J8yJCrXLt064GB"),
+      true,
+    );
+
+    // Vazios
+    assert.deepEqual(classifyThumbnailInput(""), { kind: "empty" });
+    assert.deepEqual(classifyThumbnailInput("   "), { kind: "empty" });
+
+    // URLs HTTP/HTTPS, URLs do próprio Hikari Player, caminhos relativos, blob, data:image e nomes de arquivo/domínio
+    const nonIds = [
+      "https://cdn.example.com/poster.jpg",
+      "http://localhost:3000/thumb.png",
+      "https://hikari-player-2.vercel.app/e/9Z5APS7J8yJCrXLt064GB",
+      "/imagem.jpg",
+      "/uploads/ep-1.webp",
+      "//cdn.example.com/thumb.jpg",
+      "blob:https://hikaritv.cc.cd/1234-5678",
+      "data:image/png;base64,iVBORw0KGgo=",
+      "poster.jpg",
+      "thumb.webp",
+      "cdn.example.com",
+      "www.example.com",
+      "localhost",
+      // Prefixos parciais digitados caractere por caractere
+      "h",
+      "ht",
+      "htt",
+      "http",
+      "https",
+      "https:",
+      "https:/",
+      "b",
+      "bl",
+      "blo",
+      "blob",
+      "d",
+      "da",
+      "dat",
+      "data",
+      "w",
+      "ww",
+      "www",
+      "abc",
+      "cdn.",
+      "9Z5APS7J8yJCrXLt064GB?foo=1",
+      "9Z5APS7J8yJCrXLt064GB/extra",
+      "id com espaco",
+    ];
+
+    for (const sample of nonIds) {
+      assert.equal(
+        classifyThumbnailInput(sample).kind,
+        "url",
+        `Esperado que "${sample}" fosse tratado como URL/não-ID`,
+      );
+      assert.equal(isHikariPlayerIdThumbnailCandidate(sample), false);
+    }
+
+    // Prévia de imagem preservada para URLs válidas e relativas
+    assert.equal(
+      isValidImagePreviewUrl("https://cdn.example.com/poster.jpg"),
+      true,
+    );
+    assert.equal(isValidImagePreviewUrl("/imagem.jpg"), true);
+    assert.equal(
+      isValidImagePreviewUrl("blob:https://hikaritv.cc.cd/1234-5678"),
+      true,
+    );
+    assert.equal(
+      isValidImagePreviewUrl("data:image/png;base64,iVBORw0KGgo="),
+      true,
+    );
+    assert.equal(isValidImagePreviewUrl("9Z5APS7J8yJCrXLt064GB"), false);
+
+    // Captura/extração automática de vídeo continua intacta
+    assert.equal(
+      shouldRunAutoThumbnailProbe(
+        undefined,
+        "https://cdn.example.com/video.mp4",
+      ),
+      true,
+    );
+  });
+
+  it("15. Substitui ID válido pelo poster_url no campo de imagem e exibe mensagens corretas para carregado, sem imagem e erro", async () => {
+    let thumbnail = "";
+    let origin: EpisodeThumbnailOrigin = "empty";
+    let status: HikariPlayerThumbStatusEntry | undefined;
+    const requestedUrls: string[] = [];
+
+    const manager = createHikariPlayerThumbnailManager({
+      allowReplacePendingId: true,
+      messages: HIKARI_PLAYER_THUMB_INPUT_MESSAGES,
+      getCurrentEpisodeId: () => {
+        const c = classifyThumbnailInput(thumbnail);
+        return c.kind === "hikari_player_id" ? c.id : null;
+      },
+      getCurrentThumbnailState: () => ({ thumbnail, origin }),
+      onStatusChange: (_k, s) => {
+        status = s;
+      },
+      onApplyPoster: (_k, url) => {
+        thumbnail = url;
+        origin = "hikari-player";
+      },
+      fetchImpl: async (input) => {
+        const url = String(input);
+        requestedUrls.push(url);
+        const id = decodeURIComponent(url.split("/").pop() || "");
+        if (id === "9Z5APS7J8yJCrXLt064GB") {
+          return new Response(
+            JSON.stringify({
+              id,
+              poster_url: "https://cdn.hikariplayer.test/posters/9Z5APS7J8yJCrXLt064GB.jpg",
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (id === "id_no_image") {
+          return new Response(
+            JSON.stringify({ id, poster_url: null }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "Not found" }), {
+          status: 404,
+        });
+      },
+    });
+
+    // A) Cola ID válido -> consulta rota existente e substitui ID pela URL retornada
+    thumbnail = "9Z5APS7J8yJCrXLt064GB";
+    origin = "empty";
+    await manager.lookup("ep_1", thumbnail);
+    assert.deepEqual(requestedUrls, [
+      "/api/admin/hikari-player-episode/9Z5APS7J8yJCrXLt064GB",
+    ]);
+    assert.equal(
+      thumbnail,
+      "https://cdn.hikariplayer.test/posters/9Z5APS7J8yJCrXLt064GB.jpg",
+    );
+    assert.equal(origin, "hikari-player");
+    assert.equal(status?.status, "imported");
+    assert.equal(status?.message, HIKARI_PLAYER_THUMB_INPUT_MESSAGES.imported);
+
+    // B) ID sem imagem -> exibe mensagem discreta e não apaga imagem existente no fluxo de preservação
+    let preservedThumb = "https://cdn.hikariplayer.test/existing.jpg";
+    let preservedStatus: HikariPlayerThumbStatusEntry | undefined;
+    const managerNoImg = createHikariPlayerThumbnailManager({
+      allowReplacePendingId: true,
+      messages: HIKARI_PLAYER_THUMB_INPUT_MESSAGES,
+      getCurrentEpisodeId: () => "id_no_image",
+      getCurrentThumbnailState: () => ({
+        thumbnail: preservedThumb,
+        origin: "manual",
+      }),
+      onStatusChange: (_k, s) => {
+        preservedStatus = s;
+      },
+      onApplyPoster: (_k, url) => {
+        preservedThumb = url;
+      },
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({ id: "id_no_image", poster_url: null }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    });
+    await managerNoImg.lookup("ep_1", "id_no_image");
+    assert.equal(preservedThumb, "https://cdn.hikariplayer.test/existing.jpg");
+    assert.equal(preservedStatus?.status, "no_image");
+    assert.equal(
+      preservedStatus?.message,
+      HIKARI_PLAYER_THUMB_INPUT_MESSAGES.no_image,
+    );
+    managerNoImg.dispose();
+
+    // C) ID inexistente (404) -> não quebra formulário e exibe mensagem discreta
+    thumbnail = "id_inexistente";
+    origin = "empty";
+    await manager.lookup("ep_1", "id_inexistente");
+    assert.equal(status?.status, "not_found");
+    assert.equal(status?.message, HIKARI_PLAYER_THUMB_INPUT_MESSAGES.error);
+
+    manager.dispose();
+  });
+
+  it("16. Resposta atrasada não sobrescreve edição manual, troca de ID ou limpeza do campo, nem afeta outro episódio", async () => {
+    const episodes: Record<
+      string,
+      { thumbnail: string; origin: EpisodeThumbnailOrigin; status?: HikariPlayerThumbStatusEntry }
+    > = {
+      ep_a: { thumbnail: "id_slow_a", origin: "empty" },
+      ep_b: { thumbnail: "https://manual.test/ep_b.jpg", origin: "manual" },
+    };
+    const resolvers = new Map<string, (res: Response) => void>();
+
+    const manager = createHikariPlayerThumbnailManager({
+      allowReplacePendingId: true,
+      messages: HIKARI_PLAYER_THUMB_INPUT_MESSAGES,
+      getCurrentEpisodeId: (epId) => {
+        const c = classifyThumbnailInput(episodes[epId]?.thumbnail);
+        return c.kind === "hikari_player_id" ? c.id : null;
+      },
+      getCurrentThumbnailState: (epId) => ({
+        thumbnail: episodes[epId]?.thumbnail ?? "",
+        origin: episodes[epId]?.origin ?? "empty",
+      }),
+      onStatusChange: (epId, s) => {
+        if (episodes[epId]) episodes[epId].status = s;
+      },
+      onApplyPoster: (epId, url) => {
+        if (episodes[epId]) {
+          episodes[epId].thumbnail = url;
+          episodes[epId].origin = "hikari-player";
+        }
+      },
+      fetchImpl: (input, init) => {
+        const id = decodeURIComponent(String(input).split("/").pop() || "");
+        return new Promise<Response>((resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+          resolvers.set(id, resolve);
+        });
+      },
+    });
+
+    // 1. Inicia busca para ep_a; usuário cola URL manual antes da resposta -> URL manual vence
+    const pendingManualRace = manager.lookup("ep_a", "id_slow_a");
+    episodes.ep_a.thumbnail = "https://manual.test/override.jpg";
+    episodes.ep_a.origin = "manual";
+    resolvers.get("id_slow_a")?.(
+      new Response(
+        JSON.stringify({
+          id: "id_slow_a",
+          poster_url: "https://player.cdn/should-not-overwrite.jpg",
+        }),
+        { status: 200 },
+      ),
+    );
+    await pendingManualRace;
+    assert.equal(episodes.ep_a.thumbnail, "https://manual.test/override.jpg");
+    assert.equal(episodes.ep_a.origin, "manual");
+    assert.equal(
+      episodes.ep_b.thumbnail,
+      "https://manual.test/ep_b.jpg",
+    );
+
+    // 2. Inicia busca e limpa o campo -> resposta antiga nunca preenche o campo limpo
+    episodes.ep_a.thumbnail = "id_clear_race";
+    episodes.ep_a.origin = "empty";
+    const pendingClearRace = manager.lookup("ep_a", "id_clear_race");
+    episodes.ep_a.thumbnail = "";
+    episodes.ep_a.origin = "empty";
+    manager.cancel("ep_a", { clearStatus: true });
+    resolvers.get("id_clear_race")?.(
+      new Response(
+        JSON.stringify({
+          id: "id_clear_race",
+          poster_url: "https://player.cdn/stale-after-clear.jpg",
+        }),
+        { status: 200 },
+      ),
+    );
+    await pendingClearRace;
+    assert.equal(episodes.ep_a.thumbnail, "");
+    assert.equal(episodes.ep_a.status, undefined);
+
+    manager.dispose();
+  });
+
+  it("17. Salvar via persistEpisode persiste URL recuperada e nunca envia ID bruto como thumbnail", async () => {
+    const originalFetch = globalThis.fetch;
+    const sentPayloads: Array<{
+      id?: string;
+      thumbnail?: string | null;
+      replaceThumbnail?: boolean;
+    }> = [];
+
+    globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body || "{}"));
+      sentPayloads.push(body);
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          published: Boolean(body.published),
+          publishedAt: null,
+          episodeId: body.id,
+          canonicalId: body.id,
+          thumbnail: body.thumbnail,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    try {
+      // Caso A: ID resolvido para URL -> persiste a URL com replaceThumbnail=true
+      await persistEpisode(
+        "anime-save-hikari-id",
+        1,
+        {
+          id: "ep-resolved",
+          number: 1,
+          title: "Episódio 1",
+          thumbnail: "https://cdn.hikariplayer.test/posters/9Z5APS7J8yJCrXLt064GB.jpg",
+          videoUrl: "https://cdn.example.com/ep1.mp4",
+          published: true,
+        },
+        undefined,
+        { replaceThumbnail: true },
+      );
+
+      // Caso B: ID bruto não resolvido no campo -> NUNCA enviado como thumbnail e não força replaceThumbnail=true
+      await persistEpisode(
+        "anime-save-hikari-id",
+        1,
+        {
+          id: "ep-raw-id",
+          number: 2,
+          title: "Episódio 2",
+          thumbnail: "9Z5APS7J8yJCrXLt064GB",
+          videoUrl: "https://cdn.example.com/ep2.mp4",
+          published: true,
+        },
+        undefined,
+        { replaceThumbnail: true },
+      );
+
+      assert.equal(
+        sentPayloads[0]?.thumbnail,
+        "https://cdn.hikariplayer.test/posters/9Z5APS7J8yJCrXLt064GB.jpg",
+      );
+      assert.equal(sentPayloads[0]?.replaceThumbnail, true);
+
+      assert.equal(sentPayloads[1]?.thumbnail, null);
+      assert.equal(sentPayloads[1]?.replaceThumbnail, false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+

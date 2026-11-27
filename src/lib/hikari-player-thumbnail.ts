@@ -34,6 +34,111 @@ export const HIKARI_PLAYER_THUMB_MESSAGES = {
     "Não foi possível buscar a imagem. Você pode continuar o cadastro normalmente.",
 } as const;
 
+export const HIKARI_PLAYER_THUMB_INPUT_MESSAGES = {
+  loading: "Buscando imagem no Hikari Player...",
+  imported: "Imagem do Hikari Player carregada.",
+  importedManualPreserved:
+    "Imagem encontrada no Hikari Player, mas a thumbnail manual atual foi mantida.",
+  no_image: "Este episódio não possui imagem cadastrada no Player.",
+  not_found:
+    "Não foi possível buscar a imagem. Você pode continuar o cadastro normalmente.",
+  error:
+    "Não foi possível buscar a imagem. Você pode continuar o cadastro normalmente.",
+} as const;
+
+export type ThumbnailInputClassification =
+  | { kind: "empty" }
+  | { kind: "url" }
+  | { kind: "hikari_player_id"; id: string };
+
+const IMAGE_OR_WEB_EXTENSION_REGEX =
+  /\.(?:png|jpe?g|webp|gif|avif|svg|bmp|ico|tiff?|html?|php|m3u8|mp4|ts|mkv|webm|json|txt|xml)$/i;
+const LIKELY_HOST_TLD_REGEX = /\.[a-z]{2,}(?:$|[:/?#])/i;
+const PARTIAL_URL_PREFIX_TARGETS = [
+  "https://",
+  "http://",
+  "blob:",
+  "data:image/",
+  "ftp://",
+  "www.",
+  "localhost",
+] as const;
+
+function isPartialUrlTypingPrefix(lower: string): boolean {
+  if (!lower) return false;
+  return PARTIAL_URL_PREFIX_TARGETS.some((target) => target.startsWith(lower));
+}
+
+/**
+ * Diferencia com segurança valores do campo "Imagem do episódio (URL)" entre:
+ * - vazio (`empty`)
+ * - URL/caminho/prefixo de protocolo sendo digitado (`url`)
+ * - identificador válido de episódio no Hikari Player (`hikari_player_id`)
+ *
+ * Nunca trata `http://`, `https://`, `/...`, `blob:`, `data:image/`, domínios,
+ * extensões de imagem ou prefixos parciais (`h`, `ht`, `htt`, `http`, `https`) como ID.
+ */
+export function classifyThumbnailInput(
+  raw?: string | null,
+): ThumbnailInputClassification {
+  if (typeof raw !== "string") return { kind: "empty" };
+  const trimmed = raw.trim();
+  if (!trimmed) return { kind: "empty" };
+
+  const lower = trimmed.toLowerCase();
+
+  if (
+    trimmed.startsWith("/") ||
+    trimmed.startsWith(".") ||
+    trimmed.endsWith(".") ||
+    lower.startsWith("http:") ||
+    lower.startsWith("https:") ||
+    lower.startsWith("blob:") ||
+    lower.startsWith("data:") ||
+    lower.startsWith("ftp:") ||
+    lower.startsWith("file:") ||
+    lower.startsWith("javascript:") ||
+    lower.startsWith("vbscript:") ||
+    lower.startsWith("www.") ||
+    lower.startsWith("localhost") ||
+    isPartialUrlTypingPrefix(lower)
+  ) {
+    return { kind: "url" };
+  }
+
+  if (
+    trimmed.includes("://") ||
+    trimmed.includes("/") ||
+    trimmed.includes("\\") ||
+    trimmed.includes("?") ||
+    trimmed.includes("#") ||
+    trimmed.includes(":") ||
+    trimmed.includes("@") ||
+    /\s/.test(trimmed) ||
+    IMAGE_OR_WEB_EXTENSION_REGEX.test(trimmed) ||
+    LIKELY_HOST_TLD_REGEX.test(trimmed)
+  ) {
+    return { kind: "url" };
+  }
+
+  if (trimmed.length < 4) {
+    return { kind: "url" };
+  }
+
+  const validation = validateHikariPlayerEpisodeId(trimmed);
+  if (!validation.valid || !validation.value) {
+    return { kind: "url" };
+  }
+
+  return { kind: "hikari_player_id", id: validation.value };
+}
+
+export function isHikariPlayerIdThumbnailCandidate(
+  raw?: string | null,
+): boolean {
+  return classifyThumbnailInput(raw).kind === "hikari_player_id";
+}
+
 export function resolveInitialThumbnailOrigin(
   thumbnail?: string | null,
 ): EpisodeThumbnailOrigin {
@@ -78,6 +183,8 @@ export interface HikariPlayerThumbnailLookupCallbacks {
   getAuthHeaders?: () => Record<string, string>;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  allowReplacePendingId?: boolean;
+  messages?: Partial<Record<keyof typeof HIKARI_PLAYER_THUMB_MESSAGES, string>>;
 }
 
 interface EpisodeLookupSlot {
@@ -110,6 +217,10 @@ export function createHikariPlayerThumbnailManager(
 ): HikariPlayerThumbnailManager {
   const slots = new Map<string, EpisodeLookupSlot>();
   let disposed = false;
+  const messages = {
+    ...HIKARI_PLAYER_THUMB_MESSAGES,
+    ...(callbacks.messages ?? {}),
+  };
 
   const getOrCreateSlot = (episodeKey: string): EpisodeLookupSlot => {
     let slot = slots.get(episodeKey);
@@ -209,7 +320,7 @@ export function createHikariPlayerThumbnailManager(
     callbacks.onStatusChange(episodeKey, {
       status: "loading",
       episodeIdRequested: normalizedId,
-      message: HIKARI_PLAYER_THUMB_MESSAGES.loading,
+      message: messages.loading,
     });
 
     const timeoutMs =
@@ -264,7 +375,7 @@ export function createHikariPlayerThumbnailManager(
         callbacks.onStatusChange(episodeKey, {
           status: "not_found",
           episodeIdRequested: normalizedId,
-          message: HIKARI_PLAYER_THUMB_MESSAGES.not_found,
+          message: messages.not_found,
         });
         return;
       }
@@ -280,7 +391,7 @@ export function createHikariPlayerThumbnailManager(
         callbacks.onStatusChange(episodeKey, {
           status: "error",
           episodeIdRequested: normalizedId,
-          message: HIKARI_PLAYER_THUMB_MESSAGES.error,
+          message: messages.error,
         });
         return;
       }
@@ -295,7 +406,7 @@ export function createHikariPlayerThumbnailManager(
         callbacks.onStatusChange(episodeKey, {
           status: "error",
           episodeIdRequested: normalizedId,
-          message: HIKARI_PLAYER_THUMB_MESSAGES.error,
+          message: messages.error,
         });
         return;
       }
@@ -319,13 +430,18 @@ export function createHikariPlayerThumbnailManager(
         callbacks.onStatusChange(episodeKey, {
           status: "no_image",
           episodeIdRequested: normalizedId,
-          message: HIKARI_PLAYER_THUMB_MESSAGES.no_image,
+          message: messages.no_image,
         });
         return;
       }
 
       const currentThumb = callbacks.getCurrentThumbnailState(episodeKey);
+      const isPendingMatchingInputId =
+        Boolean(callbacks.allowReplacePendingId) &&
+        normalizeHikariPlayerEpisodeId(currentThumb.thumbnail) === normalizedId &&
+        classifyThumbnailInput(currentThumb.thumbnail).kind === "hikari_player_id";
       if (
+        isPendingMatchingInputId ||
         canAutoApplyHikariPlayerThumbnail(
           currentThumb.thumbnail,
           currentThumb.origin,
@@ -337,7 +453,7 @@ export function createHikariPlayerThumbnailManager(
         callbacks.onStatusChange(episodeKey, {
           status: "imported",
           episodeIdRequested: normalizedId,
-          message: HIKARI_PLAYER_THUMB_MESSAGES.imported,
+          message: messages.imported,
         });
       } else {
         slot.lastResolvedId = normalizedId;
@@ -346,7 +462,7 @@ export function createHikariPlayerThumbnailManager(
           status: "imported",
           episodeIdRequested: normalizedId,
           preservedManual: true,
-          message: HIKARI_PLAYER_THUMB_MESSAGES.importedManualPreserved,
+          message: messages.importedManualPreserved,
         });
       }
     } catch {
@@ -361,7 +477,7 @@ export function createHikariPlayerThumbnailManager(
       callbacks.onStatusChange(episodeKey, {
         status: "error",
         episodeIdRequested: normalizedId,
-        message: HIKARI_PLAYER_THUMB_MESSAGES.error,
+        message: messages.error,
       });
     } finally {
       clearTimeout(timeoutHandle);
