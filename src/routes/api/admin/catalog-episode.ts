@@ -157,8 +157,8 @@ export async function handlePostCatalogEpisode(
                       COALESCE("badge_final", false) AS "badgeFinal",
                       "published", "publishedAt", "authorId"
                FROM "catalog_episode"
-               WHERE ("animeId" = $1 OR "animeId" = $2) AND "seasonNumber" = $3 AND "number" = $4 LIMIT 1;`,
-              [canonicalAnimeId, data.animeId, data.seasonNumber, data.number],
+               WHERE "animeId" = ANY($1::text[]) AND "seasonNumber" = $2 AND "number" = $3 LIMIT 1;`,
+              [candidateAnimeIds, data.seasonNumber, data.number],
             ),
           ]);
           const existingById = existingByIdRows[0] || null;

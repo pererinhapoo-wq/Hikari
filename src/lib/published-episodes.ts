@@ -1336,7 +1336,18 @@ export function resolvePublicEpisodes(
 
     const sNum = row.seasonNumber || 1;
     const epNum = row.number;
-    const slotKey = `${row.animeId}:${sNum}:${epNum}`;
+    const epTitle = row.title?.trim() || `Episódio ${epNum}`;
+    const sTitle = row.seasonTitle?.trim() || `Temporada ${sNum}`;
+    const isDubbedRow = isPublishedEpisodeDubbed({
+      episodeTitle: epTitle,
+      seasonTitle: sTitle,
+      animeTitle: row.animeTitle || "",
+      animeAltTitles: [row.animeTitle, row.animeTitleRomaji, row.animeTitleEnglish, row.animeTitleNative].filter((t): t is string => typeof t === "string" && Boolean(t.trim())),
+      audio: row.audio ?? undefined,
+      hasValidDubSource: row.hasValidDubSource,
+    });
+    const audioKey = isDubbedRow ? "dub" : "sub";
+    const slotKey = `${row.animeId}:${sNum}:${audioKey}:${epNum}`;
 
     // Verifica se há exclusão intencional pendente no Outbox local
     const isPendingDelete = outboxOps.some(
@@ -1540,13 +1551,26 @@ export function resolvePublicEpisodes(
       for (const ep of season.episodes || []) {
         if (!isEpisodePublished(ep)) continue;
 
-        const slotKey = `${anime.id}:${season.number}:${ep.number}`;
+        const sNum = season.number || 1;
+        const epTitle = ep.title || `Episódio ${ep.number}`;
+        const sTitle = season.title || `Temporada ${sNum}`;
+        const isDubbedLocal = isPublishedEpisodeDubbed({
+          episodeTitle: epTitle,
+          seasonTitle: sTitle,
+          animeTitle,
+          animeAltTitles: altTitles,
+          audio: ep.audio ?? undefined,
+          audioVersion: ep.audioVersion,
+          hasValidDubSource: (ep as Episode & { hasValidDubSource?: boolean }).hasValidDubSource,
+        });
+        const audioKey = isDubbedLocal ? "dub" : "sub";
+        const slotKey = `${anime.id}:${season.number}:${audioKey}:${ep.number}`;
         const serverAliasSlotKey = anime.serverCatalogId
-          ? `${anime.serverCatalogId}:${season.number}:${ep.number}`
+          ? `${anime.serverCatalogId}:${season.number}:${audioKey}:${ep.number}`
           : null;
         const anilistAliasSlotKey =
           anime.anilistId !== undefined
-            ? `${anime.anilistId}:${season.number}:${ep.number}`
+            ? `${anime.anilistId}:${season.number}:${audioKey}:${ep.number}`
             : null;
 
         // Se já foi processado a partir do PostgreSQL (por id, serverCatalogId ou anilistId), não duplica

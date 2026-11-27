@@ -1413,15 +1413,7 @@ function AdminEditor() {
       }
 
       if (id !== "new") {
-        if (serverEpisodes && serverEpisodes.episodes.length === 0) {
-          setRecoveryState({
-            status: "empty",
-            message: "Nenhum episódio cadastrado no servidor para este anime.",
-            recoveredCount: 0,
-          });
-        } else {
-          void recoverEpisodesFromServer(id);
-        }
+        void recoverEpisodesFromServer(id);
       } else {
         setRecoveryState({ status: "idle" });
       }
@@ -1818,7 +1810,14 @@ function AdminEditor() {
           );
 
           if (canonicalId !== effectiveAnime.id) {
-            clearOutboxForAnime(effectiveAnime.id);
+            if (typeof window !== "undefined") {
+              const currentOps = readOutbox();
+              const remapped = currentOps.map((op) =>
+                op.animeId === effectiveAnime.id ? { ...op, animeId: canonicalId } : op,
+              );
+              writeOutbox(remapped);
+              setOutboxOps(remapped);
+            }
             removeAnime(effectiveAnime.id);
           }
 
