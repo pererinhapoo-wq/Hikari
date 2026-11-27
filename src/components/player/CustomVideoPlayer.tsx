@@ -1975,7 +1975,8 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
           src={effectiveIframeUrl}
           title={video?.title || 'Player do Provedor'}
           className="size-full border-0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          referrerPolicy="no-referrer-when-downgrade"
+          allow="autoplay; fullscreen; picture-in-picture"
           allowFullScreen
         />
         <div className="absolute top-3 right-3 z-30 flex items-center gap-2">
