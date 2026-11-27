@@ -162,18 +162,10 @@ export const EpisodeCard = memo(function EpisodeCard({
         {/* Nome do Anime em azul (com selo FINAL quando ativo) e Episódio em cinza */}
         <div className="mt-1.5 sm:mt-2 px-0.5">
           <h4
-            title={showFinal ? `${episode.animeTitle} · FINAL` : episode.animeTitle}
+            title={episode.animeTitle}
             className="flex items-center gap-1.5 min-w-0 text-xs sm:text-[13px] md:text-sm font-semibold text-sky-400 transition-colors motion-reduce:transition-none [@media(hover:hover)]:group-hover:text-sky-300 group-active:text-sky-200"
           >
             <span className="truncate">{episode.animeTitle}</span>
-            {showFinal && (
-              <span
-                data-badge="title-final"
-                className="shrink-0 inline-flex items-center justify-center h-4 px-1.5 rounded bg-rose-600/95 border border-rose-300/55 text-[8.5px] sm:text-[9.5px] font-black tracking-wider text-white leading-none uppercase"
-              >
-                FINAL
-              </span>
-            )}
           </h4>
 
           <div className="mt-0.5 flex items-baseline justify-between gap-2 min-w-0">
