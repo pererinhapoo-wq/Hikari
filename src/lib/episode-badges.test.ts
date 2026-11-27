@@ -300,8 +300,21 @@ describe("Selos individuais por episódio — DB (PGLite), API, Admin e Exibiç�
       executeGetCatalogEpisodes(animeId, { includeUnpublished: true }),
     ]);
 
+    // A Home retorna apenas o primeiro (Ep 1) e o último (Ep 12) episódio publicado da temporada/áudio
+    const homeAnimeEps = homeRes.episodes.filter((e) => e.animeId === animeId);
+    assert.equal(homeAnimeEps.length, 2);
+    assert.deepEqual(
+      homeAnimeEps.map((e) => e.number).sort((a, b) => a - b),
+      [1, 12],
+    );
+    assert.equal(homeAnimeEps.find((e) => e.number === 1)?.badgeLancamento, false);
+    assert.equal(homeAnimeEps.find((e) => e.number === 1)?.badgeNovo, false);
+    assert.equal(homeAnimeEps.find((e) => e.number === 1)?.badgeFinal, false);
+    assert.equal(homeAnimeEps.find((e) => e.number === 12)?.badgeLancamento, false);
+    assert.equal(homeAnimeEps.find((e) => e.number === 12)?.badgeNovo, false);
+    assert.equal(homeAnimeEps.find((e) => e.number === 12)?.badgeFinal, true);
+
     for (const sourceEps of [
-      homeRes.episodes.filter((e) => e.animeId === animeId),
       publicRes.episodes.filter((e) => e.animeId === animeId),
       paginatedRes.episodes.filter((e) => e.animeId === animeId),
     ]) {
@@ -327,13 +340,19 @@ describe("Selos individuais por episódio — DB (PGLite), API, Admin e Exibiç�
       }
     }
 
-    const resolvedPublic = resolvePublicRecentEpisodes(homeRes, []);
-    const forAnime = resolvedPublic.filter((e) => e.animeId === animeId);
-    assert.equal(forAnime.find((e) => e.episodeNumber === 1)?.badge, null);
-    assert.equal(forAnime.find((e) => e.episodeNumber === 2)?.badge, "NOVO");
-    assert.equal(forAnime.find((e) => e.episodeNumber === 5)?.badge, "LANÇAMENTO");
-    assert.equal(forAnime.find((e) => e.episodeNumber === 11)?.badge, null);
-    assert.equal(forAnime.find((e) => e.episodeNumber === 12)?.badge, "FINAL");
+    const resolvedAllPublic = resolvePublicEpisodes(publicRes, []);
+    const allForAnime = resolvedAllPublic.filter((e) => e.animeId === animeId);
+    assert.equal(allForAnime.find((e) => e.episodeNumber === 1)?.badge, null);
+    assert.equal(allForAnime.find((e) => e.episodeNumber === 2)?.badge, "NOVO");
+    assert.equal(allForAnime.find((e) => e.episodeNumber === 5)?.badge, "LANÇAMENTO");
+    assert.equal(allForAnime.find((e) => e.episodeNumber === 11)?.badge, null);
+    assert.equal(allForAnime.find((e) => e.episodeNumber === 12)?.badge, "FINAL");
+
+    const resolvedRecent = resolvePublicRecentEpisodes(homeRes, []);
+    const recentForAnime = resolvedRecent.filter((e) => e.animeId === animeId);
+    assert.equal(recentForAnime.length, 2);
+    assert.equal(recentForAnime.find((e) => e.episodeNumber === 1)?.badge, null);
+    assert.equal(recentForAnime.find((e) => e.episodeNumber === 12)?.badge, "FINAL");
 
     // Reabertura no Admin recupera os estados exatos do banco
     const mergedAdmin = mergeAdminEpisodesWithServer({

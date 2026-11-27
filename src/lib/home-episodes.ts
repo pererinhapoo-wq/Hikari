@@ -1,8 +1,11 @@
 import { getSql } from "@/lib/db";
 import {
+  FIRST_PLAYABLE_VIDEO_URL_SQL,
+  PLAYABLE_EPISODE_SQL_CONDITION,
   invalidatePublicCatalogEpisodesCache,
   invalidatePublicCatalogEpisodesCacheAsync,
 } from "@/lib/catalog-episodes";
+import { buildEpisodeDubbedSqlCondition } from "@/lib/published-episodes";
 import {
   getRedisHomePublicEpisodesWithFence,
   setRedisHomePublicEpisodes,
@@ -113,57 +116,113 @@ async function queryHomePublicEpisodesFromDb(
 ): Promise<HomeEpisodesResult> {
   try {
     const sql = await getSql();
+    const canonicalAnimeGroupExpr = `COALESCE(
+      CASE WHEN a."anilistId" IS NOT NULL THEN 'anilist:' || a."anilistId"::text END,
+      CASE WHEN alias_id."anilist_id" IS NOT NULL THEN 'anilist:' || alias_id."anilist_id"::text END,
+      CASE WHEN a_alias."anilistId" IS NOT NULL THEN 'anilist:' || a_alias."anilistId"::text END,
+      alias_id."current_id",
+      CASE WHEN e."animeId" ~ '^[0-9]+$' THEN 'anilist:' || e."animeId" END,
+      e."animeId"
+    )`;
+    const seasonExpr = `COALESCE(NULLIF(e."seasonNumber", 0), 1)`;
+    const dubbedExpr = buildEpisodeDubbedSqlCondition("e", "s", "a");
+
     const rows = await sql.query<HomeEpisodeRow>(
-      `SELECT
-         e."id",
-         e."animeId",
-         e."seasonNumber",
-         e."number",
-         e."title",
-         e."thumbnail",
+      `WITH ranked_episodes AS (
+         SELECT
+           e."id",
+           e."animeId",
+           ${seasonExpr} AS "seasonNumber",
+           e."number",
+           e."title",
+           e."thumbnail",
+           ${FIRST_PLAYABLE_VIDEO_URL_SQL} AS "videoUrl",
+           e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
+           e."audio",
+           EXISTS (
+             SELECT 1
+             FROM "episode_sources" es
+             WHERE es."episode_id" = e."id"
+               AND es."lang" = 'dub'
+               AND COALESCE(es."status", 'active') NOT IN ('broken', 'incomplete')
+           ) AS "hasValidDubSource",
+           e."published",
+           e."publishedAt",
+           e."createdAt",
+           e."updatedAt",
+           COALESCE(e."badge_lancamento", false) AS "badgeLancamento",
+           COALESCE(e."badge_novo", false) AS "badgeNovo",
+           COALESCE(e."badge_final", false) AS "badgeFinal",
+           COALESCE(NULLIF(a."title", ''), a."titleRomaji", a."titleEnglish", 'Anime') AS "animeTitle",
+           a."titleRomaji" AS "animeTitleRomaji",
+           a."titleEnglish" AS "animeTitleEnglish",
+           a."titleNative" AS "animeTitleNative",
+           a."cover" AS "animeCover",
+           a."banner" AS "animeBanner",
+           a."status" AS "animeStatus",
+           a."episodesCount" AS "animeEpisodesCount",
+           a."anilistId" AS "animeAnilistId",
+           a."malId" AS "animeMalId",
+           a."kitsuId" AS "animeKitsuId",
+           s."title" AS "seasonTitle",
+           ROW_NUMBER() OVER (
+             PARTITION BY ${canonicalAnimeGroupExpr}, ${seasonExpr}, ${dubbedExpr}
+             ORDER BY e."number" ASC, e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."id" ASC
+           ) AS "rn_first",
+           ROW_NUMBER() OVER (
+             PARTITION BY ${canonicalAnimeGroupExpr}, ${seasonExpr}, ${dubbedExpr}
+             ORDER BY e."number" DESC, e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."id" ASC
+           ) AS "rn_last"
+         FROM "catalog_episode" e
+         LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
+         LEFT JOIN "catalog_anime_id_alias" alias_id ON alias_id."old_id" = e."animeId"
+         LEFT JOIN "catalog_anime" a_alias ON alias_id."current_id" IS NOT NULL AND a_alias."id" = alias_id."current_id"
+         LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
+         WHERE e."published" = true
+           AND (a."id" IS NULL OR a."archived_at" IS NULL)
+           AND ${PLAYABLE_EPISODE_SQL_CONDITION}
+       )
+       SELECT
+         "id",
+         "animeId",
+         "seasonNumber",
+         "number",
+         "title",
+         "thumbnail",
          NULL AS "duration",
          NULL AS "synopsis",
-         e."videoUrl",
+         "videoUrl",
          NULL AS "videoUrl2",
          NULL AS "videoUrl3",
          NULL AS "videoUrl4",
          NULL AS "videoUrl5",
-         e."hikari_player_episode_id" AS "hikariPlayerEpisodeId",
-         e."audio",
-         EXISTS (
-           SELECT 1
-           FROM "episode_sources" es
-           WHERE es."episode_id" = e."id"
-             AND es."lang" = 'dub'
-             AND COALESCE(es."status", 'active') NOT IN ('broken', 'incomplete')
-         ) AS "hasValidDubSource",
-         e."published",
-         e."publishedAt",
-         e."createdAt",
-         e."updatedAt",
-         COALESCE(e."badge_lancamento", false) AS "badgeLancamento",
-         COALESCE(e."badge_novo", false) AS "badgeNovo",
-         COALESCE(e."badge_final", false) AS "badgeFinal",
-         COALESCE(NULLIF(a."title", ''), a."titleRomaji", a."titleEnglish", 'Anime') AS "animeTitle",
-         a."titleRomaji" AS "animeTitleRomaji",
-         a."titleEnglish" AS "animeTitleEnglish",
-         a."titleNative" AS "animeTitleNative",
-         a."cover" AS "animeCover",
-         a."banner" AS "animeBanner",
-         a."status" AS "animeStatus",
-         a."episodesCount" AS "animeEpisodesCount",
+         "hikariPlayerEpisodeId",
+         "audio",
+         "hasValidDubSource",
+         "published",
+         "publishedAt",
+         "createdAt",
+         "updatedAt",
+         "badgeLancamento",
+         "badgeNovo",
+         "badgeFinal",
+         "animeTitle",
+         "animeTitleRomaji",
+         "animeTitleEnglish",
+         "animeTitleNative",
+         "animeCover",
+         "animeBanner",
+         "animeStatus",
+         "animeEpisodesCount",
          NULL AS "animeCreatedAt",
          NULL AS "animeUpdatedAt",
-         a."anilistId" AS "animeAnilistId",
-         a."malId" AS "animeMalId",
-         a."kitsuId" AS "animeKitsuId",
-         s."title" AS "seasonTitle"
-       FROM "catalog_episode" e
-       LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
-       LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
-       WHERE e."published" = true
-         AND (a."id" IS NULL OR a."archived_at" IS NULL)
-       ORDER BY e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."seasonNumber" DESC, e."number" DESC
+         "animeAnilistId",
+         "animeMalId",
+         "animeKitsuId",
+         "seasonTitle"
+       FROM ranked_episodes
+       WHERE "rn_first" = 1 OR "rn_last" = 1
+       ORDER BY "publishedAt" DESC NULLS LAST, "createdAt" DESC, "seasonNumber" DESC, "number" DESC
        LIMIT $1 OFFSET $2;`,
       [limit, offset],
     );

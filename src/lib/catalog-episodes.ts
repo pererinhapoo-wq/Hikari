@@ -829,7 +829,7 @@ const URL_HOST_SQL_PATTERN = `(?:${IPV6_HOST_SQL_PATTERN}|${IPV4_ADDR_SQL}|[a-z0
  *   ou caracteres Unicode/punycode atípicos no host) não são reproduzíveis com 100% de fidelidade em
  *   regex SQL pura; por isso, a função paginada também valida as linhas retornadas via `isHikariPlayableUrl` em JS.
  */
-const PLAYABLE_EPISODE_SQL_CONDITION = `(
+export const PLAYABLE_EPISODE_SQL_CONDITION = `(
   EXISTS (
     SELECT 1
     FROM unnest(ARRAY[e."videoUrl", e."videoUrl2", e."videoUrl3", e."videoUrl4", e."videoUrl5"]) AS u
@@ -852,6 +852,25 @@ const PLAYABLE_EPISODE_SQL_CONDITION = `(
     AND BTRIM(e."hikari_player_episode_id", E' \\t\\r\\n') NOT LIKE '%..%'
     AND LOWER(BTRIM(e."hikari_player_episode_id", E' \\t\\r\\n')) !~ '(?:hikari-player|\\.(?:vercel\\.app|com|net|org|io|dev|app|tv|br|me|co|xyz)(?:$|[:/?#]))'
   )
+)`;
+
+export const FIRST_PLAYABLE_VIDEO_URL_SQL = `COALESCE(
+  (
+    SELECT t.u
+    FROM unnest(ARRAY[e."videoUrl", e."videoUrl2", e."videoUrl3", e."videoUrl4", e."videoUrl5"]) WITH ORDINALITY AS t(u, ord)
+    WHERE t.u IS NOT NULL
+      AND BTRIM(t.u, E' \\t\\r\\n') <> ''
+      AND BTRIM(t.u, E' \\t\\r\\n') <> '#'
+      AND BTRIM(t.u, E' \\t\\r\\n') ~* '^https?://(?:[^/@#\\s]+@)?${URL_HOST_SQL_PATTERN}(?::[0-9]{1,5})?(?:[/?#].*)?$'
+      AND (
+        SUBSTRING(BTRIM(t.u, E' \\t\\r\\n') FROM '(?i)^https?://(?:[^/@#\\s]+@)?${URL_HOST_SQL_PATTERN}:([0-9]{1,5})(?:[/?#]|$)') IS NULL
+        OR SUBSTRING(BTRIM(t.u, E' \\t\\r\\n') FROM '(?i)^https?://(?:[^/@#\\s]+@)?${URL_HOST_SQL_PATTERN}:([0-9]{1,5})(?:[/?#]|$)')::integer <= 65535
+      )
+      AND LOWER(SUBSTRING(BTRIM(t.u, E' \\t\\r\\n') FROM '(?i)^https?://(?:[^/@#\\s]+@)?(${URL_HOST_SQL_PATTERN})')) !~ '${BLOCKED_STREAMING_HOSTS_SQL_PATTERN}'
+    ORDER BY t.ord ASC
+    LIMIT 1
+  ),
+  e."videoUrl"
 )`;
 
 export interface ParsedEpisodeSearchQuery {

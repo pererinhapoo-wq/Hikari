@@ -22,6 +22,7 @@ import {
   selectEpisodeForWatch,
 } from "./published-episodes";
 import { persistEpisode } from "./episode-writer";
+import { getSql } from "./db";
 import {
   buildResolvedSeasons,
   mergeAdminEpisodesWithServer,
@@ -29,6 +30,10 @@ import {
   primeCatalogEpisodesCache,
   type PublicEpisodesResult,
 } from "./catalog-episodes";
+import {
+  executeGetHomePublicEpisodes,
+  invalidateHomePublicEpisodesCache,
+} from "./home-episodes";
 import {
   buildAdminCatalogAnimeSavePayload,
   mergeDetail,
@@ -1975,55 +1980,74 @@ describe("Selos em Episódios Recentes, controles do Admin e regra de 50+ episó
       episodesCount: 3,
     });
 
-    // Padrão sem ação do admin: todos desativados
+    // Padrão sem ação do admin: todos desativados (Home exibe apenas Ep 1 e Ep 28; catálogo completo mantém os 3)
     const noneActive = resolvePublicRecentEpisodes(null, [baseAnime]);
-    assert.equal(noneActive.length, 3);
+    assert.equal(noneActive.length, 2);
+    assert.deepEqual(
+      noneActive.map((e) => e.episodeNumber).sort((a, b) => a - b),
+      [1, 28],
+    );
     assert.deepEqual(noneActive[0]?.recentBadges, DEFAULT_ANIME_RECENT_BADGES);
     assert.equal(resolvePrimaryBadgeFromRecentBadges(noneActive[0]?.recentBadges), null);
 
     // Apenas LANÇAMENTO ativo no Ep 1 (Ep 2 e 28 permanecem sem selo)
-    const onlyLancamento = resolvePublicRecentEpisodes(null, [
-      {
-        ...baseAnime,
-        seasons: [
-          {
-            ...baseAnime.seasons[0]!,
-            episodes: baseAnime.seasons[0]!.episodes.map((ep) =>
-              ep.number === 1
-                ? { ...ep, recentBadges: { lancamento: true, novo: false, final: false } }
-                : ep,
-            ),
-          },
-        ],
-      },
-    ]);
+    const onlyLancamentoAnime: LocalAnime = {
+      ...baseAnime,
+      seasons: [
+        {
+          ...baseAnime.seasons[0]!,
+          episodes: baseAnime.seasons[0]!.episodes.map((ep) =>
+            ep.number === 1
+              ? { ...ep, recentBadges: { lancamento: true, novo: false, final: false } }
+              : ep,
+          ),
+        },
+      ],
+    };
+    const onlyLancamento = resolvePublicRecentEpisodes(null, [onlyLancamentoAnime]);
+    const onlyLancamentoAll = resolvePublicEpisodes(null, [onlyLancamentoAnime]);
     assert.deepEqual(onlyLancamento.find((e) => e.episodeNumber === 1)?.recentBadges, {
       lancamento: true,
       novo: false,
       final: false,
     });
     assert.deepEqual(
-      onlyLancamento.find((e) => e.episodeNumber === 2)?.recentBadges,
+      onlyLancamentoAll.find((e) => e.episodeNumber === 2)?.recentBadges,
       DEFAULT_ANIME_RECENT_BADGES,
     );
 
-    // Apenas NOVO ativo no Ep 2
-    const onlyNovo = resolvePublicRecentEpisodes(null, [
+    // Apenas NOVO ativo no Ep 2 (verificado no catálogo completo e em temporada com 2 episódios onde Ep 2 é o último)
+    const onlyNovoAnime: LocalAnime = {
+      ...baseAnime,
+      seasons: [
+        {
+          ...baseAnime.seasons[0]!,
+          episodes: baseAnime.seasons[0]!.episodes.map((ep) =>
+            ep.number === 2
+              ? { ...ep, recentBadges: { lancamento: false, novo: true, final: false } }
+              : ep,
+          ),
+        },
+      ],
+    };
+    const onlyNovoAll = resolvePublicEpisodes(null, [onlyNovoAnime]);
+    assert.deepEqual(onlyNovoAll.find((e) => e.episodeNumber === 2)?.recentBadges, {
+      lancamento: false,
+      novo: true,
+      final: false,
+    });
+    const onlyNovoTwoEps = resolvePublicRecentEpisodes(null, [
       {
-        ...baseAnime,
+        ...onlyNovoAnime,
         seasons: [
           {
-            ...baseAnime.seasons[0]!,
-            episodes: baseAnime.seasons[0]!.episodes.map((ep) =>
-              ep.number === 2
-                ? { ...ep, recentBadges: { lancamento: false, novo: true, final: false } }
-                : ep,
-            ),
+            ...onlyNovoAnime.seasons[0]!,
+            episodes: onlyNovoAnime.seasons[0]!.episodes.filter((ep) => ep.number <= 2),
           },
         ],
       },
     ]);
-    assert.deepEqual(onlyNovo.find((e) => e.episodeNumber === 2)?.recentBadges, {
+    assert.deepEqual(onlyNovoTwoEps.find((e) => e.episodeNumber === 2)?.recentBadges, {
       lancamento: false,
       novo: true,
       final: false,
@@ -2230,15 +2254,16 @@ describe("Selos em Episódios Recentes, controles do Admin e regra de 50+ episó
     assert.equal(areAnimeRecentBadgesEqual(updatedBadges, normalizeAnimeRecentBadges(updatedBadges)), true);
   });
 
-  it("9. Animes com menos de 50 episódios publicados (ex: 49) mantêm o comportamento atual", () => {
+  it("9. Animes com menos de 50 episódios publicados (ex: 49) também exibem somente o primeiro e o último episódio da temporada", () => {
     const rows49 = Array.from({ length: 49 }, (_, i) =>
       makeServerEpisodeRow("anime-49", i + 1),
     );
     const recent = resolvePublicRecentEpisodes({ status: "success", episodes: rows49, total: rows49.length }, []);
-    // Comportamento atual de resolvePublicRecentEpisodes: mantém até 18 episódios recentes
-    assert.equal(recent.length, 18);
-    assert.equal(recent[0]?.episodeNumber, 49);
-    assert.equal(recent[17]?.episodeNumber, 32);
+    assert.equal(recent.length, 2);
+    assert.deepEqual(
+      recent.map((e) => e.episodeNumber).sort((a, b) => a - b),
+      [1, 49],
+    );
   });
 
   it("10, 11 & 12. Animes com 50+ episódios (50 e One Piece com 1000) exibem apenas Ep 1 e Final real mesmo fora de ordem, deduplicado e ignorando rascunhos", () => {
@@ -2313,7 +2338,7 @@ describe("Selos em Episódios Recentes, controles do Admin e regra de 50+ episó
     assert.equal(singleUniqueFromLocal[0]?.episodeNumber, 1);
   });
 
-  it("13. Suporta múltiplas temporadas (50+ somadas) e agrupa corretamente IDs distintos do mesmo anime", () => {
+  it("13. Suporta múltiplas temporadas (primeiro e último por temporada) e agrupa corretamente IDs distintos do mesmo anime", () => {
     const t1Rows = Array.from({ length: 25 }, (_, i) =>
       makeServerEpisodeRow("multi-season-anime", i + 1, {
         id: `ms-s1-${i + 1}`,
@@ -2343,14 +2368,19 @@ describe("Selos em Episódios Recentes, controles do Admin e regra de 50+ episó
       [localMeta],
     );
 
-    assert.equal(recentMulti.length, 2);
+    assert.equal(recentMulti.length, 4);
     const sorted = [...recentMulti].sort(
       (a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber,
     );
-    assert.equal(sorted[0]?.seasonNumber, 1);
-    assert.equal(sorted[0]?.episodeNumber, 1);
-    assert.equal(sorted[1]?.seasonNumber, 2);
-    assert.equal(sorted[1]?.episodeNumber, 25);
+    assert.deepEqual(
+      sorted.map((e) => [e.seasonNumber, e.episodeNumber]),
+      [
+        [1, 1],
+        [1, 25],
+        [2, 1],
+        [2, 25],
+      ],
+    );
   });
 
   it("14. /episodes, página de detalhes do anime e player continuam recebendo todos os 1000 episódios", () => {
@@ -2400,6 +2430,454 @@ describe("Selos em Episódios Recentes, controles do Admin e regra de 50+ episó
     assert.equal(ep542?.videoUrl, "https://cdn.example.com/one-piece-full-542.mp4");
   });
 });
+
+describe("Episódios Recentes por (anime, temporada, áudio) — regra universal e consulta PostgreSQL", () => {
+  function makeRow(
+    animeId: string,
+    seasonNumber: number,
+    epNum: number,
+    overrides: Partial<PublicEpisodesResult["episodes"][number]> = {},
+  ): PublicEpisodesResult["episodes"][number] {
+    return {
+      id: `${animeId}-s${seasonNumber}-ep-${epNum}`,
+      animeId,
+      seasonNumber,
+      number: epNum,
+      title: `Episódio ${epNum}`,
+      thumbnail: `https://cdn.example.com/${animeId}-s${seasonNumber}-${epNum}.jpg`,
+      duration: "24:00",
+      synopsis: null,
+      videoUrl: `https://cdn.example.com/${animeId}-s${seasonNumber}-${epNum}.mp4`,
+      videoUrl2: null,
+      videoUrl3: null,
+      videoUrl4: null,
+      videoUrl5: null,
+      published: true,
+      publishedAt: new Date(1700000000000 + seasonNumber * 1_000_000 + epNum * 60_000).toISOString(),
+      createdAt: new Date(1700000000000 + seasonNumber * 1_000_000 + epNum * 60_000).toISOString(),
+      updatedAt: new Date(1700000000000 + seasonNumber * 1_000_000 + epNum * 60_000).toISOString(),
+      animeTitle: "Anime Teste",
+      animeTitleRomaji: "Anime Teste",
+      animeTitleEnglish: "Anime Test",
+      animeTitleNative: null,
+      animeCover: "https://cdn.example.com/cover.jpg",
+      animeBanner: "https://cdn.example.com/banner.jpg",
+      animeStatus: "FINISHED",
+      animeEpisodesCount: null,
+      animeCreatedAt: null,
+      animeUpdatedAt: null,
+      seasonTitle: `Temporada ${seasonNumber}`,
+      ...overrides,
+    };
+  }
+
+  it("1 a 6. Seleciona corretamente primeiro e último para 1, 2, 8, 12, 30 e 49 episódios sem duplicar episódio único", () => {
+    const cases: Array<{ count: number; expected: number[] }> = [
+      { count: 1, expected: [1] },
+      { count: 2, expected: [1, 2] },
+      { count: 8, expected: [1, 8] },
+      { count: 12, expected: [1, 12] },
+      { count: 30, expected: [1, 30] },
+      { count: 49, expected: [1, 49] },
+    ];
+
+    for (const { count, expected } of cases) {
+      const animeId = `count-case-${count}`;
+      const rows = Array.from({ length: count }, (_, idx) =>
+        makeRow(animeId, 1, idx + 1),
+      );
+      const resolved = resolvePublicRecentEpisodes(
+        { status: "success", episodes: rows, total: rows.length },
+        [],
+      );
+      assert.deepEqual(
+        resolved.map((e) => e.episodeNumber).sort((a, b) => a - b),
+        expected,
+        `Falha na seleção para ${count} episódios`,
+      );
+
+      // Também valida o caminho local (getRecentEpisodesSection)
+      const localAnime = createMockAnime({
+        id: animeId,
+        seasons: [
+          {
+            id: `${animeId}-s1`,
+            number: 1,
+            title: "Temporada 1",
+            episodes: Array.from({ length: count }, (_, idx) => ({
+              id: `${animeId}-local-ep-${idx + 1}`,
+              number: idx + 1,
+              title: `Episódio ${idx + 1}`,
+              videoUrl: `https://cdn.example.com/${animeId}-${idx + 1}.mp4`,
+              published: true,
+            })),
+          },
+        ],
+      });
+      const localRecent = getRecentEpisodesSection([localAnime]);
+      assert.deepEqual(
+        localRecent.map((e) => e.episodeNumber).sort((a, b) => a - b),
+        expected,
+        `Falha na seleção local para ${count} episódios`,
+      );
+    }
+  });
+
+  it("7 & 8. Multi-temporada e separação Sub vs Dub são totalmente independentes (resolvePublicRecentEpisodes e getRecentEpisodesSection)", () => {
+    const subS1 = Array.from({ length: 12 }, (_, i) =>
+      makeRow("naruto-sub", 1, i + 1, {
+        animeTitle: "Naruto",
+        audio: "sub",
+      }),
+    );
+    const subS2 = Array.from({ length: 2 }, (_, i) =>
+      makeRow("naruto-sub", 2, i + 1, {
+        animeTitle: "Naruto",
+        audio: "sub",
+      }),
+    );
+    const dubS1 = Array.from({ length: 30 }, (_, i) =>
+      makeRow("naruto-dub", 1, i + 1, {
+        animeTitle: "Naruto (Dublado)",
+        audio: "dub",
+      }),
+    );
+    const dubS2 = Array.from({ length: 1 }, (_, i) =>
+      makeRow("naruto-dub", 2, i + 1, {
+        animeTitle: "Naruto (Dublado)",
+        audio: "dub",
+      }),
+    );
+
+    const allRows = [...subS1, ...subS2, ...dubS1, ...dubS2];
+    const recent = resolvePublicRecentEpisodes(
+      { status: "success", episodes: allRows, total: allRows.length },
+      [],
+    );
+
+    const summary = recent
+      .map((e) => `${e.animeId}:s${e.seasonNumber}:e${e.episodeNumber}:${isPublishedEpisodeDubbed(e) ? "dub" : "sub"}`)
+      .sort();
+
+    assert.deepEqual(summary, [
+      "naruto-dub:s1:e1:dub",
+      "naruto-dub:s1:e30:dub",
+      "naruto-dub:s2:e1:dub",
+      "naruto-sub:s1:e12:sub",
+      "naruto-sub:s1:e1:sub",
+      "naruto-sub:s2:e1:sub",
+      "naruto-sub:s2:e2:sub",
+    ]);
+
+    // Mesmo animeId com episódios mistos de áudio (sub Ep 1..8 e dub Ep 9..15 na mesma temporada)
+    const mixedAudioSameSeason = [
+      ...Array.from({ length: 8 }, (_, i) =>
+        makeRow("mixed-audio-anime", 1, i + 1, {
+          animeTitle: "Mixed Anime",
+          audio: "sub",
+        }),
+      ),
+      ...Array.from({ length: 7 }, (_, i) =>
+        makeRow("mixed-audio-anime", 1, i + 9, {
+          animeTitle: "Mixed Anime",
+          audio: "dub",
+        }),
+      ),
+    ];
+    const recentMixed = resolvePublicRecentEpisodes(
+      { status: "success", episodes: mixedAudioSameSeason, total: mixedAudioSameSeason.length },
+      [],
+    );
+    assert.deepEqual(
+      recentMixed
+        .map((e) => `${isPublishedEpisodeDubbed(e) ? "dub" : "sub"}:${e.episodeNumber}`)
+        .sort(),
+      ["dub:15", "dub:9", "sub:1", "sub:8"],
+    );
+
+    // Também valida multi-temporada + áudio misto em getRecentEpisodesSection
+    const localMixed = createMockAnime({
+      id: "local-mixed",
+      titleRomaji: "Local Mixed",
+      titleEnglish: "Local Mixed",
+      seasons: [
+        {
+          id: "lm-s1",
+          number: 1,
+          title: "Temporada 1",
+          episodes: [
+            ...[1, 2, 3, 4].map((n) => ({
+              id: `lm-s1-sub-${n}`,
+              number: n,
+              title: `Episódio ${n}`,
+              videoUrl: `https://cdn.example.com/lm-s1-sub-${n}.mp4`,
+              audio: "sub" as const,
+              published: true,
+            })),
+            ...[5, 6, 7].map((n) => ({
+              id: `lm-s1-dub-${n}`,
+              number: n,
+              title: `Episódio ${n}`,
+              videoUrl: `https://cdn.example.com/lm-s1-dub-${n}.mp4`,
+              audio: "dub" as const,
+              published: true,
+            })),
+          ],
+        },
+        {
+          id: "lm-s2",
+          number: 2,
+          title: "Temporada 2",
+          episodes: [1, 2, 3].map((n) => ({
+            id: `lm-s2-sub-${n}`,
+            number: n,
+            title: `Episódio ${n}`,
+            videoUrl: `https://cdn.example.com/lm-s2-sub-${n}.mp4`,
+            audio: "sub" as const,
+            published: true,
+          })),
+        },
+      ],
+    });
+    const localMixedRecent = getRecentEpisodesSection([localMixed]);
+    assert.deepEqual(
+      localMixedRecent
+        .map((e) => `s${e.seasonNumber}:${isPublishedEpisodeDubbed(e) ? "dub" : "sub"}:${e.episodeNumber}`)
+        .sort(),
+      ["s1:dub:5", "s1:dub:7", "s1:sub:1", "s1:sub:4", "s2:sub:1", "s2:sub:3"],
+    );
+  });
+
+  it("9 & 10. Temporada sem Ep 1 publicado seleciona menor disponível e ignora rascunhos/não reproduzíveis", () => {
+    const rows = [
+      makeRow("missing-ep1", 1, 1, { published: false }), // rascunho
+      makeRow("missing-ep1", 1, 2, { videoUrl: "" }), // sem stream reproduzível
+      makeRow("missing-ep1", 1, 3),
+      makeRow("missing-ep1", 1, 4),
+      makeRow("missing-ep1", 1, 5),
+      makeRow("missing-ep1", 1, 6),
+      makeRow("missing-ep1", 1, 7, { published: false }), // rascunho no fim
+    ];
+
+    const recent = resolvePublicRecentEpisodes(
+      { status: "success", episodes: rows, total: rows.length },
+      [],
+    );
+    assert.deepEqual(
+      recent.map((e) => e.episodeNumber).sort((a, b) => a - b),
+      [3, 6],
+    );
+  });
+
+  it("11 & 12. Integração PostgreSQL (PGlite): query na Home filtra no banco por (anime, temporada, áudio), respeita aliases/fontes dub, exclui rascunhos e atualiza último episódio após invalidação de cache", async () => {
+    const sql = await getSql();
+    const suffix = Date.now().toString(36);
+    const animeSubId = `home-rule-sub-${suffix}`;
+    const animeDubId = `home-rule-dub-${suffix}`;
+    const animeAliasOldId = `home-rule-alias-old-${suffix}`;
+    const sharedAnilistId = 900000 + Math.floor(Math.random() * 90000);
+    const futureBaseMs = Date.now() - 10_000;
+
+    // 1. Anime Legendado com:
+    //    - Temporada 1: Ep 1 rascunho, Ep 2..8 publicados (Ep 2..8 => deve retornar 2 e 8)
+    //    - Temporada 2: Ep 1..30 publicados + Ep 10..15 dub via episode_sources (Sub: 1..9 & 16..30 => 1 e 30; Dub via source: 10 e 15)
+    await sql.query(
+      `INSERT INTO "catalog_anime" ("id", "title", "titleRomaji", "titleEnglish", "anilistId", "status")
+       VALUES ($1, $2, $2, $2, $3, 'RELEASING')`,
+      [animeSubId, `Anime Regra Sub ${suffix}`, sharedAnilistId],
+    );
+
+    // Anime Dublado separado (sem anilistId único no DB, como duplicateAsDubbed) com Temporada 1 (12 eps) + Temporada 2 (1 ep)
+    await sql.query(
+      `INSERT INTO "catalog_anime" ("id", "title", "titleRomaji", "titleEnglish", "status")
+       VALUES ($1, $2, $2, $2, 'FINISHED')`,
+      [animeDubId, `Anime Regra Dublado ${suffix}`],
+    );
+
+    // Alias histórico apontando para animeSubId (mesmo anime canônico)
+    await sql.query(
+      `INSERT INTO "catalog_anime" ("id", "title", "titleRomaji", "titleEnglish", "status")
+       VALUES ($1, $2, $2, $2, 'RELEASING')`,
+      [animeAliasOldId, `Anime Regra Sub ${suffix}`],
+    );
+    await sql.query(
+      `INSERT INTO "catalog_anime_id_alias" ("old_id", "current_id", "anilist_id", "is_dubbed")
+       VALUES ($1, $2, $3, false)`,
+      [animeAliasOldId, animeSubId, sharedAnilistId],
+    );
+
+    const insertEpisode = async (params: {
+      id: string;
+      animeId: string;
+      seasonNumber: number;
+      number: number;
+      published: boolean;
+      videoUrl?: string | null;
+      videoUrl2?: string | null;
+      audio?: string | null;
+      tsMs: number;
+    }) => {
+      await sql.query(
+        `INSERT INTO "catalog_episode" (
+           "id", "animeId", "seasonNumber", "number", "title",
+           "videoUrl", "videoUrl2", "audio", "published", "publishedAt", "createdAt", "updatedAt"
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $10)`,
+        [
+          params.id,
+          params.animeId,
+          params.seasonNumber,
+          params.number,
+          `Episódio ${params.number}`,
+          params.videoUrl ?? null,
+          params.videoUrl2 ?? null,
+          params.audio ?? null,
+          params.published,
+          new Date(params.tsMs).toISOString(),
+        ],
+      );
+    };
+
+    // animeSubId S1: Ep 1 unpublished, Ep 2 unplayable (YouTube), Ep 3..8 playable
+    await insertEpisode({
+      id: `${animeSubId}-s1-1`,
+      animeId: animeSubId,
+      seasonNumber: 1,
+      number: 1,
+      published: false,
+      videoUrl: `https://cdn.example.com/${animeSubId}/s1-1.mp4`,
+      tsMs: futureBaseMs + 1,
+    });
+    await insertEpisode({
+      id: `${animeSubId}-s1-2`,
+      animeId: animeSubId,
+      seasonNumber: 1,
+      number: 2,
+      published: true,
+      videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      tsMs: futureBaseMs + 2,
+    });
+    for (let ep = 3; ep <= 8; ep += 1) {
+      await insertEpisode({
+        id: `${animeSubId}-s1-${ep}`,
+        animeId: animeSubId,
+        seasonNumber: 1,
+        number: ep,
+        published: true,
+        // Ep 3 usa videoUrl2 para validar suporte a slots alternativos no SQL da Home
+        videoUrl: ep === 3 ? null : `https://cdn.example.com/${animeSubId}/s1-${ep}.mp4`,
+        videoUrl2: ep === 3 ? `https://cdn.example.com/${animeSubId}/s1-3-slot2.mp4` : null,
+        tsMs: futureBaseMs + ep,
+      });
+    }
+    // Episódio 9 publicado via old_id alias na S1 do mesmo anime canônico -> deve se tornar o novo último da S1!
+    await insertEpisode({
+      id: `${animeAliasOldId}-s1-9`,
+      animeId: animeAliasOldId,
+      seasonNumber: 1,
+      number: 9,
+      published: true,
+      videoUrl: `https://cdn.example.com/${animeSubId}/s1-9.mp4`,
+      tsMs: futureBaseMs + 9,
+    });
+
+    // animeSubId S2: Ep 1..30, onde Ep 10..12 têm fonte ativa 'dub' em episode_sources
+    for (let ep = 1; ep <= 30; ep += 1) {
+      const epId = `${animeSubId}-s2-${ep}`;
+      await insertEpisode({
+        id: epId,
+        animeId: animeSubId,
+        seasonNumber: 2,
+        number: ep,
+        published: true,
+        videoUrl: `https://cdn.example.com/${animeSubId}/s2-${ep}.mp4`,
+        tsMs: futureBaseMs + 100 + ep,
+      });
+      if (ep >= 10 && ep <= 12) {
+        await sql.query(
+          `INSERT INTO "episode_sources" ("episode_id", "lang", "provider", "page_url", "direct_url", "status")
+           VALUES ($1, 'dub', 'hikari', $2, $2, 'active')`,
+          [epId, `https://cdn.example.com/${animeSubId}/s2-${ep}-dub.mp4`],
+        );
+      }
+    }
+
+    // animeDubId S1 (12 eps) + S2 (1 ep)
+    for (let ep = 1; ep <= 12; ep += 1) {
+      await insertEpisode({
+        id: `${animeDubId}-s1-${ep}`,
+        animeId: animeDubId,
+        seasonNumber: 1,
+        number: ep,
+        published: true,
+        videoUrl: `https://cdn.example.com/${animeDubId}/s1-${ep}.mp4`,
+        audio: "dub",
+        tsMs: futureBaseMs + 200 + ep,
+      });
+    }
+    await insertEpisode({
+      id: `${animeDubId}-s2-1`,
+      animeId: animeDubId,
+      seasonNumber: 2,
+      number: 1,
+      published: true,
+      videoUrl: `https://cdn.example.com/${animeDubId}/s2-1.mp4`,
+      audio: "dub",
+      tsMs: futureBaseMs + 300,
+    });
+
+    invalidateHomePublicEpisodesCache();
+    let homeRes = await executeGetHomePublicEpisodes({ limit: 10000, offset: 0 });
+    const relatedIds = new Set([animeSubId, animeAliasOldId, animeDubId]);
+    let dbSelected = homeRes.episodes
+      .filter((e) => relatedIds.has(e.animeId))
+      .map((e) => `${e.animeId === animeDubId ? "dubAnime" : "subAnime"}:s${e.seasonNumber}:e${e.number}:${e.hasValidDubSource || e.audio === "dub" ? "dub" : "sub"}`)
+      .sort();
+
+    assert.deepEqual(dbSelected, [
+      "dubAnime:s1:e12:dub",
+      "dubAnime:s1:e1:dub",
+      "dubAnime:s2:e1:dub",
+      "subAnime:s1:e3:sub",
+      "subAnime:s1:e9:sub",
+      "subAnime:s2:e10:dub",
+      "subAnime:s2:e12:dub",
+      "subAnime:s2:e1:sub",
+      "subAnime:s2:e30:sub",
+    ]);
+
+    // Publica um novo episódio final (Ep 13 no animeDubId S1) e invalida cache -> Ep 12 sai e Ep 13 entra
+    await insertEpisode({
+      id: `${animeDubId}-s1-13`,
+      animeId: animeDubId,
+      seasonNumber: 1,
+      number: 13,
+      published: true,
+      videoUrl: `https://cdn.example.com/${animeDubId}/s1-13.mp4`,
+      audio: "dub",
+      tsMs: futureBaseMs + 400,
+    });
+
+    invalidateHomePublicEpisodesCache();
+    homeRes = await executeGetHomePublicEpisodes({ limit: 10000, offset: 0 });
+    dbSelected = homeRes.episodes
+      .filter((e) => relatedIds.has(e.animeId))
+      .map((e) => `${e.animeId === animeDubId ? "dubAnime" : "subAnime"}:s${e.seasonNumber}:e${e.number}:${e.hasValidDubSource || e.audio === "dub" ? "dub" : "sub"}`)
+      .sort();
+
+    assert.deepEqual(dbSelected, [
+      "dubAnime:s1:e13:dub",
+      "dubAnime:s1:e1:dub",
+      "dubAnime:s2:e1:dub",
+      "subAnime:s1:e3:sub",
+      "subAnime:s1:e9:sub",
+      "subAnime:s2:e10:dub",
+      "subAnime:s2:e12:dub",
+      "subAnime:s2:e1:sub",
+      "subAnime:s2:e30:sub",
+    ]);
+  });
+});
+
 
 
 
