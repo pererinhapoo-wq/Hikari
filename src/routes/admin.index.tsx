@@ -60,10 +60,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  buildConsolidatedAnimePayload,
   clearOutboxForAnime,
   dismissOutboxOperation,
   flushOutbox,
   hasPendingWrites,
+  markAnimeParentConfirmed,
   readOutbox,
   subscribeOutbox,
   type OutboxOperation,
@@ -446,15 +448,24 @@ function AdminIndex() {
         videoUrl3: "",
         videoUrl4: "",
         videoUrl5: "",
+        hikariPlayerEpisodeId: undefined,
+        recentBadges: { lancamento: false, novo: false, final: false },
+        published: false,
       })),
     }));
 
     const duplicated: LocalAnime = {
       ...target,
       id: newId,
+      serverCatalogId: undefined,
+      syncedAt: undefined,
+      hasEpisode: false,
       countryOfOrigin: target.countryOfOrigin ?? null,
       duplicateOfId: target.serverCatalogId || target.id,
-      titleRomaji: baseTitleRomaji || target.titleRomaji,
+      titleRomaji:
+        baseTitleRomaji ||
+        target.titleRomaji ||
+        (target.titleNative ? `${target.titleNative} Dublado` : ""),
       titleEnglish: baseTitleEnglish || target.titleEnglish,
       seasons:
         clonedSeasons.length > 0
@@ -480,39 +491,13 @@ function AdminIndex() {
         headers.Authorization = `Bearer ${token}`;
       }
 
+      const payload = buildConsolidatedAnimePayload(duplicated);
+
       const res = await fetch("/api/admin/catalog-anime", {
         method: "POST",
         headers,
         credentials: "include",
-        body: JSON.stringify({
-          id: duplicated.id,
-          titleRomaji: duplicated.titleRomaji,
-          titleEnglish: duplicated.titleEnglish,
-          titleNative: duplicated.titleNative,
-          cover: duplicated.cover,
-          banner: duplicated.banner,
-          coverExplicitlyEdited: Boolean(duplicated.cover),
-          bannerExplicitlyEdited: Boolean(duplicated.banner),
-          synopsis: duplicated.synopsis,
-          score: duplicated.score,
-          genres: duplicated.genres,
-          format: duplicated.format,
-          status: duplicated.status,
-          episodesCount: duplicated.episodesCount,
-          season: duplicated.season,
-          year: duplicated.year,
-          trailerId: duplicated.trailerId,
-          hidden: duplicated.hidden,
-          anilistId: duplicated.anilistId,
-          malId: duplicated.malId,
-          kitsuId: duplicated.kitsuId,
-          countryOfOrigin: duplicated.countryOfOrigin ?? null,
-          duplicateOfId: duplicated.duplicateOfId ?? null,
-          seasons: duplicated.seasons.map((s) => ({
-            number: s.number,
-            title: s.title,
-          })),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -521,9 +506,14 @@ function AdminIndex() {
       }
 
       const json = await res.json().catch(() => null);
-      if (json?.animeId) {
-        duplicated.id = json.animeId;
-      }
+      const canonicalId =
+        typeof json?.animeId === "string" && json.animeId.trim()
+          ? json.animeId.trim()
+          : duplicated.id;
+      duplicated.id = canonicalId;
+      duplicated.serverCatalogId = canonicalId;
+      duplicated.syncedAt = Date.now();
+      markAnimeParentConfirmed(newId, canonicalId);
 
       upsertAnime(duplicated);
       toast.success("Versão dublada criada e persistida com sucesso no servidor!");

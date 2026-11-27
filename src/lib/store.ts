@@ -1159,19 +1159,29 @@ export function ensureCatalogLoaded(): Promise<void> {
         ...stateSnapshot.continueWatching.map((c) => c.animeId),
       ]);
 
-      // 3. Atualizar store Zustand em memória
-      if (animes.length > 0 && !(initialLegacyCatalog && animes === initialLegacyCatalog)) {
-        markCatalogPersistedRef(animes);
+      // 3. Atualizar store Zustand em memória sem sobrescrever animes já populados em memória quando IndexedDB retorna vazio
+      const inMemoryAnimes = useHikariStore.getState().animes;
+      const finalAnimes =
+        animes.length > 0
+          ? animes
+          : Array.isArray(inMemoryAnimes) && inMemoryAnimes.length > 0
+            ? inMemoryAnimes
+            : [];
+      if (
+        finalAnimes.length > 0 &&
+        !(initialLegacyCatalog && finalAnimes === initialLegacyCatalog)
+      ) {
+        markCatalogPersistedRef(finalAnimes);
       }
       useHikariStore.setState({
-        animes,
+        animes: finalAnimes,
         hydrated: true,
       });
 
       // 4. Limpeza de progresso órfão local (somente anônimo — usuários autenticados usam IDs autoritativos do servidor)
       const currentState = useHikariStore.getState();
-      if (animes.length > 0 && !currentState.currentUserId) {
-        const validIds = new Set(animes.map((a) => a.id));
+      if (finalAnimes.length > 0 && !currentState.currentUserId) {
+        const validIds = new Set(finalAnimes.map((a) => a.id));
         const currentWatched = currentState.anonymousWatchedEpisodes ?? {};
         let hasOrphan = false;
         const cleaned: Record<string, string[]> = {};

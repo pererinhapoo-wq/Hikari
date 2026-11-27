@@ -50,7 +50,9 @@ import {
 } from "@/lib/published-episodes";
 import { Button } from "@/components/ui/button";
 import {
+  clearAnimeParentConsolidationCache,
   clearOutboxForAnime,
+  markAnimeParentConfirmed,
   persistEpisode,
   persistEpisodeDelete,
   readOutbox,
@@ -1581,9 +1583,15 @@ function AdminEditor() {
     const duplicated: LocalAnime = {
       ...currentForm,
       id: newId,
+      serverCatalogId: undefined,
+      syncedAt: undefined,
+      hasEpisode: false,
       countryOfOrigin: currentForm.countryOfOrigin ?? null,
       duplicateOfId: currentForm.serverCatalogId || currentForm.id,
-      titleRomaji: baseTitleRomaji || currentForm.titleRomaji,
+      titleRomaji:
+        baseTitleRomaji ||
+        currentForm.titleRomaji ||
+        (currentForm.titleNative ? `${currentForm.titleNative} Dublado` : ""),
       titleEnglish: baseTitleEnglish || currentForm.titleEnglish,
       seasons:
         clonedSeasons.length > 0
@@ -1661,6 +1669,7 @@ function AdminEditor() {
       }
     }
 
+    clearAnimeParentConsolidationCache(currentForm.id);
     removeAnime(currentForm.id);
     toast.success("Anime excluído com sucesso do servidor e do dispositivo.");
     void navigate({ to: "/admin" });
@@ -1766,8 +1775,16 @@ function AdminEditor() {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      const sanitizedSaveInput: LocalAnime = {
+        ...effectiveAnime,
+        score:
+          typeof effectiveAnime.score === "number" &&
+          Number.isFinite(effectiveAnime.score)
+            ? Math.min(100, Math.max(0, Math.round(effectiveAnime.score)))
+            : null,
+      };
       const savePayload = buildAdminCatalogAnimeSavePayload(
-        effectiveAnime,
+        sanitizedSaveInput,
         dirtyMediaRef.current,
       );
       const shouldSendCover = savePayload.coverExplicitlyEdited;
@@ -1809,11 +1826,24 @@ function AdminEditor() {
             shouldSendBanner,
           );
 
+          markAnimeParentConfirmed(effectiveAnime.id, canonicalId);
+          if (currentForm.id !== canonicalId) {
+            markAnimeParentConfirmed(currentForm.id, canonicalId);
+          }
+
           if (canonicalId !== effectiveAnime.id) {
             if (typeof window !== "undefined") {
               const currentOps = readOutbox();
               const remapped = currentOps.map((op) =>
-                op.animeId === effectiveAnime.id ? { ...op, animeId: canonicalId } : op,
+                op.animeId === effectiveAnime.id || op.payload?.animeId === effectiveAnime.id
+                  ? {
+                      ...op,
+                      animeId: canonicalId,
+                      ...(op.payload
+                        ? { payload: { ...op.payload, animeId: canonicalId } }
+                        : {}),
+                    }
+                  : op,
               );
               writeOutbox(remapped);
               setOutboxOps(remapped);
@@ -1833,7 +1863,7 @@ function AdminEditor() {
           upsertAnime(effectiveAnime);
           setForm(effectiveAnime);
         } catch {
-          // resposta sem JSON detalhado
+          markAnimeParentConfirmed(effectiveAnime.id, effectiveAnime.id);
         }
       } else {
         serverErrorStatus = res.status;
@@ -1853,17 +1883,28 @@ function AdminEditor() {
       if (serverErrorStatus === 401 || serverErrorStatus === 403) {
         setAnimeSyncState("conflict");
         toast.error(
-          "Não autorizado: sessão expirada ou permissão insuficiente no servidor. Alterações salvas localmente.",
+          serverErrorMessage ||
+            "Não autorizado: sessão expirada ou permissão insuficiente no servidor. Alterações salvas localmente.",
         );
-      } else if (serverErrorStatus === 400 || serverErrorStatus === 409) {
+      } else if (
+        serverErrorStatus === 400 ||
+        serverErrorStatus === 409 ||
+        serverErrorStatus === 422
+      ) {
         setAnimeSyncState("conflict");
         toast.warning(
           `Conflito de validação: ${serverErrorMessage || "dados rejeitados pelo servidor"}. Salvo apenas no dispositivo.`,
         );
-      } else if (serverErrorStatus === 500) {
+      } else if (serverErrorStatus === 429) {
+        setAnimeSyncState("error");
+        toast.warning(
+          serverErrorMessage ||
+            "Muitas requisições ao servidor (429). Salvo localmente neste dispositivo.",
+        );
+      } else if (serverErrorStatus !== null && serverErrorStatus >= 500) {
         setAnimeSyncState("error");
         toast.error(
-          `Falha no servidor (500): ${serverErrorMessage || "erro interno"}. Salvo com segurança neste dispositivo.`,
+          `Falha no servidor (${serverErrorStatus}): ${serverErrorMessage || "erro interno"}. Salvo com segurança neste dispositivo.`,
         );
       } else {
         setAnimeSyncState("error");
@@ -1930,7 +1971,10 @@ function AdminEditor() {
         }
       }
 
-      if (episodeTasks.length > 0) {
+      const isAuthRejectedOnParent =
+        serverErrorStatus === 401 || serverErrorStatus === 403;
+
+      if (episodeTasks.length > 0 && !isAuthRejectedOnParent) {
         const results = await runWithConcurrency(
           episodeTasks.map((task) => async (): Promise<PersistEpisodeResult> => {
             try {
@@ -2093,8 +2137,19 @@ function AdminEditor() {
         }
 
         const confirmedCount = results.filter((r) => r.confirmed).length;
-        const conflictCount = results.filter((r) => r.status === "conflict").length;
-        const pendingCount = results.filter((r) => r.status === "pending").length;
+        const authResults = results.filter(
+          (r) =>
+            r.errorCategory === "auth" ||
+            r.errorStatus === 401 ||
+            r.errorStatus === 403,
+        );
+        const validationOrConflictResults = results.filter(
+          (r) => r.status === "conflict" && r.errorCategory !== "auth",
+        );
+        const rateLimitResults = results.filter(
+          (r) => r.errorCategory === "rate_limit" || r.errorStatus === 429,
+        );
+        const pendingResults = results.filter((r) => r.status === "pending");
         allEpisodesSynced = confirmedCount === results.length;
 
         if (metadataSavedOnServer && allEpisodesSynced) {
@@ -2113,20 +2168,40 @@ function AdminEditor() {
             upsertAnime(baseReconciled);
             setForm((f) => (f ? { ...f, seasons: reconciledSeasons } : f));
           }
-          if (conflictCount > 0) {
+          if (authResults.length > 0) {
             setAnimeSyncState("conflict");
-            const firstErr = results.find((r) => r.status === "conflict")?.error;
-            toast.warning(
-              `Ação necessária: ${conflictCount} episódio(s) preservados localmente com erro de validação (${firstErr || "verifique os dados"}).`,
+            toast.error(
+              authResults[0]?.error ||
+                "Sessão expirada ou acesso não autorizado. Faça login novamente como administrador.",
             );
-          } else if (pendingCount > 0) {
+          } else if (validationOrConflictResults.length > 0) {
+            setAnimeSyncState("conflict");
+            const firstErr = validationOrConflictResults[0]?.error;
+            toast.warning(
+              `Ação necessária: ${validationOrConflictResults.length} episódio(s) preservados localmente com erro de validação (${firstErr || "verifique os dados"}).`,
+            );
+          } else if (rateLimitResults.length > 0) {
+            toast.warning(
+              rateLimitResults[0]?.error ||
+                `Muitas requisições (429): ${rateLimitResults.length} episódio(s) mantidos na fila para nova tentativa.`,
+            );
+          } else if (pendingResults.length > 0) {
             if (metadataSavedOnServer) {
               const syncedAnime = { ...baseReconciled, syncedAt: Date.now() };
               upsertAnime(syncedAnime);
             }
-            toast.info(
-              `Sincronização pendente: ${pendingCount} episódio(s) preservados localmente aguardando conexão com o servidor.`,
+            const firstServerErr = pendingResults.find(
+              (r) => r.errorCategory === "server" && r.error,
             );
+            if (firstServerErr) {
+              toast.error(
+                `Falha temporária no servidor: ${pendingResults.length} episódio(s) preservados localmente (${firstServerErr.error}).`,
+              );
+            } else {
+              toast.info(
+                `Sincronização pendente: ${pendingResults.length} episódio(s) preservados localmente aguardando conexão com o servidor.`,
+              );
+            }
           }
         }
       } else {

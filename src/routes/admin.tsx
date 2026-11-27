@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 import { useAdminAccess } from "@/lib/auth/use-admin-access";
 import { flushOutbox, hasPendingWrites } from "@/lib/episode-writer";
+import { ensureCatalogLoaded } from "@/lib/store";
 
 import { HikariStudioLayout } from "@/components/admin/studio-layout";
 
@@ -14,10 +15,11 @@ function AdminGuard() {
   useEffect(() => {
     if (!user || !isAuthenticated || !isAdmin) return;
 
-    // Executa sincronização do Outbox ao entrar no ambiente administrativo
+    // Executa sincronização do Outbox ao entrar no ambiente administrativo após hidratação do catálogo
     const runSync = async () => {
       if (!hasPendingWrites()) return;
       try {
+        await ensureCatalogLoaded();
         const res = await flushOutbox();
         if (res.processed > 0) {
           toast.success(

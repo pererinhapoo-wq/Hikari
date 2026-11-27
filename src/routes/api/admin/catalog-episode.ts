@@ -84,13 +84,36 @@ export async function handlePostCatalogEpisode(
 
           const sql = await getSql();
 
-          // Reconciliação canônica do animeId (ativos + tabela de aliases):
-          const identityLookup = await findCanonicalCatalogAnime(sql, {
+          // Reconciliação canônica do animeId (ativos + tabela de aliases) com isolamento estrito Sub vs Dub:
+          const inferredEpisodeDubbed =
+            data.audio === "dub"
+              ? true
+              : data.audio === "sub"
+                ? false
+                : undefined;
+
+          const rawIdentityLookup = await findCanonicalCatalogAnime(sql, {
             id: data.animeId,
             title: data.animeTitle,
+            ...(inferredEpisodeDubbed !== undefined
+              ? { isDubbed: inferredEpisodeDubbed }
+              : {}),
           });
-          const matchedAnime = identityLookup.row;
-          const canonicalAnimeId = identityLookup.canonicalId || data.animeId;
+
+          // Nunca redirecionar um cadastro independente local-* para outro anime (ex.: Legendado)
+          // apenas por fallback de título quando o ID/alias não foi encontrado.
+          const shouldRejectLocalTitleRedirect =
+            data.animeId.startsWith("local-") &&
+            rawIdentityLookup.matchedBy === "title" &&
+            rawIdentityLookup.canonicalId !== null &&
+            rawIdentityLookup.canonicalId !== data.animeId;
+
+          const matchedAnime = shouldRejectLocalTitleRedirect
+            ? null
+            : rawIdentityLookup.row;
+          const canonicalAnimeId =
+            (!shouldRejectLocalTitleRedirect && rawIdentityLookup.canonicalId) ||
+            data.animeId;
           const knownAliases = await getAllAliasIdsForCanonical(sql, canonicalAnimeId);
           const candidateAnimeIds = Array.from(
             new Set([data.animeId, canonicalAnimeId, ...knownAliases]),
@@ -164,17 +187,18 @@ export async function handlePostCatalogEpisode(
           const existingById = existingByIdRows[0] || null;
           const existingBySlot = existingBySlotRows[0] || null;
 
-          // 5. Conflito de integridade: se o ID recebido já existe, ele NÃO pode pertencer a outro slot
+          // 5. Conflito de integridade: se o ID recebido já existe, ele NÃO pode pertencer a outro anime nem a outro slot
+          const belongsToTargetAnime =
+            Boolean(existingById) && candidateAnimeIds.includes(existingById!.animeId);
           if (
             existingById &&
-            existingById.animeId !== canonicalAnimeId &&
-            existingById.animeId !== data.animeId &&
-            (existingById.seasonNumber !== data.seasonNumber ||
+            (!belongsToTargetAnime ||
+              existingById.seasonNumber !== data.seasonNumber ||
               existingById.number !== data.number)
           ) {
             return Response.json(
               {
-                error: `Conflito de integridade: o identificador "${data.id}" já está associado a outro episódio (${existingById.animeId} - Temporada ${existingById.seasonNumber}, Ep. ${existingById.number}) e não pode ser reaproveitado em outro slot.`,
+                error: `Conflito de integridade: o identificador "${data.id}" já está associado a outro episódio (${existingById.animeId} - Temporada ${existingById.seasonNumber}, Ep. ${existingById.number}) e não pode ser reaproveitado em outro anime ou slot.`,
                 code: "ID_BOUND_TO_OTHER_SLOT",
                 existingSlot: {
                   animeId: existingById.animeId,

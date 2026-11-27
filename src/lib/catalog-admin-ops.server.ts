@@ -112,13 +112,18 @@ export async function executeAdminUpsertCatalogAnime(
     ? data.genres.map((g) => g.trim()).filter(Boolean)
     : null;
 
+  const hasDuplicateOf =
+    typeof data.duplicateOfId === "string" &&
+    Boolean(data.duplicateOfId.trim()) &&
+    data.duplicateOfId.trim() !== data.id;
+
   const incomingIsDubbed = Boolean(
     inferIsDubbedFromTitles({
       title: canonicalTitle,
       titleRomaji: data.titleRomaji,
       titleEnglish: data.titleEnglish,
       titleNative: data.titleNative,
-    }),
+    }) || hasDuplicateOf,
   );
 
   const manualFields: string[] = [];
