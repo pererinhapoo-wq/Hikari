@@ -100,6 +100,7 @@ import { Route as ApiPlaybackHeartbeatRouteImport } from './routes/api/playback.
 import { Route as ApiProfileFollowRouteImport } from './routes/api/profile.follow'
 import { Route as ApiProfileReportRouteImport } from './routes/api/profile.report'
 import { Route as WatchIdEpRouteImport } from './routes/watch_.$id.$ep'
+import { Route as ApiAdminHikariPlayerEpisodeIdRouteImport } from './routes/api/admin/hikari-player-episode.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -559,6 +560,12 @@ const WatchIdEpRoute = WatchIdEpRouteImport.update({
   path: '/watch/$id/$ep',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminHikariPlayerEpisodeIdRoute =
+  ApiAdminHikariPlayerEpisodeIdRouteImport.update({
+    id: '/api/admin/hikari-player-episode/$id',
+    path: '/api/admin/hikari-player-episode/$id',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -652,6 +659,7 @@ export interface FileRoutesByFullPath {
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/api/profile/report': typeof ApiProfileReportRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
+  '/api/admin/hikari-player-episode/$id': typeof ApiAdminHikariPlayerEpisodeIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -743,6 +751,7 @@ export interface FileRoutesByTo {
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/api/profile/report': typeof ApiProfileReportRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
+  '/api/admin/hikari-player-episode/$id': typeof ApiAdminHikariPlayerEpisodeIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -837,6 +846,7 @@ export interface FileRoutesById {
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/api/profile/report': typeof ApiProfileReportRoute
   '/watch_/$id/$ep': typeof WatchIdEpRoute
+  '/api/admin/hikari-player-episode/$id': typeof ApiAdminHikariPlayerEpisodeIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -932,6 +942,7 @@ export interface FileRouteTypes {
     | '/api/profile/follow'
     | '/api/profile/report'
     | '/watch/$id/$ep'
+    | '/api/admin/hikari-player-episode/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1023,6 +1034,7 @@ export interface FileRouteTypes {
     | '/api/profile/follow'
     | '/api/profile/report'
     | '/watch/$id/$ep'
+    | '/api/admin/hikari-player-episode/$id'
   id:
     | '__root__'
     | '/'
@@ -1116,6 +1128,7 @@ export interface FileRouteTypes {
     | '/api/profile/follow'
     | '/api/profile/report'
     | '/watch_/$id/$ep'
+    | '/api/admin/hikari-player-episode/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1187,6 +1200,7 @@ export interface RootRouteChildren {
   ApiProfileFollowRoute: typeof ApiProfileFollowRoute
   ApiProfileReportRoute: typeof ApiProfileReportRoute
   WatchIdEpRoute: typeof WatchIdEpRoute
+  ApiAdminHikariPlayerEpisodeIdRoute: typeof ApiAdminHikariPlayerEpisodeIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1828,6 +1842,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WatchIdEpRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/hikari-player-episode/$id': {
+      id: '/api/admin/hikari-player-episode/$id'
+      path: '/api/admin/hikari-player-episode/$id'
+      fullPath: '/api/admin/hikari-player-episode/$id'
+      preLoaderRoute: typeof ApiAdminHikariPlayerEpisodeIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1972,6 +1993,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiProfileFollowRoute: ApiProfileFollowRoute,
   ApiProfileReportRoute: ApiProfileReportRoute,
   WatchIdEpRoute: WatchIdEpRoute,
+  ApiAdminHikariPlayerEpisodeIdRoute: ApiAdminHikariPlayerEpisodeIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -79,6 +79,13 @@ import {
   validateHikariPlayerEpisodeId,
 } from "@/lib/hikari-player";
 import {
+  createHikariPlayerThumbnailManager,
+  resolveInitialThumbnailOrigin,
+  type EpisodeThumbnailOrigin,
+  type HikariPlayerThumbStatusEntry,
+  type HikariPlayerThumbnailManager,
+} from "@/lib/hikari-player-thumbnail";
+import {
   EditorHeader,
   type AnimeSyncState,
 } from "@/components/admin/anime-editor/editor-header";
@@ -329,6 +336,16 @@ function AdminEditor() {
   >({});
   const thumbnailEditModesRef = useRef<Record<string, "modified" | "cleared">>({});
   thumbnailEditModesRef.current = thumbnailEditModes;
+  const [thumbnailOrigins, setThumbnailOrigins] = useState<
+    Record<string, EpisodeThumbnailOrigin>
+  >({});
+  const thumbnailOriginsRef = useRef<Record<string, EpisodeThumbnailOrigin>>({});
+  thumbnailOriginsRef.current = thumbnailOrigins;
+  const [hikariThumbStatuses, setHikariThumbStatuses] = useState<
+    Record<string, HikariPlayerThumbStatusEntry>
+  >({});
+  const latestHikariIdsRef = useRef<Record<string, string>>({});
+  const hikariThumbManagerRef = useRef<HikariPlayerThumbnailManager | null>(null);
 
   const revokeEpisodePreviewUrls = useCallback((epId: string) => {
     const task = candidateTasksRef.current.get(epId);
@@ -384,6 +401,47 @@ function AdminEditor() {
         thumbnailEditModesRef.current = next;
         return next;
       });
+    },
+    [],
+  );
+
+  const setEpisodeThumbnailOrigin = useCallback(
+    (epId: string, origin?: EpisodeThumbnailOrigin) => {
+      setThumbnailOrigins((prev) => {
+        const next = { ...prev };
+        if (origin) {
+          next[epId] = origin;
+        } else {
+          delete next[epId];
+        }
+        thumbnailOriginsRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+
+  const syncThumbnailOriginsFromSeasons = useCallback(
+    (seasons: Season[], options?: { preserveExisting?: boolean }) => {
+      const preserveExisting = Boolean(options?.preserveExisting);
+      const prevOrigins = thumbnailOriginsRef.current;
+      const nextOrigins: Record<string, EpisodeThumbnailOrigin> = {};
+      const nextIds: Record<string, string> = {};
+
+      for (const season of seasons) {
+        for (const ep of season.episodes) {
+          nextIds[ep.id] = ep.hikariPlayerEpisodeId ?? "";
+          if (preserveExisting && prevOrigins[ep.id]) {
+            nextOrigins[ep.id] = prevOrigins[ep.id];
+          } else {
+            nextOrigins[ep.id] = resolveInitialThumbnailOrigin(ep.thumbnail);
+          }
+        }
+      }
+
+      latestHikariIdsRef.current = nextIds;
+      thumbnailOriginsRef.current = nextOrigins;
+      setThumbnailOrigins(nextOrigins);
     },
     [],
   );
@@ -477,6 +535,7 @@ function AdminEditor() {
           sourcesSessionRef.current?.setBaselineSlotsFromEpisodes(result.episodes);
           sourcesSessionRef.current?.invalidateAll();
           setSourcesSyncTick((t) => t + 1);
+          syncThumbnailOriginsFromSeasons(mergeResult.seasons, { preserveExisting: true });
           setForm({
             ...baseForm,
             seasons: mergeResult.seasons,
@@ -496,7 +555,7 @@ function AdminEditor() {
         });
       }
     },
-    [id, remote?.serverCatalogId],
+    [id, remote?.serverCatalogId, syncThumbnailOriginsFromSeasons],
   );
 
   const patchEpisode = useCallback(
@@ -505,6 +564,10 @@ function AdminEditor() {
         [keyof Episode, Episode[keyof Episode]]
       >;
       if (patchEntries.length === 0) return;
+
+      if ("hikariPlayerEpisodeId" in patch) {
+        latestHikariIdsRef.current[eid] = patch.hikariPlayerEpisodeId ?? "";
+      }
 
       const liveSeason = formRef.current?.seasons.find((s) => s.id === sid);
       const liveEp = liveSeason?.episodes.find((e) => e.id === eid);
@@ -538,6 +601,82 @@ function AdminEditor() {
         return { ...f, seasons: nextSeasons };
       });
       setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
+    },
+    [],
+  );
+
+  if (!hikariThumbManagerRef.current) {
+    hikariThumbManagerRef.current = createHikariPlayerThumbnailManager({
+      getCurrentEpisodeId: (epId) => {
+        if (Object.prototype.hasOwnProperty.call(latestHikariIdsRef.current, epId)) {
+          return latestHikariIdsRef.current[epId] ?? null;
+        }
+        for (const s of formRef.current?.seasons ?? []) {
+          const found = s.episodes.find((e) => e.id === epId);
+          if (found) return found.hikariPlayerEpisodeId ?? null;
+        }
+        return null;
+      },
+      getCurrentThumbnailState: (epId) => {
+        for (const s of formRef.current?.seasons ?? []) {
+          const found = s.episodes.find((e) => e.id === epId);
+          if (found) {
+            return {
+              thumbnail: found.thumbnail ?? "",
+              origin:
+                thumbnailOriginsRef.current[epId] ??
+                resolveInitialThumbnailOrigin(found.thumbnail),
+            };
+          }
+        }
+        return { thumbnail: "", origin: "empty" };
+      },
+      onStatusChange: (epId, status) => {
+        setHikariThumbStatuses((prev) => {
+          const next = { ...prev };
+          if (status) {
+            next[epId] = status;
+          } else {
+            delete next[epId];
+          }
+          return next;
+        });
+      },
+      onApplyPoster: (epId, posterUrl) => {
+        const seasons = formRef.current?.seasons ?? [];
+        for (const s of seasons) {
+          if (s.episodes.some((e) => e.id === epId)) {
+            patchEpisode(s.id, epId, { thumbnail: posterUrl });
+            setEpisodeThumbnailEditMode(epId, "modified");
+            setEpisodeThumbnailOrigin(epId, "hikari-player");
+            break;
+          }
+        }
+      },
+      getAuthHeaders: (): Record<string, string> => {
+        const token = getBearerToken();
+        if (!token) return {};
+        return { Authorization: `Bearer ${token}` };
+      },
+    });
+  }
+
+  useEffect(() => {
+    return () => {
+      hikariThumbManagerRef.current?.dispose();
+    };
+  }, []);
+
+  const handleLookupHikariPlayerThumbnail = useCallback(
+    (episodeId: string, rawHikariPlayerId: string) => {
+      void hikariThumbManagerRef.current?.lookup(episodeId, rawHikariPlayerId);
+    },
+    [],
+  );
+
+  const handleCancelHikariPlayerThumbnailLookup = useCallback(
+    (episodeId: string, clearStatus = true) => {
+      hikariThumbManagerRef.current?.cancel(episodeId, { clearStatus });
     },
     [],
   );
@@ -835,6 +974,7 @@ function AdminEditor() {
 
         patchEpisode(sid, ep.id, { thumbnail: finalUrl });
         setEpisodeThumbnailEditMode(ep.id, "modified");
+        setEpisodeThumbnailOrigin(ep.id, "manual");
 
         setEpisodeCandidates((prev) => {
           const curr = prev[ep.id];
@@ -881,7 +1021,7 @@ function AdminEditor() {
         toast.error(`Erro ao aplicar imagem (Ep. ${liveEp.number}): ${errMsg}`);
       }
     },
-    [patchEpisode, setEpisodeThumbnailEditMode],
+    [patchEpisode, setEpisodeThumbnailEditMode, setEpisodeThumbnailOrigin],
   );
 
   const handleCaptureEpisodeFrame = useCallback(
@@ -944,6 +1084,7 @@ function AdminEditor() {
 
         patchEpisode(sid, ep.id, { thumbnail: res.url });
         setEpisodeThumbnailEditMode(ep.id, "modified");
+        setEpisodeThumbnailOrigin(ep.id, "manual");
         setCaptureStatus((prev) => ({
           ...prev,
           [ep.id]: {
@@ -965,7 +1106,12 @@ function AdminEditor() {
         toast.error(`Falha na captura (Ep. ${liveEp.number}): ${errMsg}`);
       }
     },
-    [handleDiscoverEpisodeThumbnails, patchEpisode, setEpisodeThumbnailEditMode],
+    [
+      handleDiscoverEpisodeThumbnails,
+      patchEpisode,
+      setEpisodeThumbnailEditMode,
+      setEpisodeThumbnailOrigin,
+    ],
   );
 
   const handleUploadVideoToB2 = useCallback(
@@ -1033,6 +1179,7 @@ function AdminEditor() {
               serverEpisodes.episodes.map((ep) => ep.id),
             );
             setSourcesSyncTick((t) => t + 1);
+            syncThumbnailOriginsFromSeasons(mergeResult.seasons, { preserveExisting: true });
             setForm({
               ...baseForm,
               seasons: mergeResult.seasons,
@@ -1067,6 +1214,8 @@ function AdminEditor() {
     setSourcesSyncTick((t) => t + 1);
     thumbnailEditModesRef.current = {};
     setThumbnailEditModes({});
+    setHikariThumbStatuses({});
+    latestHikariIdsRef.current = {};
     dirtyEpisodeIdsRef.current = new Set();
     explicitUserDirtyEpisodeIdsRef.current = new Set();
     dirtyMediaRef.current = { cover: false, banner: false };
@@ -1129,6 +1278,7 @@ function AdminEditor() {
       sourcesSessionRef.current?.setBaselineSlotsFromEpisodes(
         serverEpisodes.episodes,
       );
+      syncThumbnailOriginsFromSeasons(mergeResult.seasons);
       setForm({
         ...base,
         seasons: mergeResult.seasons,
@@ -1150,6 +1300,7 @@ function AdminEditor() {
       if (base.syncedAt && base.syncedAt >= (base.updatedAt ?? 0)) {
         sourcesSessionRef.current?.setBaselineSlotsFromSeasons(base.seasons);
       }
+      syncThumbnailOriginsFromSeasons(base.seasons);
       setForm(base);
       setGenreText(base.genres.join(", "));
       if (base.syncedAt && base.syncedAt >= (base.updatedAt ?? 0)) {
@@ -1181,6 +1332,7 @@ function AdminEditor() {
     serverEpisodes,
     recoverEpisodesFromServer,
     revokeAllCandidatePreviewUrls,
+    syncThumbnailOriginsFromSeasons,
   ]);
 
   const formLoaded = Boolean(form);
@@ -1744,6 +1896,17 @@ function AdminEditor() {
                 ? normalizeHikariPlayerEpisodeId(match.hikariPlayerEpisodeId) ?? undefined
                 : ep.hikariPlayerEpisodeId;
 
+            const shouldAdoptServerThumbnail =
+              Boolean(match.thumbnail) &&
+              !ep.thumbnail?.trim() &&
+              thumbnailEditModesRef.current[ep.id] !== "cleared";
+            const nextThumbnail = shouldAdoptServerThumbnail
+              ? match.thumbnail ?? undefined
+              : ep.thumbnail;
+            if (shouldAdoptServerThumbnail) {
+              setEpisodeThumbnailOrigin(ep.id, "hikari-player");
+            }
+
             const nextRecentBadges =
               match.recentBadges !== undefined
                 ? normalizeAnimeRecentBadges(match.recentBadges)
@@ -1757,6 +1920,7 @@ function AdminEditor() {
 
             if (
               nextId !== ep.id ||
+              nextThumbnail !== ep.thumbnail ||
               nextPublished !== Boolean(ep.published) ||
               nextAired !== ep.aired ||
               nextHikariPlayerEpisodeId !== ep.hikariPlayerEpisodeId ||
@@ -1767,6 +1931,7 @@ function AdminEditor() {
               return {
                 ...ep,
                 id: nextId,
+                thumbnail: nextThumbnail,
                 published: nextPublished,
                 aired: nextAired,
                 hikariPlayerEpisodeId: nextHikariPlayerEpisodeId,
@@ -1902,7 +2067,7 @@ function AdminEditor() {
         });
       }
     }
-  }, [upsertAnime, removeAnime, router, navigate]);
+  }, [upsertAnime, removeAnime, router, navigate, setEpisodeThumbnailOrigin]);
 
   const addSeason = useCallback(() => {
     const nextNumber = (formRef.current?.seasons.length ?? 0) + 1;
@@ -2100,23 +2265,32 @@ function AdminEditor() {
       if (currentForm && season) {
         void persistEpisodeDelete(currentForm.id, season.number, eid, targetEp?.number);
       }
+      hikariThumbManagerRef.current?.cancel(eid, { clearStatus: true });
+      delete latestHikariIdsRef.current[eid];
+      setEpisodeThumbnailOrigin(eid, undefined);
       setEpisodeThumbnailEditMode(eid, undefined);
     },
-    [revokeEpisodePreviewUrls, setEpisodeThumbnailEditMode],
+    [
+      revokeEpisodePreviewUrls,
+      setEpisodeThumbnailEditMode,
+      setEpisodeThumbnailOrigin,
+    ],
   );
 
   const handleEpisodeThumbnailChange = useCallback(
     (sid: string, ep: Episode, value: string) => {
       patchEpisode(sid, ep.id, { thumbnail: value });
       setEpisodeThumbnailEditMode(ep.id, value.trim() ? "modified" : "cleared");
+      setEpisodeThumbnailOrigin(ep.id, value.trim() ? "manual" : "empty");
     },
-    [patchEpisode, setEpisodeThumbnailEditMode],
+    [patchEpisode, setEpisodeThumbnailEditMode, setEpisodeThumbnailOrigin],
   );
 
   const handleEpisodeThumbnailClear = useCallback(
     (sid: string, ep: Episode) => {
       patchEpisode(sid, ep.id, { thumbnail: "" });
       setEpisodeThumbnailEditMode(ep.id, "cleared");
+      setEpisodeThumbnailOrigin(ep.id, "empty");
       setEpisodeCandidates((prev) => {
         const curr = prev[ep.id];
         if (!curr) return prev;
@@ -2129,7 +2303,7 @@ function AdminEditor() {
         };
       });
     },
-    [patchEpisode, setEpisodeThumbnailEditMode],
+    [patchEpisode, setEpisodeThumbnailEditMode, setEpisodeThumbnailOrigin],
   );
 
   const handleReloadFromServer = useCallback(
@@ -2466,6 +2640,10 @@ function AdminEditor() {
           outboxOps={animeOutboxOps}
           getInheritedThumbnail={getInheritedEpisodeThumbnail}
           thumbnailEditModes={thumbnailEditModes}
+          thumbnailOrigins={thumbnailOrigins}
+          hikariThumbStatuses={hikariThumbStatuses}
+          onLookupHikariPlayerThumbnail={handleLookupHikariPlayerThumbnail}
+          onCancelHikariPlayerThumbnailLookup={handleCancelHikariPlayerThumbnailLookup}
           onThumbnailChange={handleEpisodeThumbnailChange}
           onThumbnailClear={handleEpisodeThumbnailClear}
           onFetchOpeningSuggestions={handleFetchOpeningSuggestions}

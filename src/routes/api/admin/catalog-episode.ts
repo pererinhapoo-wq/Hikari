@@ -11,6 +11,7 @@ import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
 import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
+import { fetchHikariPlayerEpisodePoster } from "@/lib/hikari-player-api.server";
 import {
   deleteEpisodeSourcesForEpisode,
   SourceValidationError,
@@ -50,16 +51,16 @@ function sanitizeVideoUrl(url?: string | null): string | null {
   return sanitizePlayableVideoUrl(url);
 }
 
-export const Route = createFileRoute("/api/admin/catalog-episode")({
-  server: {
-    handlers: {
-      POST: async ({ request }) => {
-        try {
-          // 1. Validar same-site
-          assertSameSiteRequest();
+export async function handlePostCatalogEpisode(
+  { request }: { request: Request },
+  deps?: { assertSameSite?: () => void },
+): Promise<Response> {
+  try {
+    // 1. Validar same-site
+    (deps?.assertSameSite ?? assertSameSiteRequest)();
 
-          // 2. Validar administrador e obter adminId
-          const adminId = await requireAdminUser(request);
+    // 2. Validar administrador e obter adminId
+    const adminId = await requireAdminUser(request);
 
           // 3. Validar payload com Zod
           let rawBody: unknown;
@@ -287,9 +288,29 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             `Episódio ${data.number}`;
           const shouldReplaceThumbnail = Boolean(data.replaceThumbnail);
           const cleanIncomingThumbnail = sanitizeEpisodeThumbnailUrl(data.thumbnail);
-          const thumbnail = shouldReplaceThumbnail
+          let thumbnail = shouldReplaceThumbnail
             ? cleanIncomingThumbnail
             : cleanIncomingThumbnail ?? existingRow?.thumbnail ?? null;
+
+          // Fallback fail-open no salvamento: se houver ID válido do Hikari Player
+          // e nenhuma thumbnail definida/existente/limpa manualmente, tenta recuperar `poster_url`.
+          if (
+            !shouldReplaceThumbnail &&
+            !thumbnail &&
+            hasValidHikariId &&
+            hikariPlayerEpisodeId
+          ) {
+            try {
+              const playerLookup = await fetchHikariPlayerEpisodePoster(
+                hikariPlayerEpisodeId,
+              );
+              if (playerLookup.ok && playerLookup.posterUrl) {
+                thumbnail = playerLookup.posterUrl;
+              }
+            } catch {
+              // fail-open: erro no Hikari Player nunca bloqueia o salvamento do episódio
+            }
+          }
           const duration =
             (data.duration && data.duration.trim()) ||
             existingRow?.duration ||
@@ -361,6 +382,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
 
           const upsertResult = await sql.query<{
             id: string;
+            thumbnail: string | null;
             published: boolean;
             publishedAt: string | null;
             hikariPlayerEpisodeId: string | null;
@@ -460,7 +482,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                  ELSE "catalog_episode"."publishedAt"
                END,
                "updatedAt" = CURRENT_TIMESTAMP
-             RETURNING "id", "published", "publishedAt", "hikari_player_episode_id" AS "hikariPlayerEpisodeId", "audio", "opening_start_seconds" AS "openingStartSeconds", "opening_end_seconds" AS "openingEndSeconds", "badge_lancamento" AS "badgeLancamento", "badge_novo" AS "badgeNovo", "badge_final" AS "badgeFinal", "authorId";`,
+             RETURNING "id", "thumbnail", "published", "publishedAt", "hikari_player_episode_id" AS "hikariPlayerEpisodeId", "audio", "opening_start_seconds" AS "openingStartSeconds", "opening_end_seconds" AS "openingEndSeconds", "badge_lancamento" AS "badgeLancamento", "badge_novo" AS "badgeNovo", "badge_final" AS "badgeFinal", "authorId";`,
             [
               canonicalId,
               canonicalAnimeId,
@@ -498,6 +520,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
 
           const savedRow = upsertResult[0];
           const effectiveId = savedRow ? savedRow.id : canonicalId;
+          const finalThumbnail = savedRow ? savedRow.thumbnail : thumbnail;
           const finalPublished = savedRow ? savedRow.published : published;
           const finalPublishedAt = savedRow ? savedRow.publishedAt : null;
           const finalHikariPlayerEpisodeId = savedRow
@@ -594,6 +617,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
 
           return Response.json({
             ok: true,
+            thumbnail: finalThumbnail,
             published: finalPublished,
             publishedAt: finalPublishedAt,
             hikariPlayerEpisodeId: finalHikariPlayerEpisodeId,
@@ -625,7 +649,12 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             { status: 500 },
           );
         }
-      },
+}
+
+export const Route = createFileRoute("/api/admin/catalog-episode")({
+  server: {
+    handlers: {
+      POST: ({ request }) => handlePostCatalogEpisode({ request }),
 
       DELETE: async ({ request }) => {
         try {

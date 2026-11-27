@@ -16,6 +16,7 @@ import {
 import {
   hasEpisodePlayableSource,
   isPersistablePlayableVideoUrl,
+  sanitizeEpisodeThumbnailUrl,
 } from "@/lib/published-episodes";
 import { useHikariStore } from "@/lib/store";
 import { toast } from "sonner";
@@ -293,6 +294,7 @@ export interface PersistEpisodeResult {
   confirmed: boolean;
   queued: boolean;
   canonicalId?: string;
+  thumbnail?: string | null;
   published?: boolean;
   publishedAt?: string | null;
   hikariPlayerEpisodeId?: string | null;
@@ -923,6 +925,7 @@ export async function persistEpisode(
 
     if (res.ok) {
       let canonicalId = episode.id;
+      let serverThumbnail: string | null | undefined = undefined;
       let serverPublished: boolean = isPublished;
       let serverPublishedAt: string | null = null;
       let serverHikariPlayerEpisodeId: string | null | undefined = undefined;
@@ -934,6 +937,12 @@ export async function persistEpisode(
         const j = await res.json();
         if (j?.episodeId || j?.canonicalId) {
           canonicalId = j.episodeId || j.canonicalId;
+        }
+        if (j?.thumbnail !== undefined) {
+          serverThumbnail =
+            j.thumbnail === null
+              ? null
+              : sanitizeEpisodeThumbnailUrl(String(j.thumbnail));
         }
         if (typeof j?.published === "boolean") {
           serverPublished = j.published;
@@ -984,6 +993,7 @@ export async function persistEpisode(
         confirmed: true,
         queued: false,
         canonicalId,
+        thumbnail: serverThumbnail,
         published: serverPublished,
         publishedAt: serverPublishedAt,
         hikariPlayerEpisodeId: serverHikariPlayerEpisodeId,
