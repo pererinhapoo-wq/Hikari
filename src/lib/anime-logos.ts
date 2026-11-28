@@ -684,6 +684,81 @@ const LOGO_DEFINITIONS: Record<
       /探偵はもう、死んでいる/,
     ],
   },
+  "ranma-1-2-2024-season-3": {
+    src: "/assets/anime-logos/ranma-1-2-2024-season-3.png",
+    alt: "Ranma 1/2 (2024) Season 3",
+    sizeClasses:
+      "h-13 sm:h-17 md:h-21 w-auto max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
+    aspectRatioHint: "wide",
+    width: 1592,
+    height: 404,
+    webpSrcSet:
+      "/assets/anime-logos/ranma-1-2-2024-season-3-sm.webp 892w, /assets/anime-logos/ranma-1-2-2024-season-3.webp 1592w",
+    sizes: "(min-width: 768px) 430px, (min-width: 640px) 350px, 270px",
+    aniListIds: [209872, 185731, 178533],
+    malIds: [63801, 60564, 59145],
+    titlePatterns: [
+      /\branma\s*(?:1\/2|½)\s*\(2024\)/i,
+      /\branma\s*(?:1\/2|½)\b/i,
+      /らんま\s*1\/2/,
+    ],
+  },
+  "magical-explorer": {
+    src: "/assets/anime-logos/magical-explorer.png",
+    alt: "Magical Explorer",
+    sizeClasses:
+      "h-15 sm:h-19 md:h-24 w-auto max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
+    aspectRatioHint: "balanced",
+    width: 1411,
+    height: 689,
+    webpSrcSet:
+      "/assets/anime-logos/magical-explorer-sm.webp 790w, /assets/anime-logos/magical-explorer.webp 1411w",
+    sizes: "(min-width: 768px) 420px, (min-width: 640px) 340px, 260px",
+    aniListIds: [169581],
+    malIds: [56733],
+    titlePatterns: [
+      /\bmagical\s*[★☆]?\s*explorer\b/i,
+      /マジカル\s*[★☆]?\s*エクスプローラー/,
+    ],
+  },
+  "romelia-war-chronicle": {
+    src: "/assets/anime-logos/romelia-war-chronicle.png",
+    alt: "Romelia War Chronicle",
+    sizeClasses:
+      "h-13 sm:h-17 md:h-20 w-auto max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
+    aspectRatioHint: "wide",
+    width: 1517,
+    height: 366,
+    webpSrcSet:
+      "/assets/anime-logos/romelia-war-chronicle-sm.webp 850w, /assets/anime-logos/romelia-war-chronicle.webp 1517w",
+    sizes: "(min-width: 768px) 430px, (min-width: 640px) 350px, 270px",
+    aniListIds: [180894, 219243],
+    malIds: [59787, 65298],
+    titlePatterns: [
+      /\bromelia\s+war\s+chronicle\b/i,
+      /\bromelia\s+senki\b/i,
+      /ロメリア戦記/,
+    ],
+  },
+  "a-wild-last-boss-appeared-season-2": {
+    src: "/assets/anime-logos/a-wild-last-boss-appeared-season-2.png",
+    alt: "A Wild Last Boss Appeared! Season 2",
+    sizeClasses:
+      "h-15 sm:h-19 md:h-24 w-auto max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
+    aspectRatioHint: "balanced",
+    width: 1535,
+    height: 758,
+    webpSrcSet:
+      "/assets/anime-logos/a-wild-last-boss-appeared-season-2-sm.webp 860w, /assets/anime-logos/a-wild-last-boss-appeared-season-2.webp 1535w",
+    sizes: "(min-width: 768px) 420px, (min-width: 640px) 340px, 260px",
+    aniListIds: [204389],
+    malIds: [63140],
+    titlePatterns: [
+      /\b(?:a\s+)?wild\s+last\s+boss\s+appeared!?\b.*(?:\bseason\s*2\b|\b2nd\s*season\b|\bii\b|\b2\b)/i,
+      /\byasei\s+no\s+last\s+boss\s+ga\s+arawareta!?\b.*(?:\bseason\s*2\b|\b2nd\s*season\b|\bii\b|\b2\b)/i,
+      /野生のラスボスが現れた！?\s*(?:第?2期|Ⅱ|2)/,
+    ],
+  },
 };
 
 function toAnimeLogoConfig(
