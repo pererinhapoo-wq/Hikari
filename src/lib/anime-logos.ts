@@ -513,6 +513,177 @@ const LOGO_DEFINITIONS: Record<
       /てつりょー.*鉄道むすめ/,
     ],
   },
+  "nia-liston-the-merciless-maiden": {
+    src: "/assets/anime-logos/nia-liston-the-merciless-maiden.png",
+    alt: "Nia Liston: The Merciless Maiden",
+    sizeClasses:
+      "h-14 sm:h-18 md:h-22 w-auto max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
+    aspectRatioHint: "wide",
+    width: 1600,
+    height: 561,
+    webpSrcSet:
+      "/assets/anime-logos/nia-liston-the-merciless-maiden-sm.webp 896w, /assets/anime-logos/nia-liston-the-merciless-maiden.webp 1600w",
+    sizes: "(min-width: 768px) 430px, (min-width: 640px) 350px, 270px",
+    aniListIds: [206949],
+    malIds: [63382],
+    titlePatterns: [
+      /\bnia\s+liston\b/i,
+      /\bkyouran\s+reijou\s+nia\s+liston\b/i,
+      /凶乱令嬢ニア・リストン/,
+    ],
+  },
+  overgeared: {
+    src: "/assets/anime-logos/overgeared.png",
+    alt: "Overgeared",
+    sizeClasses:
+      "w-[280px] sm:w-[360px] md:w-[440px] h-auto max-h-14 sm:max-h-18 md:max-h-22 max-w-full",
+    aspectRatioHint: "wide",
+    width: 1756,
+    height: 298,
+    webpSrcSet:
+      "/assets/anime-logos/overgeared-sm.webp 983w, /assets/anime-logos/overgeared.webp 1756w",
+    sizes: "(min-width: 768px) 440px, (min-width: 640px) 360px, 280px",
+    aniListIds: [212888],
+    malIds: [64340],
+    titlePatterns: [
+      /\bovergeared\b/i,
+      /\btempal\b/i,
+      /テムパル/,
+    ],
+  },
+  "aoashi-season-2": {
+    src: "/assets/anime-logos/aoashi-season-2.png",
+    alt: "Aoashi Season 2",
+    sizeClasses:
+      "w-[270px] sm:w-[350px] md:w-[430px] h-auto max-h-14 sm:max-h-18 md:max-h-22 max-w-full",
+    aspectRatioHint: "wide",
+    width: 1600,
+    height: 332,
+    webpSrcSet:
+      "/assets/anime-logos/aoashi-season-2-sm.webp 896w, /assets/anime-logos/aoashi-season-2.webp 1600w",
+    sizes: "(min-width: 768px) 430px, (min-width: 640px) 350px, 270px",
+    aniListIds: [191788],
+    malIds: [61603],
+    titlePatterns: [
+      /\baoashi\b.*(?:\bseason\s*2\b|\b2nd\s*season\b|\b2\b)/i,
+      /アオアシ\s*第?2期/,
+    ],
+  },
+  "a-certain-dark-item": {
+    src: "/assets/anime-logos/a-certain-dark-item.png",
+    alt: "A Certain Dark Item",
+    sizeClasses:
+      "h-13 sm:h-17 md:h-21 w-auto max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
+    aspectRatioHint: "wide",
+    width: 1600,
+    height: 401,
+    webpSrcSet:
+      "/assets/anime-logos/a-certain-dark-item-sm.webp 896w, /assets/anime-logos/a-certain-dark-item.webp 1600w",
+    sizes: "(min-width: 768px) 430px, (min-width: 640px) 350px, 270px",
+    aniListIds: [186742],
+    malIds: [61014],
+    titlePatterns: [
+      /\ba\s+certain\s+dark\s+item\b/i,
+      /\btoaru\s+anbu\s+no\s+item\b/i,
+      /とある暗部の少女共棲/,
+    ],
+  },
+  "the-cold-sato-san-is-only-sweet-to-me": {
+    src: "/assets/anime-logos/the-cold-sato-san-is-only-sweet-to-me.png",
+    alt: "The Cold Sato-san is Only Sweet to Me",
+    sizeClasses:
+      "h-15 sm:h-19 md:h-24 w-auto max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
+    aspectRatioHint: "balanced",
+    width: 1600,
+    height: 677,
+    webpSrcSet:
+      "/assets/anime-logos/the-cold-sato-san-is-only-sweet-to-me-sm.webp 896w, /assets/anime-logos/the-cold-sato-san-is-only-sweet-to-me.webp 1600w",
+    sizes: "(min-width: 768px) 420px, (min-width: 640px) 340px, 260px",
+    aniListIds: [209502],
+    malIds: [63754],
+    titlePatterns: [
+      /\b(?:the\s+)?cold\s+satou?-san\s+is\s+only\s+sweet\s+to\s+me\b/i,
+      /\b(?:the\s+)?salty\s+koharu\s+has\s+a\s+soft\s+spot\s+for\s+me\b/i,
+      /\bshiotaiou\s+no\s+satou-san\s+ga\s+ore\s+ni\s+dake\s+amai\b/i,
+      /塩対応の佐藤さんが俺にだけ甘い/,
+    ],
+  },
+  "chitose-is-in-the-ramune-bottle-2nd-cour": {
+    src: "/assets/anime-logos/chitose-is-in-the-ramune-bottle-2nd-cour.png",
+    alt: "Chitose Is in the Ramune Bottle 2nd Cour",
+    sizeClasses:
+      "w-[280px] sm:w-[360px] md:w-[440px] h-auto max-h-14 sm:max-h-18 md:max-h-22 max-w-full",
+    aspectRatioHint: "wide",
+    width: 1500,
+    height: 233,
+    webpSrcSet:
+      "/assets/anime-logos/chitose-is-in-the-ramune-bottle-2nd-cour-sm.webp 840w, /assets/anime-logos/chitose-is-in-the-ramune-bottle-2nd-cour.webp 1500w",
+    sizes: "(min-width: 768px) 440px, (min-width: 640px) 360px, 280px",
+    aniListIds: [198727, 180082],
+    malIds: [62484, 59517],
+    titlePatterns: [
+      /\bchitose\s+is\s+in\s+the\s+ramune\s+bottle\b/i,
+      /\bchitose-kun\s+wa\s+ramune\s*bin\s+no\s+naka\b/i,
+      /千歳くんはラムネ瓶のなか/,
+    ],
+  },
+  "reincarnated-as-a-sword-season-2": {
+    src: "/assets/anime-logos/reincarnated-as-a-sword-season-2.png",
+    alt: "Reincarnated as a Sword Season 2",
+    sizeClasses:
+      "h-14 sm:h-18 md:h-22 w-auto max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
+    aspectRatioHint: "wide",
+    width: 1600,
+    height: 549,
+    webpSrcSet:
+      "/assets/anime-logos/reincarnated-as-a-sword-season-2-sm.webp 896w, /assets/anime-logos/reincarnated-as-a-sword-season-2.webp 1600w",
+    sizes: "(min-width: 768px) 430px, (min-width: 640px) 350px, 270px",
+    aniListIds: [159042],
+    malIds: [53913],
+    titlePatterns: [
+      /\breincarnated\s+as\s+a\s+sword\b.*(?:\bseason\s*2\b|\b2nd\s*season\b|\bii\b|\b2\b)/i,
+      /\btensei\s+shitara\s+ken\s+deshita\b.*(?:\bseason\s*2\b|\b2nd\s*season\b|\bii\b|\b2\b)/i,
+      /転生したら剣でした.*(?:第?2期|Ⅱ|2)/,
+    ],
+  },
+  "the-worlds-strongest-witch": {
+    src: "/assets/anime-logos/the-worlds-strongest-witch.png",
+    alt: "The World's Strongest Witch",
+    sizeClasses:
+      "h-13 sm:h-17 md:h-20 w-auto max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
+    aspectRatioHint: "wide",
+    width: 1600,
+    height: 380,
+    webpSrcSet:
+      "/assets/anime-logos/the-worlds-strongest-witch-sm.webp 896w, /assets/anime-logos/the-worlds-strongest-witch.webp 1600w",
+    sizes: "(min-width: 768px) 430px, (min-width: 640px) 350px, 270px",
+    aniListIds: [211778],
+    malIds: [64084],
+    titlePatterns: [
+      /\b(?:the\s+)?world'?s\s+strongest\s+witch\b/i,
+      /\bsekai\s+saikyou\s+no\s+majo\b/i,
+      /世界最強の魔女/,
+    ],
+  },
+  "the-detective-is-already-dead-season-2": {
+    src: "/assets/anime-logos/the-detective-is-already-dead-season-2.png",
+    alt: "The Detective Is Already Dead Season 2",
+    sizeClasses:
+      "h-16 sm:h-20 md:h-24 w-auto max-w-[200px] sm:max-w-[250px] md:max-w-[290px]",
+    aspectRatioHint: "tall",
+    width: 1400,
+    height: 1086,
+    webpSrcSet:
+      "/assets/anime-logos/the-detective-is-already-dead-season-2-sm.webp 784w, /assets/anime-logos/the-detective-is-already-dead-season-2.webp 1400w",
+    sizes: "(min-width: 768px) 290px, (min-width: 640px) 250px, 200px",
+    aniListIds: [152677, 128712],
+    malIds: [52480, 46471],
+    titlePatterns: [
+      /\b(?:the\s+)?detective\s+is\s+already\s+dead\b/i,
+      /\btantei\s+wa\s+mou,?\s+shindeiru\b/i,
+      /探偵はもう、死んでいる/,
+    ],
+  },
 };
 
 function toAnimeLogoConfig(
