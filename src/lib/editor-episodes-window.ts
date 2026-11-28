@@ -211,3 +211,87 @@ export function buildInitialCollapsedSeasons(
   }
   return collapsed;
 }
+
+export interface BulkPublishSeasonEpisodesResult {
+  seasons: Season[];
+  changedEpisodeIds: string[];
+  eligibleCount: number;
+  alreadyPublishedCount: number;
+  emptyOrInvalidCount: number;
+  changed: boolean;
+}
+
+/**
+ * Altera de forma imutável o status de todos os episódios preenchidos e com fonte/ID
+ * válido da temporada informada para `published: true`.
+ * - Não modifica episódios vazios ou sem fonte/ID válido.
+ * - Não modifica episódios de outras temporadas.
+ * - Mantém todos os demais campos dos episódios exatamente iguais.
+ */
+export function publishFilledEpisodesInSeason(
+  seasons: Season[],
+  targetSeasonId: string,
+): BulkPublishSeasonEpisodesResult {
+  const targetSeasonIdx = seasons.findIndex((s) => s.id === targetSeasonId);
+  if (targetSeasonIdx === -1) {
+    return {
+      seasons,
+      changedEpisodeIds: [],
+      eligibleCount: 0,
+      alreadyPublishedCount: 0,
+      emptyOrInvalidCount: 0,
+      changed: false,
+    };
+  }
+
+  const targetSeason = seasons[targetSeasonIdx];
+  const changedEpisodeIds: string[] = [];
+  let eligibleCount = 0;
+  let alreadyPublishedCount = 0;
+  let emptyOrInvalidCount = 0;
+
+  const nextEpisodes = targetSeason.episodes.map((ep) => {
+    if (!hasEpisodePlayableSource(ep)) {
+      emptyOrInvalidCount += 1;
+      return ep;
+    }
+
+    eligibleCount += 1;
+    if (ep.published === true) {
+      alreadyPublishedCount += 1;
+      return ep;
+    }
+
+    changedEpisodeIds.push(ep.id);
+    return {
+      ...ep,
+      published: true,
+    };
+  });
+
+  if (changedEpisodeIds.length === 0) {
+    return {
+      seasons,
+      changedEpisodeIds: [],
+      eligibleCount,
+      alreadyPublishedCount,
+      emptyOrInvalidCount,
+      changed: false,
+    };
+  }
+
+  const nextSeasons = seasons.slice();
+  nextSeasons[targetSeasonIdx] = {
+    ...targetSeason,
+    episodes: nextEpisodes,
+  };
+
+  return {
+    seasons: nextSeasons,
+    changedEpisodeIds,
+    eligibleCount,
+    alreadyPublishedCount,
+    emptyOrInvalidCount,
+    changed: true,
+  };
+}
