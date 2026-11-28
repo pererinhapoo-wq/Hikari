@@ -117,6 +117,10 @@ import {
   getEpisodeSlotsSignature,
   type EpisodeSourcesSessionStore,
 } from "@/lib/episode-sources-session";
+import {
+  publishFilledEpisodesInSeason,
+  type BulkPublishSeasonEpisodesResult,
+} from "@/lib/editor-episodes-window";
 
 const MemoEditorHeader = memo(EditorHeader);
 const MemoEditorMetadata = memo(EditorMetadata);
@@ -638,6 +642,50 @@ function AdminEditor() {
         return { ...f, seasons: nextSeasons };
       });
       setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
+    },
+    [],
+  );
+
+  const publishAllSeasonEpisodes = useCallback(
+    (sid: string): BulkPublishSeasonEpisodesResult => {
+      const currentForm = formRef.current;
+      if (!currentForm) {
+        return {
+          seasons: [],
+          changedEpisodeIds: [],
+          eligibleCount: 0,
+          alreadyPublishedCount: 0,
+          emptyOrInvalidCount: 0,
+          changed: false,
+        };
+      }
+
+      const preview = publishFilledEpisodesInSeason(currentForm.seasons, sid);
+      if (!preview.changed) {
+        return preview;
+      }
+
+      for (const eid of preview.changedEpisodeIds) {
+        dirtyEpisodeIdsRef.current.add(eid);
+        explicitUserDirtyEpisodeIdsRef.current.add(eid);
+      }
+
+      setForm((f) => {
+        if (!f) return f;
+        const next = publishFilledEpisodesInSeason(f.seasons, sid);
+        if (!next.changed) return f;
+        for (const eid of next.changedEpisodeIds) {
+          dirtyEpisodeIdsRef.current.add(eid);
+          explicitUserDirtyEpisodeIdsRef.current.add(eid);
+        }
+        return {
+          ...f,
+          seasons: next.seasons,
+        };
+      });
+      setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
+
+      return preview;
     },
     [],
   );
@@ -2840,6 +2888,7 @@ function AdminEditor() {
           onRemoveSeason={removeSeason}
           onAddEpisode={addEpisode}
           onPatchEpisode={patchEpisode}
+          onPublishAllEpisodes={publishAllSeasonEpisodes}
           onRemoveEpisode={removeEpisode}
           onCaptureFrame={handleCaptureEpisodeFrame}
           onDiscoverCandidates={handleDiscoverEpisodeThumbnails}

@@ -44,6 +44,8 @@ import {
   getCompactPageNumbers,
   getOutboxOpForEpisode,
   paginateEpisodes,
+  publishFilledEpisodesInSeason,
+  type BulkPublishSeasonEpisodesResult,
   type OutboxIndex,
 } from "@/lib/editor-episodes-window";
 import { Button } from "@/components/ui/button";
@@ -136,6 +138,7 @@ interface EditorSeasonsProps {
   onRemoveSeason: (sid: string) => void;
   onAddEpisode: (sid: string) => void;
   onPatchEpisode: (sid: string, eid: string, patch: Partial<Episode>) => void;
+  onPublishAllEpisodes?: (sid: string) => BulkPublishSeasonEpisodesResult;
   onRemoveEpisode: (sid: string, eid: string) => void;
   onCaptureFrame: (
     sid: string,
@@ -267,6 +270,7 @@ export function EditorSeasons({
   onRemoveSeason,
   onAddEpisode,
   onPatchEpisode,
+  onPublishAllEpisodes,
   onRemoveEpisode,
   onCaptureFrame,
   onDiscoverCandidates,
@@ -353,6 +357,21 @@ export function EditorSeasons({
       const next = { ...prev };
       delete next[epId];
       return next;
+    });
+  }, []);
+
+  const clearPublishErrorsForIds = useCallback((epIds: string[]) => {
+    if (epIds.length === 0) return;
+    setPublishErrors((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const epId of epIds) {
+        if (epId in next) {
+          delete next[epId];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
     });
   }, []);
 
@@ -537,6 +556,7 @@ export function EditorSeasons({
               onRequestDeleteSeason={handleRequestDeleteSeason}
               onAddEpisode={onAddEpisode}
               onPatchEpisode={onPatchEpisode}
+              onPublishAllEpisodes={onPublishAllEpisodes}
               onRemoveEpisode={onRemoveEpisode}
               onCaptureFrame={onCaptureFrame}
               onDiscoverCandidates={onDiscoverCandidates}
@@ -552,6 +572,7 @@ export function EditorSeasons({
               onDiscardOpeningSuggestion={onDiscardOpeningSuggestion}
               onSetPublishError={setPublishError}
               onClearPublishError={clearPublishError}
+              onClearPublishErrors={clearPublishErrorsForIds}
             />
           );
         })}
@@ -637,6 +658,7 @@ interface SeasonSectionProps {
   onRequestDeleteSeason: (season: Season) => void;
   onAddEpisode: (sid: string) => void;
   onPatchEpisode: (sid: string, eid: string, patch: Partial<Episode>) => void;
+  onPublishAllEpisodes?: (sid: string) => BulkPublishSeasonEpisodesResult;
   onRemoveEpisode: (sid: string, eid: string) => void;
   onCaptureFrame: (
     sid: string,
@@ -674,6 +696,7 @@ interface SeasonSectionProps {
   onDiscardOpeningSuggestion?: (seasonNumber: number, episodeNumber: number) => void;
   onSetPublishError: (epId: string, msg: string) => void;
   onClearPublishError: (epId: string) => void;
+  onClearPublishErrors?: (epIds: string[]) => void;
 }
 
 const SeasonSection = memo(function SeasonSection({
@@ -700,6 +723,7 @@ const SeasonSection = memo(function SeasonSection({
   onRequestDeleteSeason,
   onAddEpisode,
   onPatchEpisode,
+  onPublishAllEpisodes,
   onRemoveEpisode,
   onCaptureFrame,
   onDiscoverCandidates,
@@ -715,9 +739,14 @@ const SeasonSection = memo(function SeasonSection({
   onDiscardOpeningSuggestion,
   onSetPublishError,
   onClearPublishError,
+  onClearPublishErrors,
 }: SeasonSectionProps) {
   const [page, setPage] = useState(1);
   const [episodeQuery, setEpisodeQuery] = useState("");
+  const [bulkFeedback, setBulkFeedback] = useState<{
+    tone: "success" | "info";
+    message: string;
+  } | null>(null);
   const lastSeasonIdentityRef = useRef(`${animeId}:${season.id}`);
 
   useEffect(() => {
@@ -726,6 +755,7 @@ const SeasonSection = memo(function SeasonSection({
       lastSeasonIdentityRef.current = identity;
       setPage(1);
       setEpisodeQuery("");
+      setBulkFeedback(null);
     }
   }, [animeId, season.id]);
 
@@ -769,6 +799,76 @@ const SeasonSection = memo(function SeasonSection({
     setEpisodeQuery(value);
     setPage(1);
   }, []);
+
+  const handlePublishAllInSeason = useCallback(() => {
+    const preview = publishFilledEpisodesInSeason([season], season.id);
+
+    if (preview.eligibleCount === 0) {
+      const msg =
+        "Nenhum episódio preenchido com fonte ou ID válido para publicar nesta temporada.";
+      setBulkFeedback({ tone: "info", message: msg });
+      toast.info(msg);
+      return;
+    }
+
+    const eligibleIds = season.episodes
+      .filter((ep) => hasEpisodePlayableSource(ep))
+      .map((ep) => ep.id);
+    if (onClearPublishErrors) {
+      onClearPublishErrors(eligibleIds);
+    } else {
+      for (const epId of eligibleIds) {
+        onClearPublishError(epId);
+      }
+    }
+
+    if (onPublishAllEpisodes) {
+      const result = onPublishAllEpisodes(season.id);
+      if (result.changedEpisodeIds.length > 0) {
+        const count = result.changedEpisodeIds.length;
+        const msg = `${count} ${
+          count === 1 ? "episódio alterado" : "episódios alterados"
+        } para Publicado. Clique em Salvar para confirmar.`;
+        setBulkFeedback({ tone: "success", message: msg });
+        toast.success(msg);
+      } else {
+        const msg = `Todos os ${result.eligibleCount} ${
+          result.eligibleCount === 1
+            ? "episódio preenchido já está"
+            : "episódios preenchidos já estão"
+        } como Publicado.`;
+        setBulkFeedback({ tone: "info", message: msg });
+        toast.info(msg);
+      }
+      return;
+    }
+
+    for (const eid of preview.changedEpisodeIds) {
+      onPatchEpisode(season.id, eid, { published: true });
+    }
+    if (preview.changedEpisodeIds.length > 0) {
+      const count = preview.changedEpisodeIds.length;
+      const msg = `${count} ${
+        count === 1 ? "episódio alterado" : "episódios alterados"
+      } para Publicado. Clique em Salvar para confirmar.`;
+      setBulkFeedback({ tone: "success", message: msg });
+      toast.success(msg);
+    } else {
+      const msg = `Todos os ${preview.eligibleCount} ${
+        preview.eligibleCount === 1
+          ? "episódio preenchido já está"
+          : "episódios preenchidos já estão"
+      } como Publicado.`;
+      setBulkFeedback({ tone: "info", message: msg });
+      toast.info(msg);
+    }
+  }, [
+    season,
+    onPublishAllEpisodes,
+    onPatchEpisode,
+    onClearPublishError,
+    onClearPublishErrors,
+  ]);
 
   const showToolbar =
     season.episodes.length > EPISODES_PER_PAGE || episodeQuery.trim().length > 0;
@@ -830,40 +930,80 @@ const SeasonSection = memo(function SeasonSection({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-end lg:self-auto">
+        <div className="flex w-full flex-wrap items-center justify-between gap-2 lg:w-auto lg:justify-end">
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
-            onClick={() => onToggleCollapse(season.id)}
-            className="h-9 text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]"
-            title={isCollapsed ? "Expandir episódios" : "Recolher episódios"}
+            onClick={handlePublishAllInSeason}
+            data-bulk-publish-season={season.id}
+            aria-label={`Publicar todos os episódios preenchidos de ${season.title || `Temporada ${season.number}`}`}
+            title="Alterar o status de todos os episódios preenchidos desta temporada para Publicado"
+            className="h-9 border-emerald-500/35 bg-emerald-500/12 px-3 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/22 hover:text-white"
           >
-            {isCollapsed ? (
-              <>
-                <ChevronDown className="mr-1 size-3.5" />
-                <span>Expandir ({season.episodes.length})</span>
-              </>
-            ) : (
-              <>
-                <ChevronUp className="mr-1 size-3.5" />
-                <span>Recolher</span>
-              </>
-            )}
+            <Globe className="mr-1.5 size-3.5" />
+            <span>Publicar todos</span>
           </Button>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-9 text-[var(--color-subtle)] hover:bg-rose-500/12 hover:text-rose-400"
-            aria-label="Remover temporada"
-            onClick={() => onRequestDeleteSeason(season)}
-          >
-            <Trash2 className="size-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onToggleCollapse(season.id)}
+              className="h-9 text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+              title={isCollapsed ? "Expandir episódios" : "Recolher episódios"}
+            >
+              {isCollapsed ? (
+                <>
+                  <ChevronDown className="mr-1 size-3.5" />
+                  <span>Expandir ({season.episodes.length})</span>
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="mr-1 size-3.5" />
+                  <span>Recolher</span>
+                </>
+              )}
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-9 text-[var(--color-subtle)] hover:bg-rose-500/12 hover:text-rose-400"
+              aria-label="Remover temporada"
+              onClick={() => onRequestDeleteSeason(season)}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
         </div>
       </div>
+
+      {bulkFeedback && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-bulk-publish-feedback={season.id}
+          className={cn(
+            "mt-3 flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs",
+            bulkFeedback.tone === "success"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+              : "border-white/10 bg-white/[0.04] text-[var(--color-muted)]",
+          )}
+        >
+          <span>{bulkFeedback.message}</span>
+          <button
+            type="button"
+            onClick={() => setBulkFeedback(null)}
+            aria-label="Fechar aviso"
+            className="shrink-0 rounded p-0.5 text-current/70 hover:bg-white/[0.08] hover:text-white"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Episódios */}
       {!isCollapsed && (
