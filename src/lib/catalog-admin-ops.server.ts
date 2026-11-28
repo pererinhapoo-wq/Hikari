@@ -2,6 +2,7 @@ import { z } from "zod";
 import { withTransaction } from "@/lib/db";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
+import { invalidateHomeRecentlyAddedCacheAsync } from "@/lib/home-recently-added.server";
 import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { resolveCatalogAnimeMediaWrite } from "@/lib/types";
@@ -653,6 +654,9 @@ export async function executeAdminUpsertCatalogAnime(
     skipHeroAndTrending: true,
     redisOverride: options?.redisOverride,
   });
+  await invalidateHomeRecentlyAddedCacheAsync({
+    redisOverride: options?.redisOverride,
+  });
 
   invalidatePublicVisibilityCache();
 
@@ -884,6 +888,9 @@ export async function executeAdminArchiveCatalogAnime(
   if (archiveResult.found) {
     await invalidateHomePublicEpisodesCacheAsync({
       skipHeroAndTrending: true,
+      redisOverride: options?.redisOverride,
+    });
+    await invalidateHomeRecentlyAddedCacheAsync({
       redisOverride: options?.redisOverride,
     });
   }

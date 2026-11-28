@@ -9,6 +9,7 @@ import {
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
+import { invalidateHomeRecentlyAddedCacheAsync } from "@/lib/home-recently-added.server";
 import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
 import { fetchHikariPlayerEpisodePoster } from "@/lib/hikari-player-api.server";
@@ -640,6 +641,7 @@ export async function handlePostCatalogEpisode(
           // Invalida cache em memória e Redis do anime (todos os aliases), catálogo e Home
           await invalidateCatalogEpisodesCacheAsync(...cacheAliasIds);
           await invalidateHomePublicEpisodesCacheAsync();
+          await invalidateHomeRecentlyAddedCacheAsync();
           await invalidateServerCatalogCachesAsync(canonicalAnimeId, {
             anilistId: matchedAnime?.anilistId,
             malId: matchedAnime?.malId,
@@ -783,6 +785,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           }
           if (deleted) {
             await invalidateHomePublicEpisodesCacheAsync();
+            await invalidateHomeRecentlyAddedCacheAsync();
             await invalidateServerCatalogCachesAsync(delCanonicalId || targetAnimeId, {
               anilistId: matchedDelAnime?.anilistId,
               malId: matchedDelAnime?.malId,

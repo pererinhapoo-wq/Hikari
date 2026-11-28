@@ -4,6 +4,7 @@ import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { getSql, withTransaction } from "@/lib/db";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
+import { invalidateHomeRecentlyAddedCacheAsync } from "@/lib/home-recently-added.server";
 import {
   animeAdminPostSchema,
   executeAdminArchiveCatalogAnime,
@@ -196,6 +197,7 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             await invalidateCatalogEpisodesCacheAsync(...Array.from(seasonAliases));
             if (seasonResult.sRes.length > 0 || seasonResult.epRes.length > 0) {
               await invalidateHomePublicEpisodesCacheAsync();
+              await invalidateHomeRecentlyAddedCacheAsync();
             }
 
             return Response.json({

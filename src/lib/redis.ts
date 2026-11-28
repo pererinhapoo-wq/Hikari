@@ -1875,6 +1875,182 @@ export async function invalidateRedisHomePublicEpisodes(): Promise<void> {
   }
 }
 
+export const HOME_RECENTLY_ADDED_REDIS_KEY = "hikari:home:recently-added:v1";
+export const HOME_RECENTLY_ADDED_GEN_KEY = "hikari:home:recently-added:gen:v1";
+export const HOME_RECENTLY_ADDED_REDIS_TTL_SEC = 180; // 180 segundos
+
+export interface HomeRecentlyAddedCachePayload {
+  status: "success" | "empty";
+  items: SlimAnime[];
+  total: number;
+}
+
+export function isValidHomeRecentlyAddedPayload(
+  value: unknown,
+): value is HomeRecentlyAddedCachePayload {
+  if (!value || typeof value !== "object") return false;
+  const res = value as Partial<HomeRecentlyAddedCachePayload>;
+  if (res.status !== "success" && res.status !== "empty") return false;
+  if (!Array.isArray(res.items)) return false;
+  if (
+    typeof res.total !== "number" ||
+    !Number.isFinite(res.total) ||
+    res.total !== res.items.length
+  ) {
+    return false;
+  }
+  if (res.status === "empty" && res.items.length !== 0) return false;
+  if (res.status === "success" && res.items.length === 0) return false;
+  return res.items.every(
+    (item) =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      typeof item.id === "string" &&
+      item.id.trim().length > 0 &&
+      Boolean(item.titles) &&
+      typeof item.titles === "object",
+  );
+}
+
+export async function getRedisHomeRecentlyAddedWithFence(
+  redisOverride?: RedisEvalClient | null,
+): Promise<RedisPublicEpisodesReadResult<HomeRecentlyAddedCachePayload>> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) {
+    return { status: "unavailable", data: null, fence: null };
+  }
+
+  try {
+    const res = await withRedisTimeout(
+      client.eval<never[], unknown[]>(
+        GET_PUBLIC_EPISODES_OR_FENCE_SCRIPT,
+        [HOME_RECENTLY_ADDED_REDIS_KEY, HOME_RECENTLY_ADDED_GEN_KEY],
+        [],
+      ),
+      "getRedisHomeRecentlyAddedWithFence",
+    );
+
+    if (!Array.isArray(res) || res.length < 2) {
+      return { status: "failed", data: null, fence: null };
+    }
+
+    if (res[0] === "hit") {
+      const raw = extractPrefixedRaw(res[1]);
+      const parsed = raw
+        ? decodePublicEpisodesEnvelope<HomeRecentlyAddedCachePayload>(raw)
+        : null;
+      if (parsed && isValidHomeRecentlyAddedPayload(parsed)) {
+        return { status: "hit", data: parsed, fence: null };
+      }
+      const genRes = await withRedisTimeout(
+        client.eval<never[], unknown[]>(
+          CAPTURE_FENCE_SCRIPT,
+          [HOME_RECENTLY_ADDED_GEN_KEY],
+          [],
+        ),
+        "getRedisHomeRecentlyAddedWithFence.captureFence",
+      );
+      const genToken = Array.isArray(genRes) ? extractGenToken(genRes[0]) : null;
+      if (!genToken) {
+        return { status: "failed", data: null, fence: null };
+      }
+      return { status: "miss", data: null, fence: genToken };
+    }
+
+    if (res[0] === "miss") {
+      const genToken = extractGenToken(res[1]);
+      if (!genToken) {
+        return { status: "failed", data: null, fence: null };
+      }
+      return { status: "miss", data: null, fence: genToken };
+    }
+
+    return { status: "failed", data: null, fence: null };
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao buscar Animes Recém-Adicionados no Redis (fallback para DB):",
+      err instanceof Error ? err.message : err,
+    );
+    return { status: "failed", data: null, fence: null };
+  }
+}
+
+export async function setRedisHomeRecentlyAdded(
+  result: HomeRecentlyAddedCachePayload,
+  fence: string | null,
+  fetchedAt: number,
+  redisOverride?: RedisEvalClient | null,
+): Promise<RedisPublicEpisodesWriteStatus> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) {
+    return "unavailable";
+  }
+  if (!fence) {
+    return "failed";
+  }
+  if (!isValidHomeRecentlyAddedPayload(result)) {
+    return "skipped";
+  }
+
+  try {
+    const safeTs =
+      typeof fetchedAt === "number" && Number.isFinite(fetchedAt) && fetchedAt > 0
+        ? Math.floor(fetchedAt)
+        : Date.now();
+    const payload = encodePublicEpisodesEnvelope(fence, safeTs, result);
+    if (getUtf8ByteLength(payload) > PUBLIC_EPISODES_MAX_REDIS_BYTES) {
+      console.warn(
+        `[redis] Payload de Animes Recém-Adicionados excede limite seguro para Redis (${PUBLIC_EPISODES_MAX_REDIS_BYTES} bytes); mantendo somente DB/RAM.`,
+      );
+      return "skipped";
+    }
+
+    const res = await withRedisTimeout(
+      client.eval<string[], unknown[]>(
+        SET_PUBLIC_EPISODES_WITH_FENCE_SCRIPT,
+        [HOME_RECENTLY_ADDED_REDIS_KEY, HOME_RECENTLY_ADDED_GEN_KEY],
+        [payload, fence, String(safeTs), String(HOME_RECENTLY_ADDED_REDIS_TTL_SEC)],
+      ),
+      "setRedisHomeRecentlyAdded",
+    );
+
+    if (!Array.isArray(res)) return "failed";
+    if (res[0] === "inserted") return "inserted";
+    if (res[0] === "updated") return "updated";
+    if (res[0] === "kept") return "kept";
+    if (res[0] === "fenced") return "fenced";
+    return "failed";
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao salvar Animes Recém-Adicionados no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+    return "failed";
+  }
+}
+
+export async function invalidateRedisHomeRecentlyAdded(
+  redisOverride?: RedisEvalClient | null,
+): Promise<void> {
+  const client = resolveScopedRedisClient(redisOverride);
+  if (!client) return;
+  try {
+    await withRedisTimeout(
+      client.eval<never[], unknown>(
+        INVALIDATE_PUBLIC_EPISODES_SCRIPT,
+        [HOME_RECENTLY_ADDED_GEN_KEY, HOME_RECENTLY_ADDED_REDIS_KEY],
+        [],
+      ),
+      "invalidateRedisHomeRecentlyAdded",
+    );
+  } catch (err) {
+    console.warn(
+      "[redis] Aviso ao invalidar Animes Recém-Adicionados no Redis:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 function buildPublicCatalogEpisodesRedisKey(
   limit: number,
   offset: number,

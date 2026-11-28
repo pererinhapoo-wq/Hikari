@@ -6,6 +6,7 @@ import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { withTransaction } from "@/lib/db";
 import { invalidateCatalogEpisodesCacheAsync } from "@/lib/catalog-episodes";
 import { invalidateHomePublicEpisodesCacheAsync } from "@/lib/home-episodes";
+import { invalidateHomeRecentlyAddedCacheAsync } from "@/lib/home-recently-added.server";
 import { invalidateServerCatalogCachesAsync } from "@/lib/api";
 import { syncCatalogEpisodeSlotsToSources } from "@/lib/sources";
 import { validateHikariPlayerEpisodeId } from "@/lib/hikari-player";
@@ -582,6 +583,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
           invalidatePublicVisibilityCache();
           await invalidateCatalogEpisodesCacheAsync(...Array.from(affectedAnimeIds));
           await invalidateHomePublicEpisodesCacheAsync({ skipHeroAndTrending: true });
+          await invalidateHomeRecentlyAddedCacheAsync();
           await invalidateServerCatalogCachesAsync();
 
           return Response.json({

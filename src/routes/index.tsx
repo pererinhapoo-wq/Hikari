@@ -12,13 +12,10 @@ import {
   selectHomeSectionItems,
 } from "@/lib/anime-search-ranking";
 import { currentAnimeSeason, type OfficialAnimeSeason } from "@/lib/utils";
-import {
-  hasLocalPublishedEpisodes,
-  localToAnime,
-  type SlimAnime,
-} from "@/lib/types";
+import { type SlimAnime } from "@/lib/types";
 import {
   buildClientVisibilityContext,
+  EMPTY_PUBLIC_VISIBILITY_CONTEXT,
   filterPublicAnimes,
   isPubliclyBlockedAnime,
   isPubliclyBlockedId,
@@ -39,6 +36,7 @@ import {
   resolvePublicRecentEpisodes,
 } from "@/lib/published-episodes";
 import { getHomePublicEpisodes } from "@/lib/home-episodes.functions";
+import { getHomeRecentlyAdded } from "@/lib/home-recently-added.functions";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { SectionReveal } from "@/components/section-reveal";
 import { pickHeroItems } from "@/lib/home-hero-fallback";
@@ -52,15 +50,22 @@ export const Route = createFileRoute("/")({
   staleTime: 1000 * 60 * 5,
   gcTime: 1000 * 60 * 30,
   loader: async () => {
-    const [homeCatalog, publicEpisodesResult] = await Promise.all([
-      fetchHomeCatalog(),
-      getHomePublicEpisodes().catch((err: unknown) => ({
-        status: "error" as const,
-        episodes: [],
-        total: 0,
-        error: String(err),
-      })),
-    ]);
+    const [homeCatalog, publicEpisodesResult, recentlyAddedResult] =
+      await Promise.all([
+        fetchHomeCatalog(),
+        getHomePublicEpisodes().catch((err: unknown) => ({
+          status: "error" as const,
+          episodes: [],
+          total: 0,
+          error: String(err),
+        })),
+        getHomeRecentlyAdded().catch((err: unknown) => ({
+          status: "error" as const,
+          items: [],
+          total: 0,
+          error: String(err),
+        })),
+      ]);
     const publicRecentEpisodes = resolvePublicRecentEpisodes(
       publicEpisodesResult,
       [],
@@ -69,6 +74,8 @@ export const Route = createFileRoute("/")({
       ...homeCatalog,
       publicRecentEpisodes,
       publicEpisodesStatus: publicEpisodesResult.status,
+      recentlyAddedAnimes: recentlyAddedResult.items ?? [],
+      recentlyAddedStatus: recentlyAddedResult.status,
     };
   },
   head: ({ loaderData }) => {
@@ -293,7 +300,6 @@ function Home() {
   const data = Route.useLoaderData();
 
   const locals = useHikariStore((s) => s.animes);
-  const hydrated = useHikariStore((s) => s.hydrated);
 
   const visCtx = useMemo(
     () => buildClientVisibilityContext(locals),
@@ -333,31 +339,17 @@ function Home() {
     return rawPopular;
   }, [rawTrending, rawPopular]);
 
-  // Animes Recém-Adicionados: animes incluídos no catálogo próprio do Hikari com data real (createdAt),
-  // ordenados do mais recente para o mais antigo (apenas os que possuem episódios)
+  // Animes Recém-Adicionados: fonte pública autoritativa do servidor (PostgreSQL + cache),
+  // garantindo consistência SSR/cliente para todos os visitantes sem depender do IndexedDB local
   const recentlyAddedAnimes = useMemo(() => {
-    const visibleLocals = locals.filter(
-      (a) =>
-        !a.hidden &&
-        !isPubliclyBlockedAnime(a, visCtx) &&
-        (a.hasEpisode === true || hasLocalPublishedEpisodes(a.seasons)),
-    );
-    const withValidCreatedAt = visibleLocals.filter(
-      (a) =>
-        typeof a.createdAt === "number" &&
-        Number.isFinite(a.createdAt) &&
-        a.createdAt > 0,
-    );
-
-    return [...withValidCreatedAt]
-      .sort(
-        (a, b) =>
-          b.createdAt - a.createdAt ||
-          (b.updatedAt || 0) - (a.updatedAt || 0),
-      )
-      .slice(0, 18)
-      .map(localToAnime);
-  }, [locals, visCtx]);
+    const serverItems = Array.isArray(data.recentlyAddedAnimes)
+      ? data.recentlyAddedAnimes
+      : [];
+    return filterPublicAnimes(
+      serverItems,
+      EMPTY_PUBLIC_VISIBILITY_CONTEXT,
+    ).slice(0, 18);
+  }, [data.recentlyAddedAnimes]);
 
   const homeWithEpisodeCount = useMemo(
     () =>
@@ -494,8 +486,8 @@ function Home() {
         </SectionReveal>
       )}
 
-      {/* 4. Animes Recém-Adicionados (renderiza apenas quando há itens cadastrados) */}
-      {hydrated && recentlyAddedAnimes.length > 0 && (
+      {/* 4. Animes Recém-Adicionados (fonte pública do servidor; renderiza quando há itens elegíveis) */}
+      {recentlyAddedAnimes.length > 0 && (
         <SectionReveal minHeight="260px" rootMargin="300px 0px" lazy={false}>
           <AnimeRow
             title="Animes Recém-Adicionados"
