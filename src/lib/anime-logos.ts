@@ -759,6 +759,44 @@ const LOGO_DEFINITIONS: Record<
       /野生のラスボスが現れた！?\s*(?:第?2期|Ⅱ|2)/,
     ],
   },
+  "a-tale-of-the-secret-saint": {
+    src: "/assets/anime-logos/a-tale-of-the-secret-saint.png",
+    alt: "A Tale of the Secret Saint",
+    sizeClasses:
+      "h-13 sm:h-17 md:h-21 w-auto max-w-[280px] sm:max-w-[360px] md:max-w-[440px]",
+    aspectRatioHint: "wide",
+    width: 1500,
+    height: 400,
+    webpSrcSet:
+      "/assets/anime-logos/a-tale-of-the-secret-saint-sm.webp 800w, /assets/anime-logos/a-tale-of-the-secret-saint.webp 1500w",
+    sizes: "(min-width: 768px) 440px, (min-width: 640px) 360px, 280px",
+    aniListIds: [187402],
+    malIds: [61153],
+    titlePatterns: [
+      /\btale\s+of\s+the\s+secret\s+saint\b/i,
+      /\btensei\s+shita\s+daiseijo\s+wa\b/i,
+      /転生した大聖者/,
+    ],
+  },
+  "the-vermilion-mask": {
+    src: "/assets/anime-logos/the-vermilion-mask.png",
+    alt: "The Vermilion Mask",
+    sizeClasses:
+      "h-13 sm:h-17 md:h-21 w-auto max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
+    aspectRatioHint: "wide",
+    width: 1500,
+    height: 400,
+    webpSrcSet:
+      "/assets/anime-logos/the-vermilion-mask-sm.webp 800w, /assets/anime-logos/the-vermilion-mask.webp 1500w",
+    sizes: "(min-width: 768px) 430px, (min-width: 640px) 350px, 270px",
+    aniListIds: [195571],
+    malIds: [61999],
+    titlePatterns: [
+      /\bvermilion\s+mask\b/i,
+      /\bshuiro\s+no\s+kamen\b/i,
+      /朱色の仮面/,
+    ],
+  },
 };
 
 function toAnimeLogoConfig(
