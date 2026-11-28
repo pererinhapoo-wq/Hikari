@@ -39,6 +39,7 @@ import {
   findCanonicalCatalogAnime,
   getAllAliasIdsForCanonical,
   reconcileEpisodeIdentityReferences,
+  rowIsDubbed,
 } from "@/lib/anime-identity";
 import { dispatchEpisodePublishedNotifications } from "@/lib/notifications.functions";
 
@@ -100,13 +101,20 @@ export async function handlePostCatalogEpisode(
               : {}),
           });
 
-          // Nunca redirecionar um cadastro independente local-* para outro anime (ex.: Legendado)
-          // apenas por fallback de título quando o ID/alias não foi encontrado.
-          const shouldRejectLocalTitleRedirect =
-            data.animeId.startsWith("local-") &&
-            rawIdentityLookup.matchedBy === "title" &&
-            rawIdentityLookup.canonicalId !== null &&
+          // Nunca redirecionar um cadastro independente local-* (ou episódio dublado)
+          // para outro anime Legendado apenas por fallback de título/chave cruzada.
+          const matchedIsSubbedForDubEpisode =
+            data.audio === "dub" &&
+            rawIdentityLookup.row !== null &&
+            !rowIsDubbed(rawIdentityLookup.row) &&
             rawIdentityLookup.canonicalId !== data.animeId;
+
+          const shouldRejectLocalTitleRedirect =
+            (data.animeId.startsWith("local-") &&
+              rawIdentityLookup.matchedBy === "title" &&
+              rawIdentityLookup.canonicalId !== null &&
+              rawIdentityLookup.canonicalId !== data.animeId) ||
+            matchedIsSubbedForDubEpisode;
 
           const matchedAnime = shouldRejectLocalTitleRedirect
             ? null

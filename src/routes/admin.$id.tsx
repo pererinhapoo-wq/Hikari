@@ -51,17 +51,21 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   clearAnimeParentConsolidationCache,
-  clearOutboxForAnime,
   markAnimeParentConfirmed,
   persistEpisode,
   persistEpisodeDelete,
   readOutbox,
+  repairDubbedOutboxEpisodeIds,
   subscribeOutbox,
   writeOutbox,
   flushOutbox,
   type OutboxOperation,
   type PersistEpisodeResult,
 } from "@/lib/episode-writer";
+import {
+  cloneSeasonsForDubbedAnime,
+  isDubbedAnimeRecord,
+} from "@/lib/episode-id";
 import {
   normalizeVideoProbeUrl,
   shouldRunAutoThumbnailProbe,
@@ -156,6 +160,19 @@ export const Route = createFileRoute("/admin/$id")({
       Boolean(primary?.seasons?.length && primary.seasons.some((s: { episodes: unknown[] }) => s.episodes.length > 0)) &&
       (!deps.importId || deps.importId === params.id);
 
+    const isPrimaryDubbedOrDuplicate = Boolean(
+      primary &&
+        (params.id.startsWith("local-") ||
+          primary.duplicateOfId ||
+          isDubbedAnimeRecord({
+            id: primary.id,
+            titleRomaji: primary.titles?.romaji,
+            titleEnglish: primary.titles?.english,
+            titleNative: primary.titles?.native,
+            duplicateOfId: primary.duplicateOfId,
+          })),
+    );
+
     if (!primary) {
       if (deps.importId) {
         try {
@@ -193,12 +210,15 @@ export const Route = createFileRoute("/admin/$id")({
                   initialObjectPosition: "50% 24%",
                 }
               : primary.resolvedMobileBanner ?? canonicalRemote.resolvedMobileBanner,
-            seasons:
-              canonicalRemote.seasons?.length > 0
+            seasons: isPrimaryDubbedOrDuplicate
+              ? primary.seasons
+              : canonicalRemote.seasons?.length > 0
                 ? canonicalRemote.seasons
                 : primary.seasons,
-            serverCatalogId:
-              primary.serverCatalogId || canonicalRemote.serverCatalogId,
+            serverCatalogId: isPrimaryDubbedOrDuplicate
+              ? primary.serverCatalogId ||
+                (primary.source === "local" ? params.id : undefined)
+              : primary.serverCatalogId || canonicalRemote.serverCatalogId,
             catalogUpdatedAt:
               primary.catalogUpdatedAt ?? canonicalRemote.catalogUpdatedAt,
           };
@@ -215,6 +235,7 @@ export const Route = createFileRoute("/admin/$id")({
     if (
       params.id &&
       params.id !== "new" &&
+      !isPrimaryDubbedOrDuplicate &&
       (!serverEpisodes || serverEpisodes.episodes.length === 0) &&
       remote?.serverCatalogId &&
       remote.serverCatalogId !== params.id
@@ -1345,16 +1366,23 @@ function AdminEditor() {
           stored.find((a) => a.malId === remote.malId)
         : undefined);
 
+    if (typeof window !== "undefined") {
+      repairDubbedOutboxEpisodeIds();
+    }
+    const latestStored = useHikariStore.getState().animes;
+
+    const isLocalRouteId = id.startsWith("local-");
     const storedMatch =
       id === "new"
         ? (remote?.serverCatalogId
-            ? stored.find((a) => a.id === remote.serverCatalogId)
+            ? latestStored.find((a) => a.id === remote.serverCatalogId)
             : undefined) || findByExternalIds()
-        : stored.find((a) => a.id === id) ||
-          (remote?.serverCatalogId
-            ? stored.find((a) => a.id === remote.serverCatalogId)
-            : undefined) ||
-          findByExternalIds();
+        : latestStored.find((a) => a.id === id) ||
+          (isLocalRouteId
+            ? undefined
+            : (remote?.serverCatalogId
+                ? latestStored.find((a) => a.id === remote.serverCatalogId)
+                : undefined) || findByExternalIds());
 
     const resolvedFromRemote = resolveAdminAnimeWithRemote(storedMatch, remote);
     const base =
@@ -1557,28 +1585,13 @@ function AdminEditor() {
       ? `${currentForm.titleEnglish} Dublado`
       : "";
 
-    const clonedSeasons: Season[] = currentForm.seasons.map((s) => ({
-      id: `s-${crypto.randomUUID()}`,
-      number: s.number,
-      title: s.title,
-      episodes: s.episodes.map((e) => ({
-        id: `e-${crypto.randomUUID()}`,
-        number: e.number,
-        title: e.title,
-        duration: e.duration,
-        thumbnail: e.thumbnail,
-        synopsis: e.synopsis,
-        audio: "dub" as const,
-        videoUrl: "",
-        videoUrl2: "",
-        videoUrl3: "",
-        videoUrl4: "",
-        videoUrl5: "",
-        hikariPlayerEpisodeId: undefined,
-        recentBadges: { lancamento: false, novo: false, final: false },
-        published: false,
-      })),
-    }));
+    const clonedSeasons: Season[] = cloneSeasonsForDubbedAnime(
+      currentForm.seasons,
+      {
+        targetAnimeId: newId,
+        sourceAnimeAnilistId: currentForm.anilistId,
+      },
+    );
 
     const duplicated: LocalAnime = {
       ...currentForm,
@@ -2036,7 +2049,7 @@ function AdminEditor() {
             if (!match) return ep;
 
             const nextId =
-              match.canonicalId && match.status === "synced"
+              match.canonicalId && match.canonicalId !== ep.id
                 ? match.canonicalId
                 : ep.id;
             const nextPublished =

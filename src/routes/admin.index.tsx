@@ -97,6 +97,7 @@ import {
   StudioStatStrip,
 } from "@/components/admin/studio-ui";
 import { cn } from "@/lib/utils";
+import { cloneSeasonsForDubbedAnime } from "@/lib/episode-id";
 
 export const Route = createFileRoute("/admin/")({
   component: AdminIndex,
@@ -431,28 +432,10 @@ function AdminIndex() {
     const baseTitleRomaji = target.titleRomaji ? `${target.titleRomaji} Dublado` : "";
     const baseTitleEnglish = target.titleEnglish ? `${target.titleEnglish} Dublado` : "";
 
-    const clonedSeasons = target.seasons.map((s) => ({
-      id: `s-${crypto.randomUUID()}`,
-      number: s.number,
-      title: s.title,
-      episodes: s.episodes.map((e) => ({
-        id: `e-${crypto.randomUUID()}`,
-        number: e.number,
-        title: e.title,
-        duration: e.duration,
-        thumbnail: e.thumbnail,
-        synopsis: e.synopsis,
-        audio: "dub" as const,
-        videoUrl: "",
-        videoUrl2: "",
-        videoUrl3: "",
-        videoUrl4: "",
-        videoUrl5: "",
-        hikariPlayerEpisodeId: undefined,
-        recentBadges: { lancamento: false, novo: false, final: false },
-        published: false,
-      })),
-    }));
+    const clonedSeasons = cloneSeasonsForDubbedAnime(target.seasons, {
+      targetAnimeId: newId,
+      sourceAnimeAnilistId: target.anilistId,
+    });
 
     const duplicated: LocalAnime = {
       ...target,

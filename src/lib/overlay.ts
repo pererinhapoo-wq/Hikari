@@ -32,6 +32,11 @@ import {
   isPubliclyBlockedId,
   normalizeCountryOfOrigin,
 } from "@/lib/public-visibility";
+import {
+  generateUniqueEpisodeId,
+  isDubbedAnimeRecord,
+  isExternalEpisodeId,
+} from "@/lib/episode-id";
 
 export function overlayList(
   remote: SlimAnime[],
@@ -263,33 +268,92 @@ export function mergeSeasonsWithRemote(
   return merged;
 }
 
-export function sanitizeRemoteEpisodeForAdmin(rep: Episode): Episode {
-  const v1 = isHikariPlayableUrl(rep.videoUrl) ? rep.videoUrl?.trim() : undefined;
-  const v2 = isHikariPlayableUrl(rep.videoUrl2) ? rep.videoUrl2?.trim() : undefined;
-  const v3 = isHikariPlayableUrl(rep.videoUrl3) ? rep.videoUrl3?.trim() : undefined;
-  const v4 = isHikariPlayableUrl(rep.videoUrl4) ? rep.videoUrl4?.trim() : undefined;
-  const v5 = isHikariPlayableUrl(rep.videoUrl5) ? rep.videoUrl5?.trim() : undefined;
-  const normalizedHikariId =
-    normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ?? undefined;
+export interface SanitizeRemoteEpisodeForAdminOptions {
+  generateNewEpisodeId?: boolean;
+  forceDubAudio?: boolean;
+  usedIds?: Set<string>;
+  forbiddenIds?: Set<string>;
+}
+
+export function sanitizeRemoteEpisodeForAdmin(
+  rep: Episode,
+  options?: SanitizeRemoteEpisodeForAdminOptions,
+): Episode {
+  const shouldGenerateNewId = Boolean(options?.generateNewEpisodeId);
+  const preservedExternalId =
+    typeof rep.externalEpisodeId === "string" && rep.externalEpisodeId.trim()
+      ? rep.externalEpisodeId.trim()
+      : isExternalEpisodeId(rep.id)
+        ? rep.id.trim()
+        : undefined;
+
+  let resolvedId = rep.id;
+  if (shouldGenerateNewId) {
+    if (rep.id) {
+      options?.forbiddenIds?.add(rep.id);
+    }
+    resolvedId = generateUniqueEpisodeId(options?.usedIds, options?.forbiddenIds);
+    options?.usedIds?.add(resolvedId);
+  } else {
+    options?.usedIds?.add(resolvedId);
+  }
+
+  const v1 = shouldGenerateNewId
+    ? undefined
+    : isHikariPlayableUrl(rep.videoUrl)
+      ? rep.videoUrl?.trim()
+      : undefined;
+  const v2 = shouldGenerateNewId
+    ? undefined
+    : isHikariPlayableUrl(rep.videoUrl2)
+      ? rep.videoUrl2?.trim()
+      : undefined;
+  const v3 = shouldGenerateNewId
+    ? undefined
+    : isHikariPlayableUrl(rep.videoUrl3)
+      ? rep.videoUrl3?.trim()
+      : undefined;
+  const v4 = shouldGenerateNewId
+    ? undefined
+    : isHikariPlayableUrl(rep.videoUrl4)
+      ? rep.videoUrl4?.trim()
+      : undefined;
+  const v5 = shouldGenerateNewId
+    ? undefined
+    : isHikariPlayableUrl(rep.videoUrl5)
+      ? rep.videoUrl5?.trim()
+      : undefined;
+  const normalizedHikariId = shouldGenerateNewId
+    ? undefined
+    : normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ?? undefined;
   const hasPlayable =
     Boolean(v1 || v2 || v3 || v4 || v5) ||
     buildHikariPlayerEpisodeUrl(normalizedHikariId) !== null;
 
   return {
-    id: rep.id,
+    id: resolvedId,
+    ...(shouldGenerateNewId && preservedExternalId
+      ? { externalEpisodeId: preservedExternalId }
+      : !shouldGenerateNewId && rep.externalEpisodeId
+        ? { externalEpisodeId: rep.externalEpisodeId }
+        : {}),
     number: rep.number,
     title: rep.title?.trim() || `Episódio ${rep.number}`,
     thumbnail: sanitizeEpisodeThumbnailUrl(rep.thumbnail) ?? undefined,
     duration: rep.duration?.trim() || undefined,
     synopsis: rep.synopsis?.trim() || undefined,
-    aired: rep.aired,
+    aired: shouldGenerateNewId ? undefined : rep.aired,
     videoUrl: v1,
     videoUrl2: v2,
     videoUrl3: v3,
     videoUrl4: v4,
     videoUrl5: v5,
     hikariPlayerEpisodeId: normalizedHikariId,
-    ...(rep.audio !== undefined ? { audio: rep.audio ?? undefined } : {}),
+    ...(options?.forceDubAudio
+      ? { audio: "dub" as const }
+      : rep.audio !== undefined
+        ? { audio: rep.audio ?? undefined }
+        : {}),
     ...(rep.audioVersion ? { audioVersion: rep.audioVersion } : {}),
     ...(rep.openingStartSeconds !== undefined
       ? { openingStartSeconds: rep.openingStartSeconds }
@@ -297,11 +361,21 @@ export function sanitizeRemoteEpisodeForAdmin(rep: Episode): Episode {
     ...(rep.openingEndSeconds !== undefined
       ? { openingEndSeconds: rep.openingEndSeconds }
       : {}),
-    ...(rep.recentBadges !== undefined
-      ? { recentBadges: normalizeAnimeRecentBadges(rep.recentBadges) }
-      : {}),
-    published: Boolean(rep.published === true && hasPlayable),
+    ...(shouldGenerateNewId
+      ? { recentBadges: { lancamento: false, novo: false, final: false } }
+      : rep.recentBadges !== undefined
+        ? { recentBadges: normalizeAnimeRecentBadges(rep.recentBadges) }
+        : {}),
+    published: shouldGenerateNewId
+      ? false
+      : Boolean(rep.published === true && hasPlayable),
   };
+}
+
+export interface MergeSeasonsWithRemoteForAdminOptions {
+  isDubbedDuplicate?: boolean;
+  isCrossAnimeRemote?: boolean;
+  forbiddenEpisodeIds?: Iterable<string>;
 }
 
 /**
@@ -311,12 +385,67 @@ export function sanitizeRemoteEpisodeForAdmin(rep: Episode): Episode {
 export function mergeSeasonsWithRemoteForAdmin(
   localSeasons: Season[],
   remoteSeasons?: Season[],
+  options?: MergeSeasonsWithRemoteForAdminOptions,
 ): Season[] {
   const safeLocal = Array.isArray(localSeasons) ? localSeasons : [];
   const safeRemote = Array.isArray(remoteSeasons) ? remoteSeasons : [];
+  const isDubbedDuplicate = Boolean(options?.isDubbedDuplicate);
+  const isCrossAnimeRemote = Boolean(options?.isCrossAnimeRemote);
+
+  const usedIds = new Set<string>();
+  const forbiddenIds = new Set<string>(options?.forbiddenEpisodeIds ?? []);
+  if (isDubbedDuplicate && isCrossAnimeRemote) {
+    for (const rs of safeRemote) {
+      for (const rep of rs?.episodes ?? []) {
+        if (rep?.id) forbiddenIds.add(rep.id);
+      }
+    }
+  }
+
+  const ensureSafeLocalEpisodeId = (lep: Episode): Episode => {
+    if (!isDubbedDuplicate) {
+      if (lep.id) usedIds.add(lep.id);
+      return lep;
+    }
+    const rawId = lep.id?.trim() || "";
+    const needsNewId =
+      !rawId ||
+      isExternalEpisodeId(rawId) ||
+      forbiddenIds.has(rawId) ||
+      usedIds.has(rawId);
+
+    if (!needsNewId) {
+      usedIds.add(rawId);
+      return lep;
+    }
+
+    if (rawId) {
+      forbiddenIds.add(rawId);
+    }
+    const nextId = generateUniqueEpisodeId(usedIds, forbiddenIds);
+    usedIds.add(nextId);
+    const preservedExternalId =
+      typeof lep.externalEpisodeId === "string" && lep.externalEpisodeId.trim()
+        ? lep.externalEpisodeId.trim()
+        : isExternalEpisodeId(rawId)
+          ? rawId
+          : undefined;
+    return {
+      ...lep,
+      id: nextId,
+      ...(preservedExternalId ? { externalEpisodeId: preservedExternalId } : {}),
+      audio: lep.audio ?? ("dub" as const),
+    };
+  };
 
   if (safeRemote.length === 0) {
-    return safeLocal;
+    if (!isDubbedDuplicate) {
+      return safeLocal;
+    }
+    return safeLocal.map((s) => ({
+      ...s,
+      episodes: (s.episodes ?? []).map(ensureSafeLocalEpisodeId),
+    }));
   }
 
   const localBySeasonNum = new Map<number, Season>();
@@ -363,32 +492,45 @@ export function mergeSeasonsWithRemoteForAdmin(
 
     const mergedEpisodes: Episode[] = [];
     for (const epNum of allEpNumbers) {
-      const lep = localByEpNum.get(epNum);
+      const rawLep = localByEpNum.get(epNum);
       const rep = remoteByEpNum.get(epNum);
 
-      if (lep && rep) {
+      if (rawLep && rep) {
+        const lep = ensureSafeLocalEpisodeId(rawLep);
         const cleanLocalThumb = sanitizeEpisodeThumbnailUrl(lep.thumbnail);
         const cleanRemoteThumb = sanitizeEpisodeThumbnailUrl(rep.thumbnail);
         const isUneditedStub =
           lep.published !== true && !hasEpisodePlayableSource(lep);
+        const preservedExternalId =
+          lep.externalEpisodeId?.trim() ||
+          (isDubbedDuplicate && isExternalEpisodeId(rep.id)
+            ? rep.id.trim()
+            : undefined);
 
         mergedEpisodes.push({
           ...lep,
+          ...(preservedExternalId ? { externalEpisodeId: preservedExternalId } : {}),
           thumbnail:
             cleanLocalThumb ??
             (isUneditedStub ? cleanRemoteThumb ?? undefined : undefined),
           title: lep.title?.trim() || rep.title?.trim() || `Episódio ${epNum}`,
           duration: lep.duration?.trim() || rep.duration?.trim() || undefined,
           synopsis: lep.synopsis?.trim() || rep.synopsis?.trim() || undefined,
-          aired: lep.aired || rep.aired,
+          aired: isDubbedDuplicate ? lep.aired : lep.aired || rep.aired,
           hikariPlayerEpisodeId:
             normalizeHikariPlayerEpisodeId(lep.hikariPlayerEpisodeId) ??
-            normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ??
-            undefined,
+            (isDubbedDuplicate && isCrossAnimeRemote
+              ? undefined
+              : normalizeHikariPlayerEpisodeId(rep.hikariPlayerEpisodeId) ??
+                undefined),
           ...(lep.audio !== undefined || rep.audio !== undefined
             ? {
                 audio:
-                  lep.audio !== undefined ? (lep.audio ?? undefined) : (rep.audio ?? undefined),
+                  lep.audio !== undefined
+                    ? (lep.audio ?? undefined)
+                    : isDubbedDuplicate
+                      ? ("dub" as const)
+                      : (rep.audio ?? undefined),
               }
             : {}),
           ...(lep.openingStartSeconds !== undefined || rep.openingEndSeconds !== undefined
@@ -415,14 +557,27 @@ export function mergeSeasonsWithRemoteForAdmin(
               }
             : {}),
         });
-      } else if (lep) {
-        mergedEpisodes.push(lep);
+      } else if (rawLep) {
+        mergedEpisodes.push(ensureSafeLocalEpisodeId(rawLep));
       } else if (rep) {
-        mergedEpisodes.push(sanitizeRemoteEpisodeForAdmin(rep));
+        const shouldGenerateNewId =
+          isDubbedDuplicate &&
+          (isCrossAnimeRemote || isExternalEpisodeId(rep.id));
+        mergedEpisodes.push(
+          sanitizeRemoteEpisodeForAdmin(rep, {
+            generateNewEpisodeId: shouldGenerateNewId,
+            forceDubAudio: isDubbedDuplicate,
+            usedIds,
+            forbiddenIds,
+          }),
+        );
       }
     }
 
-    const seasonId = ls?.id || rs?.id || `s-${sNum}`;
+    const seasonId =
+      ls?.id ||
+      (isDubbedDuplicate && isCrossAnimeRemote ? `s-dub-${sNum}` : rs?.id) ||
+      `s-${sNum}`;
     const seasonTitle =
       (ls?.title && ls.title !== `Temporada ${sNum}` ? ls.title : rs?.title) ||
       ls?.title ||
@@ -690,7 +845,17 @@ export function resolveAdminAnimeWithRemote(
 
   if (!storedMatch) {
     const base = animeToLocal(remote);
-    const mergedSeasons = mergeSeasonsWithRemoteForAdmin([], remote.seasons);
+    const isRemoteDubbed = isDubbedAnimeRecord({
+      id: remote.id,
+      titleRomaji: remote.titles.romaji,
+      titleEnglish: remote.titles.english,
+      titleNative: remote.titles.native,
+      duplicateOfId: remote.duplicateOfId,
+    });
+    const mergedSeasons = mergeSeasonsWithRemoteForAdmin([], remote.seasons, {
+      isDubbedDuplicate: isRemoteDubbed,
+      isCrossAnimeRemote: false,
+    });
     return {
       ...base,
       id: remote.serverCatalogId || base.id,
@@ -701,30 +866,47 @@ export function resolveAdminAnimeWithRemote(
     };
   }
 
+  const isCrossAnimeRemote =
+    storedMatch.id.startsWith("local-") &&
+    remote.id !== storedMatch.id &&
+    remote.serverCatalogId !== storedMatch.id;
+  const isDubbedContext =
+    isDubbedAnimeRecord(storedMatch) ||
+    Boolean(storedMatch.duplicateOfId && storedMatch.duplicateOfId !== storedMatch.id);
+  const isolateDubbedMerge = isCrossAnimeRemote || isDubbedContext;
+
   const useRemoteCover = shouldPreferRemoteMedia(
     storedMatch.cover,
     remote.cover,
     storedMatch,
-    remote.catalogUpdatedAt,
+    isCrossAnimeRemote ? undefined : remote.catalogUpdatedAt,
   );
   const useRemoteBanner = shouldPreferRemoteMedia(
     storedMatch.banner,
     remote.banner,
     storedMatch,
-    remote.catalogUpdatedAt,
+    isCrossAnimeRemote ? undefined : remote.catalogUpdatedAt,
   );
   const remoteIsNewer = Boolean(
-    remote.catalogUpdatedAt && remote.catalogUpdatedAt > (storedMatch.updatedAt ?? 0),
+    !isCrossAnimeRemote &&
+      remote.catalogUpdatedAt &&
+      remote.catalogUpdatedAt > (storedMatch.updatedAt ?? 0),
   );
 
   const mergedSeasons = mergeSeasonsWithRemoteForAdmin(
     storedMatch.seasons,
     remote.seasons,
+    {
+      isDubbedDuplicate: isolateDubbedMerge,
+      isCrossAnimeRemote,
+    },
   );
 
   return {
     ...storedMatch,
-    serverCatalogId: remote.serverCatalogId || storedMatch.serverCatalogId || undefined,
+    serverCatalogId: isCrossAnimeRemote
+      ? storedMatch.serverCatalogId || undefined
+      : remote.serverCatalogId || storedMatch.serverCatalogId || undefined,
     anilistId: storedMatch.anilistId ?? remote.anilistId,
     malId: storedMatch.malId ?? remote.malId,
     kitsuId: storedMatch.kitsuId ?? remote.kitsuId,
@@ -760,11 +942,11 @@ export function resolveAdminAnimeWithRemote(
     trailerId: storedMatch.trailerId ?? remote.trailerId,
     seasons: mergedSeasons.length > 0 ? mergedSeasons : storedMatch.seasons,
     updatedAt:
-      remoteIsNewer && remote.catalogUpdatedAt
+      !isCrossAnimeRemote && remoteIsNewer && remote.catalogUpdatedAt
         ? remote.catalogUpdatedAt
         : storedMatch.updatedAt,
     syncedAt:
-      remoteIsNewer && remote.catalogUpdatedAt
+      !isCrossAnimeRemote && remoteIsNewer && remote.catalogUpdatedAt
         ? remote.catalogUpdatedAt
         : storedMatch.syncedAt,
   };

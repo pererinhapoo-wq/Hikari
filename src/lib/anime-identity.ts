@@ -285,11 +285,23 @@ export function collectNormalizedTitles(input: {
 }
 
 export function rowIsDubbed(row: {
+  id?: string | null;
   title?: string | null;
   titleRomaji?: string | null;
   titleEnglish?: string | null;
   titleNative?: string | null;
+  duplicate_of_id?: string | null;
+  duplicateOfId?: string | null;
 }): boolean {
+  const dupOf =
+    typeof row.duplicate_of_id === "string"
+      ? row.duplicate_of_id.trim()
+      : typeof row.duplicateOfId === "string"
+        ? row.duplicateOfId.trim()
+        : "";
+  if (dupOf && dupOf !== (row.id?.trim() || "")) {
+    return true;
+  }
   return Boolean(
     inferIsDubbedFromTitles({
       title: row.title,

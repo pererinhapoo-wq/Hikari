@@ -27,6 +27,7 @@ export function normalizeEpisodeAudio(value: unknown): EpisodeAudio | null {
 
 export type Episode = {
   id: string;
+  externalEpisodeId?: string | null;
   number: number;
   title: string;
   thumbnail?: string;

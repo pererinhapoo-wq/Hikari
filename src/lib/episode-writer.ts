@@ -24,6 +24,11 @@ import {
   sanitizeEpisodeThumbnailUrl,
 } from "@/lib/published-episodes";
 import { ensureCatalogLoaded, useHikariStore } from "@/lib/store";
+import {
+  generateUniqueEpisodeId,
+  isDubbedAnimeRecord,
+  isExternalEpisodeId,
+} from "@/lib/episode-id";
 import { toast } from "sonner";
 
 export const OUTBOX_STORAGE_KEY = "hikari-episode-outbox-v1";
@@ -63,6 +68,7 @@ export interface EpisodePayload {
   replaceSources?: boolean;
   replaceThumbnail?: boolean;
   animeTitle?: string | null;
+  externalEpisodeId?: string | null;
 }
 
 export const episodePostSchema = z
@@ -81,6 +87,7 @@ export const episodePostSchema = z
     videoUrl4: z.string().max(2048).optional().nullable(),
     videoUrl5: z.string().max(2048).optional().nullable(),
     hikariPlayerEpisodeId: z.string().max(255).optional().nullable(),
+    externalEpisodeId: z.string().max(128).optional().nullable(),
     audio: z
       .preprocess((val) => {
         if (val === undefined) return undefined;
@@ -1149,6 +1156,379 @@ export async function consolidateAnimeParent(animeId: string): Promise<string> {
   }
 }
 
+const COLLISION_ERROR_RE =
+  /ID_BOUND_TO_OTHER_SLOT|já está associado a outro episódio|Conflito de integridade/i;
+
+export interface RepairedOutboxEpisodeEntry {
+  outboxId: string;
+  animeId: string;
+  seasonNumber: number;
+  episodeNumber?: number;
+  oldEpisodeId: string;
+  newEpisodeId: string;
+}
+
+export interface RepairDubbedOutboxResult {
+  repairedCount: number;
+  repairedOps: RepairedOutboxEpisodeEntry[];
+  reconciledStoreEpisodes: number;
+}
+
+/**
+ * Repara de forma idempotente e não destrutiva registros pendentes de animes Dublados
+ * no Outbox (`hikari-episode-outbox-v1`) e no store local (Zustand/IndexedDB) que
+ * herdaram IDs externos/compartilhados (ex.: `kitsu-ep-50792-1`) ou colidem com o Legendado.
+ *
+ * - Nunca remove itens do Outbox.
+ * - Nunca altera animes Legendados nem seus episódios.
+ * - Preserva todos os links de vídeo, thumbnails, títulos, números e flags originais.
+ * - Execuções repetidas são 100% no-op (`repairedCount === 0`) após a normalização.
+ */
+export function repairDubbedOutboxEpisodeIds(options?: {
+  targetAnimeIds?: string[];
+  collidingEpisodeIds?: Iterable<string>;
+}): RepairDubbedOutboxResult {
+  if (typeof window === "undefined") {
+    return { repairedCount: 0, repairedOps: [], reconciledStoreEpisodes: 0 };
+  }
+
+  const currentOps = readOutbox();
+  const localAnimes = useHikariStore.getState().animes || [];
+  const animeById = new Map<string, LocalAnime>();
+  for (const a of localAnimes) {
+    if (a?.id) animeById.set(a.id, a);
+  }
+
+  const explicitTargets = options?.targetAnimeIds
+    ? new Set(options.targetAnimeIds.map((id) => id.trim()).filter(Boolean))
+    : null;
+
+  const isTargetDubbedOp = (op: OutboxOperation): boolean => {
+    const cleanAnimeId = op.animeId?.trim() || "";
+    if (!cleanAnimeId) return false;
+    if (explicitTargets) {
+      return explicitTargets.has(cleanAnimeId);
+    }
+    const storeAnime = animeById.get(cleanAnimeId);
+    if (storeAnime) {
+      return isDubbedAnimeRecord(storeAnime);
+    }
+    if (cleanAnimeId === "local-a96d58dd-39a3-438d-af0f-4ee50b78ca1e") {
+      return true;
+    }
+    return (
+      cleanAnimeId.startsWith("local-") &&
+      (op.payload?.audio === "dub" ||
+        isDubbedAnimeRecord({
+          id: cleanAnimeId,
+          title: op.payload?.animeTitle,
+        }))
+    );
+  };
+
+  // Coleta IDs protegidos de episódios do Legendado e de outros cadastros não-alvo
+  const forbiddenIds = new Set<string>();
+  for (const a of localAnimes) {
+    if (!a?.id) continue;
+    const isTargetStoreAnime = explicitTargets
+      ? explicitTargets.has(a.id)
+      : isDubbedAnimeRecord(a);
+    if (isTargetStoreAnime) continue;
+    for (const s of a.seasons ?? []) {
+      for (const ep of s?.episodes ?? []) {
+        if (ep?.id?.trim()) forbiddenIds.add(ep.id.trim());
+      }
+    }
+  }
+  for (const op of currentOps) {
+    if (isTargetDubbedOp(op)) continue;
+    if (op.episodeId?.trim()) forbiddenIds.add(op.episodeId.trim());
+    if (op.payload?.id?.trim()) forbiddenIds.add(op.payload.id.trim());
+  }
+  if (options?.collidingEpisodeIds) {
+    for (const id of options.collidingEpisodeIds) {
+      if (id?.trim()) forbiddenIds.add(id.trim());
+    }
+  }
+
+  const seenDubbedIds = new Set<string>();
+  const perPassSeenIds = new Set<string>();
+  const repairedOps: RepairedOutboxEpisodeEntry[] = [];
+  let outboxChanged = false;
+
+  // Pré-registrar IDs válidos já existentes nos episódios dublados para evitar colisão ao gerar novos
+  for (const op of currentOps) {
+    if (!isTargetDubbedOp(op)) continue;
+    const rawOpId = op.episodeId?.trim() || "";
+    const storeAnime = animeById.get(op.animeId);
+    const animeSelfBlocked = new Set<string>([op.animeId]);
+    if (storeAnime?.anilistId) animeSelfBlocked.add(String(storeAnime.anilistId));
+    if (storeAnime?.kitsuId) animeSelfBlocked.add(String(storeAnime.kitsuId));
+    if (storeAnime?.malId) animeSelfBlocked.add(String(storeAnime.malId));
+    if (
+      rawOpId &&
+      !isExternalEpisodeId(rawOpId) &&
+      !forbiddenIds.has(rawOpId) &&
+      !animeSelfBlocked.has(rawOpId) &&
+      !COLLISION_ERROR_RE.test(op.lastError || "")
+    ) {
+      seenDubbedIds.add(rawOpId);
+    }
+  }
+
+  // Também inclui IDs internos já válidos no Zustand dos animes dublados para não duplicar
+  for (const a of localAnimes) {
+    if (!a?.id || !isDubbedAnimeRecord(a)) continue;
+    for (const s of a.seasons ?? []) {
+      for (const ep of s?.episodes ?? []) {
+        const eid = ep?.id?.trim() || "";
+        if (eid && !isExternalEpisodeId(eid) && !forbiddenIds.has(eid)) {
+          seenDubbedIds.add(eid);
+        }
+      }
+    }
+  }
+
+  const nextOps = currentOps.map((op) => {
+    if (!isTargetDubbedOp(op)) {
+      return op;
+    }
+
+    const storeAnime = animeById.get(op.animeId);
+    const animeSelfBlocked = new Set<string>([op.animeId]);
+    if (storeAnime?.anilistId) animeSelfBlocked.add(String(storeAnime.anilistId));
+    if (storeAnime?.kitsuId) animeSelfBlocked.add(String(storeAnime.kitsuId));
+    if (storeAnime?.malId) animeSelfBlocked.add(String(storeAnime.malId));
+
+    const rawOpId = op.episodeId?.trim() || "";
+    const rawPayloadId = op.payload?.id?.trim() || "";
+    const candidateId = rawOpId || rawPayloadId;
+    const hasCollisionError = COLLISION_ERROR_RE.test(op.lastError || "");
+
+    // Verificar se o candidateId já foi reivindicado por OUTRA operação do lote
+    // (seenDubbedIds foi pré-populado com IDs válidos; aqui usamos perPassSeen para detectar duplicidade entre duas ops)
+    const perPassConflict = perPassSeenIds.has(candidateId);
+
+    const needsNewId =
+      hasCollisionError ||
+      perPassConflict ||
+      !candidateId ||
+      isExternalEpisodeId(candidateId) ||
+      forbiddenIds.has(candidateId) ||
+      animeSelfBlocked.has(candidateId);
+
+    if (!needsNewId) {
+      perPassSeenIds.add(candidateId);
+      seenDubbedIds.add(candidateId);
+      // Alinha payload.id caso apenas divergia de op.episodeId sem regenerar
+      if (op.payload && rawPayloadId !== candidateId) {
+        outboxChanged = true;
+        return {
+          ...op,
+          episodeId: candidateId,
+          payload: {
+            ...op.payload,
+            id: candidateId,
+          },
+        };
+      }
+      return op;
+    }
+
+    const blockedForThisOp = new Set<string>([
+      ...forbiddenIds,
+      ...seenDubbedIds,
+      ...perPassSeenIds,
+      ...animeSelfBlocked,
+    ]);
+    if (rawOpId) blockedForThisOp.add(rawOpId);
+    if (rawPayloadId) blockedForThisOp.add(rawPayloadId);
+
+    const newId = generateUniqueEpisodeId(seenDubbedIds, blockedForThisOp);
+    seenDubbedIds.add(newId);
+    perPassSeenIds.add(newId);
+    outboxChanged = true;
+
+    const preservedExternalId =
+      op.payload?.externalEpisodeId?.trim() ||
+      (isExternalEpisodeId(candidateId) ? candidateId : undefined);
+
+    repairedOps.push({
+      outboxId: op.id,
+      animeId: op.animeId,
+      seasonNumber: op.seasonNumber,
+      episodeNumber: op.episodeNumber,
+      oldEpisodeId: candidateId,
+      newEpisodeId: newId,
+    });
+
+    const nextStatus =
+      hasCollisionError && op.status === "conflict" ? "pending" : op.status;
+    const nextLastError = hasCollisionError ? undefined : op.lastError;
+
+    return {
+      ...op,
+      episodeId: newId,
+      status: nextStatus,
+      lastError: nextLastError,
+      ...(op.payload
+        ? {
+            payload: {
+              ...op.payload,
+              id: newId,
+              ...(preservedExternalId
+                ? { externalEpisodeId: preservedExternalId }
+                : {}),
+            },
+          }
+        : {}),
+    };
+  });
+
+  if (outboxChanged) {
+    writeOutbox(nextOps);
+  }
+
+  // Reconcilia também episódios no store Zustand para que edições/saves futuros no Admin
+  // não re-escrevam o ID antigo no Outbox via coalesce de slot.
+  const outboxSlotMap = new Map<string, { id: string; externalEpisodeId?: string }>();
+  for (const op of nextOps) {
+    if (!isTargetDubbedOp(op)) continue;
+    if (op.episodeNumber !== undefined) {
+      outboxSlotMap.set(`${op.animeId}:${op.seasonNumber}:${op.episodeNumber}`, {
+        id: op.episodeId,
+        externalEpisodeId: op.payload?.externalEpisodeId?.trim() || undefined,
+      });
+    }
+  }
+  const repairByAnimeOldId = new Map<string, RepairedOutboxEpisodeEntry>();
+  for (const r of repairedOps) {
+    if (r.oldEpisodeId) {
+      repairByAnimeOldId.set(`${r.animeId}:${r.oldEpisodeId}`, r);
+    }
+  }
+
+  let reconciledStoreEpisodes = 0;
+  try {
+    useHikariStore.setState((s) => {
+      let anyAnimeUpdated = false;
+      const nextAnimes = s.animes.map((anime) => {
+        const isTargetAnime = explicitTargets
+          ? explicitTargets.has(anime.id)
+          : isDubbedAnimeRecord(anime) ||
+            anime.id === "local-a96d58dd-39a3-438d-af0f-4ee50b78ca1e";
+        if (!isTargetAnime) return anime;
+
+        let animeUpdated = false;
+        const localSeen = new Set<string>();
+        const nextSeasons = (anime.seasons ?? []).map((season) => {
+          let seasonUpdated = false;
+          const nextEpisodes = (season.episodes ?? []).map((ep) => {
+            const rawEpId = ep.id?.trim() || "";
+            const byOldId = rawEpId
+              ? repairByAnimeOldId.get(`${anime.id}:${rawEpId}`)
+              : undefined;
+            const bySlot = outboxSlotMap.get(
+              `${anime.id}:${season.number}:${ep.number}`,
+            );
+
+            if (byOldId && byOldId.newEpisodeId !== rawEpId) {
+              animeUpdated = true;
+              seasonUpdated = true;
+              reconciledStoreEpisodes++;
+              localSeen.add(byOldId.newEpisodeId);
+              const preservedExt =
+                ep.externalEpisodeId?.trim() ||
+                (isExternalEpisodeId(rawEpId) ? rawEpId : undefined);
+              return {
+                ...ep,
+                id: byOldId.newEpisodeId,
+                ...(preservedExt ? { externalEpisodeId: preservedExt } : {}),
+              };
+            }
+
+            if (
+              bySlot &&
+              bySlot.id !== rawEpId &&
+              (isExternalEpisodeId(rawEpId) ||
+                forbiddenIds.has(rawEpId) ||
+                !rawEpId)
+            ) {
+              animeUpdated = true;
+              seasonUpdated = true;
+              reconciledStoreEpisodes++;
+              localSeen.add(bySlot.id);
+              const preservedExt =
+                ep.externalEpisodeId?.trim() ||
+                bySlot.externalEpisodeId ||
+                (isExternalEpisodeId(rawEpId) ? rawEpId : undefined);
+              return {
+                ...ep,
+                id: bySlot.id,
+                ...(preservedExt ? { externalEpisodeId: preservedExt } : {}),
+              };
+            }
+
+            const animeBlocked = new Set<string>([anime.id]);
+            if (anime.anilistId) animeBlocked.add(String(anime.anilistId));
+            if (anime.kitsuId) animeBlocked.add(String(anime.kitsuId));
+            if (anime.malId) animeBlocked.add(String(anime.malId));
+
+            const storeNeedsNewId =
+              !rawEpId ||
+              isExternalEpisodeId(rawEpId) ||
+              forbiddenIds.has(rawEpId) ||
+              animeBlocked.has(rawEpId) ||
+              localSeen.has(rawEpId);
+
+            if (!storeNeedsNewId) {
+              localSeen.add(rawEpId);
+              return ep;
+            }
+
+            const blocked = new Set<string>([
+              ...forbiddenIds,
+              ...seenDubbedIds,
+              ...localSeen,
+              ...animeBlocked,
+            ]);
+            if (rawEpId) blocked.add(rawEpId);
+            const freshId = generateUniqueEpisodeId(seenDubbedIds, blocked);
+            seenDubbedIds.add(freshId);
+            localSeen.add(freshId);
+            animeUpdated = true;
+            seasonUpdated = true;
+            reconciledStoreEpisodes++;
+            const preservedExt =
+              ep.externalEpisodeId?.trim() ||
+              (isExternalEpisodeId(rawEpId) ? rawEpId : undefined);
+            return {
+              ...ep,
+              id: freshId,
+              ...(preservedExt ? { externalEpisodeId: preservedExt } : {}),
+            };
+          });
+          return seasonUpdated ? { ...season, episodes: nextEpisodes } : season;
+        });
+
+        if (!animeUpdated) return anime;
+        anyAnimeUpdated = true;
+        return { ...anime, seasons: nextSeasons };
+      });
+
+      return anyAnimeUpdated ? { animes: nextAnimes } : s;
+    });
+  } catch (err) {
+    console.warn("[episode-writer] Falha ao reconciliar episódios dublados no store:", err);
+  }
+
+  return {
+    repairedCount: repairedOps.length,
+    repairedOps,
+    reconciledStoreEpisodes,
+  };
+}
+
 /**
  * Executa o reenvio sequencial de todas as operações pendentes no Outbox.
  * Protegido contra execuções concorrentes, loops infinitos e envio de episódios
@@ -1183,6 +1563,9 @@ export async function flushOutbox(options?: {
     if (!storeState.hydrated && storeState.animes.length === 0) {
       await ensureCatalogLoaded();
     }
+
+    // Repara antecipadamente quaisquer IDs externos/colidentes de animes Dublados antes de enviar ao servidor
+    repairDubbedOutboxEpisodeIds();
 
     const eligibleAnimeIds = Array.from(
       new Set(
@@ -1272,9 +1655,9 @@ export async function flushOutbox(options?: {
       try {
         if (op.type === "upsert" && op.payload) {
           const outboundPayload: EpisodePayload =
-            op.payload.animeId === op.animeId
+            op.payload.animeId === op.animeId && op.payload.id === op.episodeId
               ? op.payload
-              : { ...op.payload, animeId: op.animeId };
+              : { ...op.payload, id: op.episodeId, animeId: op.animeId };
           res = await fetch("/api/admin/catalog-episode", {
             method: "POST",
             headers: buildAdminRequestHeaders(),
@@ -1515,8 +1898,107 @@ export async function persistEpisode(
     ? false
     : Boolean(options?.replaceThumbnail);
 
+  // Garantir que episódios de cadastros Dublados/duplicados nunca carreguem IDs externos
+  // (ex.: `kitsu-ep-50792-1`) ou IDs pertencentes ao anime Legendado, preservando estabilidade em retries.
+  let effectiveEpisodeId = episode.id;
+  let preservedExternalEpisodeId =
+    typeof episode.externalEpisodeId === "string" && episode.externalEpisodeId.trim()
+      ? episode.externalEpisodeId.trim()
+      : undefined;
+
+  if (typeof window !== "undefined") {
+    repairDubbedOutboxEpisodeIds();
+    const localAnimes = useHikariStore.getState().animes || [];
+    const targetAnime = localAnimes.find((a) => a.id === animeId);
+    const isDubbedTarget = Boolean(
+      (targetAnime && isDubbedAnimeRecord(targetAnime)) ||
+        animeId === "local-a96d58dd-39a3-438d-af0f-4ee50b78ca1e" ||
+        (animeId.startsWith("local-") &&
+          (episode.audio === "dub" ||
+            isDubbedAnimeRecord({ id: animeId, title: animeTitle }))),
+    );
+
+    if (isDubbedTarget) {
+      const subbedForbiddenIds = new Set<string>([animeId]);
+      if (targetAnime?.anilistId) subbedForbiddenIds.add(String(targetAnime.anilistId));
+      if (targetAnime?.kitsuId) subbedForbiddenIds.add(String(targetAnime.kitsuId));
+      if (targetAnime?.malId) subbedForbiddenIds.add(String(targetAnime.malId));
+      for (const a of localAnimes) {
+        if (!a?.id || a.id === animeId || isDubbedAnimeRecord(a)) continue;
+        for (const s of a.seasons ?? []) {
+          for (const ep of s?.episodes ?? []) {
+            if (ep?.id?.trim()) subbedForbiddenIds.add(ep.id.trim());
+          }
+        }
+      }
+
+      const currentOps = readOutbox();
+      const existingSlotOp = currentOps.find(
+        (o) =>
+          o.animeId === animeId &&
+          o.type === "upsert" &&
+          o.seasonNumber === seasonNumber &&
+          o.episodeNumber === episode.number,
+      );
+
+      const usedIds = new Set<string>();
+      for (const s of targetAnime?.seasons ?? []) {
+        for (const ep of s?.episodes ?? []) {
+          if (
+            ep?.id &&
+            ep.id !== episode.id &&
+            !isExternalEpisodeId(ep.id) &&
+            !subbedForbiddenIds.has(ep.id)
+          ) {
+            usedIds.add(ep.id);
+          }
+        }
+      }
+      for (const o of currentOps) {
+        if (
+          o.animeId === animeId &&
+          o.episodeId &&
+          !isExternalEpisodeId(o.episodeId) &&
+          !subbedForbiddenIds.has(o.episodeId)
+        ) {
+          usedIds.add(o.episodeId);
+        }
+      }
+
+      const rawEpId = episode.id?.trim() || "";
+      const needsRepair =
+        !rawEpId ||
+        isExternalEpisodeId(rawEpId) ||
+        subbedForbiddenIds.has(rawEpId);
+
+      if (needsRepair) {
+        if (
+          existingSlotOp?.episodeId &&
+          !isExternalEpisodeId(existingSlotOp.episodeId) &&
+          !subbedForbiddenIds.has(existingSlotOp.episodeId)
+        ) {
+          effectiveEpisodeId = existingSlotOp.episodeId;
+        } else {
+          effectiveEpisodeId = generateUniqueEpisodeId(usedIds, [
+            ...subbedForbiddenIds,
+            ...(rawEpId ? [rawEpId] : []),
+          ]);
+        }
+        if (!preservedExternalEpisodeId && isExternalEpisodeId(rawEpId)) {
+          preservedExternalEpisodeId = rawEpId;
+        }
+        if (rawEpId && effectiveEpisodeId !== rawEpId) {
+          reconcileLocalEpisode(animeId, seasonNumber, rawEpId, effectiveEpisodeId);
+        }
+      }
+    }
+  }
+
   const basePayload: EpisodePayload = {
-    id: episode.id,
+    id: effectiveEpisodeId,
+    ...(preservedExternalEpisodeId
+      ? { externalEpisodeId: preservedExternalEpisodeId }
+      : {}),
     animeId,
     seasonNumber,
     number: episode.number,
@@ -1565,7 +2047,8 @@ export async function persistEpisode(
       mutateOutbox((ops) =>
         ops.map((o) =>
           o.animeId === animeId &&
-          (o.episodeId === episode.id ||
+          (o.episodeId === effectiveEpisodeId ||
+            o.episodeId === episode.id ||
             (o.seasonNumber === seasonNumber && o.episodeNumber === episode.number))
             ? { ...o, lastError: classified.message, lastAttemptAt: Date.now() }
             : o,
@@ -1574,6 +2057,8 @@ export async function persistEpisode(
       return {
         confirmed: false,
         queued: false,
+        canonicalId:
+          effectiveEpisodeId !== episode.id ? effectiveEpisodeId : undefined,
         status: "conflict",
         errorStatus: classified.status,
         errorCategory: "auth",
@@ -1586,7 +2071,7 @@ export async function persistEpisode(
 
     const op = enqueue({
       type: "upsert",
-      episodeId: episode.id,
+      episodeId: effectiveEpisodeId,
       animeId,
       seasonNumber,
       episodeNumber: episode.number,
@@ -1597,6 +2082,8 @@ export async function persistEpisode(
       return {
         confirmed: false,
         queued: false,
+        canonicalId:
+          effectiveEpisodeId !== episode.id ? effectiveEpisodeId : undefined,
         status: "conflict",
         errorStatus: classified.status,
         errorCategory: classified.category,
@@ -1622,6 +2109,8 @@ export async function persistEpisode(
     return {
       confirmed: false,
       queued: true,
+      canonicalId:
+        effectiveEpisodeId !== episode.id ? effectiveEpisodeId : undefined,
       status: isConflictOrValidation ? "conflict" : "pending",
       errorStatus: classified.status,
       errorCategory: classified.category,
@@ -1630,13 +2119,20 @@ export async function persistEpisode(
   }
 
   // Limpa tombstone do episódio na republicação ou salvamento (tanto ID original quanto canônico)
-  clearTombstone(episode.id, {
+  clearTombstone(effectiveEpisodeId, {
     animeId: effectiveAnimeId,
     seasonNumber,
     episodeNumber: episode.number,
   });
-  if (effectiveAnimeId !== animeId) {
+  if (effectiveEpisodeId !== episode.id) {
     clearTombstone(episode.id, {
+      animeId: effectiveAnimeId,
+      seasonNumber,
+      episodeNumber: episode.number,
+    });
+  }
+  if (effectiveAnimeId !== animeId) {
+    clearTombstone(effectiveEpisodeId, {
       animeId,
       seasonNumber,
       episodeNumber: episode.number,
@@ -1657,7 +2153,7 @@ export async function persistEpisode(
     });
 
     if (res.ok) {
-      let canonicalId = episode.id;
+      let canonicalId = effectiveEpisodeId;
       let serverThumbnail: string | null | undefined = undefined;
       let serverPublished: boolean = isPublished;
       let serverPublishedAt: string | null = null;
@@ -1705,6 +2201,12 @@ export async function persistEpisode(
       }
 
       // Reconcilia o ID se for diferente do ID local (considerando ID original e efetivo)
+      if (canonicalId !== effectiveEpisodeId) {
+        reconcileLocalEpisode(effectiveAnimeId, seasonNumber, effectiveEpisodeId, canonicalId);
+        if (effectiveAnimeId !== animeId) {
+          reconcileLocalEpisode(animeId, seasonNumber, effectiveEpisodeId, canonicalId);
+        }
+      }
       if (canonicalId !== episode.id) {
         reconcileLocalEpisode(effectiveAnimeId, seasonNumber, episode.id, canonicalId);
         if (effectiveAnimeId !== animeId) {
@@ -1719,6 +2221,7 @@ export async function persistEpisode(
             !(
               (o.animeId === animeId || o.animeId === effectiveAnimeId) &&
               (o.episodeId === episode.id ||
+                o.episodeId === effectiveEpisodeId ||
                 o.episodeId === canonicalId ||
                 (o.seasonNumber === seasonNumber && o.episodeNumber === episode.number))
             ),
@@ -1751,7 +2254,8 @@ export async function persistEpisode(
       mutateOutbox((ops) =>
         ops.map((o) =>
           (o.animeId === animeId || o.animeId === effectiveAnimeId) &&
-          (o.episodeId === episode.id ||
+          (o.episodeId === effectiveEpisodeId ||
+            o.episodeId === episode.id ||
             (o.seasonNumber === seasonNumber && o.episodeNumber === episode.number))
             ? { ...o, lastError: authErr.message, lastAttemptAt: Date.now() }
             : o,
@@ -1760,6 +2264,8 @@ export async function persistEpisode(
       return {
         confirmed: false,
         queued: false,
+        canonicalId:
+          effectiveEpisodeId !== episode.id ? effectiveEpisodeId : undefined,
         status: "conflict",
         errorStatus: res.status,
         errorCategory: "auth",
@@ -1785,7 +2291,8 @@ export async function persistEpisode(
             (o) =>
               !(
                 o.animeId === animeId &&
-                (o.episodeId === episode.id ||
+                (o.episodeId === effectiveEpisodeId ||
+                  o.episodeId === episode.id ||
                   (o.seasonNumber === seasonNumber && o.episodeNumber === episode.number))
               ),
           ),
@@ -1794,7 +2301,7 @@ export async function persistEpisode(
 
       const op = enqueue({
         type: "upsert",
-        episodeId: episode.id,
+        episodeId: effectiveEpisodeId,
         animeId: effectiveAnimeId,
         seasonNumber,
         episodeNumber: episode.number,
@@ -1820,6 +2327,8 @@ export async function persistEpisode(
       return {
         confirmed: false,
         queued: Boolean(op),
+        canonicalId:
+          effectiveEpisodeId !== episode.id ? effectiveEpisodeId : undefined,
         status: "conflict",
         errorStatus: res.status,
         errorCategory: conflictErr.category,
@@ -1839,7 +2348,8 @@ export async function persistEpisode(
           (o) =>
             !(
               o.animeId === animeId &&
-              (o.episodeId === episode.id ||
+              (o.episodeId === effectiveEpisodeId ||
+                o.episodeId === episode.id ||
                 (o.seasonNumber === seasonNumber && o.episodeNumber === episode.number))
             ),
         ),
@@ -1848,7 +2358,7 @@ export async function persistEpisode(
 
     const op = enqueue({
       type: "upsert",
-      episodeId: episode.id,
+      episodeId: effectiveEpisodeId,
       animeId: effectiveAnimeId,
       seasonNumber,
       episodeNumber: episode.number,
@@ -1859,6 +2369,8 @@ export async function persistEpisode(
       return {
         confirmed: false,
         queued: false,
+        canonicalId:
+          effectiveEpisodeId !== episode.id ? effectiveEpisodeId : undefined,
         status: "conflict",
         errorStatus: res.status,
         errorCategory: transientErr.category,
@@ -1884,6 +2396,8 @@ export async function persistEpisode(
     return {
       confirmed: false,
       queued: true,
+      canonicalId:
+        effectiveEpisodeId !== episode.id ? effectiveEpisodeId : undefined,
       status: "pending",
       errorStatus: res.status,
       errorCategory: transientErr.category,
@@ -1902,7 +2416,8 @@ export async function persistEpisode(
           (o) =>
             !(
               o.animeId === animeId &&
-              (o.episodeId === episode.id ||
+              (o.episodeId === effectiveEpisodeId ||
+                o.episodeId === episode.id ||
                 (o.seasonNumber === seasonNumber && o.episodeNumber === episode.number))
             ),
         ),
@@ -1911,7 +2426,7 @@ export async function persistEpisode(
 
     const op = enqueue({
       type: "upsert",
-      episodeId: episode.id,
+      episodeId: effectiveEpisodeId,
       animeId: effectiveAnimeId,
       seasonNumber,
       episodeNumber: episode.number,
@@ -1922,6 +2437,8 @@ export async function persistEpisode(
       return {
         confirmed: false,
         queued: false,
+        canonicalId:
+          effectiveEpisodeId !== episode.id ? effectiveEpisodeId : undefined,
         status: "conflict",
         errorStatus: 0,
         errorCategory: "network",
@@ -1947,6 +2464,8 @@ export async function persistEpisode(
     return {
       confirmed: false,
       queued: true,
+      canonicalId:
+        effectiveEpisodeId !== episode.id ? effectiveEpisodeId : undefined,
       status: "pending",
       errorStatus: 0,
       errorCategory: "network",
